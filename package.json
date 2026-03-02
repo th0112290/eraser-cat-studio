@@ -1,0 +1,15 @@
+{
+  "name": "eraser-cat-studio",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+
+    "db:migrate": "pnpm -C packages/db migrate:dev",
+    "db:studio": "pnpm -C packages/db studio",
+    "db:generate": "pnpm -C packages/db generate",
+
+    "worker:dev": "pnpm -C apps/worker dev"
+  }
+}

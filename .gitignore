@@ -1,0 +1,12 @@
+﻿node_modules
+.env
+dist
+.DS_Store
+*.log
+
+# Prisma
+packages/db/node_modules
+packages/db/prisma/dev.db
+
+# MinIO data (optional)
+minio-data

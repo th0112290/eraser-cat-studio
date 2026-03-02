@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "channel_bible.schema.json",
+  "title": "ChannelBible",
+  "type": "object",
+  "required": ["schema_version", "channel", "character", "content_rules", "video_defaults", "style_tokens", "qc_policy"],
+  "properties": {
+    "schema_version": { "type": "string", "enum": ["1.0"] },
+
+    "channel": {
+      "type": "object",
+      "required": ["channel_id", "name", "language", "timezone"],
+      "properties": {
+        "channel_id": { "type": "string" },
+        "name": { "type": "string" },
+        "language": { "type": "string", "default": "ko-KR" },
+        "timezone": { "type": "string", "default": "Asia/Seoul" },
+        "target_audience": { "type": "string" }
+      }
+    },
+
+    "character": {
+      "type": "object",
+      "required": ["character_id", "display_name", "persona", "speech_style", "allowed_emotions", "default_gestures"],
+      "properties": {
+        "character_id": { "type": "string" },
+        "display_name": { "type": "string" },
+        "persona": { "type": "string" },
+        "speech_style": {
+          "type": "object",
+          "required": ["tone", "do", "dont"],
+          "properties": {
+            "tone": { "type": "string" },
+            "do": { "type": "array", "items": { "type": "string" } },
+            "dont": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "allowed_emotions": { "type": "array", "items": { "type": "string" } },
+        "default_gestures": { "type": "array", "items": { "type": "string" } },
+        "on_screen_presence": {
+          "type": "object",
+          "properties": {
+            "always_visible": { "type": "boolean", "default": true },
+            "preferred_scale_range": {
+              "type": "object",
+              "properties": {
+                "min": { "type": "number", "default": 0.8 },
+                "max": { "type": "number", "default": 1.2 }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "content_rules": {
+      "type": "object",
+      "required": ["prohibited_topics", "sensitive_topics", "claims_policy", "disclaimer_text"],
+      "properties": {
+        "prohibited_topics": { "type": "array", "items": { "type": "string" } },
+        "sensitive_topics": { "type": "array", "items": { "type": "string" } },
+        "claims_policy": {
+          "type": "object",
+          "required": ["allow_uncertain_language", "require_sources_when_factual"],
+          "properties": {
+            "allow_uncertain_language": { "type": "boolean", "default": true },
+            "require_sources_when_factual": { "type": "boolean", "default": true }
+          }
+        },
+        "disclaimer_text": { "type": "string" }
+      }
+    },
+
+    "video_defaults": {
+      "type": "object",
+      "required": ["fps", "width", "height", "safe_area"],
+      "properties": {
+        "fps": { "type": "integer", "default": 30 },
+        "width": { "type": "integer", "default": 1920 },
+        "height": { "type": "integer", "default": 1080 },
+        "safe_area": {
+          "type": "object",
+          "required": ["x", "y", "w", "h"],
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.05 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.05 },
+            "w": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.9 },
+            "h": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.9 }
+          }
+        },
+        "target_duration_sec": { "type": "integer", "default": 600 },
+        "subtitle": {
+          "type": "object",
+          "properties": {
+            "max_chars_per_line": { "type": "integer", "default": 18 },
+            "max_lines": { "type": "integer", "default": 2 },
+            "position_preset": { "type": "string", "default": "bottom_center" }
+          }
+        }
+      }
+    },
+
+    "style_tokens": {
+      "type": "object",
+      "required": ["typography", "chart", "motion"],
+      "properties": {
+        "typography": {
+          "type": "object",
+          "properties": {
+            "font_family": { "type": "string" },
+            "scale": { "type": "array", "items": { "type": "number" } }
+          }
+        },
+        "chart": {
+          "type": "object",
+          "properties": {
+            "number_format": {
+              "type": "object",
+              "properties": {
+                "currency": { "type": "string", "default": "KRW" },
+                "use_grouping": { "type": "boolean", "default": true },
+                "decimal_places_default": { "type": "integer", "default": 1 },
+                "large_number_unit": { "type": "string", "default": "auto" }
+              }
+            },
+            "axis_policy": {
+              "type": "object",
+              "properties": {
+                "label_collision": { "type": "string", "enum": ["hide", "rotate", "wrap"], "default": "wrap" },
+                "min_font_size_px": { "type": "integer", "default": 22 }
+              }
+            }
+          }
+        },
+        "motion": {
+          "type": "object",
+          "properties": {
+            "default_easing": { "type": "string", "default": "spring_soft" },
+            "camera_motion": { "type": "string", "default": "subtle" },
+            "transition_style": { "type": "string", "default": "clean_cut" }
+          }
+        }
+      }
+    },
+
+    "qc_policy": {
+      "type": "object",
+      "required": ["max_rerender_attempts", "fail_on_number_mismatch", "fail_on_missing_assets"],
+      "properties": {
+        "max_rerender_attempts": { "type": "integer", "default": 2 },
+        "fail_on_number_mismatch": { "type": "boolean", "default": true },
+        "fail_on_missing_assets": { "type": "boolean", "default": true },
+        "preview_render_sec": { "type": "integer", "default": 12 }
+      }
+    }
+  }
+}

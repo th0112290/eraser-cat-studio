@@ -1,0 +1,321 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EpisodeStatus {
+  DRAFT
+  GENERATING
+  PREVIEW_READY
+  APPROVED
+  RENDERING
+  COMPLETED
+  FAILED
+}
+
+enum JobType {
+  GENERATE_SCRIPT
+  GENERATE_BEATS
+  COMPILE_SHOTS
+  FETCH_DATA
+  RENDER_PREVIEW
+  RUN_QC
+  RENDER_FINAL
+  GENERATE_METADATA
+  PACKAGE_OUTPUTS
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum RenderKind {
+  PREVIEW
+  FINAL
+}
+
+enum RenderStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum AssetType {
+  JSON
+  VIDEO
+  AUDIO
+  IMAGE
+  SUBTITLE
+  LOG
+}
+
+enum QCSeverity {
+  INFO
+  WARN
+  ERROR
+}
+
+enum QCCheck {
+  SCHEMA
+  ASSET_MISSING
+  NUMBER_MISMATCH
+  POINTING_FAIL
+  TEXT_OVERFLOW
+  AUDIO_CLIP
+}
+
+enum CharacterPackStatus {
+  DRAFT
+  APPROVED
+  ARCHIVED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  channels Channel[]
+}
+
+model Channel {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  language  String   @default("ko-KR")
+  timezone  String   @default("Asia/Seoul")
+  createdAt DateTime @default(now())
+
+  user       User            @relation(fields: [userId], references: [id])
+  bibles     ChannelBible[]
+  episodes   Episode[]
+  assets     Asset[]
+  datasets   Dataset[]
+  characters CharacterPack[]
+
+  @@index([userId])
+}
+
+model ChannelBible {
+  id        String   @id @default(cuid())
+  channelId String
+  version   Int
+  hash      String   @unique
+  schemaId  String   @default("channel_bible.schema.json")
+  json      Json
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  // ✅ Added: back relation for Episode.bible
+  episodes Episode[]
+
+  @@index([channelId, version])
+  @@index([channelId, isActive])
+}
+
+model CharacterPack {
+  id        String              @id @default(cuid())
+  channelId String
+  version   Int
+  hash      String              @unique
+  status    CharacterPackStatus @default(DRAFT)
+  schemaId  String              @default("character_pack.schema.json")
+  json      Json
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  // ✅ Added: back relation for Episode.characterPack
+  episodes Episode[]
+
+  @@index([channelId, version])
+  @@index([channelId, status])
+}
+
+model Dataset {
+  id          String   @id @default(cuid())
+  channelId   String
+  name        String
+  provider    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  channel  Channel          @relation(fields: [channelId], references: [id])
+  versions DatasetVersion[]
+
+  @@unique([channelId, name])
+  @@index([channelId])
+}
+
+model DatasetVersion {
+  id        String   @id @default(cuid())
+  datasetId String
+  version   Int
+  sourceUrl String?
+  sha256    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  dataset Dataset @relation(fields: [datasetId], references: [id])
+
+  @@unique([datasetId, version])
+  @@index([datasetId])
+}
+
+model Episode {
+  id                String        @id @default(cuid())
+  channelId         String
+  topic             String
+  status            EpisodeStatus @default(DRAFT)
+  targetDurationSec Int           @default(600)
+
+  bibleId         String?
+  characterPackId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  channel       Channel        @relation(fields: [channelId], references: [id])
+  bible         ChannelBible?  @relation(fields: [bibleId], references: [id])
+  characterPack CharacterPack? @relation(fields: [characterPackId], references: [id])
+
+  beatsDoc  BeatDoc?
+  shotsDoc  ShotDoc?
+  renders   Render[]
+  jobs      Job[]
+  qcResults QCResult[]
+
+  @@index([channelId])
+  @@index([status])
+}
+
+model BeatDoc {
+  id        String   @id @default(cuid())
+  episodeId String   @unique
+  schemaId  String   @default("beats.schema.json")
+  json      Json
+  hash      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  episode Episode @relation(fields: [episodeId], references: [id])
+}
+
+model ShotDoc {
+  id        String   @id @default(cuid())
+  episodeId String   @unique
+  schemaId  String   @default("shots.schema.json")
+  json      Json
+  hash      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  episode Episode @relation(fields: [episodeId], references: [id])
+}
+
+model Render {
+  id            String       @id @default(cuid())
+  episodeId     String
+  kind          RenderKind
+  status        RenderStatus @default(QUEUED)
+  attempt       Int          @default(1)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  outputAssetId String?
+
+  episode Episode @relation(fields: [episodeId], references: [id])
+
+  // ✅ Fixed: named relation + back relation lives on Asset.rendersAsOutput
+  outputAsset Asset? @relation("RenderOutputAsset", fields: [outputAssetId], references: [id])
+
+  qcResults QCResult[]
+
+  @@index([episodeId, kind])
+  @@index([status])
+}
+
+model Asset {
+  id          String    @id @default(cuid())
+  channelId   String
+  type        AssetType
+  storageKey  String    @unique
+  contentType String?
+  bytes       BigInt?
+  sha256      String?
+  createdAt   DateTime  @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  // ✅ Added: back relation for Render.outputAsset
+  rendersAsOutput Render[] @relation("RenderOutputAsset")
+
+  @@index([channelId, type])
+}
+
+model QCResult {
+  id        String     @id @default(cuid())
+  episodeId String?
+  renderId  String?
+  check     QCCheck
+  severity  QCSeverity
+  passed    Boolean
+  details   Json?
+  createdAt DateTime   @default(now())
+
+  episode Episode? @relation(fields: [episodeId], references: [id])
+  render  Render?  @relation(fields: [renderId], references: [id])
+
+  @@index([episodeId])
+  @@index([renderId])
+  @@index([check, severity])
+}
+
+model Job {
+  id           String    @id @default(cuid())
+  episodeId    String
+  type         JobType
+  status       JobStatus @default(QUEUED)
+  progress     Int       @default(0)
+  attemptsMade Int       @default(0)
+  maxAttempts  Int       @default(2)
+  bullmqJobId  String?   @unique
+  lastError    String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  episode Episode  @relation(fields: [episodeId], references: [id])
+  logs    JobLog[]
+
+  @@index([episodeId, type])
+  @@index([status])
+}
+
+model JobLog {
+  id        String   @id @default(cuid())
+  jobId     String
+  level     String   @default("info")
+  message   String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@index([jobId])
+}

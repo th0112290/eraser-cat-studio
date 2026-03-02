@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "character_pack.schema.json",
+  "title": "CharacterPack",
+  "type": "object",
+  "required": ["schema_version", "pack_id", "meta", "canvas", "assets", "skeleton", "slots", "visemes", "expressions", "clips", "ik_chains"],
+  "properties": {
+    "schema_version": { "type": "string", "enum": ["1.0"] },
+    "pack_id": { "type": "string" },
+
+    "meta": {
+      "type": "object",
+      "required": ["name", "created_at"],
+      "properties": {
+        "name": { "type": "string" },
+        "created_at": { "type": "string" },
+        "source_image_ref": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+
+    "canvas": {
+      "type": "object",
+      "required": ["base_width", "base_height", "coord_space"],
+      "properties": {
+        "base_width": { "type": "integer", "default": 1024 },
+        "base_height": { "type": "integer", "default": 1024 },
+        "coord_space": { "type": "string", "enum": ["pixels"], "default": "pixels" }
+      }
+    },
+
+    "assets": {
+      "type": "object",
+      "required": ["images"],
+      "properties": {
+        "images": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slot_id", "default_image_id"],
+        "properties": {
+          "slot_id": { "type": "string" },
+          "default_image_id": { "type": "string" },
+          "z_index": { "type": "integer", "default": 0 }
+        }
+      }
+    },
+
+    "skeleton": {
+      "type": "object",
+      "required": ["bones", "attachments"],
+      "properties": {
+        "bones": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["bone_id", "parent_id", "rest"],
+            "properties": {
+              "bone_id": { "type": "string" },
+              "parent_id": { "type": "string" },
+              "rest": {
+                "type": "object",
+                "required": ["x", "y", "rotation_deg"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" },
+                  "rotation_deg": { "type": "number", "default": 0 }
+                }
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "min_rotation_deg": { "type": "number" },
+                  "max_rotation_deg": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["slot_id", "image_id", "bone_id", "pivot"],
+            "properties": {
+              "slot_id": { "type": "string" },
+              "image_id": { "type": "string" },
+              "bone_id": { "type": "string" },
+              "pivot": {
+                "type": "object",
+                "required": ["px", "py"],
+                "properties": {
+                  "px": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "py": { "type": "number", "minimum": 0, "maximum": 1 }
+                }
+              },
+              "offset": { "type": "object", "properties": { "x": { "type": "number", "default": 0 }, "y": { "type": "number", "default": 0 } } },
+              "scale": { "type": "object", "properties": { "x": { "type": "number", "default": 1.0 }, "y": { "type": "number", "default": 1.0 } } },
+              "rotation_deg": { "type": "number", "default": 0 }
+            }
+          }
+        }
+      }
+    },
+
+    "ik_chains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["chain_id", "bones", "effector_bone_id", "elbow_hint"],
+        "properties": {
+          "chain_id": { "type": "string" },
+          "bones": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 },
+          "effector_bone_id": { "type": "string" },
+          "elbow_hint": { "type": "string", "enum": ["up", "down"], "default": "down" },
+          "max_stretch": { "type": "number", "default": 1.05 }
+        }
+      }
+    },
+
+    "visemes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["slot_id", "image_id"],
+        "properties": {
+          "slot_id": { "type": "string", "default": "mouth" },
+          "image_id": { "type": "string" }
+        }
+      }
+    },
+
+    "expressions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "slot_overrides": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["slot_id", "image_id"],
+              "properties": {
+                "slot_id": { "type": "string" },
+                "image_id": { "type": "string" }
+              }
+            }
+          },
+          "bone_overrides": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["bone_id"],
+              "properties": {
+                "bone_id": { "type": "string" },
+                "rotation_deg": { "type": "number" },
+                "x": { "type": "number" },
+                "y": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "clips": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["clip_id", "duration_frames", "tracks"],
+        "properties": {
+          "clip_id": { "type": "string" },
+          "duration_frames": { "type": "integer", "minimum": 1 },
+          "tracks": {
+            "type": "object",
+            "properties": {
+              "bone_tracks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["bone_id", "keys"],
+                  "properties": {
+                    "bone_id": { "type": "string" },
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["f"],
+                        "properties": {
+                          "f": { "type": "integer", "minimum": 0 },
+                          "rotation_deg": { "type": "number" },
+                          "x": { "type": "number" },
+                          "y": { "type": "number" },
+                          "sx": { "type": "number" },
+                          "sy": { "type": "number" }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "slot_swap_tracks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["slot_id", "keys"],
+                  "properties": {
+                    "slot_id": { "type": "string" },
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["f", "image_id"],
+                        "properties": {
+                          "f": { "type": "integer", "minimum": 0 },
+                          "image_id": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

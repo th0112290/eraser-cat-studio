@@ -1,0 +1,18 @@
+{
+  "name": "@ec/db",
+  "private": true,
+  "scripts": {
+    "prisma": "dotenv -e ../../.env -- prisma",
+    "generate": "dotenv -e ../../.env -- prisma generate",
+    "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
+    "studio": "dotenv -e ../../.env -- prisma studio",
+    "format": "dotenv -e ../../.env -- prisma format"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.18.0"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^5.22.0"
+  }
+}

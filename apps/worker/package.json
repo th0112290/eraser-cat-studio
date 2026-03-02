@@ -1,0 +1,19 @@
+{
+  "name": "@ec/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx src/index.ts",
+    "enqueue:test": "dotenv -e ../../.env -- tsx src/enqueueTest.ts"
+  },
+  "dependencies": {
+    "@ec/shared": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "bullmq": "^5.12.0",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0"
+  }
+}

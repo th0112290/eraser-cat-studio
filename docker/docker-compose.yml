@@ -1,0 +1,53 @@
+﻿services:
+  postgres:
+    image: postgres:16
+    container_name: eraser_postgres
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: eraser
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: eraser_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+  minio:
+    image: minio/minio:latest
+    container_name: eraser_minio
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio_password
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio_mc:
+    image: minio/mc:latest
+    container_name: eraser_minio_mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 minio minio_password) do echo '...waiting for minio' && sleep 1; done;
+      /usr/bin/mc mb -p local/artifacts || true;
+      /usr/bin/mc anonymous set download local/artifacts || true;
+      echo 'MinIO bucket ready: artifacts';
+      tail -f /dev/null
+      "
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

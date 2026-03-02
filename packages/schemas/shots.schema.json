@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shots.schema.json",
+  "title": "EpisodeShots",
+  "type": "object",
+  "required": ["schema_version", "episode", "render", "shots"],
+  "properties": {
+    "schema_version": { "type": "string", "enum": ["1.0"] },
+
+    "episode": {
+      "type": "object",
+      "required": ["episode_id", "bible_ref"],
+      "properties": {
+        "episode_id": { "type": "string" },
+        "bible_ref": { "type": "string" }
+      }
+    },
+
+    "render": {
+      "type": "object",
+      "required": ["fps", "width", "height", "safe_area"],
+      "properties": {
+        "fps": { "type": "integer", "default": 30 },
+        "width": { "type": "integer", "default": 1920 },
+        "height": { "type": "integer", "default": 1080 },
+        "safe_area": {
+          "type": "object",
+          "required": ["x", "y", "w", "h"],
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 },
+            "w": { "type": "number", "minimum": 0, "maximum": 1 },
+            "h": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "coord_space": { "type": "string", "enum": ["normalized"], "default": "normalized" }
+      }
+    },
+
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["shot_id", "start_frame", "duration_frames", "beat_ids", "set", "camera", "character"],
+        "properties": {
+          "shot_id": { "type": "string" },
+          "beat_ids": { "type": "array", "items": { "type": "string" } },
+          "start_frame": { "type": "integer", "minimum": 0 },
+          "duration_frames": { "type": "integer", "minimum": 1 },
+
+          "set": {
+            "type": "object",
+            "required": ["set_id"],
+            "properties": {
+              "set_id": { "type": "string" },
+              "variant": { "type": "string" },
+              "layers": {
+                "type": "object",
+                "properties": {
+                  "bg_far": { "type": "string" },
+                  "bg_mid": { "type": "string" },
+                  "bg_near": { "type": "string" },
+                  "fg_mask": { "type": "string" }
+                }
+              }
+            }
+          },
+
+          "camera": {
+            "type": "object",
+            "required": ["preset"],
+            "properties": {
+              "preset": { "type": "string" },
+              "keyframes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "x": { "type": "number" },
+                    "y": { "type": "number" },
+                    "zoom": { "type": "number", "default": 1.0 },
+                    "rotate_deg": { "type": "number", "default": 0 }
+                  }
+                }
+              }
+            }
+          },
+
+          "chart": {
+            "type": "object",
+            "properties": {
+              "chart_id": { "type": "string" },
+              "type": { "type": "string" },
+              "dataset_id": { "type": "string" },
+              "time_range": { "type": "string" },
+              "layout_preset": { "type": "string", "default": "main_left" },
+              "highlights": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "target_id"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "target_id": { "type": "string" },
+                    "style_token": { "type": "string" }
+                  }
+                }
+              },
+              "callouts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "text"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "text": { "type": "string" },
+                    "attach_to_target_id": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+
+          "character": {
+            "type": "object",
+            "required": ["pack_id", "layer", "transform", "tracks"],
+            "properties": {
+              "pack_id": { "type": "string" },
+              "layer": {
+                "type": "string",
+                "enum": ["behind_fg_mask", "between_bg_mid_and_near", "in_front_of_all"]
+              },
+              "transform": {
+                "type": "object",
+                "required": ["x", "y", "scale"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" },
+                  "scale": { "type": "number", "default": 1.0 },
+                  "flip_x": { "type": "boolean", "default": false }
+                }
+              },
+              "tracks": {
+                "type": "object",
+                "properties": {
+                  "pos_path": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["f", "x", "y"],
+                      "properties": {
+                        "f": { "type": "integer", "minimum": 0 },
+                        "x": { "type": "number" },
+                        "y": { "type": "number" },
+                        "interp": { "type": "string", "enum": ["linear", "ease", "spring"], "default": "spring" }
+                      }
+                    }
+                  },
+                  "action_track": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["f", "clip"],
+                      "properties": {
+                        "f": { "type": "integer", "minimum": 0 },
+                        "clip": { "type": "string" },
+                        "weight": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
+                      }
+                    }
+                  },
+                  "expression_track": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["f", "expression"],
+                      "properties": {
+                        "f": { "type": "integer", "minimum": 0 },
+                        "expression": { "type": "string" }
+                      }
+                    }
+                  },
+                  "look_track": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["f", "target"],
+                      "properties": {
+                        "f": { "type": "integer", "minimum": 0 },
+                        "target": { "type": "string" }
+                      }
+                    }
+                  },
+                  "point_track": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["f", "target_id"],
+                      "properties": {
+                        "f": { "type": "integer", "minimum": 0 },
+                        "target_id": { "type": "string" },
+                        "hand": { "type": "string", "enum": ["left", "right"], "default": "right" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+
+          "audio": {
+            "type": "object",
+            "properties": {
+              "voiceover_src": { "type": "string" },
+              "bgm_src": { "type": "string" },
+              "sfx": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "src"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "src": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+
+          "subtitles": {
+            "type": "object",
+            "properties": { "srt_src": { "type": "string" } }
+          },
+
+          "qc_expectations": {
+            "type": "object",
+            "properties": {
+              "must_keep_character_in_frame": { "type": "boolean", "default": true },
+              "allow_pointing_fail_fallback": { "type": "boolean", "default": true }
+            }
+          }
+        }
+      }
+    }
+  }
+}
