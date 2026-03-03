@@ -1,0 +1,20 @@
+[
+  {
+    "id": "shot_001",
+    "startSec": 0,
+    "durationSec": 6,
+    "tags": ["scene:intro", "energy:high"]
+  },
+  {
+    "id": "shot_002",
+    "startSec": 6,
+    "durationSec": 8,
+    "tags": ["chart", "pointer"]
+  },
+  {
+    "id": "shot_003",
+    "startSec": 14,
+    "durationSec": 8,
+    "tags": ["scene:payoff", "mood:intense"]
+  }
+]

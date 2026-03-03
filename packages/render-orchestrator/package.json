@@ -1,0 +1,22 @@
+{
+  "name": "@ec/render-orchestrator",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "render:demo": "pnpm exec tsx src/renderDemo.ts",
+    "render:smoke": "pnpm exec tsx src/renderDemo.ts --dry-run"
+  },
+  "dependencies": {
+    "@ec/shared": "workspace:*",
+    "@ec/story": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.24",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.3"
+  }
+}

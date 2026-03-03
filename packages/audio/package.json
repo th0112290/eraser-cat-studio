@@ -1,0 +1,19 @@
+{
+  "name": "@ec/audio",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "audio:demo": "pnpm exec tsx src/audioDemo.ts",
+    "audio:smoke": "pnpm exec tsx src/audioSmoke.ts",
+    "sfx:demo": "pnpm exec tsx src/sfxDemo.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.24",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.3"
+  }
+}

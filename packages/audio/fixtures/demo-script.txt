@@ -1,0 +1,7 @@
+Today we build a quick and reliable video iteration loop for a small channel team.
+First, align the hook with a single promise the audience can verify in seconds.
+Next, show one data point on screen, then narrate the context in plain language.
+When a chart appears, the character should point to the exact bar being discussed.
+If a transition beat is marked high emphasis, add a short accent to support attention.
+At the payoff, restate the claim, summarize the evidence, and close with one action.
+This process keeps quality stable while the team ships on a predictable weekly cadence.

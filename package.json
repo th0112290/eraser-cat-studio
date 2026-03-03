@@ -3,13 +3,18 @@
   "private": true,
   "packageManager": "pnpm@10.29.3",
   "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "smoke:e2e": "node scripts/smokeE2E.mjs",
+    "dev:down": "docker compose -f docker/docker-compose.yml down",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "smoke:docker": "node -e \"const {execSync}=require('node:child_process');try{execSync('docker version',{stdio:'inherit'});console.log('[smoke:docker] Docker daemon is reachable.');}catch(error){console.error('[smoke:docker] Docker daemon is unreachable. Start Docker Desktop, wait until it is running, then retry.');console.error('[smoke:docker] Next steps: docker version -> pnpm docker:up');process.exit(1);}\"",
 
-    "db:migrate": "pnpm -C packages/db migrate:dev",
+    "db:migrate": "pnpm -C packages/db migrate:dev && pnpm -C packages/db generate",
     "db:studio": "pnpm -C packages/db studio",
     "db:generate": "pnpm -C packages/db generate",
 
+    "api:dev": "pnpm -C apps/api dev",
     "worker:dev": "pnpm -C apps/worker dev"
   }
 }

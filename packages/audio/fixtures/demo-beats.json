@@ -1,0 +1,22 @@
+[
+  {
+    "id": "beat_001",
+    "startSec": 0,
+    "tags": ["hook", "emphasis:high"]
+  },
+  {
+    "id": "beat_002",
+    "startSec": 7,
+    "tags": ["development"]
+  },
+  {
+    "id": "beat_003",
+    "startSec": 14,
+    "tags": ["transition", "emphasis:high"]
+  },
+  {
+    "id": "beat_004",
+    "startSec": 22,
+    "tags": ["payoff", "emphasis:high"]
+  }
+]

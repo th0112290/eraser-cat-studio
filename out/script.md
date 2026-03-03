@@ -1,0 +1,121 @@
+# Script Draft
+
+- input: C:\Users\th011\eraser-cat-studio\packages\script\fixtures\demo-input.json
+- topic: How local cafes can use short-form video analytics
+
+## Sources
+- [mobile-retention-2025] Mobile feed retention benchmark (https://example.com/mobile-retention)
+- [vtr-context-2025] View-through context study (https://example.com/vtr-context)
+- [ab-thumbnail-2024] Thumbnail experiment notes (https://example.com/thumbnail-ab)
+- [cta-local-2024] Local CTA conversion report (https://example.com/local-cta)
+
+## Narration
+- Why does How local cafes can use short-form video analytics matter now, and what changes if
+- we get it wrong?
+- In ten minutes, we will move from confusion to a practical decision framework for How local
+- cafes can use short-form video analytics.
+- Most discovery traffic now starts on mobile feeds, so first-three-second retention matters.
+- View-through rate improves when the opening frame shows product context before narration begins.
+- Weekly A/B thumbnail tests help small teams identify stable creative direction quickly.
+- Simple call-to-action phrasing outperforms abstract branding language in local campaigns.
+- Synthesize the strongest evidence into one clear position on How local cafes can use short-form video
+- analytics.
+- Close with one next action the audience can execute today.
+- Checkpoint 1: Why does How local cafes can use short-form video analytics matter now, and what
+- changes if we get it wrong.
+- At step 1, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 2: In ten minutes, we will move from confusion to a practical decision framework for
+- How local cafes can use short-form video analytics.
+- At step 2, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 3: Most discovery traffic now starts on mobile feeds, so first-three-second retention matters.
+- At step 3, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 4: View-through rate improves when the opening frame shows product context before narration begins.
+- At step 4, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 5: Weekly A/B thumbnail tests help small teams identify stable creative direction quickly.
+- At step 5, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 6: Simple call-to-action phrasing outperforms abstract branding language in local campaigns.
+- At step 6, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 7: Synthesize the strongest evidence into one clear position on How local cafes can use
+- short-form video analytics.
+- At step 7, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 8: Close with one next action the audience can execute today.
+- At step 8, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 9: Why does How local cafes can use short-form video analytics matter now, and what
+- changes if we get it wrong.
+- At step 9, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 10: In ten minutes, we will move from confusion to a practical decision framework for
+- How local cafes can use short-form video analytics.
+- At step 10, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 11: Most discovery traffic now starts on mobile feeds, so first-three-second retention matters.
+- At step 11, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 12: View-through rate improves when the opening frame shows product context before narration begins.
+- At step 12, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 13: Weekly A/B thumbnail tests help small teams identify stable creative direction quickly.
+- At step 13, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 14: Simple call-to-action phrasing outperforms abstract branding language in local campaigns.
+- At step 14, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 15: Synthesize the strongest evidence into one clear position on How local cafes can use
+- short-form video analytics.
+- At step 15, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 16: Close with one next action the audience can execute today.
+- At step 16, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 17: Why does How local cafes can use short-form video analytics matter now, and what
+- changes if we get it wrong.
+- At step 17, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 18: In ten minutes, we will move from confusion to a practical decision framework for
+- How local cafes can use short-form video analytics.
+- At step 18, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 19: Most discovery traffic now starts on mobile feeds, so first-three-second retention matters.
+- At step 19, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 20: View-through rate improves when the opening frame shows product context before narration begins.
+- At step 20, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 21: Weekly A/B thumbnail tests help small teams identify stable creative direction quickly.
+- At step 21, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 22: Simple call-to-action phrasing outperforms abstract branding language in local campaigns.
+- At step 22, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 23: Synthesize the strongest evidence into one clear position on How local cafes can use
+- short-form video analytics.
+- At step 23, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 24: Close with one next action the audience can execute today.
+- At step 24, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 25: Why does How local cafes can use short-form video analytics matter now, and what
+- changes if we get it wrong.
+- At step 25, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 26: In ten minutes, we will move from confusion to a practical decision framework for
+- How local cafes can use short-form video analytics.
+- At step 26, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 27: Most discovery traffic now starts on mobile feeds, so first-three-second retention matters.
+- At step 27, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 28: View-through rate improves when the opening frame shows product context before narration begins.
+- At step 28, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 29: Weekly A/B thumbnail tests help small teams identify stable creative direction quickly.
+- At step 29, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 30: Simple call-to-action phrasing outperforms abstract branding language in local campaigns.
+- At step 30, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 31: Synthesize the strongest evidence into one clear position on How local cafes can use
+- short-form video analytics.
+- At step 31, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 32: Close with one next action the audience can execute today.
+- At step 32, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 33: Why does How local cafes can use short-form video analytics matter now, and what
+- changes if we get it wrong.
+- At step 33, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 34: In ten minutes, we will move from confusion to a practical decision framework for
+- How local cafes can use short-form video analytics.
+- At step 34, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 35: Most discovery traffic now starts on mobile feeds, so first-three-second retention matters.
+- At step 35, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 36: View-through rate improves when the opening frame shows product context before narration begins.
+- At step 36, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 37: Weekly A/B thumbnail tests help small teams identify stable creative direction quickly.
+- At step 37, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 38: Simple call-to-action phrasing outperforms abstract branding language in local campaigns.
+- At step 38, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 39: Synthesize the strongest evidence into one clear position on How local cafes can use
+- short-form video analytics.
+- At step 39, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 40: Close with one next action the audience can execute today.
+- At step 40, we keep the pace steady and tie this point to an actionable decision.
+- Checkpoint 41: Why does How local cafes can use short-form video analytics matter now, and what
+- changes if we get it wrong.
+- At step 41, we keep the pace steady and tie this point to an actionable decision.

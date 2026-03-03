@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "status": "SUCCEEDED",
+  "started_at": "2026-03-03T09:47:49.891Z",
+  "finished_at": "2026-03-03T09:47:49.961Z",
+  "duration_ms": 70,
+  "attempt": 1,
+  "max_attempts": 1,
+  "shots_path": "C:\\Users\\th011\\eraser-cat-studio\\out\\shots.json",
+  "output_path": "C:\\Users\\th011\\eraser-cat-studio\\out\\render_episode.mp4",
+  "srt_path": "C:\\Users\\th011\\eraser-cat-studio\\out\\render_episode.srt",
+  "qc_report_path": "C:\\Users\\th011\\eraser-cat-studio\\out\\qc_report.json",
+  "props_path": "C:\\Users\\th011\\eraser-cat-studio\\out\\render_episode.props.json",
+  "composition_id": "SHOT-EPISODE",
+  "command": [
+    "C:\\Users\\th011\\eraser-cat-studio\\apps\\video\\node_modules\\@remotion\\cli\\remotion-cli.js",
+    "render",
+    "src/index.ts",
+    "SHOT-EPISODE",
+    "C:\\Users\\th011\\eraser-cat-studio\\out\\render_episode.mp4",
+    "--overwrite",
+    "--width=1920",
+    "--height=1080",
+    "--fps=30",
+    "--codec=h264",
+    "--video-bitrate=8M",
+    "--x264-preset=veryfast",
+    "--frames=0-5299",
+    "--props=C:\\Users\\th011\\eraser-cat-studio\\out\\render_episode.props.json"
+  ],
+  "preset": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "videoBitrate": "8M",
+    "codec": "h264",
+    "x264Preset": "veryfast",
+    "safeArea": {
+      "top": 54,
+      "right": 96,
+      "bottom": 54,
+      "left": 96
+    }
+  },
+  "sequence_count": 30,
+  "subtitle_count": 30,
+  "total_frames": 5300,
+  "qc_passed": true,
+  "fallback_steps_applied": [
+    "simplify_chart",
+    "remove_annotations",
+    "switch_to_table",
+    "freeze_character_pose"
+  ],
+  "qc_error_count": 0,
+  "qc_warning_count": 30
+}

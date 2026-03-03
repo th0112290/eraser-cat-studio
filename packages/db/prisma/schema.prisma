@@ -19,8 +19,12 @@ enum EpisodeStatus {
 
 enum JobType {
   GENERATE_SCRIPT
+  GENERATE_CHARACTER_ASSETS
   GENERATE_BEATS
   COMPILE_SHOTS
+  ASSET_INGEST
+  BUILD_CHARACTER_PACK
+  RENDER_CHARACTER_PREVIEW
   FETCH_DATA
   RENDER_PREVIEW
   RUN_QC
@@ -58,6 +62,21 @@ enum AssetType {
   LOG
 }
 
+enum AssetIngestType {
+  CHARACTER_REFERENCE
+  CHARACTER_VIEW
+  BACKGROUND
+  CHART_SOURCE
+}
+
+enum AssetIngestStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+}
+
 enum QCSeverity {
   INFO
   WARN
@@ -79,6 +98,41 @@ enum CharacterPackStatus {
   ARCHIVED
 }
 
+enum SlotStatus {
+  OPEN
+  SCHEDULED
+  SKIPPED
+}
+
+enum BacklogStatus {
+  PENDING
+  SCHEDULED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ExperimentStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum AgentSuggestionType {
+  DIRECTOR
+  QA_INSPECTOR
+  TEMPLATE_IMPROVER
+  HITL_REVIEW
+}
+
+enum AgentSuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -96,14 +150,128 @@ model Channel {
   timezone  String   @default("Asia/Seoul")
   createdAt DateTime @default(now())
 
-  user       User            @relation(fields: [userId], references: [id])
-  bibles     ChannelBible[]
-  episodes   Episode[]
-  assets     Asset[]
-  datasets   Dataset[]
-  characters CharacterPack[]
+  user         User            @relation(fields: [userId], references: [id])
+  bibles       ChannelBible[]
+  episodes     Episode[]
+  assets       Asset[]
+  datasets     Dataset[]
+  characters   CharacterPack[]
+  seasons      Season[]
+  backlogItems BacklogItem[]
+  metrics      Metric[]
+  experiments  Experiment[]
 
   @@index([userId])
+}
+
+model Season {
+  id              String   @id @default(cuid())
+  channelId       String
+  name            String
+  startDate       DateTime
+  endDate         DateTime
+  episodesPerWeek Int      @default(3)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  channel      Channel        @relation(fields: [channelId], references: [id])
+  slots        CalendarSlot[]
+  backlogItems BacklogItem[]
+  episodes     Episode[]
+
+  @@index([channelId, isActive])
+  @@index([channelId, startDate, endDate])
+}
+
+model CalendarSlot {
+  id            String     @id @default(cuid())
+  seasonId      String
+  scheduledDate DateTime
+  status        SlotStatus @default(OPEN)
+  backlogItemId String?
+  episodeId     String?    @unique
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  season      Season       @relation(fields: [seasonId], references: [id])
+  backlogItem BacklogItem? @relation(fields: [backlogItemId], references: [id])
+  episode     Episode?     @relation(fields: [episodeId], references: [id])
+
+  @@unique([seasonId, scheduledDate])
+  @@index([seasonId, status])
+}
+
+model BacklogItem {
+  id          String        @id @default(cuid())
+  channelId   String
+  seasonId    String?
+  title       String
+  description String?
+  priority    Int           @default(0)
+  status      BacklogStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  channel Channel        @relation(fields: [channelId], references: [id])
+  season  Season?        @relation(fields: [seasonId], references: [id])
+  episode Episode?       @relation("BacklogEpisode")
+  slots   CalendarSlot[]
+
+  @@index([channelId, status, priority])
+  @@index([seasonId, status])
+}
+
+model Metric {
+  id          String   @id @default(cuid())
+  channelId   String
+  key         String
+  displayName String?
+  unit        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channel        Channel         @relation(fields: [channelId], references: [id])
+  episodeMetrics EpisodeMetric[]
+
+  @@unique([channelId, key])
+  @@index([channelId])
+}
+
+model Experiment {
+  id          String           @id @default(cuid())
+  channelId   String
+  name        String
+  description String?
+  status      ExperimentStatus @default(DRAFT)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  channel        Channel             @relation(fields: [channelId], references: [id])
+  variants       ExperimentVariant[]
+  episodeMetrics EpisodeMetric[]
+
+  @@index([channelId, status])
+  @@index([channelId, startDate, endDate])
+}
+
+model ExperimentVariant {
+  id           String   @id @default(cuid())
+  experimentId String
+  key          String
+  name         String
+  weight       Int      @default(50)
+  isControl    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  experiment     Experiment      @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  episodeMetrics EpisodeMetric[]
+
+  @@unique([experimentId, key])
+  @@index([experimentId])
 }
 
 model ChannelBible {
@@ -117,9 +285,7 @@ model ChannelBible {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  channel Channel @relation(fields: [channelId], references: [id])
-
-  // ✅ Added: back relation for Episode.bible
+  channel  Channel   @relation(fields: [channelId], references: [id])
   episodes Episode[]
 
   @@index([channelId, version])
@@ -137,9 +303,7 @@ model CharacterPack {
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
 
-  channel Channel @relation(fields: [channelId], references: [id])
-
-  // ✅ Added: back relation for Episode.characterPack
+  channel  Channel   @relation(fields: [channelId], references: [id])
   episodes Episode[]
 
   @@index([channelId, version])
@@ -183,8 +347,14 @@ model Episode {
   status            EpisodeStatus @default(DRAFT)
   targetDurationSec Int           @default(600)
 
-  bibleId         String?
-  characterPackId String?
+  bibleId                String?
+  characterPackId        String?
+  seasonId               String?
+  backlogItemId          String?   @unique
+  scheduledFor           DateTime?
+  templateVersion        String    @default("mvp1")
+  characterPackVersion   Int?
+  datasetVersionSnapshot Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -192,15 +362,46 @@ model Episode {
   channel       Channel        @relation(fields: [channelId], references: [id])
   bible         ChannelBible?  @relation(fields: [bibleId], references: [id])
   characterPack CharacterPack? @relation(fields: [characterPackId], references: [id])
+  season        Season?        @relation(fields: [seasonId], references: [id])
+  backlogItem   BacklogItem?   @relation("BacklogEpisode", fields: [backlogItemId], references: [id])
+  slot          CalendarSlot?
 
-  beatsDoc  BeatDoc?
-  shotsDoc  ShotDoc?
-  renders   Render[]
-  jobs      Job[]
-  qcResults QCResult[]
+  beatsDoc       BeatDoc?
+  shotsDoc       ShotDoc?
+  renders        Render[]
+  jobs           Job[]
+  qcResults      QCResult[]
+  episodeMetrics EpisodeMetric[]
+  agentSuggestions AgentSuggestion[]
 
   @@index([channelId])
   @@index([status])
+  @@index([seasonId])
+  @@index([scheduledFor])
+  @@index([templateVersion])
+}
+
+model EpisodeMetric {
+  id           String   @id @default(cuid())
+  episodeId    String
+  metricId     String
+  value        Float
+  observedAt   DateTime
+  source       String   @default("manual")
+  ingestionId  String   @unique
+  experimentId String?
+  variantId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  episode    Episode            @relation(fields: [episodeId], references: [id])
+  metric     Metric             @relation(fields: [metricId], references: [id])
+  experiment Experiment?        @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  variant    ExperimentVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([episodeId, observedAt])
+  @@index([metricId, observedAt])
+  @@index([experimentId, variantId])
 }
 
 model BeatDoc {
@@ -239,7 +440,6 @@ model Render {
 
   episode Episode @relation(fields: [episodeId], references: [id])
 
-  // ✅ Fixed: named relation + back relation lives on Asset.rendersAsOutput
   outputAsset Asset? @relation("RenderOutputAsset", fields: [outputAssetId], references: [id])
 
   qcResults QCResult[]
@@ -252,18 +452,28 @@ model Asset {
   id          String    @id @default(cuid())
   channelId   String
   type        AssetType
+  assetType   AssetIngestType?
+  status      AssetIngestStatus @default(READY)
+  mime        String?
+  sizeBytes   BigInt?
   storageKey  String    @unique
+  originalKey String?
+  normalizedKey1024 String?
+  normalizedKey2048 String?
+  qcJson      Json?
   contentType String?
   bytes       BigInt?
   sha256      String?
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   channel Channel @relation(fields: [channelId], references: [id])
 
-  // ✅ Added: back relation for Render.outputAsset
   rendersAsOutput Render[] @relation("RenderOutputAsset")
 
   @@index([channelId, type])
+  @@index([status])
+  @@index([assetType, status])
 }
 
 model QCResult {
@@ -285,15 +495,20 @@ model QCResult {
 }
 
 model Job {
-  id           String    @id @default(cuid())
-  episodeId    String
-  type         JobType
-  status       JobStatus @default(QUEUED)
-  progress     Int       @default(0)
-  attemptsMade Int       @default(0)
-  maxAttempts  Int       @default(2)
-  bullmqJobId  String?   @unique
-  lastError    String?
+  id                     String    @id @default(cuid())
+  episodeId              String
+  type                   JobType
+  status                 JobStatus @default(QUEUED)
+  progress               Int       @default(0)
+  attemptsMade           Int       @default(0)
+  maxAttempts            Int       @default(2)
+  bullmqJobId            String?   @unique
+  lastError              String?
+  retryBackoffMs         Int       @default(1000)
+  estimatedRenderSeconds Int       @default(0)
+  estimatedAudioSeconds  Int       @default(0)
+  estimatedApiCalls      Int       @default(0)
+  estimatedCostUsd       Float     @default(0)
 
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -302,9 +517,30 @@ model Job {
 
   episode Episode  @relation(fields: [episodeId], references: [id])
   logs    JobLog[]
+  agentSuggestions AgentSuggestion[]
 
   @@index([episodeId, type])
   @@index([status])
+}
+
+model AgentSuggestion {
+  id        String                @id @default(cuid())
+  episodeId String?
+  jobId     String?
+  type      AgentSuggestionType
+  status    AgentSuggestionStatus @default(PENDING)
+  title     String
+  summary   String?
+  payload   Json
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  episode Episode? @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+  job     Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([episodeId, type, createdAt])
+  @@index([status, createdAt])
+  @@index([jobId])
 }
 
 model JobLog {
@@ -318,4 +554,22 @@ model JobLog {
   job Job @relation(fields: [jobId], references: [id])
 
   @@index([jobId])
+}
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  method          String
+  path            String
+  statusCode      Int
+  success         Boolean  @default(true)
+  actorApiKeyHash String?
+  clientIp        String?
+  userAgent       String?
+  requestId       String?
+  details         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([path, createdAt])
+  @@index([statusCode, createdAt])
 }

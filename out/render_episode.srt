@@ -1,0 +1,119 @@
+1
+00:00:00,000 --> 00:00:06,900
+Introduce the challenge: crowding and long wait times on ma...
+
+2
+00:00:06,900 --> 00:00:14,567
+Address trade-offs, including temporary construction disrup...
+
+3
+00:00:14,567 --> 00:00:18,100
+Narration for beat_008, beat_009
+
+4
+00:00:18,100 --> 00:00:24,733
+Close with what commuters should watch in the next quarter
+
+5
+00:00:24,733 --> 00:00:32,433
+Show measurable improvements in delay minutes and rider thr...
+
+6
+00:00:32,433 --> 00:00:36,433
+Narration for beat_017, beat_018
+
+7
+00:00:36,433 --> 00:00:42,000
+Address trade-offs, including temporary construction disrup...
+
+8
+00:00:42,000 --> 00:00:49,367
+Explain what changed after schedule optimization and signal...
+
+9
+00:00:49,367 --> 00:00:53,967
+Introduce the challenge: crowding and long wait times on ma...
+
+10
+00:00:53,967 --> 00:00:59,533
+Narration for beat_028, beat_029, beat_030
+
+11
+00:00:59,533 --> 00:01:07,067
+Introduce the challenge: crowding and long wait times on ma...
+
+12
+00:01:07,067 --> 00:01:11,833
+Close with what commuters should watch in the next quarter
+
+13
+00:01:11,833 --> 00:01:16,933
+Explain what changed after schedule optimization and signal...
+
+14
+00:01:16,933 --> 00:01:25,100
+Close with what commuters should watch in the next quarter
+
+15
+00:01:25,100 --> 00:01:28,767
+Narration for beat_044, beat_045
+
+16
+00:01:28,767 --> 00:01:35,233
+Introduce the challenge: crowding and long wait times on ma...
+
+17
+00:01:35,233 --> 00:01:42,933
+Address trade-offs, including temporary construction disrup...
+
+18
+00:01:42,933 --> 00:01:46,467
+Narration for beat_053, beat_054
+
+19
+00:01:46,467 --> 00:01:52,500
+Close with what commuters should watch in the next quarter
+
+20
+00:01:52,500 --> 00:02:00,200
+Show measurable improvements in delay minutes and rider thr...
+
+21
+00:02:00,200 --> 00:02:04,500
+Explain what changed after schedule optimization and signal...
+
+22
+00:02:04,500 --> 00:02:10,333
+Narration for beat_064, beat_065, beat_066
+
+23
+00:02:10,333 --> 00:02:17,733
+Explain what changed after schedule optimization and signal...
+
+24
+00:02:17,733 --> 00:02:22,333
+Introduce the challenge: crowding and long wait times on ma...
+
+25
+00:02:22,333 --> 00:02:27,600
+Show measurable improvements in delay minutes and rider thr...
+
+26
+00:02:27,600 --> 00:02:35,133
+Introduce the challenge: crowding and long wait times on ma...
+
+27
+00:02:35,133 --> 00:02:39,600
+Narration for beat_080, beat_081
+
+28
+00:02:39,600 --> 00:02:45,300
+Explain what changed after schedule optimization and signal...
+
+29
+00:02:45,300 --> 00:02:53,433
+Close with what commuters should watch in the next quarter
+
+30
+00:02:53,433 --> 00:02:56,667
+Narration for beat_089, beat_090

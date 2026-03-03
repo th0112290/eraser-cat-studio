@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "episode": {
+    "episode_id": "demo_episode",
+    "bible_ref": "demo_bible"
+  },
+  "render": {
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "safe_area": {
+      "x": 0.05,
+      "y": 0.05,
+      "w": 0.9,
+      "h": 0.9
+    },
+    "coord_space": "normalized"
+  },
+  "shots": [
+    {
+      "shot_id": "shot_001",
+      "beat_ids": ["beat_001"],
+      "start_frame": 0,
+      "duration_frames": 180,
+      "set": {
+        "set_id": "studio_host",
+        "variant": "fade"
+      },
+      "camera": {
+        "preset": "host_wide_fade",
+        "keyframes": [
+          {
+            "f": 0,
+            "x": 0.5,
+            "y": 0.5,
+            "zoom": 1,
+            "rotate_deg": 0
+          }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.45,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            {
+              "f": 0,
+              "x": 0.45,
+              "y": 0.82,
+              "interp": "spring"
+            }
+          ],
+          "action_track": [
+            {
+              "f": 0,
+              "clip": "greet",
+              "weight": 1
+            }
+          ],
+          "expression_track": [
+            {
+              "f": 0,
+              "expression": "focused"
+            }
+          ],
+          "look_track": [
+            {
+              "f": 0,
+              "target": "viewer"
+            }
+          ]
+        }
+      },
+      "narration": "This is a *demo* narration line for render smoke.",
+      "emphasisWords": ["render", "smoke"],
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    }
+  ]
+}

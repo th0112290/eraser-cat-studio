@@ -1,0 +1,1341 @@
+{
+  "schema_version": "1.0",
+  "episode": {
+    "episode_id": "ep_demo_outline",
+    "bible_ref": "bible_v1",
+    "topic": "City Transit Upgrade",
+    "target_duration_sec": 720,
+    "data_inputs": [
+      {
+        "dataset_id": "transit_ridership",
+        "time_range": "2024-Q1..2025-Q4"
+      }
+    ]
+  },
+  "beats": [
+    {
+      "beat_id": "beat_001",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Let's begin with City Transit Upgrade. Introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 1"
+      ],
+      "tags": [
+        "emphasis:high"
+      ]
+    },
+    {
+      "beat_id": "beat_002",
+      "kind": "setup",
+      "intent": "setup the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. This sharpens the main point.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 2"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_003",
+      "kind": "context",
+      "intent": "context the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "From this angle, show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 3"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_003",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_004",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. Keep this detail in view.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 4"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_005",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Next, Close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 5"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_006",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. This sharpens the main point.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 6"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_007",
+      "kind": "insight",
+      "intent": "insight the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "From this angle, explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 7"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_007",
+          "value_role": "spoken"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_008",
+      "kind": "transition",
+      "intent": "transition the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. Keep this detail in view.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 8"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_009",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Next, Address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 9"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_010",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Close with what commuters should watch in the next quarter. This sharpens the main point.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 10"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_011",
+      "kind": "setup",
+      "intent": "setup the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "From this angle, introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 11"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_011",
+          "value_role": "shown"
+        }
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_012",
+      "kind": "context",
+      "intent": "context the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. Keep this detail in view.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 12"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_013",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Next, Show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 13"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_014",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. This sharpens the main point.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 14"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_015",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "From this angle, close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 15"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_015",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_016",
+      "kind": "insight",
+      "intent": "insight the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. Keep this detail in view.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 16"
+      ],
+      "tags": [
+        "emphasis:high"
+      ]
+    },
+    {
+      "beat_id": "beat_017",
+      "kind": "transition",
+      "intent": "transition the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Next, Explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 17"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_018",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. This sharpens the main point.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 18"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_019",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "From this angle, address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 19"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_019",
+          "value_role": "spoken"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_020",
+      "kind": "setup",
+      "intent": "setup the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Close with what commuters should watch in the next quarter. Keep this detail in view.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 20"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_021",
+      "kind": "context",
+      "intent": "context the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Next, Introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 21"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_022",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. This sharpens the main point.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 22"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_023",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "From this angle, show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 23"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_023",
+          "value_role": "shown"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_024",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. Keep this detail in view.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 24"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_025",
+      "kind": "insight",
+      "intent": "insight the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Next, Close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 25"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_026",
+      "kind": "transition",
+      "intent": "transition the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. This sharpens the main point.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 26"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_027",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "From this angle, explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 27"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_027",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_028",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. Keep this detail in view.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 28"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_029",
+      "kind": "setup",
+      "intent": "setup the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Next, Address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 29"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_030",
+      "kind": "context",
+      "intent": "context the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Close with what commuters should watch in the next quarter. This sharpens the main point.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 30"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_031",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "From this angle, introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 31"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_031",
+          "value_role": "spoken"
+        }
+      ],
+      "tags": [
+        "emphasis:high"
+      ]
+    },
+    {
+      "beat_id": "beat_032",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. Keep this detail in view.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 32"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_033",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Next, Show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 33"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_034",
+      "kind": "insight",
+      "intent": "insight the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. This sharpens the main point.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 34"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_035",
+      "kind": "transition",
+      "intent": "transition the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "From this angle, close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 35"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_035",
+          "value_role": "shown"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_036",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. Keep this detail in view.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 36"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_037",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Next, Explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 37"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_038",
+      "kind": "setup",
+      "intent": "setup the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. This sharpens the main point.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 38"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_039",
+      "kind": "context",
+      "intent": "context the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "From this angle, address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 39"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_039",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_040",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Close with what commuters should watch in the next quarter. Keep this detail in view.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 40"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_041",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Next, Introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 41"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_042",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. This sharpens the main point.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 42"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_043",
+      "kind": "insight",
+      "intent": "insight the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "From this angle, show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 43"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_043",
+          "value_role": "spoken"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_044",
+      "kind": "transition",
+      "intent": "transition the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. Keep this detail in view.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 44"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_045",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Next, Close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 45"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_046",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. This sharpens the main point.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 46"
+      ],
+      "tags": [
+        "emphasis:high"
+      ]
+    },
+    {
+      "beat_id": "beat_047",
+      "kind": "setup",
+      "intent": "setup the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "From this angle, explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 47"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_047",
+          "value_role": "shown"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_048",
+      "kind": "context",
+      "intent": "context the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. Keep this detail in view.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 48"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_049",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Next, Address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 49"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_050",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Close with what commuters should watch in the next quarter. This sharpens the main point.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 50"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_051",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "From this angle, introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 51"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_051",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_052",
+      "kind": "insight",
+      "intent": "insight the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. Keep this detail in view.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 52"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_053",
+      "kind": "transition",
+      "intent": "transition the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Next, Show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 53"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_054",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. This sharpens the main point.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 54"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_055",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "From this angle, close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 55"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_055",
+          "value_role": "spoken"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_056",
+      "kind": "setup",
+      "intent": "setup the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. Keep this detail in view.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 56"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_057",
+      "kind": "context",
+      "intent": "context the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Next, Explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 57"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_058",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. This sharpens the main point.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 58"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_059",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "From this angle, address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 59"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_059",
+          "value_role": "shown"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_060",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Close with what commuters should watch in the next quarter. Keep this detail in view.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 60"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_061",
+      "kind": "insight",
+      "intent": "insight the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Next, Introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 61"
+      ],
+      "tags": [
+        "emphasis:high"
+      ]
+    },
+    {
+      "beat_id": "beat_062",
+      "kind": "transition",
+      "intent": "transition the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. This sharpens the main point.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 62"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_063",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "From this angle, show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 63"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_063",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_064",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Address trade-offs, including temporary construction disruptions. Keep this detail in view.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 64"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_065",
+      "kind": "setup",
+      "intent": "setup the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Next, Close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 65"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_066",
+      "kind": "context",
+      "intent": "context the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. This sharpens the main point.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 66"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_067",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "From this angle, explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 67"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_067",
+          "value_role": "spoken"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_068",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. Keep this detail in view.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 68"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_069",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Next, Address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 69"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_070",
+      "kind": "insight",
+      "intent": "insight the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Close with what commuters should watch in the next quarter. This sharpens the main point.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 70"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_071",
+      "kind": "transition",
+      "intent": "transition the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "From this angle, introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 71"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_071",
+          "value_role": "shown"
+        }
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_072",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. Keep this detail in view.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 72"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_073",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Next, Show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 73"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_074",
+      "kind": "setup",
+      "intent": "setup the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. This sharpens the main point.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 74"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_075",
+      "kind": "context",
+      "intent": "context the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "From this angle, close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 75"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_075",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_076",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. Keep this detail in view.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 76"
+      ],
+      "tags": [
+        "emphasis:high"
+      ]
+    },
+    {
+      "beat_id": "beat_077",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "Next, Explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 77"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_078",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. This sharpens the main point.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 78"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_079",
+      "kind": "insight",
+      "intent": "insight the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "From this angle, address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 79"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_079",
+          "value_role": "spoken"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_080",
+      "kind": "transition",
+      "intent": "transition the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Close with what commuters should watch in the next quarter. Keep this detail in view.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 80"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_081",
+      "kind": "payoff",
+      "intent": "payoff the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Next, Introduce the challenge: crowding and long wait times on major lines.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 81"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_082",
+      "kind": "hook",
+      "intent": "Capture attention and establish context",
+      "narration": "Explain what changed after schedule optimization and signal upgrades. This sharpens the main point.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 82"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_083",
+      "kind": "setup",
+      "intent": "setup the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "From this angle, show measurable improvements in delay minutes and rider throughput.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 83"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_083",
+          "value_role": "shown"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_084",
+      "kind": "context",
+      "intent": "context the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Address trade-offs, including temporary construction disruptions. Keep this detail in view.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 84"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_085",
+      "kind": "analysis",
+      "intent": "analysis the narrative around: Close with what commuters should watch in the next quarter.",
+      "narration": "Next, Close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 85"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_086",
+      "kind": "contrast",
+      "intent": "contrast the narrative around: Introduce the challenge: crowding and long wait times on major lines.",
+      "narration": "Introduce the challenge: crowding and long wait times on major lines. This sharpens the main point.",
+      "on_screen_text": [
+        "Introduce the challenge: crowding and long wait times on ma...",
+        "Beat 86"
+      ],
+      "tags": [
+        "emphasis:medium"
+      ]
+    },
+    {
+      "beat_id": "beat_087",
+      "kind": "evidence",
+      "intent": "evidence the narrative around: Explain what changed after schedule optimization and signal upgrades.",
+      "narration": "From this angle, explain what changed after schedule optimization and signal upgrades.",
+      "on_screen_text": [
+        "Explain what changed after schedule optimization and signal...",
+        "Beat 87"
+      ],
+      "data_refs": [
+        {
+          "dataset_id": "transit_ridership",
+          "ref_id": "point_087",
+          "value_role": "highlighted"
+        }
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_088",
+      "kind": "insight",
+      "intent": "insight the narrative around: Show measurable improvements in delay minutes and rider throughput.",
+      "narration": "Show measurable improvements in delay minutes and rider throughput. Keep this detail in view.",
+      "on_screen_text": [
+        "Show measurable improvements in delay minutes and rider thr...",
+        "Beat 88"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_089",
+      "kind": "transition",
+      "intent": "transition the narrative around: Address trade-offs, including temporary construction disruptions.",
+      "narration": "Next, Address trade-offs, including temporary construction disruptions.",
+      "on_screen_text": [
+        "Address trade-offs, including temporary construction disrup...",
+        "Beat 89"
+      ],
+      "tags": [
+        "emphasis:low"
+      ]
+    },
+    {
+      "beat_id": "beat_090",
+      "kind": "cta",
+      "intent": "Summarize and close with a clear next thought",
+      "narration": "Final takeaway: Close with what commuters should watch in the next quarter.",
+      "on_screen_text": [
+        "Close with what commuters should watch in the next quarter",
+        "Beat 90"
+      ],
+      "tags": [
+        "emphasis:high"
+      ]
+    }
+  ]
+}

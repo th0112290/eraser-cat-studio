@@ -1,0 +1,22 @@
+{
+  "episode": {
+    "episode_id": "ep_demo_outline",
+    "bible_ref": "bible_v1",
+    "topic": "City Transit Upgrade",
+    "target_duration_sec": 720,
+    "data_inputs": [
+      {
+        "dataset_id": "transit_ridership",
+        "time_range": "2024-Q1..2025-Q4"
+      }
+    ]
+  },
+  "outline": [
+    "Introduce the challenge: crowding and long wait times on major lines.",
+    "Explain what changed after schedule optimization and signal upgrades.",
+    "Show measurable improvements in delay minutes and rider throughput.",
+    "Address trade-offs, including temporary construction disruptions.",
+    "Close with what commuters should watch in the next quarter."
+  ]
+}
+

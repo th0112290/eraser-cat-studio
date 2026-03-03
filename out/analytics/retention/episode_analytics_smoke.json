@@ -1,0 +1,45 @@
+{
+  "episodeId": "episode_analytics_smoke",
+  "source": "smoke",
+  "uploadedAt": "2026-03-02T09:16:42.678Z",
+  "durationSec": 180,
+  "averageRetentionPct": 75.556,
+  "points": [
+    {
+      "timeSec": 0,
+      "retentionPct": 100
+    },
+    {
+      "timeSec": 15,
+      "retentionPct": 95
+    },
+    {
+      "timeSec": 30,
+      "retentionPct": 87
+    },
+    {
+      "timeSec": 45,
+      "retentionPct": 80
+    },
+    {
+      "timeSec": 60,
+      "retentionPct": 79
+    },
+    {
+      "timeSec": 90,
+      "retentionPct": 70
+    },
+    {
+      "timeSec": 120,
+      "retentionPct": 66
+    },
+    {
+      "timeSec": 150,
+      "retentionPct": 52
+    },
+    {
+      "timeSec": 180,
+      "retentionPct": 51
+    }
+  ]
+}

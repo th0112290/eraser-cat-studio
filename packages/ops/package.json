@@ -1,0 +1,17 @@
+{
+  "name": "@ec/ops",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "ops:smoke": "pnpm exec tsx src/opsSmoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.24",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.3"
+  }
+}

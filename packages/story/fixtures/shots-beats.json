@@ -1,0 +1,74 @@
+[
+  {
+    "id": "beat_001",
+    "type": "hook",
+    "intent": "intro the narrative around: opening context",
+    "onScreen": ["Opening context", "Beat 1"],
+    "narration": "We open with the main context and immediate framing.",
+    "emphasis": "high"
+  },
+  {
+    "id": "beat_002",
+    "type": "setup",
+    "intent": "setup the narrative around: setup details",
+    "onScreen": ["Setup details", "Beat 2"],
+    "narration": "Then we establish setup details for the topic.",
+    "emphasis": "low"
+  },
+  {
+    "id": "beat_003",
+    "type": "context",
+    "intent": "context the narrative around: background details",
+    "onScreen": ["Background", "Beat 3"],
+    "narration": "Background details make the baseline clear.",
+    "emphasis": "low"
+  },
+  {
+    "id": "beat_004",
+    "type": "analysis",
+    "intent": "analysis the narrative around: first analysis block",
+    "onScreen": ["First analysis", "Beat 4"],
+    "narration": "We analyze the first key data pattern.",
+    "emphasis": "medium",
+    "references": [
+      {
+        "datasetId": "dataset_a",
+        "refId": "p_004",
+        "valueRole": "shown"
+      }
+    ]
+  },
+  {
+    "id": "beat_005",
+    "type": "contrast",
+    "intent": "contrast the narrative around: compare alternatives",
+    "onScreen": ["Compare alternatives", "Beat 5"],
+    "narration": "A contrasting view highlights tradeoffs.",
+    "emphasis": "low"
+  },
+  {
+    "id": "beat_006",
+    "type": "evidence",
+    "intent": "evidence the narrative around: supporting evidence",
+    "onScreen": ["Supporting evidence", "Beat 6"],
+    "narration": "Evidence reinforces the stronger interpretation.",
+    "emphasis": "low"
+  },
+  {
+    "id": "beat_007",
+    "type": "transition",
+    "intent": "transition the narrative around: move to next section",
+    "onScreen": ["Transition", "Beat 7"],
+    "narration": "Now we transition into implications.",
+    "emphasis": "medium"
+  },
+  {
+    "id": "beat_008",
+    "type": "payoff",
+    "intent": "payoff the narrative around: near-term takeaway",
+    "onScreen": ["Near-term takeaway", "Beat 8"],
+    "narration": "The immediate payoff is a clearer action path.",
+    "emphasis": "high"
+  }
+]
+

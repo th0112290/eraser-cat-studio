@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-03-02T07:42:34.079Z",
+  "mode": "internal-normalization",
+  "pronunciationDictionary": {
+    "path": "C:\\Users\\th011\\eraser-cat-studio\\packages\\audio\\fixtures\\pronunciation.json",
+    "license": {
+      "licenseId": "LOCAL-DICTIONARY",
+      "attribution": "5 pronunciation entries",
+      "source": "local://pronunciation-dictionary",
+      "usage": "Applied as text replacement prior to synthesis"
+    }
+  },
+  "entries": [
+    {
+      "assetType": "narration",
+      "id": "narration_generated",
+      "path": "C:\\Users\\th011\\eraser-cat-studio\\out\\audio-smoke\\narration.wav",
+      "license": {
+        "licenseId": "GENERATED-LOCAL",
+        "attribution": "Mock TTS provider",
+        "source": "local://mock-tts-provider",
+        "usage": "Allowed for local development and tests",
+        "generated": true
+      }
+    },
+    {
+      "assetType": "bgm",
+      "id": "bgm_drive",
+      "path": "C:\\Users\\th011\\eraser-cat-studio\\out\\audio-smoke\\assets\\bgm_drive_mock.wav",
+      "license": {
+        "licenseId": "CC0-1.0",
+        "attribution": "Eraser Cat Studio Mock Audio Library",
+        "source": "local://mock-audio-library",
+        "usage": "Allowed for local development and tests"
+      }
+    },
+    {
+      "assetType": "sfx",
+      "id": "sfx_hit",
+      "path": "C:\\Users\\th011\\eraser-cat-studio\\out\\audio-smoke\\assets\\sfx_hit_mock.wav",
+      "usedAtSec": [
+        0,
+        10
+      ],
+      "reason": "auto placement from beat/shot tags",
+      "license": {
+        "licenseId": "CC0-1.0",
+        "attribution": "Eraser Cat Studio Mock Audio Library",
+        "source": "local://mock-audio-library",
+        "usage": "Allowed for local development and tests"
+      }
+    }
+  ]
+}

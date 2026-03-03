@@ -1,0 +1,40 @@
+{
+  "name": "@ec/video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "remotion studio src/index.ts",
+    "render:mvp1": "remotion render src/index.ts MVP1 ../../out/mvp1.mp4 --overwrite",
+    "render:bar-chart": "remotion render src/index.ts BAR-CHART-RIG-DEMO ../../out/bar-chart-rig-demo.mp4 --overwrite",
+    "render:situation": "remotion render src/index.ts SITUATION-SCENE-DEMO ../../out/situation-scene-demo.mp4 --overwrite",
+    "render:extreme-demo": "remotion render src/index.ts EXTREME-DEMO ../../out/extreme-demo.mp4 --overwrite",
+    "render:cinematic-turn": "remotion render src/index.ts CINEMATIC-TURN-DEMO ../../out/cinematic-turn-demo.mp4 --overwrite",
+    "render:character-pack-preview": "remotion render src/index.ts CHARACTER-PACK-PREVIEW ../../out/character-pack-preview.mp4 --overwrite",
+    "render:anim-smoke": "remotion render src/index.ts ANIM-TOOLKIT-SMOKE ../../out/anim-toolkit-smoke.mp4 --overwrite",
+    "render:camera-showcase": "remotion render src/index.ts CAMERA-SHOWCASE ../../out/camera-showcase.mp4 --overwrite",
+    "render:motion-fx": "remotion render src/index.ts MOTION-FX-SHOWCASE ../../out/motion-fx-showcase.mp4 --overwrite",
+    "render:character-life": "remotion render src/index.ts CHARACTER-LIFE-DEMO ../../out/character-life-demo.mp4 --overwrite",
+    "render:talk-demo": "remotion render src/index.ts TALK-DEMO ../../out/talk-demo.mp4 --overwrite",
+    "render:showcase": "remotion render src/index.ts ANIMATION-QUALITY-SHOWCASE ../../out/animation-quality-showcase.mp4 --overwrite",
+    "render:depth-shadow": "remotion render src/index.ts DEPTH-SHADOW-SHOWCASE ../../out/depth-shadow-showcase.mp4 --overwrite",
+    "render:preview": "pnpm exec tsx src/qc/renderPreview.ts",
+    "qc:smoke": "pnpm exec tsx src/qc/renderPreview.ts --dry-run",
+    "smoke:compositions": "remotion compositions src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/media-utils": "^4.0.0",
+    "ajv": "^8.17.1",
+    "flubber": "^0.4.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@types/node": "^22.15.24",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.3"
+  }
+}

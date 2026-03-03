@@ -1,0 +1,30 @@
+{
+  "name": "@ec/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -o -- tsx src/index.ts",
+    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "smoke:env": "dotenv -e ../../.env -o -- node -e \"if(!process.env.DATABASE_URL||!process.env.REDIS_URL){throw new Error('Missing DATABASE_URL/REDIS_URL')} console.log('[api] env smoke ok')\"",
+    "test:schedule": "dotenv -e ../../.env -o -- tsx src/services/scheduleService.test.ts",
+    "test:report": "dotenv -e ../../.env -o -- tsx src/services/reportService.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.883.0",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/multipart": "^9.2.1",
+    "@fastify/static": "^8.3.0",
+    "@ec/shared": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "bullmq": "^5.12.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.6.1",
+    "sharp": "^0.34.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.24",
+    "dotenv-cli": "^11.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.3"
+  }
+}

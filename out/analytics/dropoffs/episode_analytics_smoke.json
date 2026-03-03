@@ -1,0 +1,101 @@
+{
+  "episodeId": "episode_analytics_smoke",
+  "generatedAt": "2026-03-02T09:16:42.679Z",
+  "durationSec": 180,
+  "threshold": {
+    "minDropPct": 6,
+    "mergeGapSec": 6
+  },
+  "shotTimings": [
+    {
+      "shotId": "shot_1",
+      "startSec": 0,
+      "endSec": 30,
+      "beatIds": [
+        "b1"
+      ]
+    },
+    {
+      "shotId": "shot_2",
+      "startSec": 30,
+      "endSec": 60,
+      "beatIds": [
+        "b2"
+      ]
+    },
+    {
+      "shotId": "shot_3",
+      "startSec": 60,
+      "endSec": 90,
+      "beatIds": [
+        "b3"
+      ]
+    },
+    {
+      "shotId": "shot_4",
+      "startSec": 90,
+      "endSec": 120,
+      "beatIds": [
+        "b4"
+      ]
+    },
+    {
+      "shotId": "shot_5",
+      "startSec": 120,
+      "endSec": 150,
+      "beatIds": [
+        "b5"
+      ]
+    },
+    {
+      "shotId": "shot_6",
+      "startSec": 150,
+      "endSec": 180,
+      "beatIds": [
+        "b6"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "id": "drop_1_15_45",
+      "segmentKey": "15_45",
+      "startSec": 15,
+      "endSec": 45,
+      "dropPct": 15,
+      "slopePerSec": 0.5,
+      "reason": "Retention dropped 15.0% between 15.0s and 45.0s",
+      "primaryShotId": "shot_1",
+      "overlappingShotIds": [
+        "shot_1",
+        "shot_2"
+      ]
+    },
+    {
+      "id": "drop_2_60_90",
+      "segmentKey": "60_90",
+      "startSec": 60,
+      "endSec": 90,
+      "dropPct": 9,
+      "slopePerSec": 0.3,
+      "reason": "Retention dropped 9.0% between 60.0s and 90.0s",
+      "primaryShotId": "shot_3",
+      "overlappingShotIds": [
+        "shot_3"
+      ]
+    },
+    {
+      "id": "drop_3_120_150",
+      "segmentKey": "120_150",
+      "startSec": 120,
+      "endSec": 150,
+      "dropPct": 14,
+      "slopePerSec": 0.4667,
+      "reason": "Retention dropped 14.0% between 120.0s and 150.0s",
+      "primaryShotId": "shot_5",
+      "overlappingShotIds": [
+        "shot_5"
+      ]
+    }
+  ]
+}

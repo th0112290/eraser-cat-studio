@@ -1,0 +1,131 @@
+{
+  "episodeId": "episode_analytics_smoke",
+  "generatedAt": "2026-03-02T09:16:42.679Z",
+  "shorts": [
+    {
+      "id": "short_1",
+      "segmentKey": "15_45",
+      "startSec": 11,
+      "endSec": 53,
+      "durationSec": 42,
+      "score": 29,
+      "reason": "Retention dropped 15.0% between 15.0s and 45.0s",
+      "title": "Retention recovery clip 1",
+      "shotIds": [
+        "shot_1",
+        "shot_2"
+      ]
+    },
+    {
+      "id": "short_2",
+      "segmentKey": "120_150",
+      "startSec": 116,
+      "endSec": 158,
+      "durationSec": 42,
+      "score": 26.2,
+      "reason": "Retention dropped 14.0% between 120.0s and 150.0s",
+      "title": "Retention recovery clip 3",
+      "shotIds": [
+        "shot_5"
+      ]
+    },
+    {
+      "id": "short_3",
+      "segmentKey": "60_90",
+      "startSec": 56,
+      "endSec": 98,
+      "durationSec": 42,
+      "score": 17.2,
+      "reason": "Retention dropped 9.0% between 60.0s and 90.0s",
+      "title": "Retention recovery clip 2",
+      "shotIds": [
+        "shot_3"
+      ]
+    }
+  ],
+  "communityPost": {
+    "title": "Community feedback request: Analytics smoke topic",
+    "body": "We reviewed retention data for: Analytics smoke topic.\nTop replay-focused clip candidates:\n1. 11.0s-53.0s (42.0s)\n2. 116.0s-158.0s (42.0s)\n3. 56.0s-98.0s (42.0s)\nTell us which segment should be expanded next.",
+    "hashtags": [
+      "#erasercat",
+      "#shorts",
+      "#analytics",
+      "#smoke",
+      "#topic"
+    ]
+  },
+  "translationTasks": [
+    {
+      "id": "tr_en_short_1",
+      "targetLanguage": "en",
+      "status": "PENDING",
+      "sourceStartSec": 11,
+      "sourceEndSec": 53,
+      "notes": "Stub only: translate narration and subtitles for short_1 (11.0s-53.0s)"
+    },
+    {
+      "id": "tr_en_short_2",
+      "targetLanguage": "en",
+      "status": "PENDING",
+      "sourceStartSec": 116,
+      "sourceEndSec": 158,
+      "notes": "Stub only: translate narration and subtitles for short_2 (116.0s-158.0s)"
+    },
+    {
+      "id": "tr_en_short_3",
+      "targetLanguage": "en",
+      "status": "PENDING",
+      "sourceStartSec": 56,
+      "sourceEndSec": 98,
+      "notes": "Stub only: translate narration and subtitles for short_3 (56.0s-98.0s)"
+    },
+    {
+      "id": "tr_ja_short_1",
+      "targetLanguage": "ja",
+      "status": "PENDING",
+      "sourceStartSec": 11,
+      "sourceEndSec": 53,
+      "notes": "Stub only: translate narration and subtitles for short_1 (11.0s-53.0s)"
+    },
+    {
+      "id": "tr_ja_short_2",
+      "targetLanguage": "ja",
+      "status": "PENDING",
+      "sourceStartSec": 116,
+      "sourceEndSec": 158,
+      "notes": "Stub only: translate narration and subtitles for short_2 (116.0s-158.0s)"
+    },
+    {
+      "id": "tr_ja_short_3",
+      "targetLanguage": "ja",
+      "status": "PENDING",
+      "sourceStartSec": 56,
+      "sourceEndSec": 98,
+      "notes": "Stub only: translate narration and subtitles for short_3 (56.0s-98.0s)"
+    },
+    {
+      "id": "tr_es_short_1",
+      "targetLanguage": "es",
+      "status": "PENDING",
+      "sourceStartSec": 11,
+      "sourceEndSec": 53,
+      "notes": "Stub only: translate narration and subtitles for short_1 (11.0s-53.0s)"
+    },
+    {
+      "id": "tr_es_short_2",
+      "targetLanguage": "es",
+      "status": "PENDING",
+      "sourceStartSec": 116,
+      "sourceEndSec": 158,
+      "notes": "Stub only: translate narration and subtitles for short_2 (116.0s-158.0s)"
+    },
+    {
+      "id": "tr_es_short_3",
+      "targetLanguage": "es",
+      "status": "PENDING",
+      "sourceStartSec": 56,
+      "sourceEndSec": 98,
+      "notes": "Stub only: translate narration and subtitles for short_3 (56.0s-98.0s)"
+    }
+  ]
+}

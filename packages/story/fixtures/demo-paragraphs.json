@@ -1,0 +1,20 @@
+{
+  "episode": {
+    "episode_id": "ep_demo_paragraphs",
+    "bible_ref": "bible_v1",
+    "topic": "Neighborhood Energy Usage",
+    "target_duration_sec": 540,
+    "data_inputs": [
+      {
+        "dataset_id": "energy_usage_monthly",
+        "time_range": "2025-01..2025-12"
+      }
+    ]
+  },
+  "paragraphs": [
+    "Energy usage rose in winter because heating demand spiked across dense apartment blocks. Detached homes had flatter usage curves, but peak evening demand still increased.",
+    "The city rolled out a rebate program for efficient heat pumps. Adoption was uneven by district, and early savings were strongest in zones with older insulation.",
+    "By year-end, monthly totals stabilized. Peak-hour smoothing improved reliability metrics, while customer complaints about outages declined."
+  ]
+}
+

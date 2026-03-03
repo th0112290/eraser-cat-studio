@@ -1,26 +1,54 @@
 import Ajv2020, { type ErrorObject } from "ajv/dist/2020";
 import addFormats from "ajv-formats";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
+
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+function toStableJsonValue(value: unknown, seen: WeakSet<object>): JsonValue {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => (entry === undefined ? null : toStableJsonValue(entry, seen)));
+  }
+
+  if (typeof value === "object") {
+    if (seen.has(value)) {
+      throw new Error("stableStringify: circular structure");
+    }
+
+    seen.add(value);
+
+    const record = value as Record<string, unknown>;
+    const sortedKeys = Object.keys(record).sort();
+    const out: Record<string, JsonValue> = {};
+    for (const key of sortedKeys) {
+      const entry = record[key];
+      if (entry === undefined) {
+        continue;
+      }
+      out[key] = toStableJsonValue(entry, seen);
+    }
+    return out;
+  }
+
+  throw new Error(`stableStringify: unsupported value type "${typeof value}"`);
+}
 
 export function stableStringify(value: unknown): string {
-  const seen = new WeakSet<object>();
-
-  const helper = (v: any): any => {
-    if (v === null || typeof v !== "object") return v;
-    if (Array.isArray(v)) return v.map(helper);
-
-    if (seen.has(v)) throw new Error("stableStringify: circular structure");
-    seen.add(v);
-
-    const keys = Object.keys(v).sort();
-    const out: Record<string, any> = {};
-    for (const k of keys) out[k] = helper(v[k]);
-    return out;
-  };
-
-  return JSON.stringify(helper(value));
+  return JSON.stringify(toStableJsonValue(value, new WeakSet<object>()));
 }
 
 export function sha256Hex(text: string): string {
@@ -36,7 +64,6 @@ export class SchemaValidator {
   private ajv: Ajv2020;
 
   constructor(schemaDirAbs: string) {
-    // ✅ Ajv2020은 draft 2020-12 메타스키마를 포함함
     this.ajv = new Ajv2020({
       allErrors: true,
       strict: false
@@ -49,19 +76,22 @@ export class SchemaValidator {
       throw new Error(`No *.schema.json found in ${schemaDirAbs}`);
     }
 
-    // 스키마 로드
     for (const file of files) {
-      const full = path.join(schemaDirAbs, file);
-      const schema = JSON.parse(fs.readFileSync(full, "utf8"));
-      if (!schema.$id) throw new Error(`Schema missing $id: ${file}`);
+      const fullPath = path.join(schemaDirAbs, file);
+      const schema = JSON.parse(fs.readFileSync(fullPath, "utf8")) as { $id?: string };
+      if (!schema.$id) {
+        throw new Error(`Schema missing $id: ${file}`);
+      }
       this.ajv.addSchema(schema, schema.$id);
     }
   }
 
   validate(schemaId: string, data: unknown): ValidationResult {
-    const fn = this.ajv.getSchema(schemaId);
-    if (!fn) throw new Error(`Unknown schema id: ${schemaId}`);
-    const ok = !!fn(data);
-    return { ok, errors: (fn.errors ?? []) as ErrorObject[] };
+    const validateFn = this.ajv.getSchema(schemaId);
+    if (!validateFn) {
+      throw new Error(`Unknown schema id: ${schemaId}`);
+    }
+    const ok = validateFn(data);
+    return { ok: !!ok, errors: (validateFn.errors ?? []) as ErrorObject[] };
   }
 }

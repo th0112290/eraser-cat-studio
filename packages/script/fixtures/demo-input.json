@@ -1,0 +1,38 @@
+{
+  "topic": "How local cafes can use short-form video analytics",
+  "wpm": 145,
+  "facts": [
+    {
+      "text": "Most discovery traffic now starts on mobile feeds, so first-three-second retention matters.",
+      "source": {
+        "sourceId": "mobile-retention-2025",
+        "title": "Mobile feed retention benchmark",
+        "url": "https://example.com/mobile-retention"
+      }
+    },
+    {
+      "text": "View-through rate improves when the opening frame shows product context before narration begins.",
+      "source": {
+        "sourceId": "vtr-context-2025",
+        "title": "View-through context study",
+        "url": "https://example.com/vtr-context"
+      }
+    },
+    {
+      "text": "Weekly A/B thumbnail tests help small teams identify stable creative direction quickly.",
+      "source": {
+        "sourceId": "ab-thumbnail-2024",
+        "title": "Thumbnail experiment notes",
+        "url": "https://example.com/thumbnail-ab"
+      }
+    },
+    {
+      "text": "Simple call-to-action phrasing outperforms abstract branding language in local campaigns.",
+      "source": {
+        "sourceId": "cta-local-2024",
+        "title": "Local CTA conversion report",
+        "url": "https://example.com/local-cta"
+      }
+    }
+  ]
+}

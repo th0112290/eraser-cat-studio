@@ -1,0 +1,29 @@
+{
+  "episodeId": "cmm8x6vkd0002pk30q9qhx8oh",
+  "source": "verify",
+  "uploadedAt": "2026-03-02T09:19:50.216Z",
+  "durationSec": 80,
+  "averageRetentionPct": 81.8,
+  "points": [
+    {
+      "timeSec": 0,
+      "retentionPct": 100
+    },
+    {
+      "timeSec": 20,
+      "retentionPct": 91
+    },
+    {
+      "timeSec": 40,
+      "retentionPct": 79
+    },
+    {
+      "timeSec": 60,
+      "retentionPct": 76
+    },
+    {
+      "timeSec": 80,
+      "retentionPct": 63
+    }
+  ]
+}

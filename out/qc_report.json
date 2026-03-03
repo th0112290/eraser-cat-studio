@@ -1,0 +1,1876 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-03-03T09:47:49.957Z",
+  "final_passed": true,
+  "final_stage": "fallback:freeze_character_pose",
+  "fallback_steps_applied": [
+    "simplify_chart",
+    "remove_annotations",
+    "switch_to_table",
+    "freeze_character_pose"
+  ],
+  "runs": [
+    {
+      "stage": "initial",
+      "checks": [
+        {
+          "name": "chart_data_integrity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Chart data checks passed."
+        },
+        {
+          "name": "readability",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "score=90.0 warnings=30"
+        },
+        {
+          "name": "pointer_validity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Pointer checks passed."
+        },
+        {
+          "name": "layering_occlusion",
+          "passed": false,
+          "severity": "ERROR",
+          "details": "occlusion_errors=11"
+        }
+      ],
+      "issues": [
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_001"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_002"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_003"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_004"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_005"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_006"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_007"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_008"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_009"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_010"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_011"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_012"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_013"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_014"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_015"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_016"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_017"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_018"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_019"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_020"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_021"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_022"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_023"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_024"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_025"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_026"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_027"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_028"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_029"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_030"
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_002",
+          "details": {
+            "character": {
+              "x": 472.2466190300882,
+              "y": 887.3689527668058
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_005",
+          "details": {
+            "character": {
+              "x": 475.5440369568765,
+              "y": 892.689597740583
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_007",
+          "details": {
+            "character": {
+              "x": 941.1160729251801,
+              "y": 887.205149938725
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_008",
+          "details": {
+            "character": {
+              "x": 475.83010799400506,
+              "y": 888.4398001872003
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_011",
+          "details": {
+            "character": {
+              "x": 446.62792393416163,
+              "y": 894.8147486558183
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_014",
+          "details": {
+            "character": {
+              "x": 469.28736783117057,
+              "y": 879.7182633401826
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_017",
+          "details": {
+            "character": {
+              "x": 472.2266990225762,
+              "y": 891.2221894657239
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_020",
+          "details": {
+            "character": {
+              "x": 473.29723122753205,
+              "y": 896.176365898177
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_023",
+          "details": {
+            "character": {
+              "x": 448.0934626635164,
+              "y": 878.9375800620763
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_026",
+          "details": {
+            "character": {
+              "x": 473.35510894730686,
+              "y": 894.3006339579821
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_029",
+          "details": {
+            "character": {
+              "x": 473.3462624732405,
+              "y": 884.772318933159
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        }
+      ],
+      "passed": false,
+      "errorCount": 11,
+      "warnCount": 30
+    },
+    {
+      "stage": "fallback:simplify_chart",
+      "checks": [
+        {
+          "name": "chart_data_integrity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Chart data checks passed."
+        },
+        {
+          "name": "readability",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "score=90.0 warnings=30"
+        },
+        {
+          "name": "pointer_validity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Pointer checks passed."
+        },
+        {
+          "name": "layering_occlusion",
+          "passed": false,
+          "severity": "ERROR",
+          "details": "occlusion_errors=11"
+        }
+      ],
+      "issues": [
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_001"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_002"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_003"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_004"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_005"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_006"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_007"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_008"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_009"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_010"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_011"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_012"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_013"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_014"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_015"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_016"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_017"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_018"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_019"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_020"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_021"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_022"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_023"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_024"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_025"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_026"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_027"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_028"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_029"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_030"
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_002",
+          "details": {
+            "character": {
+              "x": 472.2466190300882,
+              "y": 887.3689527668058
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_005",
+          "details": {
+            "character": {
+              "x": 475.5440369568765,
+              "y": 892.689597740583
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_007",
+          "details": {
+            "character": {
+              "x": 941.1160729251801,
+              "y": 887.205149938725
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_008",
+          "details": {
+            "character": {
+              "x": 475.83010799400506,
+              "y": 888.4398001872003
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_011",
+          "details": {
+            "character": {
+              "x": 446.62792393416163,
+              "y": 894.8147486558183
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_014",
+          "details": {
+            "character": {
+              "x": 469.28736783117057,
+              "y": 879.7182633401826
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_017",
+          "details": {
+            "character": {
+              "x": 472.2266990225762,
+              "y": 891.2221894657239
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_020",
+          "details": {
+            "character": {
+              "x": 473.29723122753205,
+              "y": 896.176365898177
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_023",
+          "details": {
+            "character": {
+              "x": 448.0934626635164,
+              "y": 878.9375800620763
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_026",
+          "details": {
+            "character": {
+              "x": 473.35510894730686,
+              "y": 894.3006339579821
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_029",
+          "details": {
+            "character": {
+              "x": 473.3462624732405,
+              "y": 884.772318933159
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        }
+      ],
+      "passed": false,
+      "errorCount": 11,
+      "warnCount": 30
+    },
+    {
+      "stage": "fallback:remove_annotations",
+      "checks": [
+        {
+          "name": "chart_data_integrity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Chart data checks passed."
+        },
+        {
+          "name": "readability",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "score=90.0 warnings=30"
+        },
+        {
+          "name": "pointer_validity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Pointer checks passed."
+        },
+        {
+          "name": "layering_occlusion",
+          "passed": false,
+          "severity": "ERROR",
+          "details": "occlusion_errors=11"
+        }
+      ],
+      "issues": [
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_001"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_002"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_003"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_004"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_005"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_006"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_007"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_008"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_009"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_010"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_011"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_012"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_013"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_014"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_015"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_016"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_017"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_018"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_019"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_020"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_021"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_022"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_023"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_024"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_025"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_026"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_027"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_028"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_029"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_030"
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_002",
+          "details": {
+            "character": {
+              "x": 472.2466190300882,
+              "y": 887.3689527668058
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_005",
+          "details": {
+            "character": {
+              "x": 475.5440369568765,
+              "y": 892.689597740583
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_007",
+          "details": {
+            "character": {
+              "x": 941.1160729251801,
+              "y": 887.205149938725
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_008",
+          "details": {
+            "character": {
+              "x": 475.83010799400506,
+              "y": 888.4398001872003
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_011",
+          "details": {
+            "character": {
+              "x": 446.62792393416163,
+              "y": 894.8147486558183
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_014",
+          "details": {
+            "character": {
+              "x": 469.28736783117057,
+              "y": 879.7182633401826
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_017",
+          "details": {
+            "character": {
+              "x": 472.2266990225762,
+              "y": 891.2221894657239
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_020",
+          "details": {
+            "character": {
+              "x": 473.29723122753205,
+              "y": 896.176365898177
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_023",
+          "details": {
+            "character": {
+              "x": 448.0934626635164,
+              "y": 878.9375800620763
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_026",
+          "details": {
+            "character": {
+              "x": 473.35510894730686,
+              "y": 894.3006339579821
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_029",
+          "details": {
+            "character": {
+              "x": 473.3462624732405,
+              "y": 884.772318933159
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        }
+      ],
+      "passed": false,
+      "errorCount": 11,
+      "warnCount": 30
+    },
+    {
+      "stage": "fallback:switch_to_table",
+      "checks": [
+        {
+          "name": "chart_data_integrity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Chart data checks passed."
+        },
+        {
+          "name": "readability",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "score=90.0 warnings=30"
+        },
+        {
+          "name": "pointer_validity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Pointer checks passed."
+        },
+        {
+          "name": "layering_occlusion",
+          "passed": false,
+          "severity": "ERROR",
+          "details": "occlusion_errors=11"
+        }
+      ],
+      "issues": [
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_001"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_002"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_003"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_004"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_005"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_006"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_007"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_008"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_009"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_010"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_011"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_012"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_013"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_014"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_015"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_016"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_017"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_018"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_019"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_020"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_021"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_022"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_023"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_024"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_025"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_026"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_027"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_028"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_029"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_030"
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_002",
+          "details": {
+            "character": {
+              "x": 472.2466190300882,
+              "y": 887.3689527668058
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_005",
+          "details": {
+            "character": {
+              "x": 475.5440369568765,
+              "y": 892.689597740583
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_007",
+          "details": {
+            "character": {
+              "x": 941.1160729251801,
+              "y": 887.205149938725
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_008",
+          "details": {
+            "character": {
+              "x": 475.83010799400506,
+              "y": 888.4398001872003
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_011",
+          "details": {
+            "character": {
+              "x": 446.62792393416163,
+              "y": 894.8147486558183
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_014",
+          "details": {
+            "character": {
+              "x": 469.28736783117057,
+              "y": 879.7182633401826
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_017",
+          "details": {
+            "character": {
+              "x": 472.2266990225762,
+              "y": 891.2221894657239
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_020",
+          "details": {
+            "character": {
+              "x": 473.29723122753205,
+              "y": 896.176365898177
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_023",
+          "details": {
+            "character": {
+              "x": 448.0934626635164,
+              "y": 878.9375800620763
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_026",
+          "details": {
+            "character": {
+              "x": 473.35510894730686,
+              "y": 894.3006339579821
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "code": "layering_occlusion_missing",
+          "severity": "ERROR",
+          "message": "Character is not occluded as expected.",
+          "shotId": "shot_029",
+          "details": {
+            "character": {
+              "x": 473.3462624732405,
+              "y": 884.772318933159
+            },
+            "occluder": {
+              "x": 760,
+              "y": 0,
+              "width": 180,
+              "height": 1080
+            }
+          }
+        }
+      ],
+      "passed": false,
+      "errorCount": 11,
+      "warnCount": 30
+    },
+    {
+      "stage": "fallback:freeze_character_pose",
+      "checks": [
+        {
+          "name": "chart_data_integrity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Chart data checks passed."
+        },
+        {
+          "name": "readability",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "score=90.0 warnings=30"
+        },
+        {
+          "name": "pointer_validity",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Pointer checks passed."
+        },
+        {
+          "name": "layering_occlusion",
+          "passed": true,
+          "severity": "ERROR",
+          "details": "Occlusion checks passed."
+        }
+      ],
+      "issues": [
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_001"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_002"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_003"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_004"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_005"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_006"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_007"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_008"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_009"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_010"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_011"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_012"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_013"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_014"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_015"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_016"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_017"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_018"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_019"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_020"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_021"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_022"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_023"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_024"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_025"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_026"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_027"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_028"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_029"
+        },
+        {
+          "code": "readability_safe_area_narration",
+          "severity": "WARN",
+          "message": "Narration area violates the safe area constraints.",
+          "shotId": "shot_030"
+        }
+      ],
+      "passed": true,
+      "errorCount": 0,
+      "warnCount": 30
+    }
+  ]
+}

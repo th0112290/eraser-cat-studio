@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@ec/audio": ["../../packages/audio/src/index.ts"],
+      "@ec/shared": ["../../packages/shared/src/index.ts"],
+      "@ec/image-gen": ["../../packages/image-gen/src/index.ts"],
+      "@ec/ops": ["../../packages/ops/src/index.ts"],
+      "@ec/render-orchestrator": ["../../packages/render-orchestrator/src/index.ts"],
+      "@ec/story": ["../../packages/story/src/index.ts"],
+      "@ec/publish": ["../../packages/publish/src/index.ts"]
+    },
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"]
+}
