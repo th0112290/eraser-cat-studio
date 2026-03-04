@@ -3051,12 +3051,20 @@ export async function handleGenerateCharacterAssetsJob(input: {
       data: {
         status: "READY",
         statusMessage: generation.viewToGenerate
-          ? `Candidates ready for view ${generation.viewToGenerate}. Pick to continue.`
+          ? `Candidates ready for view ${generation.viewToGenerate}. Pick to continue.${
+              continuitySnapshot?.reason ? ` Continuity=${continuitySnapshot.reason}.` : ""
+            }`
           : missingGeneratedViews.length > 0
-            ? `Partial generation complete. Missing: ${missingGeneratedViews.join(", ")}`
+            ? `Partial generation complete. Missing: ${missingGeneratedViews.join(", ")}${
+                continuitySnapshot?.reason ? ` | Continuity=${continuitySnapshot.reason}` : ""
+              }`
             : lowQualityGeneratedViews.length > 0
-              ? `Candidates generated but quality below threshold for: ${lowQualityGeneratedViews.join(", ")}`
-              : "Candidates ready. Waiting for pick."
+              ? `Candidates generated but quality below threshold for: ${lowQualityGeneratedViews.join(", ")}${
+                  continuitySnapshot?.reason ? ` | Continuity=${continuitySnapshot.reason}` : ""
+                }`
+              : `Candidates ready. Waiting for pick.${
+                  continuitySnapshot?.reason ? ` Continuity=${continuitySnapshot.reason}.` : ""
+                }`
       }
     });
 
