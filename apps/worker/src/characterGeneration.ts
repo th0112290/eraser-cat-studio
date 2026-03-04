@@ -158,6 +158,7 @@ type GenerationManifest = {
         minScore: number;
         maxRejections: number;
         requirePicked: boolean;
+        requireScore: boolean;
       };
     };
   };
@@ -244,6 +245,7 @@ type ContinuityReferenceConfig = {
   minScore: number;
   maxRejections: number;
   requirePicked: boolean;
+  requireScore: boolean;
 };
 
 function toFiniteNonNegative(value: string | undefined, fallback: number): number {
@@ -307,11 +309,13 @@ function shouldAutoContinuityReference(): boolean {
 
 function readContinuityReferenceConfig(): ContinuityReferenceConfig {
   const requirePickedFlag = (process.env.CHARACTER_AUTO_CONTINUITY_REQUIRE_PICKED ?? "true").trim().toLowerCase();
+  const requireScoreFlag = (process.env.CHARACTER_AUTO_CONTINUITY_REQUIRE_SCORE ?? "true").trim().toLowerCase();
   return {
     maxSessionAgeHours: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_SESSION_AGE_HOURS, 168),
     minScore: clamp01(toFiniteNonNegative(process.env.CHARACTER_AUTO_CONTINUITY_MIN_SCORE, 0.62)),
     maxRejections: toNonNegativeInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_REJECTIONS, 1),
-    requirePicked: !["false", "0", "no", "off"].includes(requirePickedFlag)
+    requirePicked: !["false", "0", "no", "off"].includes(requirePickedFlag),
+    requireScore: !["false", "0", "no", "off"].includes(requireScoreFlag)
   };
 }
 
@@ -1566,6 +1570,9 @@ async function resolveFrontReferenceFromSession(
     }
 
     const score = extractCandidateScore(row.scoreJson);
+    if (score === null && config.requireScore) {
+      continue;
+    }
     if (score !== null && score < config.minScore) {
       continue;
     }
