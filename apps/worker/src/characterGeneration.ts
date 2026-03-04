@@ -2148,7 +2148,14 @@ async function persistSelectedCandidates(input: {
       where: { id: sessionId },
       data: {
         status: "READY",
-        statusMessage: source === "hitl" ? "HITL selection applied and build queued." : "Auto-selected and build queued."
+        statusMessage:
+          source === "hitl"
+            ? `HITL selection applied and build queued.${
+                manifest.reference.continuity?.reason ? ` Continuity=${manifest.reference.continuity.reason}.` : ""
+              }`
+            : `Auto-selected and build queued.${
+                manifest.reference.continuity?.reason ? ` Continuity=${manifest.reference.continuity.reason}.` : ""
+              }`
       }
     });
   }
