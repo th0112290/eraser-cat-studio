@@ -2178,6 +2178,8 @@ async function persistSelectedCandidates(input: {
       continuityReason: hashedManifest.reference.continuity?.reason ?? null,
       continuityApplied: hashedManifest.reference.continuity?.applied ?? null,
       continuityAttempted: hashedManifest.reference.continuity?.attempted ?? null,
+      continuitySourceSessionId: hashedManifest.reference.continuity?.attemptedSourceSessionId ?? null,
+      continuitySourcePool: hashedManifest.reference.continuity?.sourcePool ?? null,
       manifestPath,
       selectedAssetIds: assetIds,
       buildJobDbId: buildJobId,
@@ -3103,7 +3105,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
           continuityDescriptor: formatContinuityDescriptor(manifest.reference.continuity),
           continuityReason: manifest.reference.continuity?.reason ?? null,
           continuityApplied: manifest.reference.continuity?.applied ?? null,
-          continuityAttempted: manifest.reference.continuity?.attempted ?? null
+          continuityAttempted: manifest.reference.continuity?.attempted ?? null,
+          continuitySourceSessionId: manifest.reference.continuity?.attemptedSourceSessionId ?? null,
+          continuitySourcePool: manifest.reference.continuity?.sourcePool ?? null
         })
       }
     });
@@ -3161,6 +3165,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
       continuityReason: manifest.reference.continuity?.reason ?? null,
       continuityApplied: manifest.reference.continuity?.applied ?? null,
       continuityAttempted: manifest.reference.continuity?.attempted ?? null,
+      continuitySourceSessionId: manifest.reference.continuity?.attemptedSourceSessionId ?? null,
+      continuitySourcePool: manifest.reference.continuity?.sourcePool ?? null,
       sessionId,
       viewToGenerate: generation.viewToGenerate ?? null,
       lowQualityViews: lowQualityGeneratedViews,
