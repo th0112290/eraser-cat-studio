@@ -145,6 +145,7 @@ type GenerationManifest = {
       attempted: boolean;
       applied: boolean;
       reason: string;
+      attemptedSourceSessionId?: string;
       searchedSessionCount?: number;
       preferredPoolCount?: number;
       fallbackPoolCount?: number;
@@ -1836,6 +1837,8 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
     input === null ? null : typeof input === "number" && Number.isFinite(input) ? input : undefined;
   const asOptionalNullableString = (input: unknown): string | null | undefined =>
     input === null ? null : typeof input === "string" && input.trim().length > 0 ? input.trim() : undefined;
+  const asOptionalString = (input: unknown): string | undefined =>
+    typeof input === "string" && input.trim().length > 0 ? input.trim() : undefined;
 
   const policyRaw = isRecord(value.policy) ? value.policy : undefined;
   const parsedPolicy =
@@ -1875,6 +1878,9 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
     attempted,
     applied,
     reason,
+    ...(asOptionalString(value.attemptedSourceSessionId)
+      ? { attemptedSourceSessionId: asOptionalString(value.attemptedSourceSessionId) }
+      : {}),
     ...(asOptionalNumber(value.searchedSessionCount) !== undefined
       ? { searchedSessionCount: asOptionalNumber(value.searchedSessionCount) }
       : {}),
@@ -2319,6 +2325,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           attempted: true,
           applied: true,
           reason: "matched",
+          attemptedSourceSessionId: continuity.match.sessionId,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
           fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
@@ -2345,6 +2352,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           attempted: true,
           applied: false,
           reason: "invalid_source",
+          attemptedSourceSessionId: continuity.match.sessionId,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
           fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
