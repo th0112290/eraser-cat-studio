@@ -147,6 +147,7 @@ type GenerationManifest = {
       reason: string;
       attemptedSourceSessionId?: string;
       searchedSessionCount?: number;
+      searchedSessionIdsPreview?: string[];
       preferredPoolCount?: number;
       fallbackPoolCount?: number;
       sourcePool?: "preferred" | "fallback";
@@ -1705,6 +1706,7 @@ async function resolveAutoContinuityReference(input: {
     | undefined;
   diagnostics: {
     searchedSessionCount: number;
+    searchedSessionIdsPreview: string[];
     preferredPoolCount: number;
     fallbackPoolCount: number;
     reason?: "matched" | "no_recent_ready_session" | "no_eligible_front_candidate";
@@ -1754,6 +1756,7 @@ async function resolveAutoContinuityReference(input: {
   });
 
   const queue = [...preferred.map((row) => row.id), ...fallback.map((row) => row.id)];
+  const queuePreview = queue.slice(0, 5);
   const preferredSet = new Set(preferred.map((row) => row.id));
   const visited = new Set<string>();
   for (const sessionId of queue) {
@@ -1776,6 +1779,7 @@ async function resolveAutoContinuityReference(input: {
         },
         diagnostics: {
           searchedSessionCount: visited.size,
+          searchedSessionIdsPreview: queuePreview,
           preferredPoolCount: preferred.length,
           fallbackPoolCount: fallback.length,
           reason: "matched"
@@ -1791,6 +1795,7 @@ async function resolveAutoContinuityReference(input: {
   return {
     diagnostics: {
       searchedSessionCount: visited.size,
+      searchedSessionIdsPreview: queuePreview,
       preferredPoolCount: preferred.length,
       fallbackPoolCount: fallback.length,
       reason
@@ -1839,6 +1844,15 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
     input === null ? null : typeof input === "string" && input.trim().length > 0 ? input.trim() : undefined;
   const asOptionalString = (input: unknown): string | undefined =>
     typeof input === "string" && input.trim().length > 0 ? input.trim() : undefined;
+  const asOptionalStringArray = (input: unknown): string[] | undefined => {
+    if (!Array.isArray(input)) {
+      return undefined;
+    }
+    const out = input
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item) => item.length > 0);
+    return out.length > 0 ? out : undefined;
+  };
 
   const policyRaw = isRecord(value.policy) ? value.policy : undefined;
   const parsedPolicy =
@@ -1883,6 +1897,9 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
       : {}),
     ...(asOptionalNumber(value.searchedSessionCount) !== undefined
       ? { searchedSessionCount: asOptionalNumber(value.searchedSessionCount) }
+      : {}),
+    ...(asOptionalStringArray(value.searchedSessionIdsPreview)
+      ? { searchedSessionIdsPreview: asOptionalStringArray(value.searchedSessionIdsPreview) }
       : {}),
     ...(asOptionalNumber(value.preferredPoolCount) !== undefined
       ? { preferredPoolCount: asOptionalNumber(value.preferredPoolCount) }
@@ -2334,6 +2351,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           reason: "matched",
           attemptedSourceSessionId: continuity.match.sessionId,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
+          searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
           fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
           sourcePool: continuity.match.sourcePool,
@@ -2362,6 +2380,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           reason: "invalid_source",
           attemptedSourceSessionId: continuity.match.sessionId,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
+          searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
           fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
           policy: continuityPolicy
@@ -2379,6 +2398,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         applied: false,
         reason: continuity.diagnostics.reason ?? "skipped",
         searchedSessionCount: continuity.diagnostics.searchedSessionCount,
+        searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
         preferredPoolCount: continuity.diagnostics.preferredPoolCount,
         fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
         policy: continuityPolicy
