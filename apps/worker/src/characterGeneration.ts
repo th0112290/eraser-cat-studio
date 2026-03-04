@@ -3014,7 +3014,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           ? `Regenerate ${generation.viewToGenerate} candidates`
           : "Choose best character view candidates",
         summary: generation.viewToGenerate
-          ? `View-only regenerate completed for ${generation.viewToGenerate}. Pick candidates to continue.`
+          ? `View-only regenerate completed for ${generation.viewToGenerate}. Pick candidates to continue.${continuityText}`
           : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText}${continuityText} Select one candidate per view from generation manifest.`,
         payload: toPrismaJson({
           manifestPath,
