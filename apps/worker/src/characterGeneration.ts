@@ -287,6 +287,16 @@ function toNonNegativeInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function clampInt(value: number, min: number, max: number): number {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
 function readGenerationLimits(): GenerationLimits {
   const budgetFallbackFlag = (process.env.IMAGEGEN_BUDGET_FALLBACK_TO_MOCK ?? "true").trim().toLowerCase();
   return {
@@ -316,15 +326,27 @@ function shouldAutoContinuityReference(): boolean {
 function readContinuityReferenceConfig(): ContinuityReferenceConfig {
   const requirePickedFlag = (process.env.CHARACTER_AUTO_CONTINUITY_REQUIRE_PICKED ?? "true").trim().toLowerCase();
   const requireScoreFlag = (process.env.CHARACTER_AUTO_CONTINUITY_REQUIRE_SCORE ?? "true").trim().toLowerCase();
+  const maxSessionAgeHours = clampInt(toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_SESSION_AGE_HOURS, 168), 1, 24 * 365);
+  const candidateTake = clampInt(toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_CANDIDATE_TAKE, 10), 1, 50);
+  const preferredSessionTake = clampInt(
+    toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_PREFERRED_TAKE, 8),
+    1,
+    100
+  );
+  const fallbackSessionTake = clampInt(
+    toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_FALLBACK_TAKE, 12),
+    1,
+    150
+  );
   return {
-    maxSessionAgeHours: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_SESSION_AGE_HOURS, 168),
+    maxSessionAgeHours,
     minScore: clamp01(toFiniteNonNegative(process.env.CHARACTER_AUTO_CONTINUITY_MIN_SCORE, 0.62)),
     maxRejections: toNonNegativeInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_REJECTIONS, 1),
     requirePicked: !["false", "0", "no", "off"].includes(requirePickedFlag),
     requireScore: !["false", "0", "no", "off"].includes(requireScoreFlag),
-    candidateTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_CANDIDATE_TAKE, 10),
-    preferredSessionTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_PREFERRED_TAKE, 8),
-    fallbackSessionTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_FALLBACK_TAKE, 12)
+    candidateTake,
+    preferredSessionTake,
+    fallbackSessionTake
   };
 }
 
