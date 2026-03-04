@@ -159,6 +159,7 @@ type GenerationManifest = {
         maxRejections: number;
         requirePicked: boolean;
         requireScore: boolean;
+        candidateTake: number;
         preferredSessionTake: number;
         fallbackSessionTake: number;
       };
@@ -248,6 +249,7 @@ type ContinuityReferenceConfig = {
   maxRejections: number;
   requirePicked: boolean;
   requireScore: boolean;
+  candidateTake: number;
   preferredSessionTake: number;
   fallbackSessionTake: number;
 };
@@ -320,6 +322,7 @@ function readContinuityReferenceConfig(): ContinuityReferenceConfig {
     maxRejections: toNonNegativeInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_REJECTIONS, 1),
     requirePicked: !["false", "0", "no", "off"].includes(requirePickedFlag),
     requireScore: !["false", "0", "no", "off"].includes(requireScoreFlag),
+    candidateTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_CANDIDATE_TAKE, 10),
     preferredSessionTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_PREFERRED_TAKE, 8),
     fallbackSessionTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_FALLBACK_TAKE, 12)
   };
@@ -1558,7 +1561,7 @@ async function resolveFrontReferenceFromSession(
       ...(config.requirePicked ? { picked: true } : {})
     },
     orderBy: [{ picked: "desc" }, { updatedAt: "desc" }],
-    take: 10,
+    take: config.candidateTake,
     select: {
       localPath: true,
       picked: true,
