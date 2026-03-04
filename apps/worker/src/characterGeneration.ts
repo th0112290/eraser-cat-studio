@@ -146,6 +146,7 @@ type GenerationManifest = {
       applied: boolean;
       reason: string;
       attemptedSourceSessionId?: string;
+      cutoffUpdatedAt?: string;
       searchedSessionCount?: number;
       searchedSessionIdsPreview?: string[];
       preferredPoolCount?: number;
@@ -1705,6 +1706,7 @@ async function resolveAutoContinuityReference(input: {
       }
     | undefined;
   diagnostics: {
+    cutoffUpdatedAt: string;
     searchedSessionCount: number;
     searchedSessionIdsPreview: string[];
     preferredPoolCount: number;
@@ -1712,13 +1714,14 @@ async function resolveAutoContinuityReference(input: {
     reason?: "matched" | "no_recent_ready_session" | "no_eligible_front_candidate";
   };
 }> {
+  const cutoffDate = new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000);
   const whereBase: Prisma.CharacterGenerationSessionWhereInput = {
     status: "READY",
     NOT: {
       episodeId: input.episodeId
     },
     updatedAt: {
-      gte: new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000)
+      gte: cutoffDate
     },
     ...(input.currentSessionId ? { id: { not: input.currentSessionId } } : {})
   };
@@ -1778,6 +1781,7 @@ async function resolveAutoContinuityReference(input: {
           candidateUpdatedAt: new Date(resolved.updatedAtMs).toISOString()
         },
         diagnostics: {
+          cutoffUpdatedAt: cutoffDate.toISOString(),
           searchedSessionCount: visited.size,
           searchedSessionIdsPreview: queuePreview,
           preferredPoolCount: preferred.length,
@@ -1794,6 +1798,7 @@ async function resolveAutoContinuityReference(input: {
       : ("no_eligible_front_candidate" as const);
   return {
     diagnostics: {
+      cutoffUpdatedAt: cutoffDate.toISOString(),
       searchedSessionCount: visited.size,
       searchedSessionIdsPreview: queuePreview,
       preferredPoolCount: preferred.length,
@@ -1895,6 +1900,7 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
     ...(asOptionalString(value.attemptedSourceSessionId)
       ? { attemptedSourceSessionId: asOptionalString(value.attemptedSourceSessionId) }
       : {}),
+    ...(asOptionalString(value.cutoffUpdatedAt) ? { cutoffUpdatedAt: asOptionalString(value.cutoffUpdatedAt) } : {}),
     ...(asOptionalNumber(value.searchedSessionCount) !== undefined
       ? { searchedSessionCount: asOptionalNumber(value.searchedSessionCount) }
       : {}),
@@ -2350,6 +2356,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           applied: true,
           reason: "matched",
           attemptedSourceSessionId: continuity.match.sessionId,
+          cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
@@ -2379,6 +2386,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           applied: false,
           reason: "invalid_source",
           attemptedSourceSessionId: continuity.match.sessionId,
+          cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
@@ -2397,6 +2405,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         attempted: true,
         applied: false,
         reason: continuity.diagnostics.reason ?? "skipped",
+        cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
         searchedSessionCount: continuity.diagnostics.searchedSessionCount,
         searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
         preferredPoolCount: continuity.diagnostics.preferredPoolCount,
