@@ -1614,24 +1614,26 @@ async function resolveAutoContinuityReference(input: {
   characterPackId: string;
   currentSessionId?: string;
   config: ContinuityReferenceConfig;
-}): Promise<
-  | {
-      sessionId: string;
-      referenceImageBase64: string;
-      referenceMimeType: string;
-      diagnostics: {
-        searchedSessionCount: number;
-        preferredPoolCount: number;
-        fallbackPoolCount: number;
+}): Promise<{
+  match?:
+    | {
+        sessionId: string;
+        referenceImageBase64: string;
+        referenceMimeType: string;
         sourcePool: "preferred" | "fallback";
         candidatePicked: boolean;
         candidateScore: number;
         candidateRejectionCount: number;
         candidateUpdatedAt: string;
-      };
-    }
-  | undefined
-> {
+      }
+    | undefined;
+  diagnostics: {
+    searchedSessionCount: number;
+    preferredPoolCount: number;
+    fallbackPoolCount: number;
+    reason?: "matched" | "no_recent_ready_session" | "no_eligible_front_candidate";
+  };
+}> {
   const whereBase: Prisma.CharacterGenerationSessionWhereInput = {
     status: "READY",
     NOT: {
@@ -1686,24 +1688,38 @@ async function resolveAutoContinuityReference(input: {
     const resolved = await resolveFrontReferenceFromSession(input.prisma, sessionId, input.config);
     if (resolved) {
       return {
-        sessionId,
-        referenceImageBase64: resolved.referenceImageBase64,
-        referenceMimeType: resolved.referenceMimeType,
-        diagnostics: {
-          searchedSessionCount: visited.size,
-          preferredPoolCount: preferred.length,
-          fallbackPoolCount: fallback.length,
+        match: {
+          sessionId,
+          referenceImageBase64: resolved.referenceImageBase64,
+          referenceMimeType: resolved.referenceMimeType,
           sourcePool: preferredSet.has(sessionId) ? "preferred" : "fallback",
           candidatePicked: resolved.picked,
           candidateScore: resolved.score,
           candidateRejectionCount: resolved.rejectionCount,
           candidateUpdatedAt: new Date(resolved.updatedAtMs).toISOString()
+        },
+        diagnostics: {
+          searchedSessionCount: visited.size,
+          preferredPoolCount: preferred.length,
+          fallbackPoolCount: fallback.length,
+          reason: "matched"
         }
       };
     }
   }
 
-  return undefined;
+  const reason =
+    queue.length === 0
+      ? ("no_recent_ready_session" as const)
+      : ("no_eligible_front_candidate" as const);
+  return {
+    diagnostics: {
+      searchedSessionCount: visited.size,
+      preferredPoolCount: preferred.length,
+      fallbackPoolCount: fallback.length,
+      reason
+    }
+  };
 }
 
 function extractCandidateScore(value: unknown): number | null {
@@ -2109,22 +2125,30 @@ export async function handleGenerateCharacterAssetsJob(input: {
       currentSessionId: sessionId,
       config: continuityConfig
     });
-    if (continuity) {
-      referenceImageBase64 = continuity.referenceImageBase64;
-      referenceMimeType = continuity.referenceMimeType;
-      continuityReferenceSessionId = continuity.sessionId;
-      const continuityBuffer = Buffer.from(continuity.referenceImageBase64, "base64");
+    if (continuity.match) {
+      referenceImageBase64 = continuity.match.referenceImageBase64;
+      referenceMimeType = continuity.match.referenceMimeType;
+      continuityReferenceSessionId = continuity.match.sessionId;
+      const continuityBuffer = Buffer.from(continuity.match.referenceImageBase64, "base64");
       referenceAnalysis = await analyzeImage(continuityBuffer);
       await helpers.logJob(jobDbId, "info", "Auto continuity reference applied", {
-        sourceSessionId: continuity.sessionId,
+        sourceSessionId: continuity.match.sessionId,
         characterPackId: character.characterPackId,
         policy: continuityConfig,
-        diagnostics: continuity.diagnostics
+        diagnostics: {
+          ...continuity.diagnostics,
+          sourcePool: continuity.match.sourcePool,
+          candidatePicked: continuity.match.candidatePicked,
+          candidateScore: continuity.match.candidateScore,
+          candidateRejectionCount: continuity.match.candidateRejectionCount,
+          candidateUpdatedAt: continuity.match.candidateUpdatedAt
+        }
       });
     } else {
       await helpers.logJob(jobDbId, "info", "Auto continuity reference skipped", {
         characterPackId: character.characterPackId,
-        policy: continuityConfig
+        policy: continuityConfig,
+        diagnostics: continuity.diagnostics
       });
     }
   }
