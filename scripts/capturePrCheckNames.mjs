@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -22,8 +24,32 @@ function parseArgs(argv) {
 function usage() {
   console.log(
     "Usage: node scripts/capturePrCheckNames.mjs --repo <owner/repo> --pr <number> [--json]\n" +
-      "Env fallback: GITHUB_REPOSITORY, PR_NUMBER, GITHUB_TOKEN|GH_TOKEN"
+      "Fallback order:\n" +
+      "1) args --repo/--pr\n" +
+      "2) env GITHUB_REPOSITORY/PR_NUMBER\n" +
+      "3) gh CLI auto-detect (gh repo view + gh pr view)\n" +
+      "Auth token for GitHub API: GITHUB_TOKEN|GH_TOKEN"
   );
+}
+
+function runGh(args) {
+  try {
+    return execFileSync("gh", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function autoDetectFromGh() {
+  const repo = runGh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+  const pr = runGh(["pr", "view", "--json", "number", "--jq", ".number"]);
+  return {
+    repo: repo.length > 0 ? repo : null,
+    pr: pr.length > 0 ? pr : null
+  };
 }
 
 async function fetchJson(url, token) {
@@ -57,14 +83,26 @@ async function main() {
     return;
   }
 
-  const repo = String(args.repo ?? process.env.GITHUB_REPOSITORY ?? "").trim();
-  const prValue = String(args.pr ?? process.env.PR_NUMBER ?? "").trim();
+  let repo = String(args.repo ?? process.env.GITHUB_REPOSITORY ?? "").trim();
+  let prValue = String(args.pr ?? process.env.PR_NUMBER ?? "").trim();
   const token = String(process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "").trim();
   const printJson = args.json === "true";
 
   if (!repo || !prValue) {
+    const detected = autoDetectFromGh();
+    if (!repo && detected.repo) {
+      repo = detected.repo;
+    }
+    if (!prValue && detected.pr) {
+      prValue = detected.pr;
+    }
+  }
+
+  if (!repo || !prValue) {
     usage();
-    throw new Error("Missing --repo/--pr (or GITHUB_REPOSITORY/PR_NUMBER).");
+    throw new Error(
+      "Missing --repo/--pr. Provide args/env, or run on a PR branch with authenticated gh CLI."
+    );
   }
   const pr = Number.parseInt(prValue, 10);
   if (!Number.isFinite(pr) || pr <= 0) {

@@ -46,6 +46,15 @@ $env:PR_NUMBER="123"
 pnpm ci:checks:capture -- --json
 ```
 
+### Auto Detect (gh CLI)
+- `gh auth login`이 되어 있고, 현재 브랜치가 PR과 연결되어 있으면 인자 없이 자동 탐색 가능:
+```powershell
+pnpm ci:checks:capture -- --json
+```
+- 자동 탐색 소스:
+  - `gh repo view --json nameWithOwner`
+  - `gh pr view --json number`
+
 ## Troubleshooting
 - 체크 항목이 선택 목록에 안 보이면:
   - PR에서 워크플로를 1회 이상 성공 실행한 뒤 다시 확인한다.
