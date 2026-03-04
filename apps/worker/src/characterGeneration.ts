@@ -1979,6 +1979,33 @@ function formatContinuitySentence(
   return ` ${descriptor}.`;
 }
 
+function formatContinuityQueueStats(
+  continuity: GenerationManifest["reference"]["continuity"] | undefined
+): string | null {
+  if (!continuity?.attempted) {
+    return null;
+  }
+  const queued = continuity.queuedSessionCount;
+  const unique = continuity.uniqueQueuedSessionCount;
+  const duplicates = continuity.duplicateSessionCount;
+  const searched = continuity.searchedSessionCount;
+  if (
+    typeof queued !== "number" ||
+    !Number.isFinite(queued) ||
+    typeof unique !== "number" ||
+    !Number.isFinite(unique) ||
+    typeof duplicates !== "number" ||
+    !Number.isFinite(duplicates)
+  ) {
+    return null;
+  }
+  const parts = [`queue=${queued}`, `unique=${unique}`, `dup=${duplicates}`];
+  if (typeof searched === "number" && Number.isFinite(searched)) {
+    parts.push(`searched=${searched}`);
+  }
+  return parts.join(" ");
+}
+
 async function persistSelectedCandidates(input: {
   prisma: PrismaClient;
   sessionId?: string;
@@ -3101,9 +3128,13 @@ export async function handleGenerateCharacterAssetsJob(input: {
           )}).`
         : "";
     const continuityDescriptor = formatContinuityDescriptor(continuitySnapshot);
+    const continuityQueueStats = formatContinuityQueueStats(continuitySnapshot);
     const continuityText = continuityDescriptor
       ? ` Continuity: ${continuityDescriptor}${continuitySnapshot?.applied ? " (applied)." : "."}`
       : "";
+    const continuityQueueText = continuityQueueStats ? ` Queue: ${continuityQueueStats}.` : "";
+    const continuityQueueStatusSuffix = continuityQueueStats ? ` Queue: ${continuityQueueStats}.` : "";
+    const continuityQueuePipeSuffix = continuityQueueStats ? ` | ${continuityQueueStats}` : "";
     await prisma.agentSuggestion.create({
       data: {
         episodeId: payload.episodeId,
@@ -3114,8 +3145,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
           ? `Regenerate ${generation.viewToGenerate} candidates`
           : "Choose best character view candidates",
         summary: generation.viewToGenerate
-          ? `View-only regenerate completed for ${generation.viewToGenerate}. Pick candidates to continue.${continuityText}`
-          : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText}${continuityText} Select one candidate per view from generation manifest.`,
+          ? `View-only regenerate completed for ${generation.viewToGenerate}. Pick candidates to continue.${continuityText}${continuityQueueText}`
+          : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText}${continuityText}${continuityQueueText} Select one candidate per view from generation manifest.`,
         payload: toPrismaJson({
           manifestPath,
           provider: providerName,
@@ -3159,20 +3190,20 @@ export async function handleGenerateCharacterAssetsJob(input: {
         statusMessage: generation.viewToGenerate
           ? `Candidates ready for view ${generation.viewToGenerate}. Pick to continue.${formatContinuitySentence(
               continuitySnapshot
-            )}`
+            )}${continuityQueueStatusSuffix}`
           : missingGeneratedViews.length > 0
             ? `Partial generation complete. Missing: ${missingGeneratedViews.join(", ")}${
                 formatContinuityDescriptor(continuitySnapshot)
                   ? ` | ${formatContinuityDescriptor(continuitySnapshot)}`
                   : ""
-              }`
+              }${continuityQueuePipeSuffix}`
             : lowQualityGeneratedViews.length > 0
               ? `Candidates generated but quality below threshold for: ${lowQualityGeneratedViews.join(", ")}${
                   formatContinuityDescriptor(continuitySnapshot)
                     ? ` | ${formatContinuityDescriptor(continuitySnapshot)}`
                     : ""
-                }`
-              : `Candidates ready. Waiting for pick.${formatContinuitySentence(continuitySnapshot)}`
+                }${continuityQueuePipeSuffix}`
+              : `Candidates ready. Waiting for pick.${formatContinuitySentence(continuitySnapshot)}${continuityQueueStatusSuffix}`
       }
     });
 
