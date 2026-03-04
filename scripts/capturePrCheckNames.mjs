@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 function parseArgs(argv) {
   const out = {};
@@ -23,7 +25,7 @@ function parseArgs(argv) {
 
 function usage() {
   console.log(
-    "Usage: node scripts/capturePrCheckNames.mjs --repo <owner/repo> --pr <number> [--json] [--web]\n" +
+    "Usage: node scripts/capturePrCheckNames.mjs --repo <owner/repo> --pr <number> [--json] [--web] [--out <path>]\n" +
       "Fallback order:\n" +
       "1) args --repo/--pr\n" +
       "2) env GITHUB_REPOSITORY/PR_NUMBER\n" +
@@ -119,6 +121,7 @@ async function main() {
   const token = String(process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "").trim();
   const printJson = args.json === "true";
   const printGuide = args.web === "true";
+  const outPath = typeof args.out === "string" && args.out.trim().length > 0 ? path.resolve(args.out.trim()) : null;
   const guidePath = "docs/branch-protection-character-strict.md";
 
   let autoDetected = null;
@@ -162,27 +165,30 @@ async function main() {
   const names = [...new Set(runs.map((run) => String(run?.name ?? "").trim()).filter((v) => v.length > 0))].sort(
     (a, b) => a.localeCompare(b)
   );
+  const payload = {
+    repo,
+    pr,
+    headSha,
+    checkNames: names,
+    checkRuns: runs.map((run) => ({
+      name: run?.name ?? null,
+      status: run?.status ?? null,
+      conclusion: run?.conclusion ?? null,
+      app: run?.app?.slug ?? null,
+      detailsUrl: run?.details_url ?? null
+    }))
+  };
+
+  if (outPath) {
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  }
 
   if (printJson) {
-    console.log(
-      JSON.stringify(
-        {
-          repo,
-          pr,
-          headSha,
-          checkNames: names,
-          checkRuns: runs.map((run) => ({
-            name: run?.name ?? null,
-            status: run?.status ?? null,
-            conclusion: run?.conclusion ?? null,
-            app: run?.app?.slug ?? null,
-            detailsUrl: run?.details_url ?? null
-          }))
-        },
-        null,
-        2
-      )
-    );
+    console.log(JSON.stringify(payload, null, 2));
+    if (outPath) {
+      console.log(`\n[capture-pr-check-names] Saved: ${outPath}`);
+    }
     if (printGuide) {
       console.log(`\n[capture-pr-check-names] Guide: ${guidePath}`);
     }
@@ -197,6 +203,9 @@ async function main() {
   console.log("[capture-pr-check-names] Check names:");
   for (const name of names) {
     console.log(`- ${name}`);
+  }
+  if (outPath) {
+    console.log(`[capture-pr-check-names] Saved: ${outPath}`);
   }
   if (printGuide) {
     console.log(`[capture-pr-check-names] Guide: ${guidePath}`);
