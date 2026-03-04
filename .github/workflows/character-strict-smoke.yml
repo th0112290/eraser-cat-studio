@@ -80,6 +80,7 @@ jobs:
           path: |
             api.log
             worker.log
+            docs/branch-protection-character-strict.md
             out/smoke_e2e_last.json
             out/**/generation_manifest.json
           if-no-files-found: ignore
