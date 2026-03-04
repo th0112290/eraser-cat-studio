@@ -2050,6 +2050,31 @@ function toFlatContinuityFields(continuity: GenerationManifest["reference"]["con
   };
 }
 
+function buildHitlSessionStatusMessage(input: {
+  viewToGenerate: CharacterGenerationView | undefined;
+  missingGeneratedViews: CharacterView[];
+  lowQualityGeneratedViews: CharacterView[];
+  continuity: GenerationManifest["reference"]["continuity"] | undefined;
+}): string {
+  const continuitySentence = formatContinuitySentence(input.continuity);
+  const continuityDescriptor = formatContinuityDescriptor(input.continuity);
+  const continuityQueueStats = formatContinuityQueueStats(input.continuity);
+  const continuityQueueStatusSuffix = continuityQueueStats ? ` Queue: ${continuityQueueStats}.` : "";
+  const continuityQueuePipeSuffix = continuityQueueStats ? ` | ${continuityQueueStats}` : "";
+  const continuityDescriptorPipeSuffix = continuityDescriptor ? ` | ${continuityDescriptor}` : "";
+
+  if (input.viewToGenerate) {
+    return `Candidates ready for view ${input.viewToGenerate}. Pick to continue.${continuitySentence}${continuityQueueStatusSuffix}`;
+  }
+  if (input.missingGeneratedViews.length > 0) {
+    return `Partial generation complete. Missing: ${input.missingGeneratedViews.join(", ")}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
+  }
+  if (input.lowQualityGeneratedViews.length > 0) {
+    return `Candidates generated but quality below threshold for: ${input.lowQualityGeneratedViews.join(", ")}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
+  }
+  return `Candidates ready. Waiting for pick.${continuitySentence}${continuityQueueStatusSuffix}`;
+}
+
 async function persistSelectedCandidates(input: {
   prisma: PrismaClient;
   sessionId?: string;
@@ -3219,23 +3244,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
       where: { id: sessionId },
       data: {
         status: "READY",
-        statusMessage: generation.viewToGenerate
-          ? `Candidates ready for view ${generation.viewToGenerate}. Pick to continue.${formatContinuitySentence(
-              continuitySnapshot
-            )}${continuityQueueStatusSuffix}`
-          : missingGeneratedViews.length > 0
-            ? `Partial generation complete. Missing: ${missingGeneratedViews.join(", ")}${
-                formatContinuityDescriptor(continuitySnapshot)
-                  ? ` | ${formatContinuityDescriptor(continuitySnapshot)}`
-                  : ""
-              }${continuityQueuePipeSuffix}`
-            : lowQualityGeneratedViews.length > 0
-              ? `Candidates generated but quality below threshold for: ${lowQualityGeneratedViews.join(", ")}${
-                  formatContinuityDescriptor(continuitySnapshot)
-                    ? ` | ${formatContinuityDescriptor(continuitySnapshot)}`
-                    : ""
-                }${continuityQueuePipeSuffix}`
-              : `Candidates ready. Waiting for pick.${formatContinuitySentence(continuitySnapshot)}${continuityQueueStatusSuffix}`
+        statusMessage: buildHitlSessionStatusMessage({
+          viewToGenerate: generation.viewToGenerate,
+          missingGeneratedViews,
+          lowQualityGeneratedViews,
+          continuity: continuitySnapshot
+        })
       }
     });
 
