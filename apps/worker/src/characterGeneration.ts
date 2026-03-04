@@ -1560,7 +1560,12 @@ async function resolveFrontReferenceFromSession(
       qc && typeof qc.mime === "string" && qc.mime.trim().length > 0
         ? qc.mime.trim()
         : "image/png";
-    const data = fs.readFileSync(localPath);
+    let data: Buffer;
+    try {
+      data = fs.readFileSync(localPath);
+    } catch {
+      continue;
+    }
     const candidate: RankedReference = {
       referenceImageBase64: data.toString("base64"),
       referenceMimeType: mimeType,
@@ -2126,24 +2131,37 @@ export async function handleGenerateCharacterAssetsJob(input: {
       config: continuityConfig
     });
     if (continuity.match) {
-      referenceImageBase64 = continuity.match.referenceImageBase64;
-      referenceMimeType = continuity.match.referenceMimeType;
-      continuityReferenceSessionId = continuity.match.sessionId;
-      const continuityBuffer = Buffer.from(continuity.match.referenceImageBase64, "base64");
-      referenceAnalysis = await analyzeImage(continuityBuffer);
-      await helpers.logJob(jobDbId, "info", "Auto continuity reference applied", {
-        sourceSessionId: continuity.match.sessionId,
-        characterPackId: character.characterPackId,
-        policy: continuityConfig,
-        diagnostics: {
-          ...continuity.diagnostics,
-          sourcePool: continuity.match.sourcePool,
-          candidatePicked: continuity.match.candidatePicked,
-          candidateScore: continuity.match.candidateScore,
-          candidateRejectionCount: continuity.match.candidateRejectionCount,
-          candidateUpdatedAt: continuity.match.candidateUpdatedAt
-        }
-      });
+      try {
+        referenceImageBase64 = continuity.match.referenceImageBase64;
+        referenceMimeType = continuity.match.referenceMimeType;
+        continuityReferenceSessionId = continuity.match.sessionId;
+        const continuityBuffer = Buffer.from(continuity.match.referenceImageBase64, "base64");
+        referenceAnalysis = await analyzeImage(continuityBuffer);
+        await helpers.logJob(jobDbId, "info", "Auto continuity reference applied", {
+          sourceSessionId: continuity.match.sessionId,
+          characterPackId: character.characterPackId,
+          policy: continuityConfig,
+          diagnostics: {
+            ...continuity.diagnostics,
+            sourcePool: continuity.match.sourcePool,
+            candidatePicked: continuity.match.candidatePicked,
+            candidateScore: continuity.match.candidateScore,
+            candidateRejectionCount: continuity.match.candidateRejectionCount,
+            candidateUpdatedAt: continuity.match.candidateUpdatedAt
+          }
+        });
+      } catch (error) {
+        referenceImageBase64 = undefined;
+        referenceMimeType = undefined;
+        continuityReferenceSessionId = null;
+        referenceAnalysis = undefined;
+        await helpers.logJob(jobDbId, "warn", "Auto continuity reference ignored due to invalid source", {
+          characterPackId: character.characterPackId,
+          policy: continuityConfig,
+          diagnostics: continuity.diagnostics,
+          error: errorMessage(error)
+        });
+      }
     } else {
       await helpers.logJob(jobDbId, "info", "Auto continuity reference skipped", {
         characterPackId: character.characterPackId,
