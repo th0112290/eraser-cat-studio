@@ -1954,7 +1954,10 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
 }
 
 function formatContinuityDescriptor(
-  continuity: GenerationManifest["reference"]["continuity"] | undefined
+  continuity: GenerationManifest["reference"]["continuity"] | undefined,
+  options?: {
+    includeQueueStats?: boolean;
+  }
 ): string | null {
   if (!continuity?.reason) {
     return null;
@@ -1965,6 +1968,12 @@ function formatContinuityDescriptor(
   }
   if (continuity.sourcePool) {
     parts.push(`pool=${continuity.sourcePool}`);
+  }
+  if (options?.includeQueueStats) {
+    const queueStats = formatContinuityQueueStats(continuity);
+    if (queueStats) {
+      parts.push(queueStats);
+    }
   }
   return parts.join(" ");
 }
@@ -2009,6 +2018,7 @@ function formatContinuityQueueStats(
 function toFlatContinuityFields(continuity: GenerationManifest["reference"]["continuity"] | undefined): {
   continuitySummary: GenerationManifest["reference"]["continuity"] | null;
   continuityDescriptor: string | null;
+  continuityDescriptorWithQueue: string | null;
   continuityReason: string | null;
   continuityApplied: boolean | null;
   continuityAttempted: boolean | null;
@@ -2020,9 +2030,13 @@ function toFlatContinuityFields(continuity: GenerationManifest["reference"]["con
   continuitySearchedSessionCount: number | null;
   continuityQueueStats: string | null;
 } {
+  const descriptor = formatContinuityDescriptor(continuity);
+  const descriptorWithQueue = formatContinuityDescriptor(continuity, { includeQueueStats: true });
+  const queueStats = formatContinuityQueueStats(continuity);
   return {
     continuitySummary: continuity ?? null,
-    continuityDescriptor: formatContinuityDescriptor(continuity),
+    continuityDescriptor: descriptor,
+    continuityDescriptorWithQueue: descriptorWithQueue,
     continuityReason: continuity?.reason ?? null,
     continuityApplied: continuity?.applied ?? null,
     continuityAttempted: continuity?.attempted ?? null,
@@ -2032,7 +2046,7 @@ function toFlatContinuityFields(continuity: GenerationManifest["reference"]["con
     continuityUniqueQueuedSessionCount: continuity?.uniqueQueuedSessionCount ?? null,
     continuityDuplicateSessionCount: continuity?.duplicateSessionCount ?? null,
     continuitySearchedSessionCount: continuity?.searchedSessionCount ?? null,
-    continuityQueueStats: formatContinuityQueueStats(continuity)
+    continuityQueueStats: queueStats
   };
 }
 
