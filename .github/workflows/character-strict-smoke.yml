@@ -1,0 +1,82 @@
+name: Character Strict Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
+
+jobs:
+  smoke-character-strict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Start infra
+        run: pnpm docker:up
+
+      - name: Run DB migrations
+        run: pnpm db:migrate
+
+      - name: Start API and Worker
+        shell: bash
+        run: |
+          pnpm -C apps/api run dev > api.log 2>&1 &
+          echo $! > api.pid
+          pnpm -C apps/worker run dev > worker.log 2>&1 &
+          echo $! > worker.pid
+
+      - name: Wait for API health
+        shell: bash
+        run: |
+          for i in {1..90}; do
+            if curl -fsS http://localhost:3000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy in time"
+          exit 1
+
+      - name: Run strict character smoke
+        env:
+          SMOKE_TIMEOUT_MS: "900000"
+        run: pnpm smoke:character:strict
+
+      - name: Upload runtime logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: character-strict-smoke-logs
+          path: |
+            api.log
+            worker.log
+            out/smoke_e2e_last.json
+            out/**/generation_manifest.json
+          if-no-files-found: ignore
+
+      - name: Stop API and Worker
+        if: always()
+        shell: bash
+        run: |
+          if [ -f api.pid ]; then kill "$(cat api.pid)" || true; fi
+          if [ -f worker.pid ]; then kill "$(cat worker.pid)" || true; fi
+
+      - name: Stop infra
+        if: always()
+        run: pnpm docker:down
