@@ -219,6 +219,13 @@ type GenerationQualityConfig = {
   sequentialReference: boolean;
 };
 
+type ContinuityReferenceConfig = {
+  maxSessionAgeHours: number;
+  minScore: number;
+  maxRejections: number;
+  requirePicked: boolean;
+};
+
 function toFiniteNonNegative(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
@@ -236,6 +243,17 @@ function toPositiveInt(value: string | undefined, fallback: number): number {
   }
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function toNonNegativeInt(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0) {
     return fallback;
   }
   return parsed;
@@ -265,6 +283,16 @@ function readGenerationQualityConfig(): GenerationQualityConfig {
 function shouldAutoContinuityReference(): boolean {
   const raw = (process.env.CHARACTER_AUTO_CONTINUITY_REFERENCE ?? "true").trim().toLowerCase();
   return !["false", "0", "no", "off"].includes(raw);
+}
+
+function readContinuityReferenceConfig(): ContinuityReferenceConfig {
+  const requirePickedFlag = (process.env.CHARACTER_AUTO_CONTINUITY_REQUIRE_PICKED ?? "true").trim().toLowerCase();
+  return {
+    maxSessionAgeHours: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_SESSION_AGE_HOURS, 168),
+    minScore: clamp01(toFiniteNonNegative(process.env.CHARACTER_AUTO_CONTINUITY_MIN_SCORE, 0.62)),
+    maxRejections: toNonNegativeInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_REJECTIONS, 1),
+    requirePicked: !["false", "0", "no", "off"].includes(requirePickedFlag)
+  };
 }
 
 function clampGenerationRequest(
@@ -1474,7 +1502,8 @@ async function resolveFrontReferenceFromManifest(manifestPath: string): Promise<
 
 async function resolveFrontReferenceFromSession(
   prisma: PrismaClient,
-  sessionId: string
+  sessionId: string,
+  config: ContinuityReferenceConfig
 ): Promise<{
   referenceImageBase64: string;
   referenceMimeType: string;
@@ -1482,12 +1511,14 @@ async function resolveFrontReferenceFromSession(
   const rows = await prisma.characterGenerationCandidate.findMany({
     where: {
       sessionId,
-      view: "FRONT"
+      view: "FRONT",
+      ...(config.requirePicked ? { picked: true } : {})
     },
     orderBy: [{ picked: "desc" }, { updatedAt: "desc" }],
     take: 10,
     select: {
       localPath: true,
+      scoreJson: true,
       qcJson: true
     }
   });
@@ -1498,7 +1529,17 @@ async function resolveFrontReferenceFromSession(
       continue;
     }
 
+    const score = extractCandidateScore(row.scoreJson);
+    if (score !== null && score < config.minScore) {
+      continue;
+    }
+
     const qc = isRecord(row.qcJson) ? row.qcJson : null;
+    const rejectionCount = extractCandidateRejectionCount(qc);
+    if (rejectionCount > config.maxRejections) {
+      continue;
+    }
+
     const mimeType =
       qc && typeof qc.mime === "string" && qc.mime.trim().length > 0
         ? qc.mime.trim()
@@ -1519,6 +1560,7 @@ async function resolveAutoContinuityReference(input: {
   channelId: string;
   characterPackId: string;
   currentSessionId?: string;
+  config: ContinuityReferenceConfig;
 }): Promise<
   | {
       sessionId: string;
@@ -1531,6 +1573,9 @@ async function resolveAutoContinuityReference(input: {
     status: "READY",
     NOT: {
       episodeId: input.episodeId
+    },
+    updatedAt: {
+      gte: new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000)
     },
     ...(input.currentSessionId ? { id: { not: input.currentSessionId } } : {})
   };
@@ -1574,7 +1619,7 @@ async function resolveAutoContinuityReference(input: {
       continue;
     }
     visited.add(sessionId);
-    const resolved = await resolveFrontReferenceFromSession(input.prisma, sessionId);
+    const resolved = await resolveFrontReferenceFromSession(input.prisma, sessionId, input.config);
     if (resolved) {
       return {
         sessionId,
@@ -1585,6 +1630,28 @@ async function resolveAutoContinuityReference(input: {
   }
 
   return undefined;
+}
+
+function extractCandidateScore(value: unknown): number | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const raw = value.score;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return null;
+  }
+  return clamp01(raw);
+}
+
+function extractCandidateRejectionCount(value: unknown): number {
+  if (!isRecord(value)) {
+    return 0;
+  }
+  const raw = value.rejections;
+  if (!Array.isArray(raw)) {
+    return 0;
+  }
+  return raw.filter((item) => typeof item === "string" && item.trim().length > 0).length;
 }
 
 async function persistSelectedCandidates(input: {
@@ -1887,6 +1954,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     negativePrompt: generation.negativePrompt,
     styleHints
   });
+  const continuityConfig = readContinuityReferenceConfig();
 
   let referenceAnalysis: ImageAnalysis | undefined;
   let referenceImageBase64: string | undefined;
@@ -1964,7 +2032,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
       episodeId: payload.episodeId,
       channelId: episode.channelId,
       characterPackId: character.characterPackId,
-      currentSessionId: sessionId
+      currentSessionId: sessionId,
+      config: continuityConfig
     });
     if (continuity) {
       referenceImageBase64 = continuity.referenceImageBase64;
@@ -1974,7 +2043,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
       referenceAnalysis = await analyzeImage(continuityBuffer);
       await helpers.logJob(jobDbId, "info", "Auto continuity reference applied", {
         sourceSessionId: continuity.sessionId,
-        characterPackId: character.characterPackId
+        characterPackId: character.characterPackId,
+        policy: continuityConfig
       });
     }
   }
@@ -2399,7 +2469,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     if (generation.viewToGenerate && generation.viewToGenerate !== "front") {
       perViewReference = await resolveFrontReferenceFromManifest(manifestPath);
       if (!perViewReference && sessionId) {
-        perViewReference = await resolveFrontReferenceFromSession(prisma, sessionId);
+        perViewReference = await resolveFrontReferenceFromSession(prisma, sessionId, continuityConfig);
       }
     } else if (referenceImageBase64) {
       perViewReference = {
