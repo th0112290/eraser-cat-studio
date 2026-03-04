@@ -2174,10 +2174,22 @@ async function persistSelectedCandidates(input: {
         statusMessage:
           source === "hitl"
             ? `HITL selection applied and build queued.${
-                manifest.reference.continuity?.reason ? ` Continuity=${manifest.reference.continuity.reason}.` : ""
+                manifest.reference.continuity?.reason
+                  ? ` Continuity=${manifest.reference.continuity.reason}${
+                      manifest.reference.continuity.attemptedSourceSessionId
+                        ? ` source=${manifest.reference.continuity.attemptedSourceSessionId}`
+                        : ""
+                    }.`
+                  : ""
               }`
             : `Auto-selected and build queued.${
-                manifest.reference.continuity?.reason ? ` Continuity=${manifest.reference.continuity.reason}.` : ""
+                manifest.reference.continuity?.reason
+                  ? ` Continuity=${manifest.reference.continuity.reason}${
+                      manifest.reference.continuity.attemptedSourceSessionId
+                        ? ` source=${manifest.reference.continuity.attemptedSourceSessionId}`
+                        : ""
+                    }.`
+                  : ""
               }`
       }
     });
