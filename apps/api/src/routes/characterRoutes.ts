@@ -2600,6 +2600,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         <label>선택 캐릭터 팩<input id="studio-selected-pack" placeholder="우측 목록에서 선택" readonly/></label>
       </div>
       <div class="studio-actions">
+        <button type="button" id="studio-oneclick" data-primary-action="1">원클릭 제작(생성→프리뷰)</button>
         <button type="button" id="studio-create-episode" class="secondary">에피소드 생성(+선택 캐릭터 연결)</button>
         <button type="button" id="studio-open-editor" class="secondary">편집기 열기</button>
         <button type="button" id="studio-enqueue-preview" class="secondary">렌더 미리보기 큐 등록</button>
@@ -2632,10 +2633,48 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
   const selectedPack = q("studio-selected-pack");
   const episodeInput = q("studio-episode-id");
   const topicInput = q("studio-topic");
+  let pollTimer = null;
 
   const safe = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
   const setStatus = (text) => {
     if (statusBox instanceof HTMLElement) statusBox.textContent = text;
+  };
+  const clearPoll = () => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  };
+  const readError = async (res, fallback) => {
+    try {
+      const json = await res.json();
+      if (json && typeof json.error === "string" && json.error.trim()) return json.error.trim();
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const pollEpisodeProgress = (episodeId) => {
+    clearPoll();
+    const run = async () => {
+      try {
+        const res = await fetch("/api/episodes/" + encodeURIComponent(episodeId), { headers: { accept: "application/json" } });
+        if (!res.ok) throw new Error("poll failed: " + res.status);
+        const json = await res.json();
+        const episode = json?.data?.episode || {};
+        const jobs = Array.isArray(json?.data?.jobs) ? json.data.jobs : [];
+        const latest = jobs.length > 0 ? jobs[0] : null;
+        const status = String(episode.status || "UNKNOWN");
+        const jobText = latest ? (String(latest.type || "-") + " / " + String(latest.status || "-") + " / " + String(latest.progress ?? 0) + "%") : "작업 없음";
+        setStatus("진행 상태: " + status + " | 최근 작업: " + jobText);
+        const done = latest && ["COMPLETED", "FAILED", "CANCELLED"].includes(String(latest.status || "").toUpperCase());
+        if (done) clearPoll();
+      } catch (e) {
+        setStatus("진행 상태 조회 실패: " + String(e));
+      }
+    };
+    void run();
+    pollTimer = setInterval(() => { void run(); }, 2500);
   };
 
   const loadAssets = async () => {
@@ -2760,9 +2799,59 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       if (episodeInput instanceof HTMLInputElement && episodeId) episodeInput.value = episodeId;
       toast("에피소드 생성", episodeId ? ("생성 완료: " + episodeId) : "생성 완료", "ok");
       setStatus("에피소드 생성 완료" + (episodeId ? ": " + episodeId : ""));
+      if (episodeId) {
+        pollEpisodeProgress(episodeId);
+      }
     } catch (e) {
       setStatus("에피소드 생성 실패");
       toast("에피소드 생성", String(e), "bad");
+    }
+  });
+
+  q("studio-oneclick")?.addEventListener("click", async () => {
+    const topic = topicInput instanceof HTMLInputElement ? topicInput.value.trim() : "";
+    if (!topic) {
+      toast("입력 필요", "에피소드 주제를 입력하세요.", "warn");
+      setStatus("원클릭 실행 실패: 주제 누락");
+      return;
+    }
+    const characterPackId = selectedPack instanceof HTMLInputElement ? selectedPack.value.trim() : "";
+    setStatus("원클릭 실행: 에피소드 생성 중...");
+    try {
+      const createRes = await fetch("/api/episodes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          targetDurationSec: 600,
+          jobType: "GENERATE_BEATS",
+          ...(characterPackId ? { characterPackId } : {})
+        })
+      });
+      if (!createRes.ok) {
+        const msg = await readError(createRes, "create episode failed: " + createRes.status);
+        throw new Error(msg);
+      }
+      const created = await createRes.json();
+      const episodeId = String(created?.data?.episode?.id || "").trim();
+      if (!episodeId) throw new Error("episode id not returned");
+      if (episodeInput instanceof HTMLInputElement) episodeInput.value = episodeId;
+      setStatus("원클릭 실행: 프리뷰 파이프라인 시작 중...");
+      const runRes = await fetch("/api/episodes/" + encodeURIComponent(episodeId) + "/run-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: "preview", stylePresetId: "AUTO", hookBoost: 0.55 })
+      });
+      if (!runRes.ok) {
+        const msg = await readError(runRes, "run-profile failed: " + runRes.status);
+        throw new Error(msg);
+      }
+      toast("원클릭 제작", "에피소드 생성 + 프리뷰 파이프라인 시작 완료", "ok");
+      setStatus("원클릭 실행 완료: 진행 상태 추적 중...");
+      pollEpisodeProgress(episodeId);
+    } catch (e) {
+      toast("원클릭 제작", String(e), "bad");
+      setStatus("원클릭 실행 실패: " + String(e));
     }
   });
 
@@ -2811,6 +2900,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
   void loadAssets();
   void loadPacks();
+  window.addEventListener("beforeunload", clearPoll);
 })();
 </script>`;
     return reply.type("text/html; charset=utf-8").send(uiPage("통합 스튜디오", html));
