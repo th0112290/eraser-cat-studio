@@ -39,7 +39,10 @@ Use this when check labels differ by repo settings.
 2. Run:
 - `pnpm ci:checks:capture -- --json --save --web`
 3. Open `out/pr-checks.json` and check `checkNames`.
-4. Register exact labels for:
+4. Check `requiredCheckCoverage`:
+- `matched: true` for both required targets.
+- If any target is missing, run the workflow once on PR and re-run capture.
+5. Register exact labels for:
 - character strict smoke
 - e2e manifest selftest
 

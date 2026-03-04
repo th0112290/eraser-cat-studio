@@ -4,6 +4,19 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+const REQUIRED_CHECK_TARGETS = [
+  {
+    id: "character_strict_smoke",
+    expectedLabel: "Character Strict Smoke / smoke-character-strict",
+    patterns: [/^Character Strict Smoke \/ smoke-character-strict$/i, /^smoke-character-strict$/i]
+  },
+  {
+    id: "e2e_manifest_selftest",
+    expectedLabel: "E2E Manifest Selftest / manifest-selftest",
+    patterns: [/^E2E Manifest Selftest \/ manifest-selftest$/i, /^manifest-selftest$/i]
+  }
+];
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -109,6 +122,20 @@ async function fetchJson(url, token) {
   return json;
 }
 
+function matchRequiredChecks(checkNames) {
+  const names = Array.isArray(checkNames) ? checkNames : [];
+  return REQUIRED_CHECK_TARGETS.map((target) => {
+    const matchedName =
+      names.find((name) => target.patterns.some((pattern) => pattern.test(name))) ?? null;
+    return {
+      id: target.id,
+      expectedLabel: target.expectedLabel,
+      matched: matchedName !== null,
+      matchedName
+    };
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help === "true" || args.h === "true") {
@@ -176,6 +203,7 @@ async function main() {
     pr,
     headSha,
     checkNames: names,
+    requiredCheckCoverage: matchRequiredChecks(names),
     checkRuns: runs.map((run) => ({
       name: run?.name ?? null,
       status: run?.status ?? null,
@@ -209,6 +237,23 @@ async function main() {
   console.log("[capture-pr-check-names] Check names:");
   for (const name of names) {
     console.log(`- ${name}`);
+  }
+  console.log("[capture-pr-check-names] Required check coverage:");
+  for (const coverage of payload.requiredCheckCoverage) {
+    if (coverage.matched) {
+      console.log(`- OK ${coverage.expectedLabel} -> ${coverage.matchedName}`);
+    } else {
+      console.log(`- MISSING ${coverage.expectedLabel}`);
+    }
+  }
+  const missing = payload.requiredCheckCoverage.filter((coverage) => !coverage.matched);
+  if (missing.length > 0) {
+    console.log(
+      `[capture-pr-check-names] Missing required checks: ${missing.map((item) => item.expectedLabel).join("; ")}`
+    );
+    console.log(
+      "[capture-pr-check-names] Action: run target workflows on PR once, then re-run this command and update branch protection labels."
+    );
   }
   if (outPath) {
     console.log(`[capture-pr-check-names] Saved: ${outPath}`);
