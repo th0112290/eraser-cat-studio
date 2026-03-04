@@ -62,6 +62,17 @@ pnpm ci:checks:capture -- --json
   - `gh_not_authenticated`
   - `no_pr_for_current_branch`
 
+### Success Path Validation (gh installed)
+1. `gh` 설치 확인:
+   - `gh --version`
+2. 로그인 확인:
+   - `gh auth status`
+3. PR 브랜치에서 실행:
+   - `pnpm ci:checks:capture -- --json --save --web`
+4. 저장 파일 확인:
+   - `out/pr-checks.json` 파일이 생성되는지 확인
+   - JSON의 `checkNames` 배열에 expected check 이름이 포함되는지 확인
+
 ## Troubleshooting
 - 체크 항목이 선택 목록에 안 보이면:
   - PR에서 워크플로를 1회 이상 성공 실행한 뒤 다시 확인한다.
