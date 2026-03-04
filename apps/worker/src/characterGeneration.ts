@@ -147,6 +147,7 @@ type GenerationManifest = {
       reason: string;
       attemptedSourceSessionId?: string;
       cutoffUpdatedAt?: string;
+      queuedSessionCount?: number;
       searchedSessionCount?: number;
       searchedSessionIdsPreview?: string[];
       preferredPoolCount?: number;
@@ -1707,6 +1708,7 @@ async function resolveAutoContinuityReference(input: {
     | undefined;
   diagnostics: {
     cutoffUpdatedAt: string;
+    queuedSessionCount: number;
     searchedSessionCount: number;
     searchedSessionIdsPreview: string[];
     preferredPoolCount: number;
@@ -1759,14 +1761,15 @@ async function resolveAutoContinuityReference(input: {
   });
 
   const queue = [...preferred.map((row) => row.id), ...fallback.map((row) => row.id)];
-  const queuePreview = queue.slice(0, 5);
   const preferredSet = new Set(preferred.map((row) => row.id));
   const visited = new Set<string>();
+  const visitedOrder: string[] = [];
   for (const sessionId of queue) {
     if (visited.has(sessionId)) {
       continue;
     }
     visited.add(sessionId);
+    visitedOrder.push(sessionId);
     const resolved = await resolveFrontReferenceFromSession(input.prisma, sessionId, input.config);
     if (resolved) {
       return {
@@ -1782,8 +1785,9 @@ async function resolveAutoContinuityReference(input: {
         },
         diagnostics: {
           cutoffUpdatedAt: cutoffDate.toISOString(),
+          queuedSessionCount: queue.length,
           searchedSessionCount: visited.size,
-          searchedSessionIdsPreview: queuePreview,
+          searchedSessionIdsPreview: visitedOrder.slice(0, 5),
           preferredPoolCount: preferred.length,
           fallbackPoolCount: fallback.length,
           reason: "matched"
@@ -1799,8 +1803,9 @@ async function resolveAutoContinuityReference(input: {
   return {
     diagnostics: {
       cutoffUpdatedAt: cutoffDate.toISOString(),
+      queuedSessionCount: queue.length,
       searchedSessionCount: visited.size,
-      searchedSessionIdsPreview: queuePreview,
+      searchedSessionIdsPreview: visitedOrder.slice(0, 5),
       preferredPoolCount: preferred.length,
       fallbackPoolCount: fallback.length,
       reason
@@ -1901,6 +1906,9 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
       ? { attemptedSourceSessionId: asOptionalString(value.attemptedSourceSessionId) }
       : {}),
     ...(asOptionalString(value.cutoffUpdatedAt) ? { cutoffUpdatedAt: asOptionalString(value.cutoffUpdatedAt) } : {}),
+    ...(asOptionalNumber(value.queuedSessionCount) !== undefined
+      ? { queuedSessionCount: asOptionalNumber(value.queuedSessionCount) }
+      : {}),
     ...(asOptionalNumber(value.searchedSessionCount) !== undefined
       ? { searchedSessionCount: asOptionalNumber(value.searchedSessionCount) }
       : {}),
@@ -2380,6 +2388,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           reason: "matched",
           attemptedSourceSessionId: continuity.match.sessionId,
           cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
+          queuedSessionCount: continuity.diagnostics.queuedSessionCount,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
@@ -2410,6 +2419,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           reason: "invalid_source",
           attemptedSourceSessionId: continuity.match.sessionId,
           cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
+          queuedSessionCount: continuity.diagnostics.queuedSessionCount,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
@@ -2429,6 +2439,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         applied: false,
         reason: continuity.diagnostics.reason ?? "skipped",
         cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
+        queuedSessionCount: continuity.diagnostics.queuedSessionCount,
         searchedSessionCount: continuity.diagnostics.searchedSessionCount,
         searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
         preferredPoolCount: continuity.diagnostics.preferredPoolCount,
