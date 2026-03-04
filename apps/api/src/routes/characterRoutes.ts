@@ -2,10 +2,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
-import type { JobsOptions, Queue } from "bullmq";
+import type { Queue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { sha256Hex, stableStringify } from "@ec/shared";
 import type { EpisodeJobPayload } from "../services/scheduleService";
+import { enqueueWithResilience } from "../services/enqueueWithResilience";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -16,8 +17,15 @@ type CharacterAssetIds = {
   profile: string;
 };
 
+type CharacterGenerationSelection = {
+  front: string;
+  threeQuarter: string;
+  profile: string;
+};
+
 type CharacterGenerationMode = "reference" | "new";
-type CharacterGenerationProvider = "mock" | "comfyui";
+type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi";
+type CharacterGenerationView = "front" | "threeQuarter" | "profile";
 type CharacterGeneratorStatus = "PENDING_HITL" | "AUTO_SELECTED";
 
 type CharacterGenerationInput = {
@@ -26,6 +34,7 @@ type CharacterGenerationInput = {
   promptPreset: string;
   positivePrompt?: string;
   negativePrompt?: string;
+  boostNegativePrompt: boolean;
   referenceAssetId?: string;
   candidateCount: number;
   autoPick: boolean;
@@ -36,7 +45,113 @@ type CharacterGenerationInput = {
   retryBackoffMs: number;
 };
 
+type ChannelStylePreset = {
+  id: string;
+  label: string;
+  positivePrompt?: string;
+  negativePrompt?: string;
+};
+
+type GenerationManifestCandidate = {
+  id: string;
+  view: "front" | "threeQuarter" | "profile";
+  candidateIndex: number;
+  seed: number;
+  mimeType: string;
+  filePath: string;
+  score: number;
+  styleScore: number;
+  referenceSimilarity: number | null;
+  consistencyScore: number | null;
+  warnings: string[];
+  rejections: string[];
+  breakdown?: {
+    alphaScore?: number;
+    occupancyScore?: number;
+    sharpnessScore?: number;
+    noiseScore?: number;
+    watermarkScore?: number;
+    resolutionScore?: number;
+    referenceScore?: number;
+    styleScore?: number;
+    qualityScore?: number;
+    consistencyScore?: number | null;
+    generationRound?: number;
+    consistencyParts?: {
+      phash?: number;
+      palette?: number;
+      bboxCenter?: number;
+      bboxScale?: number;
+    };
+  };
+};
+
+type GenerationManifest = {
+  schemaVersion: string;
+  inputHash: string;
+  manifestHash: string;
+  status: "PENDING_HITL" | "AUTO_SELECTED" | "HITL_SELECTED";
+  sessionId?: string;
+  episodeId: string;
+  characterPackId: string;
+  provider: string;
+  providerRequested?: string | null;
+  providerWarning?: string | null;
+  workflowHash: string;
+  generatedAt: string;
+  mode: string;
+  promptPreset: string;
+  positivePrompt: string;
+  negativePrompt: string;
+  guardrails: string[];
+  candidates: GenerationManifestCandidate[];
+  selectedByView: Partial<Record<"front" | "threeQuarter" | "profile", { candidateId: string; assetId?: string; assetIngestJobId?: string }>>;
+};
+
+function computeManifestHashes(input: {
+  episodeId: string;
+  characterPackId: string;
+  mode: string;
+  promptPreset: string;
+  positivePrompt: string;
+  negativePrompt: string;
+  workflowHash: string;
+  provider: string;
+  candidates: GenerationManifestCandidate[];
+}): { inputHash: string; manifestHash: string } {
+  const candidateFingerprint = input.candidates
+    .map((candidate) => ({
+      id: candidate.id,
+      view: candidate.view,
+      candidateIndex: candidate.candidateIndex,
+      seed: candidate.seed,
+      filePath: candidate.filePath
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const inputHash = sha256Hex(
+    stableStringify({
+      episodeId: input.episodeId,
+      characterPackId: input.characterPackId,
+      mode: input.mode,
+      promptPreset: input.promptPreset,
+      positivePrompt: input.positivePrompt,
+      negativePrompt: input.negativePrompt,
+      workflowHash: input.workflowHash,
+      provider: input.provider,
+      candidateFingerprint
+    })
+  );
+  const manifestHash = sha256Hex(
+    stableStringify({
+      ...input,
+      inputHash
+    })
+  );
+  return { inputHash, manifestHash };
+}
+
 type CharacterGenerationCreateResult = {
+  sessionId: string;
   characterPackId: string;
   version: number;
   episodeId: string;
@@ -46,6 +161,7 @@ type CharacterGenerationCreateResult = {
   bullmqJobId: string;
   manifestPath: string;
   generatorStatus: CharacterGeneratorStatus;
+  reusedExisting: boolean;
 };
 
 type RegisterCharacterRoutesInput = {
@@ -64,6 +180,22 @@ type CharacterCreateResult = {
   bullmqJobId: string;
 };
 
+type CharacterGenerationRegenerateResult = {
+  sessionId: string;
+  view: CharacterGenerationView;
+  generateJobId: string;
+  bullmqJobId: string;
+  manifestPath: string;
+};
+
+type CharacterGenerationRecreateResult = {
+  sessionId: string;
+  generateJobId: string;
+  bullmqJobId: string;
+  manifestPath: string;
+  seed: number;
+};
+
 const BUILD_CHARACTER_PACK_JOB_NAME = "BUILD_CHARACTER_PACK";
 const RENDER_CHARACTER_PREVIEW_JOB_NAME = "RENDER_CHARACTER_PREVIEW";
 const GENERATE_CHARACTER_ASSETS_JOB_NAME = "GENERATE_CHARACTER_ASSETS";
@@ -71,6 +203,7 @@ const DEFAULT_MAX_ATTEMPTS = 2;
 const DEFAULT_RETRY_BACKOFF_MS = 1000;
 const MAX_LIST = 100;
 const DEFAULT_GENERATION_SEED = 101;
+const GENERATION_DEDUPE_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_PROMPT_PRESET = "eraser-cat-flat";
 const DEMO_USER_EMAIL = "demo.extreme@example.com";
 const DEMO_USER_NAME = "demo-extreme";
@@ -80,6 +213,10 @@ const CHARACTER_STYLE_PRESETS = [
   { id: "playful-cartoon", label: "Playful Cartoon" },
   { id: "minimal-rig", label: "Minimal Rig" }
 ] as const;
+
+function isLiveJobStatus(status: string): boolean {
+  return status === "QUEUED" || status === "RUNNING";
+}
 
 function createHttpError(statusCode: number, message: string, details?: unknown): HttpError {
   const error = new Error(message) as HttpError;
@@ -171,6 +308,26 @@ function parseBoolean(value: unknown, field: string, fallback: boolean): boolean
   throw createHttpError(400, `${field} must be a boolean`);
 }
 
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+}
+
+function parseStringArrayAtPath(root: JsonRecord, keys: string[]): string[] {
+  let current: unknown = root;
+  for (const key of keys) {
+    if (!isRecord(current)) {
+      return [];
+    }
+    current = current[key];
+  }
+  return parseStringArray(current);
+}
+
 function getRepoRoot(): string {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -251,7 +408,80 @@ function uiBadge(status: string): string {
 function uiPage(title: string, body: string): string {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escHtml(
     title
-  )}</title><style>body{margin:0;font-family:Segoe UI,Noto Sans KR,sans-serif;background:#f5f7fb;color:#1a2433}header{background:#fff;border-bottom:1px solid #d6deea;position:sticky;top:0}nav{max-width:1200px;margin:0 auto;padding:12px 18px;display:flex;gap:14px;align-items:center}nav strong{margin-right:auto}main{max-width:1200px;margin:18px auto;padding:0 18px;display:grid;gap:12px}.card{background:#fff;border:1px solid #d6deea;border-radius:12px;padding:14px}.notice{padding:9px;border-left:4px solid #2f7eed;background:#edf4ff}.error{padding:9px;border-left:4px solid #d92d20;background:#fff0ef}.grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}a{color:#0f5bd8;text-decoration:none}a:hover{text-decoration:underline}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #e3e8f1;padding:7px;text-align:left;vertical-align:top}.badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}.badge.ok{background:#eaf6ed;color:#1d7a34}.badge.warn{background:#fff8e8;color:#945f02}.badge.bad{background:#fff1ef;color:#b42318}.badge.muted{background:#f2f4f7;color:#475467}input,select,button,textarea{font:inherit;border:1px solid #ccd6e5;border-radius:8px;padding:7px 9px}button{background:#0f5bd8;color:#fff;border:none;font-weight:700;cursor:pointer}.secondary{background:#eef3fc;color:#143d6a;border:1px solid #cad8f2}pre{margin:0;background:#0b1220;color:#d3e1ff;padding:10px;border-radius:8px;overflow:auto;font-size:12px}</style></head><body><header><nav><strong>Eraser Cat Characters</strong><a href="/ui">Dashboard</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/artifacts">Artifacts</a></nav></header><main>${body}</main></body></html>`;
+  )}</title><style>body{margin:0;font-family:Segoe UI,Noto Sans KR,sans-serif;background:#f5f7fb;color:#1a2433}header{background:#fff;border-bottom:1px solid #d6deea;position:sticky;top:0}nav{max-width:1200px;margin:0 auto;padding:12px 18px;display:flex;gap:14px;align-items:center}nav strong{margin-right:auto}main{max-width:1200px;margin:18px auto;padding:0 18px;display:grid;gap:12px}.card{background:#fff;border:1px solid #d6deea;border-radius:12px;padding:14px}.notice{padding:9px;border-left:4px solid #2f7eed;background:#edf4ff}.error{padding:9px;border-left:4px solid #d92d20;background:#fff0ef}.grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}a{color:#0f5bd8;text-decoration:none}a:hover{text-decoration:underline}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #e3e8f1;padding:7px;text-align:left;vertical-align:top}.badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}.badge.ok{background:#eaf6ed;color:#1d7a34}.badge.warn{background:#fff8e8;color:#945f02}.badge.bad{background:#fff1ef;color:#b42318}.badge.muted{background:#f2f4f7;color:#475467}input,select,button,textarea{font:inherit;border:1px solid #ccd6e5;border-radius:8px;padding:7px 9px}button{background:#0f5bd8;color:#fff;border:none;font-weight:700;cursor:pointer}.secondary{background:#eef3fc;color:#143d6a;border:1px solid #cad8f2}pre{margin:0;background:#0b1220;color:#d3e1ff;padding:10px;border-radius:8px;overflow:auto;font-size:12px}.candidate{display:grid;gap:6px;border:1px solid #d6deea;border-radius:10px;padding:10px;background:#f9fbff}.candidate strong{word-break:break-all}details summary{cursor:pointer;font-weight:700}.toast-wrap{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999}.toast{background:#0b1220;color:#f8fbff;border-radius:10px;padding:10px 12px;box-shadow:0 8px 22px rgba(0,0,0,.2);min-width:240px;max-width:460px}.toast.ok{background:#14532d}.toast.warn{background:#854d0e}.toast.bad{background:#7f1d1d}.submit-loading{opacity:.72;pointer-events:none}.submit-loading::after{content:"...";margin-left:4px}.hint{display:inline-block;border-bottom:1px dotted #8ca1bf;color:#305f99;cursor:help;font-size:12px}.sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}</style></head><body><header><nav><strong>Eraser Cat Characters</strong><a href="/ui">Dashboard</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/artifacts">Artifacts</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말 (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite"></div><script>
+(() => {
+  const toastWrap = document.getElementById('toast-wrap');
+  const live = document.getElementById('global-live');
+  const speak = (text) => { if (live) live.textContent = text; };
+  const toast = (title, message, tone = 'ok', timeoutMs = 5000) => {
+    if (!toastWrap) return;
+    const node = document.createElement('div');
+    node.className = 'toast ' + tone;
+    node.innerHTML = '<div><strong>' + title + '</strong></div><div>' + message + '</div>';
+    toastWrap.appendChild(node);
+    speak(title + ': ' + message);
+    setTimeout(() => node.remove(), timeoutMs);
+  };
+  window.__ecsToast = toast;
+  window.__ecsSpeak = speak;
+
+  const url = new URL(window.location.href);
+  const message = url.searchParams.get('message');
+  const error = url.searchParams.get('error');
+  if (message) toast('Success', message, 'ok');
+  if (error) toast('Error', error, 'bad', 7000);
+
+  document.querySelectorAll('form').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      const submit = form.querySelector('button[type="submit"]');
+      if (!(submit instanceof HTMLButtonElement)) return;
+      if (submit.dataset.busy === '1') {
+        event.preventDefault();
+        return;
+      }
+      submit.dataset.busy = '1';
+      submit.disabled = true;
+      submit.classList.add('submit-loading');
+    });
+  });
+
+  document.querySelectorAll('[data-tooltip]').forEach((node) => {
+    if (node instanceof HTMLElement && !node.title) {
+      node.title = String(node.dataset.tooltip || '');
+    }
+  });
+
+  let pendingGo = false;
+  window.addEventListener('keydown', (e) => {
+    const t = e.target;
+    const editing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || (t instanceof HTMLElement && t.isContentEditable);
+    if (editing) return;
+    if (e.key === '?') {
+      e.preventDefault();
+      toast('Shortcuts', 'g + c: Character Generator, g + a: Assets, r: 주요 액션');
+      return;
+    }
+    if (pendingGo) {
+      pendingGo = false;
+      if (e.key === 'c') window.location.href = '/ui/character-generator';
+      if (e.key === 'a') window.location.href = '/ui/assets';
+      return;
+    }
+    if (e.key === 'g') {
+      pendingGo = true;
+      setTimeout(() => { pendingGo = false; }, 1500);
+      return;
+    }
+    if (e.key === 'r') {
+      const primary = document.querySelector('button[data-primary-action="1"], form button[type="submit"]');
+      if (primary instanceof HTMLButtonElement && !primary.disabled) {
+        e.preventDefault();
+        primary.click();
+      }
+    }
+  });
+})();
+</script></body></html>`;
 }
 
 function parseAssetIdsFromBody(body: JsonRecord): CharacterAssetIds {
@@ -404,24 +634,82 @@ function parseGenerationMode(value: unknown): CharacterGenerationMode {
   return "new";
 }
 
+function resolveComfyUiBaseUrl(): string | undefined {
+  const preferred = process.env.COMFYUI_BASE_URL?.trim();
+  if (preferred && preferred.length > 0) {
+    return preferred;
+  }
+
+  const legacy = process.env.COMFYUI_URL?.trim();
+  if (legacy && legacy.length > 0) {
+    return legacy;
+  }
+
+  return undefined;
+}
+
+function resolveRemoteApiBaseUrl(): string | undefined {
+  const configured = process.env.IMAGEGEN_REMOTE_BASE_URL?.trim();
+  if (configured && configured.length > 0) {
+    return configured;
+  }
+  return undefined;
+}
+
 function parseGenerationProvider(value: unknown): CharacterGenerationProvider {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     if (normalized === "comfyui") {
       return "comfyui";
     }
+    if (normalized === "remoteapi" || normalized === "remote_api" || normalized === "remote-api") {
+      return "remoteApi";
+    }
     if (normalized === "mock") {
       return "mock";
     }
   }
 
-  return process.env.COMFYUI_URL && process.env.COMFYUI_URL.trim().length > 0 ? "comfyui" : "mock";
+  if (resolveComfyUiBaseUrl()) {
+    return "comfyui";
+  }
+  if (resolveRemoteApiBaseUrl()) {
+    return "remoteApi";
+  }
+  return "mock";
+}
+
+function parseGenerationView(value: unknown, field: string): CharacterGenerationView {
+  if (typeof value !== "string") {
+    throw createHttpError(400, `${field} must be one of front|threeQuarter|profile`);
+  }
+
+  const normalized = value.trim();
+  if (normalized === "front" || normalized === "threeQuarter" || normalized === "profile") {
+    return normalized;
+  }
+
+  throw createHttpError(400, `${field} must be one of front|threeQuarter|profile`);
+}
+
+function toDbGenerationMode(mode: CharacterGenerationMode): "NEW" | "REFERENCE" {
+  return mode === "reference" ? "REFERENCE" : "NEW";
+}
+
+function toDbGenerationProvider(provider: CharacterGenerationProvider): "MOCK" | "COMFYUI" | "REMOTEAPI" {
+  if (provider === "comfyui") {
+    return "COMFYUI";
+  }
+  if (provider === "remoteApi") {
+    return "REMOTEAPI";
+  }
+  return "MOCK";
 }
 
 function parsePromptPreset(value: unknown): string {
   if (typeof value === "string") {
     const normalized = value.trim();
-    if (CHARACTER_STYLE_PRESETS.some((preset) => preset.id === normalized)) {
+    if (normalized.length > 0) {
       return normalized;
     }
   }
@@ -429,8 +717,335 @@ function parsePromptPreset(value: unknown): string {
   return DEFAULT_PROMPT_PRESET;
 }
 
+function pickFirstLine(value: string | null | undefined): string | null {
+  if (!value || value.trim().length === 0) {
+    return null;
+  }
+
+  const line = value.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  return line.length > 0 ? line : null;
+}
+
 function getGenerationManifestPath(generateJobId: string): string {
   return path.join(getRepoRoot(), "out", "characters", "generations", generateJobId, "generation_manifest.json");
+}
+
+function toArtifactUrlFromAbsolutePath(filePath: string): string | null {
+  const outRoot = path.join(getRepoRoot(), "out");
+  const resolved = path.resolve(filePath);
+  const relative = path.relative(outRoot, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+  const encoded = relative
+    .split(path.sep)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `/artifacts/${encoded}`;
+}
+
+function parseManifestCandidate(entry: unknown): GenerationManifestCandidate | null {
+  if (!isRecord(entry)) {
+    return null;
+  }
+
+  const id = typeof entry.id === "string" ? entry.id.trim() : "";
+  const viewRaw = typeof entry.view === "string" ? entry.view.trim() : "";
+  const view = viewRaw === "front" || viewRaw === "threeQuarter" || viewRaw === "profile" ? viewRaw : null;
+  const candidateIndex = typeof entry.candidateIndex === "number" ? entry.candidateIndex : 0;
+  const seed = typeof entry.seed === "number" ? entry.seed : 0;
+  const mimeType = typeof entry.mimeType === "string" && entry.mimeType.trim().length > 0 ? entry.mimeType : "image/png";
+  const filePath = typeof entry.filePath === "string" ? entry.filePath.trim() : "";
+
+  if (!id || !view || !filePath) {
+    return null;
+  }
+
+  const score = typeof entry.score === "number" ? entry.score : 0;
+  const styleScore = typeof entry.styleScore === "number" ? entry.styleScore : 0;
+  const referenceSimilarity = typeof entry.referenceSimilarity === "number" ? entry.referenceSimilarity : null;
+  const consistencyScore = typeof entry.consistencyScore === "number" ? entry.consistencyScore : null;
+  const warnings = parseStringArray(entry.warnings);
+  const rejections = parseStringArray(entry.rejections);
+  const breakdown = isRecord(entry.breakdown)
+    ? {
+        ...(typeof entry.breakdown.alphaScore === "number" ? { alphaScore: entry.breakdown.alphaScore } : {}),
+        ...(typeof entry.breakdown.occupancyScore === "number"
+          ? { occupancyScore: entry.breakdown.occupancyScore }
+          : {}),
+        ...(typeof entry.breakdown.sharpnessScore === "number"
+          ? { sharpnessScore: entry.breakdown.sharpnessScore }
+          : {}),
+        ...(typeof entry.breakdown.noiseScore === "number" ? { noiseScore: entry.breakdown.noiseScore } : {}),
+        ...(typeof entry.breakdown.watermarkScore === "number"
+          ? { watermarkScore: entry.breakdown.watermarkScore }
+          : {}),
+        ...(typeof entry.breakdown.resolutionScore === "number"
+          ? { resolutionScore: entry.breakdown.resolutionScore }
+          : {}),
+        ...(typeof entry.breakdown.referenceScore === "number"
+          ? { referenceScore: entry.breakdown.referenceScore }
+          : {}),
+        ...(typeof entry.breakdown.styleScore === "number" ? { styleScore: entry.breakdown.styleScore } : {}),
+        ...(typeof entry.breakdown.qualityScore === "number"
+          ? { qualityScore: entry.breakdown.qualityScore }
+          : {}),
+        ...(typeof entry.breakdown.consistencyScore === "number" || entry.breakdown.consistencyScore === null
+          ? { consistencyScore: entry.breakdown.consistencyScore as number | null }
+          : {}),
+        ...(typeof entry.breakdown.generationRound === "number"
+          ? { generationRound: entry.breakdown.generationRound }
+          : {}),
+        ...(isRecord(entry.breakdown.consistencyParts)
+          ? {
+              consistencyParts: {
+                ...(typeof entry.breakdown.consistencyParts.phash === "number"
+                  ? { phash: entry.breakdown.consistencyParts.phash }
+                  : {}),
+                ...(typeof entry.breakdown.consistencyParts.palette === "number"
+                  ? { palette: entry.breakdown.consistencyParts.palette }
+                  : {}),
+                ...(typeof entry.breakdown.consistencyParts.bboxCenter === "number"
+                  ? { bboxCenter: entry.breakdown.consistencyParts.bboxCenter }
+                  : {}),
+                ...(typeof entry.breakdown.consistencyParts.bboxScale === "number"
+                  ? { bboxScale: entry.breakdown.consistencyParts.bboxScale }
+                  : {})
+              }
+            }
+          : {})
+      }
+    : undefined;
+
+  return {
+    id,
+    view,
+    candidateIndex,
+    seed,
+    mimeType,
+    filePath,
+    score,
+    styleScore,
+    referenceSimilarity,
+    consistencyScore,
+    warnings,
+    rejections,
+    ...(breakdown ? { breakdown } : {})
+  };
+}
+
+function readGenerationManifest(manifestPath: string): GenerationManifest | null {
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as unknown;
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const candidates = Array.isArray(raw.candidates)
+    ? raw.candidates.map((entry) => parseManifestCandidate(entry)).filter((entry): entry is GenerationManifestCandidate => entry !== null)
+    : [];
+  const statusRaw = typeof raw.status === "string" ? raw.status : "PENDING_HITL";
+  const status =
+    statusRaw === "PENDING_HITL" || statusRaw === "AUTO_SELECTED" || statusRaw === "HITL_SELECTED"
+      ? statusRaw
+      : "PENDING_HITL";
+
+  const episodeId = typeof raw.episodeId === "string" ? raw.episodeId : "";
+  const characterPackId = typeof raw.characterPackId === "string" ? raw.characterPackId : "";
+  const provider = typeof raw.provider === "string" ? raw.provider : "mock";
+  const workflowHash = typeof raw.workflowHash === "string" ? raw.workflowHash : "";
+  const mode = typeof raw.mode === "string" ? raw.mode : "new";
+  const promptPreset = typeof raw.promptPreset === "string" ? raw.promptPreset : DEFAULT_PROMPT_PRESET;
+  const positivePrompt = typeof raw.positivePrompt === "string" ? raw.positivePrompt : "";
+  const negativePrompt = typeof raw.negativePrompt === "string" ? raw.negativePrompt : "";
+  const fallbackHashes = computeManifestHashes({
+    episodeId,
+    characterPackId,
+    mode,
+    promptPreset,
+    positivePrompt,
+    negativePrompt,
+    workflowHash,
+    provider,
+    candidates
+  });
+
+  return {
+    schemaVersion: typeof raw.schemaVersion === "string" ? raw.schemaVersion : "1.0",
+    inputHash:
+      typeof raw.inputHash === "string" && raw.inputHash.trim().length > 0
+        ? raw.inputHash
+        : fallbackHashes.inputHash,
+    manifestHash:
+      typeof raw.manifestHash === "string" && raw.manifestHash.trim().length > 0
+        ? raw.manifestHash
+        : fallbackHashes.manifestHash,
+    status,
+    sessionId: typeof raw.sessionId === "string" ? raw.sessionId : undefined,
+    episodeId,
+    characterPackId,
+    provider,
+    providerRequested: typeof raw.providerRequested === "string" ? raw.providerRequested : null,
+    providerWarning: typeof raw.providerWarning === "string" ? raw.providerWarning : null,
+    workflowHash,
+    generatedAt: typeof raw.generatedAt === "string" ? raw.generatedAt : "",
+    mode,
+    promptPreset,
+    positivePrompt,
+    negativePrompt,
+    guardrails: parseStringArray(raw.guardrails),
+    candidates,
+    selectedByView: isRecord(raw.selectedByView)
+      ? (raw.selectedByView as GenerationManifest["selectedByView"])
+      : {}
+  };
+}
+
+function extractChannelStylePresets(channelBibleJson: unknown): ChannelStylePreset[] {
+  if (!isRecord(channelBibleJson)) {
+    return [];
+  }
+
+  const candidates: unknown[] = [];
+  if (Array.isArray(channelBibleJson.character_generator_style_presets)) {
+    candidates.push(...channelBibleJson.character_generator_style_presets);
+  }
+  if (isRecord(channelBibleJson.character_generator) && Array.isArray(channelBibleJson.character_generator.style_presets)) {
+    candidates.push(...channelBibleJson.character_generator.style_presets);
+  }
+  if (isRecord(channelBibleJson.character) && Array.isArray(channelBibleJson.character.style_presets)) {
+    candidates.push(...channelBibleJson.character.style_presets);
+  }
+
+  const out: ChannelStylePreset[] = [];
+  const seen = new Set<string>();
+  for (const item of candidates) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const label = typeof item.label === "string" && item.label.trim().length > 0 ? item.label.trim() : id;
+    const positivePrompt =
+      typeof item.positivePrompt === "string"
+        ? item.positivePrompt.trim()
+        : typeof item.positive === "string"
+          ? item.positive.trim()
+          : undefined;
+    const negativePrompt =
+      typeof item.negativePrompt === "string"
+        ? item.negativePrompt.trim()
+        : typeof item.negative === "string"
+          ? item.negative.trim()
+          : undefined;
+
+    out.push({
+      id,
+      label,
+      ...(positivePrompt && positivePrompt.length > 0 ? { positivePrompt } : {}),
+      ...(negativePrompt && negativePrompt.length > 0 ? { negativePrompt } : {})
+    });
+  }
+
+  return out;
+}
+
+function extractChannelPromptRules(channelBibleJson: unknown): {
+  forbiddenTerms: string[];
+  negativePromptTerms: string[];
+} {
+  if (!isRecord(channelBibleJson)) {
+    return {
+      forbiddenTerms: [],
+      negativePromptTerms: []
+    };
+  }
+
+  const forbiddenTerms = Array.from(
+    new Set([
+      ...parseStringArrayAtPath(channelBibleJson, ["policy", "forbidden_words"]),
+      ...parseStringArrayAtPath(channelBibleJson, ["policy", "banned_phrases"]),
+      ...parseStringArrayAtPath(channelBibleJson, ["character_generator", "forbidden_terms"])
+    ])
+  );
+
+  const negativePromptTerms = Array.from(
+    new Set([
+      ...parseStringArrayAtPath(channelBibleJson, ["character_generator", "negative_prompt_terms"]),
+      ...parseStringArrayAtPath(channelBibleJson, ["policy", "negative_prompt_terms"])
+    ])
+  );
+
+  return {
+    forbiddenTerms,
+    negativePromptTerms
+  };
+}
+
+function readQcIssues(qcReportRaw: unknown): Array<{ severity: string; check: string; message: string; details: unknown }> {
+  if (!isRecord(qcReportRaw)) {
+    return [];
+  }
+
+  const groups: unknown[] = [];
+  if (Array.isArray(qcReportRaw.issues)) groups.push(qcReportRaw.issues);
+  if (Array.isArray(qcReportRaw.findings)) groups.push(qcReportRaw.findings);
+  if (Array.isArray(qcReportRaw.checks)) groups.push(qcReportRaw.checks);
+  if (Array.isArray(qcReportRaw.results)) groups.push(qcReportRaw.results);
+
+  const out: Array<{ severity: string; check: string; message: string; details: unknown }> = [];
+  for (const group of groups) {
+    if (!Array.isArray(group)) {
+      continue;
+    }
+    for (const item of group) {
+      if (!isRecord(item)) {
+        continue;
+      }
+      const passed = item.passed;
+      if (passed === true) {
+        continue;
+      }
+      const severity =
+        typeof item.severity === "string"
+          ? item.severity
+          : typeof item.level === "string"
+            ? item.level
+            : "WARN";
+      const check =
+        typeof item.check === "string"
+          ? item.check
+          : typeof item.rule === "string"
+            ? item.rule
+            : "unknown";
+      const message =
+        typeof item.message === "string"
+          ? item.message
+          : typeof item.reason === "string"
+            ? item.reason
+            : "issue detected";
+      out.push({
+        severity,
+        check,
+        message,
+        details: "details" in item ? item.details : item
+      });
+    }
+  }
+
+  return out;
 }
 
 function parseCharacterGenerationInput(body: JsonRecord): CharacterGenerationInput {
@@ -439,6 +1054,7 @@ function parseCharacterGenerationInput(body: JsonRecord): CharacterGenerationInp
   const promptPreset = parsePromptPreset(body.promptPreset);
   const positivePrompt = optionalString(body, "positivePrompt");
   const negativePrompt = optionalString(body, "negativePrompt");
+  const boostNegativePrompt = parseBoolean(body.boostNegativePrompt, "boostNegativePrompt", false);
   const referenceAssetId = optionalString(body, "referenceAssetId");
   const candidateCount = Math.min(parsePositiveInt(body.candidateCount, "candidateCount", 4), 8);
   const autoPick = parseBoolean(body.autoPick, "autoPick", true);
@@ -458,6 +1074,7 @@ function parseCharacterGenerationInput(body: JsonRecord): CharacterGenerationInp
     promptPreset,
     ...(positivePrompt ? { positivePrompt } : {}),
     ...(negativePrompt ? { negativePrompt } : {}),
+    boostNegativePrompt,
     ...(referenceAssetId ? { referenceAssetId } : {}),
     candidateCount,
     autoPick,
@@ -501,6 +1118,89 @@ async function createCharacterGeneration(
     }
 
     channelId = referenceAsset.channelId;
+  }
+
+  const duplicateSession = await prisma.characterGenerationSession.findFirst({
+    where: {
+      mode: toDbGenerationMode(generation.mode),
+      provider: toDbGenerationProvider(generation.provider),
+      promptPresetId: generation.promptPreset,
+      positivePrompt: generation.positivePrompt ?? "",
+      negativePrompt: generation.negativePrompt ?? "",
+      seed: generation.seed,
+      candidateCount: generation.candidateCount,
+      referenceAssetId: generation.referenceAssetId ?? null,
+      createdAt: {
+        gte: new Date(Date.now() - GENERATION_DEDUPE_WINDOW_MS)
+      },
+      episode: {
+        is: {
+          channelId
+        }
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    select: {
+      id: true,
+      episodeId: true,
+      characterPackId: true,
+      manifestPath: true,
+      characterPack: {
+        select: {
+          id: true,
+          version: true
+        }
+      }
+    }
+  });
+
+  if (duplicateSession?.episodeId && duplicateSession.characterPack?.id) {
+    const relatedJobs = await prisma.job.findMany({
+      where: {
+        episodeId: duplicateSession.episodeId,
+        type: {
+          in: [GENERATE_CHARACTER_ASSETS_JOB_NAME, BUILD_CHARACTER_PACK_JOB_NAME, RENDER_CHARACTER_PREVIEW_JOB_NAME]
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        bullmqJobId: true
+      }
+    });
+
+    const byType = new Map<string, (typeof relatedJobs)[number]>();
+    for (const job of relatedJobs) {
+      if (!byType.has(job.type)) {
+        byType.set(job.type, job);
+      }
+    }
+
+    const liveGenerateJob = byType.get(GENERATE_CHARACTER_ASSETS_JOB_NAME);
+    const buildJob = byType.get(BUILD_CHARACTER_PACK_JOB_NAME);
+    const previewJob = byType.get(RENDER_CHARACTER_PREVIEW_JOB_NAME);
+    if (liveGenerateJob && isLiveJobStatus(liveGenerateJob.status) && buildJob && previewJob) {
+      const manifestPath = duplicateSession.manifestPath ?? getGenerationManifestPath(liveGenerateJob.id);
+      return {
+        sessionId: duplicateSession.id,
+        characterPackId: duplicateSession.characterPack.id,
+        version: duplicateSession.characterPack.version,
+        episodeId: duplicateSession.episodeId,
+        generateJobId: liveGenerateJob.id,
+        buildJobId: buildJob.id,
+        previewJobId: previewJob.id,
+        bullmqJobId: liveGenerateJob.bullmqJobId ?? "",
+        manifestPath,
+        generatorStatus: "PENDING_HITL",
+        reusedExisting: true
+      };
+    }
   }
 
   const latestVersion = await prisma.characterPack.findFirst({
@@ -552,6 +1252,23 @@ async function createCharacterGeneration(
         targetDurationSec: 120,
         characterPackId: characterPack.id,
         characterPackVersion: version
+      }
+    });
+
+    const generationSession = await tx.characterGenerationSession.create({
+      data: {
+        episodeId: episode.id,
+        characterPackId: characterPack.id,
+        mode: toDbGenerationMode(generation.mode),
+        provider: toDbGenerationProvider(generation.provider),
+        promptPresetId: generation.promptPreset,
+        positivePrompt: generation.positivePrompt ?? "",
+        negativePrompt: generation.negativePrompt ?? "",
+        seed: generation.seed,
+        candidateCount: generation.candidateCount,
+        referenceAssetId: generation.referenceAssetId ?? null,
+        status: "DRAFT",
+        statusMessage: "Queued"
       }
     });
 
@@ -628,6 +1345,7 @@ async function createCharacterGeneration(
     return {
       characterPack,
       episode,
+      generationSession,
       buildJob,
       previewJob,
       generateJob,
@@ -646,11 +1364,13 @@ async function createCharacterGeneration(
       buildJobDbId: txResult.buildJob.id,
       previewJobDbId: txResult.previewJob.id,
       generation: {
+        sessionId: txResult.generationSession.id,
         mode: generation.mode,
         provider: generation.provider,
         promptPreset: generation.promptPreset,
         positivePrompt: generation.positivePrompt,
         negativePrompt: generation.negativePrompt,
+        boostNegativePrompt: generation.boostNegativePrompt,
         referenceAssetId: generation.referenceAssetId,
         candidateCount: generation.candidateCount,
         autoPick: generation.autoPick,
@@ -661,15 +1381,18 @@ async function createCharacterGeneration(
     }
   } as unknown as EpisodeJobPayload;
 
-  const queued = await enqueueWithIdempotency(
+  const enqueueResult = await enqueueWithResilience({
     queue,
-    GENERATE_CHARACTER_ASSETS_JOB_NAME,
+    name: GENERATE_CHARACTER_ASSETS_JOB_NAME,
     payload,
-    txResult.generateJob.maxAttempts,
-    txResult.generateJob.retryBackoffMs
-  );
+    maxAttempts: txResult.generateJob.maxAttempts,
+    backoffMs: txResult.generateJob.retryBackoffMs,
+    maxEnqueueRetries: 2,
+    retryDelayMs: 200,
+    redisUnavailableAsHttp503: true
+  });
 
-  const bullmqJobId = String(queued.id);
+  const bullmqJobId = String(enqueueResult.job.id);
 
   await prisma.$transaction(async (tx) => {
     await tx.job.update({
@@ -692,13 +1415,17 @@ async function createCharacterGeneration(
           queueName,
           bullmqJobId,
           manifestPath,
-          characterPackId: txResult.characterPack.id
+          characterPackId: txResult.characterPack.id,
+          enqueueMode: enqueueResult.mode,
+          enqueueAttemptCount: enqueueResult.attemptCount,
+          enqueueErrorSummary: enqueueResult.errorSummary
         })
       }
     });
   });
 
   return {
+    sessionId: txResult.generationSession.id,
     characterPackId: txResult.characterPack.id,
     version: txResult.version,
     episodeId: txResult.episode.id,
@@ -707,37 +1434,604 @@ async function createCharacterGeneration(
     previewJobId: txResult.previewJob.id,
     bullmqJobId,
     manifestPath,
-    generatorStatus: generation.requireHitlPick || !generation.autoPick ? "PENDING_HITL" : "AUTO_SELECTED"
+    generatorStatus: generation.requireHitlPick || !generation.autoPick ? "PENDING_HITL" : "AUTO_SELECTED",
+    reusedExisting: false
   };
 }
 
-async function enqueueWithIdempotency(
+async function createCharacterGenerationPick(
+  prisma: PrismaClient,
   queue: Queue<EpisodeJobPayload>,
-  name: string,
-  payload: EpisodeJobPayload,
-  maxAttempts: number,
-  retryBackoffMs: number
-) {
-  const options: JobsOptions = {
-    jobId: payload.jobDbId,
-    attempts: maxAttempts,
-    backoff: {
-      type: "exponential",
-      delay: retryBackoffMs
-    },
-    removeOnComplete: false,
-    removeOnFail: false
-  };
-
-  try {
-    return await queue.add(name, payload, options);
-  } catch {
-    const existing = await queue.getJob(payload.jobDbId);
-    if (existing) {
-      return existing;
-    }
-    throw createHttpError(503, "Redis unavailable");
+  queueName: string,
+  input: {
+    generateJobId: string;
+    selection: CharacterGenerationSelection;
   }
+): Promise<{
+  sessionId: string;
+  episodeId: string;
+  generateJobId: string;
+  buildJobId: string;
+  previewJobId: string;
+  bullmqJobId: string;
+  manifestPath: string;
+}> {
+  const sourceGenerateJob = await prisma.job.findUnique({
+    where: { id: input.generateJobId },
+    include: {
+      episode: {
+        select: {
+          id: true,
+          channelId: true,
+          topic: true,
+          characterPackId: true,
+          characterPackVersion: true
+        }
+      }
+    }
+  });
+
+  if (!sourceGenerateJob) {
+    throw createHttpError(404, "generate job not found");
+  }
+
+  if (sourceGenerateJob.type !== GENERATE_CHARACTER_ASSETS_JOB_NAME) {
+    throw createHttpError(400, "job is not GENERATE_CHARACTER_ASSETS");
+  }
+
+  const episode = sourceGenerateJob.episode;
+  if (!episode.characterPackId || !episode.characterPackVersion) {
+    throw createHttpError(400, "episode does not have characterPack metadata");
+  }
+
+  const manifestPath = getGenerationManifestPath(sourceGenerateJob.id);
+  const manifest = readGenerationManifest(manifestPath);
+  if (!manifest) {
+    throw createHttpError(404, `generation manifest not found: ${manifestPath}`);
+  }
+
+  const fallbackSession = await prisma.characterGenerationSession.findFirst({
+    where: {
+      episodeId: episode.id,
+      characterPackId: episode.characterPackId
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true }
+  });
+  const sessionId = manifest.sessionId ?? fallbackSession?.id;
+  if (!sessionId) {
+    throw createHttpError(400, "generation session not found for this job");
+  }
+
+  const byId = new Map(manifest.candidates.map((candidate) => [candidate.id, candidate]));
+  const front = byId.get(input.selection.front);
+  const threeQuarter = byId.get(input.selection.threeQuarter);
+  const profile = byId.get(input.selection.profile);
+  if (!front || front.view !== "front") {
+    throw createHttpError(400, "front candidate is invalid");
+  }
+  if (!threeQuarter || threeQuarter.view !== "threeQuarter") {
+    throw createHttpError(400, "threeQuarter candidate is invalid");
+  }
+  if (!profile || profile.view !== "profile") {
+    throw createHttpError(400, "profile candidate is invalid");
+  }
+
+  for (const candidate of [front, threeQuarter, profile]) {
+    const absPath = path.isAbsolute(candidate.filePath)
+      ? candidate.filePath
+      : path.resolve(path.dirname(manifestPath), candidate.filePath);
+    if (!fs.existsSync(absPath)) {
+      throw createHttpError(400, `selected candidate file not found: ${absPath}`);
+    }
+  }
+
+  const maxAttempts = sourceGenerateJob.maxAttempts;
+  const retryBackoffMs = sourceGenerateJob.retryBackoffMs;
+
+  const tx = await prisma.$transaction(async (trx) => {
+    const previewJob = await trx.job.create({
+      data: {
+        episodeId: episode.id,
+        type: RENDER_CHARACTER_PREVIEW_JOB_NAME,
+        status: "QUEUED",
+        progress: 0,
+        maxAttempts,
+        retryBackoffMs
+      }
+    });
+
+    const buildJob = await trx.job.create({
+      data: {
+        episodeId: episode.id,
+        type: BUILD_CHARACTER_PACK_JOB_NAME,
+        status: "QUEUED",
+        progress: 0,
+        maxAttempts,
+        retryBackoffMs
+      }
+    });
+
+    const generateJob = await trx.job.create({
+      data: {
+        episodeId: episode.id,
+        type: GENERATE_CHARACTER_ASSETS_JOB_NAME,
+        status: "QUEUED",
+        progress: 0,
+        maxAttempts,
+        retryBackoffMs
+      }
+    });
+
+    await trx.jobLog.createMany({
+      data: [
+        {
+          jobId: generateJob.id,
+          level: "info",
+          message: "Transition -> QUEUED",
+          details: toPrismaJson({
+            source: "api:character-generator:pick",
+            queueName,
+            manifestPath,
+            selection: input.selection
+          })
+        },
+        {
+          jobId: buildJob.id,
+          level: "info",
+          message: "Awaiting GENERATE_CHARACTER_ASSETS completion (HITL pick)",
+          details: toPrismaJson({
+            source: "api:character-generator:pick",
+            parentJobType: GENERATE_CHARACTER_ASSETS_JOB_NAME,
+            characterPackId: episode.characterPackId
+          })
+        },
+        {
+          jobId: previewJob.id,
+          level: "info",
+          message: "Awaiting BUILD_CHARACTER_PACK completion (HITL pick)",
+          details: toPrismaJson({
+            source: "api:character-generator:pick",
+            parentJobType: BUILD_CHARACTER_PACK_JOB_NAME,
+            characterPackId: episode.characterPackId
+          })
+        }
+      ]
+    });
+
+    return {
+      buildJobId: buildJob.id,
+      previewJobId: previewJob.id,
+      generateJobId: generateJob.id
+    };
+  });
+
+  const payload = {
+    jobDbId: tx.generateJobId,
+    episodeId: episode.id,
+    schemaChecks: [],
+    character: {
+      characterPackId: episode.characterPackId,
+      version: episode.characterPackVersion,
+      buildJobDbId: tx.buildJobId,
+      previewJobDbId: tx.previewJobId,
+      generation: {
+        sessionId,
+        mode: manifest.mode === "reference" ? "reference" : "new",
+        provider: manifest.provider === "comfyui" ? "comfyui" : "mock",
+        promptPreset: manifest.promptPreset,
+        positivePrompt: manifest.positivePrompt,
+        negativePrompt: manifest.negativePrompt,
+        autoPick: false,
+        requireHitlPick: false,
+        seed: front.seed,
+        candidateCount: 3,
+        manifestPath,
+        selectedCandidateIds: input.selection
+      }
+    }
+  } as unknown as EpisodeJobPayload;
+
+  const enqueueResult = await enqueueWithResilience({
+    queue,
+    name: GENERATE_CHARACTER_ASSETS_JOB_NAME,
+    payload,
+    maxAttempts,
+    backoffMs: retryBackoffMs,
+    maxEnqueueRetries: 2,
+    retryDelayMs: 200,
+    redisUnavailableAsHttp503: true
+  });
+
+  const bullmqJobId = String(enqueueResult.job.id);
+
+  await prisma.$transaction(async (trx) => {
+    await trx.job.update({
+      where: { id: tx.generateJobId },
+      data: {
+        bullmqJobId,
+        status: "QUEUED",
+        lastError: null,
+        finishedAt: null
+      }
+    });
+
+    await trx.jobLog.create({
+      data: {
+        jobId: tx.generateJobId,
+        level: "info",
+        message: "Transition -> ENQUEUED",
+        details: toPrismaJson({
+          source: "api:character-generator:pick",
+          queueName,
+          bullmqJobId,
+          manifestPath,
+          selection: input.selection,
+          enqueueMode: enqueueResult.mode,
+          enqueueAttemptCount: enqueueResult.attemptCount,
+          enqueueErrorSummary: enqueueResult.errorSummary
+        })
+      }
+    });
+
+    await trx.agentSuggestion.updateMany({
+      where: {
+        episodeId: episode.id,
+        type: "HITL_REVIEW",
+        status: "PENDING"
+      },
+      data: {
+        status: "APPLIED"
+      }
+    });
+  });
+
+  return {
+    sessionId,
+    episodeId: episode.id,
+    generateJobId: tx.generateJobId,
+    buildJobId: tx.buildJobId,
+    previewJobId: tx.previewJobId,
+    bullmqJobId,
+    manifestPath
+  };
+}
+
+async function createCharacterGenerationRegenerateView(
+  prisma: PrismaClient,
+  queue: Queue<EpisodeJobPayload>,
+  queueName: string,
+  input: {
+    generateJobId: string;
+    viewToGenerate: CharacterGenerationView;
+    candidateCount: number;
+    seed?: number;
+    regenerateSameSeed: boolean;
+    boostNegativePrompt: boolean;
+  }
+): Promise<CharacterGenerationRegenerateResult> {
+  const sourceGenerateJob = await prisma.job.findUnique({
+    where: { id: input.generateJobId },
+    include: {
+      episode: {
+        select: {
+          id: true,
+          characterPackId: true,
+          characterPackVersion: true
+        }
+      }
+    }
+  });
+
+  if (!sourceGenerateJob) {
+    throw createHttpError(404, "generate job not found");
+  }
+  if (sourceGenerateJob.type !== GENERATE_CHARACTER_ASSETS_JOB_NAME) {
+    throw createHttpError(400, "job is not GENERATE_CHARACTER_ASSETS");
+  }
+
+  const episode = sourceGenerateJob.episode;
+  if (!episode.characterPackId || !episode.characterPackVersion) {
+    throw createHttpError(400, "episode does not have characterPack metadata");
+  }
+
+  const sourceManifestPath = getGenerationManifestPath(sourceGenerateJob.id);
+  const manifest = readGenerationManifest(sourceManifestPath);
+  if (!manifest) {
+    throw createHttpError(404, `generation manifest not found: ${sourceManifestPath}`);
+  }
+
+  const fallbackSession = await prisma.characterGenerationSession.findFirst({
+    where: {
+      episodeId: episode.id,
+      characterPackId: episode.characterPackId
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      referenceAssetId: true
+    }
+  });
+  const sessionId = manifest.sessionId ?? fallbackSession?.id;
+  if (!sessionId) {
+    throw createHttpError(400, "generation session not found for this job");
+  }
+
+  const firstCandidateForView = manifest.candidates.find((candidate) => candidate.view === input.viewToGenerate);
+  const seed = input.regenerateSameSeed
+    ? (firstCandidateForView?.seed ?? Number.parseInt(String(sourceGenerateJob.attemptsMade + 1), 10) + DEFAULT_GENERATION_SEED)
+    : (input.seed ?? (firstCandidateForView?.seed ?? DEFAULT_GENERATION_SEED) + 1);
+
+  const generateJob = await prisma.job.create({
+    data: {
+      episodeId: episode.id,
+      type: GENERATE_CHARACTER_ASSETS_JOB_NAME,
+      status: "QUEUED",
+      progress: 0,
+      maxAttempts: sourceGenerateJob.maxAttempts,
+      retryBackoffMs: sourceGenerateJob.retryBackoffMs
+    }
+  });
+
+  const manifestPath = getGenerationManifestPath(generateJob.id);
+  const payload = {
+    jobDbId: generateJob.id,
+    episodeId: episode.id,
+    schemaChecks: [],
+    character: {
+      characterPackId: episode.characterPackId,
+      version: episode.characterPackVersion,
+      generation: {
+        sessionId,
+        mode: manifest.mode === "reference" ? "reference" : "new",
+        provider: manifest.provider === "comfyui" ? "comfyui" : "mock",
+        promptPreset: manifest.promptPreset,
+        positivePrompt: manifest.positivePrompt,
+        negativePrompt: manifest.negativePrompt,
+        boostNegativePrompt: input.boostNegativePrompt,
+        referenceAssetId: fallbackSession?.referenceAssetId ?? undefined,
+        candidateCount: input.candidateCount,
+        autoPick: false,
+        requireHitlPick: true,
+        seed,
+        viewToGenerate: input.viewToGenerate,
+        regenerateSameSeed: input.regenerateSameSeed,
+        manifestPath
+      }
+    }
+  } as unknown as EpisodeJobPayload;
+
+  const enqueueResult = await enqueueWithResilience({
+    queue,
+    name: GENERATE_CHARACTER_ASSETS_JOB_NAME,
+    payload,
+    maxAttempts: generateJob.maxAttempts,
+    backoffMs: generateJob.retryBackoffMs,
+    maxEnqueueRetries: 2,
+    retryDelayMs: 200,
+    redisUnavailableAsHttp503: true
+  });
+
+  const bullmqJobId = String(enqueueResult.job.id);
+
+  await prisma.$transaction(async (trx) => {
+    await trx.job.update({
+      where: { id: generateJob.id },
+      data: {
+        bullmqJobId,
+        status: "QUEUED",
+        lastError: null,
+        finishedAt: null
+      }
+    });
+
+    await trx.jobLog.create({
+      data: {
+        jobId: generateJob.id,
+        level: "info",
+        message: "Transition -> ENQUEUED (view regenerate)",
+        details: toPrismaJson({
+          source: "api:character-generator:regenerate-view",
+          queueName,
+          bullmqJobId,
+          sessionId,
+          viewToGenerate: input.viewToGenerate,
+          regenerateSameSeed: input.regenerateSameSeed,
+          seed,
+          manifestPath,
+          enqueueMode: enqueueResult.mode,
+          enqueueAttemptCount: enqueueResult.attemptCount,
+          enqueueErrorSummary: enqueueResult.errorSummary
+        })
+      }
+    });
+
+    await trx.characterGenerationSession.update({
+      where: { id: sessionId },
+      data: {
+        status: "GENERATING",
+        viewToGenerate:
+          input.viewToGenerate === "front"
+            ? "FRONT"
+            : input.viewToGenerate === "threeQuarter"
+              ? "THREE_QUARTER"
+              : "PROFILE",
+        statusMessage: `Regenerating ${input.viewToGenerate} candidates`
+      }
+    });
+  });
+
+  return {
+    sessionId,
+    view: input.viewToGenerate,
+    generateJobId: generateJob.id,
+    bullmqJobId,
+    manifestPath
+  };
+}
+
+async function createCharacterGenerationRecreate(
+  prisma: PrismaClient,
+  queue: Queue<EpisodeJobPayload>,
+  queueName: string,
+  input: {
+    generateJobId: string;
+    candidateCount: number;
+    seed?: number;
+    regenerateSameSeed: boolean;
+    boostNegativePrompt: boolean;
+  }
+): Promise<CharacterGenerationRecreateResult> {
+  const sourceGenerateJob = await prisma.job.findUnique({
+    where: { id: input.generateJobId },
+    include: {
+      episode: {
+        select: {
+          id: true,
+          characterPackId: true,
+          characterPackVersion: true
+        }
+      }
+    }
+  });
+
+  if (!sourceGenerateJob) {
+    throw createHttpError(404, "generate job not found");
+  }
+  if (sourceGenerateJob.type !== GENERATE_CHARACTER_ASSETS_JOB_NAME) {
+    throw createHttpError(400, "job is not GENERATE_CHARACTER_ASSETS");
+  }
+
+  const episode = sourceGenerateJob.episode;
+  if (!episode.characterPackId || !episode.characterPackVersion) {
+    throw createHttpError(400, "episode does not have characterPack metadata");
+  }
+
+  const sourceManifestPath = getGenerationManifestPath(sourceGenerateJob.id);
+  const manifest = readGenerationManifest(sourceManifestPath);
+  if (!manifest) {
+    throw createHttpError(404, `generation manifest not found: ${sourceManifestPath}`);
+  }
+
+  if (!manifest.inputHash || !manifest.manifestHash) {
+    throw createHttpError(400, "manifest hash fields are missing");
+  }
+
+  const fallbackSession = await prisma.characterGenerationSession.findFirst({
+    where: {
+      episodeId: episode.id,
+      characterPackId: episode.characterPackId
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      referenceAssetId: true
+    }
+  });
+  const sessionId = manifest.sessionId ?? fallbackSession?.id;
+  if (!sessionId) {
+    throw createHttpError(400, "generation session not found for this job");
+  }
+
+  const previousSeed = manifest.candidates[0]?.seed ?? DEFAULT_GENERATION_SEED;
+  const seed = input.regenerateSameSeed ? previousSeed : (input.seed ?? previousSeed + 1);
+
+  const generateJob = await prisma.job.create({
+    data: {
+      episodeId: episode.id,
+      type: GENERATE_CHARACTER_ASSETS_JOB_NAME,
+      status: "QUEUED",
+      progress: 0,
+      maxAttempts: sourceGenerateJob.maxAttempts,
+      retryBackoffMs: sourceGenerateJob.retryBackoffMs
+    }
+  });
+
+  const manifestPath = getGenerationManifestPath(generateJob.id);
+  const provider =
+    manifest.provider === "comfyui" ? "comfyui" : "mock";
+  const payload = {
+    jobDbId: generateJob.id,
+    episodeId: episode.id,
+    schemaChecks: [],
+    character: {
+      characterPackId: episode.characterPackId,
+      version: episode.characterPackVersion,
+      generation: {
+        sessionId,
+        mode: manifest.mode === "reference" ? "reference" : "new",
+        provider,
+        promptPreset: manifest.promptPreset,
+        positivePrompt: manifest.positivePrompt,
+        negativePrompt: manifest.negativePrompt,
+        boostNegativePrompt: input.boostNegativePrompt,
+        referenceAssetId: fallbackSession?.referenceAssetId ?? undefined,
+        candidateCount: input.candidateCount,
+        autoPick: false,
+        requireHitlPick: true,
+        seed,
+        regenerateSameSeed: input.regenerateSameSeed,
+        manifestPath
+      }
+    }
+  } as unknown as EpisodeJobPayload;
+
+  const enqueueResult = await enqueueWithResilience({
+    queue,
+    name: GENERATE_CHARACTER_ASSETS_JOB_NAME,
+    payload,
+    maxAttempts: generateJob.maxAttempts,
+    backoffMs: generateJob.retryBackoffMs,
+    maxEnqueueRetries: 2,
+    retryDelayMs: 200,
+    redisUnavailableAsHttp503: true
+  });
+
+  const bullmqJobId = String(enqueueResult.job.id);
+
+  await prisma.$transaction(async (trx) => {
+    await trx.job.update({
+      where: { id: generateJob.id },
+      data: {
+        bullmqJobId,
+        status: "QUEUED",
+        lastError: null,
+        finishedAt: null
+      }
+    });
+
+    await trx.jobLog.create({
+      data: {
+        jobId: generateJob.id,
+        level: "info",
+        message: "Transition -> ENQUEUED (recreate)",
+        details: toPrismaJson({
+          source: "api:character-generator:recreate",
+          queueName,
+          bullmqJobId,
+          sessionId,
+          sourceGenerateJobId: input.generateJobId,
+          sourceManifestPath,
+          sourceManifestHash: manifest.manifestHash,
+          sourceInputHash: manifest.inputHash,
+          regenerateSameSeed: input.regenerateSameSeed,
+          seed,
+          manifestPath,
+          enqueueMode: enqueueResult.mode,
+          enqueueAttemptCount: enqueueResult.attemptCount,
+          enqueueErrorSummary: enqueueResult.errorSummary
+        })
+      }
+    });
+  });
+
+  return {
+    sessionId,
+    generateJobId: generateJob.id,
+    bullmqJobId,
+    manifestPath,
+    seed
+  };
 }
 
 async function createCharacterPack(
@@ -908,15 +2202,18 @@ async function createCharacterPack(
     }
   } as unknown as EpisodeJobPayload;
 
-  const queued = await enqueueWithIdempotency(
+  const enqueueResult = await enqueueWithResilience({
     queue,
-    BUILD_CHARACTER_PACK_JOB_NAME,
+    name: BUILD_CHARACTER_PACK_JOB_NAME,
     payload,
-    txResult.buildJob.maxAttempts,
-    txResult.buildJob.retryBackoffMs
-  );
+    maxAttempts: txResult.buildJob.maxAttempts,
+    backoffMs: txResult.buildJob.retryBackoffMs,
+    maxEnqueueRetries: 2,
+    retryDelayMs: 200,
+    redisUnavailableAsHttp503: true
+  });
 
-  const bullmqJobId = String(queued.id);
+  const bullmqJobId = String(enqueueResult.job.id);
 
   await prisma.$transaction(async (tx) => {
     await tx.job.update({
@@ -939,7 +2236,10 @@ async function createCharacterPack(
           queueName,
           bullmqJobId,
           characterPackId: txResult.characterPack.id,
-          previewJobId: txResult.previewJob.id
+          previewJobId: txResult.previewJob.id,
+          enqueueMode: enqueueResult.mode,
+          enqueueAttemptCount: enqueueResult.attemptCount,
+          enqueueErrorSummary: enqueueResult.errorSummary
         })
       }
     });
@@ -1103,13 +2403,426 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     });
   });
 
+  app.get("/api/character-generator/jobs/:id", async (request) => {
+    const id = requireRouteParam(request.params, "id");
+    const job = await prisma.job.findUnique({
+      where: { id },
+      include: {
+        episode: {
+          select: {
+            id: true,
+            topic: true,
+            status: true,
+            characterPackId: true
+          }
+        },
+        logs: {
+          orderBy: { createdAt: "desc" },
+          take: 20
+        }
+      }
+    });
+
+    if (!job) {
+      throw createHttpError(404, "generation job not found");
+    }
+
+    if (job.type !== GENERATE_CHARACTER_ASSETS_JOB_NAME) {
+      throw createHttpError(400, "job is not GENERATE_CHARACTER_ASSETS");
+    }
+
+    const manifestPath = getGenerationManifestPath(job.id);
+    const manifest = readGenerationManifest(manifestPath);
+    const failureSummary = pickFirstLine(job.lastError);
+
+    return {
+      data: {
+        id: job.id,
+        type: job.type,
+        status: job.status,
+        progress: job.progress,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.maxAttempts,
+        retryBackoffMs: job.retryBackoffMs,
+        bullmqJobId: job.bullmqJobId,
+        lastError: job.lastError,
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        finishedAt: job.finishedAt,
+        episode: job.episode,
+        manifestPath,
+        manifestExists: manifest !== null,
+        manifest,
+        sessionId: manifest?.sessionId ?? null,
+        failureSummary,
+        logs: job.logs
+      }
+    };
+  });
+
+  app.post("/api/character-generator/pick", async (request, reply) => {
+    const body = requireBodyObject(request.body);
+    const generateJobId = optionalString(body, "generateJobId");
+    if (!generateJobId) {
+      throw createHttpError(400, "generateJobId is required");
+    }
+
+    const selection: CharacterGenerationSelection = {
+      front: optionalString(body, "frontCandidateId") ?? "",
+      threeQuarter: optionalString(body, "threeQuarterCandidateId") ?? "",
+      profile: optionalString(body, "profileCandidateId") ?? ""
+    };
+
+    if (!selection.front || !selection.threeQuarter || !selection.profile) {
+      throw createHttpError(400, "frontCandidateId/threeQuarterCandidateId/profileCandidateId are required");
+    }
+
+    const created = await createCharacterGenerationPick(prisma, queue, queueName, {
+      generateJobId,
+      selection
+    });
+
+    return reply.code(201).send({
+      data: created
+    });
+  });
+
+  app.post("/api/character-generator/regenerate-view", async (request, reply) => {
+    const body = requireBodyObject(request.body);
+    const generateJobId = optionalString(body, "generateJobId");
+    if (!generateJobId) {
+      throw createHttpError(400, "generateJobId is required");
+    }
+
+    const viewToGenerate = parseGenerationView(body.viewToGenerate, "viewToGenerate");
+    const candidateCount = Math.min(parsePositiveInt(body.candidateCount, "candidateCount", 4), 8);
+    const regenerateSameSeed = parseBoolean(body.regenerateSameSeed, "regenerateSameSeed", true);
+    const seed = parsePositiveInt(body.seed, "seed", DEFAULT_GENERATION_SEED);
+    const boostNegativePrompt = parseBoolean(body.boostNegativePrompt, "boostNegativePrompt", false);
+
+    const created = await createCharacterGenerationRegenerateView(prisma, queue, queueName, {
+      generateJobId,
+      viewToGenerate,
+      candidateCount,
+      seed,
+      regenerateSameSeed,
+      boostNegativePrompt
+    });
+
+    return reply.code(201).send({
+      data: created
+    });
+  });
+
+  app.post("/api/character-generator/recreate", async (request, reply) => {
+    const body = requireBodyObject(request.body);
+    const generateJobId = optionalString(body, "generateJobId");
+    if (!generateJobId) {
+      throw createHttpError(400, "generateJobId is required");
+    }
+
+    const candidateCount = Math.min(parsePositiveInt(body.candidateCount, "candidateCount", 4), 8);
+    const regenerateSameSeed = parseBoolean(body.regenerateSameSeed, "regenerateSameSeed", true);
+    const seed = parsePositiveInt(body.seed, "seed", DEFAULT_GENERATION_SEED);
+    const boostNegativePrompt = parseBoolean(body.boostNegativePrompt, "boostNegativePrompt", false);
+
+    const created = await createCharacterGenerationRecreate(prisma, queue, queueName, {
+      generateJobId,
+      candidateCount,
+      seed,
+      regenerateSameSeed,
+      boostNegativePrompt
+    });
+
+    return reply.code(201).send({
+      data: created
+    });
+  });
+
+  app.get("/ui/studio", async (request, reply) => {
+    const query = isRecord(request.query) ? request.query : {};
+    const message = optionalString(query, "message");
+    const error = optionalString(query, "error");
+    const html = `${message ? `<div class="notice">${escHtml(message)}</div>` : ""}${error ? `<div class="error">${escHtml(error)}</div>` : ""}
+<section class="card studio-shell">
+  <style>
+    .studio-shell{display:grid;gap:10px}
+    .studio-hint{margin:0;color:#425466;font-size:13px}
+    .studio-grid{display:grid;gap:12px;grid-template-columns:minmax(360px,1.1fr) minmax(340px,1fr)}
+    .studio-col{display:grid;gap:12px}
+    .studio-section{background:#fff}
+    .studio-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .studio-table-wrap{overflow:auto;max-height:320px;border:1px solid #dce5f3;border-radius:10px}
+    .studio-table-wrap table{margin:0}
+    .studio-table-wrap tbody tr:hover{background:#f8fbff}
+    .studio-table-wrap tbody tr:focus-within{outline:2px solid #0f5bd8;outline-offset:-2px}
+    .studio-actions{display:flex;gap:8px;flex-wrap:wrap}
+    @media (max-width: 1100px){.studio-grid{grid-template-columns:1fr}}
+  </style>
+  <h1>통합 스튜디오</h1>
+  <p class="studio-hint">에셋 업로드, 캐릭터 생성, 캐릭터 팩 확인, 렌더/퍼블리시 진입을 한 화면에서 처리합니다.</p>
+  <div id="studio-status" class="notice" aria-live="polite">준비 완료: 좌측에서 생성하고 우측에서 내역을 선택하세요.</div>
+</section>
+<section class="card studio-grid">
+  <div class="studio-col">
+    <section class="candidate studio-section">
+      <h2 style="margin:0">1) 에셋 업로드</h2>
+      <form id="studio-asset-upload-form" enctype="multipart/form-data" class="grid">
+        <div class="grid two">
+          <label>에셋 유형<select name="assetType"><option value="character_reference">character_reference (레퍼런스)</option><option value="character_view">character_view (캐릭터 뷰)</option><option value="background">background (배경)</option><option value="chart_source">chart_source (차트)</option></select></label>
+          <label>파일<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label>
+        </div>
+        <button id="studio-asset-upload-submit" type="submit">업로드</button>
+      </form>
+      <pre id="studio-asset-upload-result">대기 중</pre>
+    </section>
+    <section class="candidate studio-section">
+      <h2 style="margin:0">2) 캐릭터 생성</h2>
+      <form method="post" action="/ui/character-generator/create" class="grid">
+        <div class="grid two">
+          <label>모드<select name="mode"><option value="new">new (프롬프트 기반)</option><option value="reference">reference (레퍼런스 기반)</option></select></label>
+          <label>프로바이더<select name="provider"><option value="mock">mock (기본 무료)</option><option value="comfyui">comfyui (옵션)</option><option value="remoteApi">remoteApi (옵션)</option></select></label>
+          <label>스타일 프리셋<select name="promptPreset"><option value="default">default</option><option value="anime_clean">anime_clean</option><option value="brand_mascot">brand_mascot</option><option value="toon_bold">toon_bold</option></select></label>
+          <label>후보 수<input name="candidateCount" type="number" min="1" max="8" value="4"/></label>
+          <label>주제(선택)<input name="topic" placeholder="예: 교육용 고양이 캐릭터"/></label>
+          <label>시드(seed)<input name="seed" type="number" value="20260305"/></label>
+        </div>
+        <label>긍정 프롬프트(선택)<textarea name="positivePrompt" rows="2" placeholder="friendly orange cat mascot, clean silhouette"></textarea></label>
+        <label>부정 프롬프트(선택)<textarea name="negativePrompt" rows="2" placeholder="text, watermark, extra fingers, noisy background"></textarea></label>
+        <button type="submit" data-primary-action="1">캐릭터 생성 시작</button>
+      </form>
+    </section>
+    <section class="candidate studio-section">
+      <h2 style="margin:0">3) 다음 단계 (편집/렌더/퍼블리시)</h2>
+      <div class="grid two">
+        <label>에피소드 주제<input id="studio-topic" placeholder="예: 고양이 캐릭터 소개 영상"/></label>
+        <label>episodeId<input id="studio-episode-id" placeholder="cmm..."/></label>
+        <label>선택 캐릭터 팩<input id="studio-selected-pack" placeholder="우측 목록에서 선택" readonly/></label>
+      </div>
+      <div class="studio-actions">
+        <button type="button" id="studio-create-episode" class="secondary">에피소드 생성(+선택 캐릭터 연결)</button>
+        <button type="button" id="studio-open-editor" class="secondary">편집기 열기</button>
+        <button type="button" id="studio-enqueue-preview" class="secondary">렌더 미리보기 큐 등록</button>
+        <button type="button" id="studio-open-publish" class="secondary">퍼블리시 화면 열기</button>
+      </div>
+      <p class="studio-hint">단축키: <strong>r</strong>(주요 액션), <strong>?</strong>(도움말)</p>
+    </section>
+  </div>
+  <div class="studio-col">
+    <section class="candidate studio-section">
+      <div class="studio-head"><h2 style="margin:0">최근 에셋</h2><button type="button" id="studio-refresh-assets" class="secondary">새로고침</button></div>
+      <div class="studio-table-wrap"><table id="studio-assets-table"><thead><tr><th>ID</th><th>유형</th><th>상태</th><th>생성시각</th></tr></thead><tbody><tr><td colspan="4">로딩 중...</td></tr></tbody></table></div>
+    </section>
+    <section class="candidate studio-section">
+      <div class="studio-head"><h2 style="margin:0">생성된 캐릭터 팩</h2><button type="button" id="studio-refresh-packs" class="secondary">새로고침</button></div>
+      <div class="studio-table-wrap"><table id="studio-packs-table"><thead><tr><th>ID</th><th>버전</th><th>상태</th><th>에피소드</th></tr></thead><tbody><tr><td colspan="4">로딩 중...</td></tr></tbody></table></div>
+      <p class="studio-hint">행을 클릭하면 선택 캐릭터 팩/episodeId가 자동으로 채워집니다.</p>
+    </section>
+  </div>
+</section>
+<script>
+(() => {
+  const toast = (title, msg, tone = "ok") => {
+    if (typeof window.__ecsToast === "function") window.__ecsToast(title, msg, tone);
+  };
+  const q = (id) => document.getElementById(id);
+  const assetsBody = q("studio-assets-table")?.querySelector("tbody");
+  const packsBody = q("studio-packs-table")?.querySelector("tbody");
+  const statusBox = q("studio-status");
+  const selectedPack = q("studio-selected-pack");
+  const episodeInput = q("studio-episode-id");
+  const topicInput = q("studio-topic");
+
+  const safe = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
+  const setStatus = (text) => {
+    if (statusBox instanceof HTMLElement) statusBox.textContent = text;
+  };
+
+  const loadAssets = async () => {
+    if (!(assetsBody instanceof HTMLElement)) return;
+    setStatus("에셋 목록을 불러오는 중...");
+    assetsBody.innerHTML = "<tr><td colspan='4'>불러오는 중...</td></tr>";
+    try {
+      const res = await fetch("/api/assets?limit=30");
+      if (!res.ok) throw new Error("assets " + res.status);
+      const json = await res.json();
+      const list = Array.isArray(json?.data) ? json.data : [];
+      if (!list.length) {
+        assetsBody.innerHTML = "<tr><td colspan='4'>에셋이 없습니다.</td></tr>";
+        setStatus("에셋 목록 로드 완료: 데이터 없음");
+        return;
+      }
+      assetsBody.innerHTML = list.map((asset) => "<tr><td><a href=\"/ui/assets?assetId=" + encodeURIComponent(String(asset.id || "")) + "\">" + safe(asset.id) + "</a></td><td>" + safe(asset.assetType) + "</td><td>" + safe(asset.status) + "</td><td>" + safe(asset.createdAt) + "</td></tr>").join("");
+      setStatus("에셋 목록 로드 완료");
+    } catch (e) {
+      assetsBody.innerHTML = "<tr><td colspan='4'>실패: " + safe(String(e)) + "</td></tr>";
+      setStatus("에셋 목록 로드 실패");
+      toast("에셋", String(e), "warn");
+    }
+  };
+
+  const loadPacks = async () => {
+    if (!(packsBody instanceof HTMLElement)) return;
+    setStatus("캐릭터 팩 목록을 불러오는 중...");
+    packsBody.innerHTML = "<tr><td colspan='4'>불러오는 중...</td></tr>";
+    try {
+      const res = await fetch("/api/character-packs?limit=30");
+      if (!res.ok) throw new Error("packs " + res.status);
+      const json = await res.json();
+      const list = Array.isArray(json?.data) ? json.data : [];
+      if (!list.length) {
+        packsBody.innerHTML = "<tr><td colspan='4'>캐릭터 팩이 없습니다.</td></tr>";
+        setStatus("캐릭터 팩 목록 로드 완료: 데이터 없음");
+        return;
+      }
+      packsBody.innerHTML = list.map((pack) => {
+        const packId = String(pack.id || "");
+        return "<tr data-pack-id=\"" + safe(packId) + "\"><td><a href=\"/ui/characters?characterPackId=" + encodeURIComponent(packId) + "\">" + safe(packId) + "</a></td><td>" + safe(pack.version) + "</td><td>" + safe(pack.status) + "</td><td>" + safe(pack.episodeId || "-") + "</td></tr>";
+      }).join("");
+      packsBody.querySelectorAll("tr[data-pack-id]").forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        row.style.cursor = "pointer";
+        row.addEventListener("click", () => {
+          const packId = row.dataset.packId || "";
+          if (selectedPack instanceof HTMLInputElement) selectedPack.value = packId;
+          const episodeCell = row.children.length > 3 ? row.children[3] : null;
+          if (episodeCell instanceof HTMLElement) {
+            const linkedEpisodeId = String(episodeCell.textContent || "").trim();
+            if (episodeInput instanceof HTMLInputElement && linkedEpisodeId && linkedEpisodeId !== "-") {
+              episodeInput.value = linkedEpisodeId;
+            }
+          }
+          setStatus("캐릭터 팩 선택됨: " + packId);
+        });
+      });
+      setStatus("캐릭터 팩 목록 로드 완료");
+    } catch (e) {
+      packsBody.innerHTML = "<tr><td colspan='4'>실패: " + safe(String(e)) + "</td></tr>";
+      setStatus("캐릭터 팩 목록 로드 실패");
+      toast("캐릭터 팩", String(e), "warn");
+    }
+  };
+
+  const uploadForm = q("studio-asset-upload-form");
+  const uploadSubmit = q("studio-asset-upload-submit");
+  const uploadResult = q("studio-asset-upload-result");
+  if (uploadForm instanceof HTMLFormElement && uploadSubmit instanceof HTMLButtonElement && uploadResult instanceof HTMLElement) {
+    uploadForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      uploadSubmit.disabled = true;
+      setStatus("에셋 업로드 진행 중...");
+      uploadResult.textContent = "업로드 중...";
+      try {
+        const fd = new FormData(uploadForm);
+        const res = await fetch("/api/assets/upload", { method: "POST", body: fd });
+        const json = await res.json();
+        uploadResult.textContent = JSON.stringify(json, null, 2);
+        if (!res.ok) throw new Error(json?.error || ("upload failed " + res.status));
+        toast("에셋 업로드", "완료되었습니다.", "ok");
+        setStatus("에셋 업로드 완료");
+        await loadAssets();
+      } catch (e) {
+        uploadResult.textContent = String(e);
+        setStatus("에셋 업로드 실패");
+        toast("에셋 업로드", String(e), "bad");
+      } finally {
+        uploadSubmit.disabled = false;
+      }
+    });
+  }
+
+  q("studio-refresh-assets")?.addEventListener("click", () => { void loadAssets(); });
+  q("studio-refresh-packs")?.addEventListener("click", () => { void loadPacks(); });
+
+  q("studio-create-episode")?.addEventListener("click", async () => {
+    const topic = topicInput instanceof HTMLInputElement ? topicInput.value.trim() : "";
+    if (!topic) {
+      toast("입력 필요", "에피소드 주제를 입력하세요.", "warn");
+      setStatus("에피소드 생성 실패: 주제 누락");
+      return;
+    }
+    const characterPackId = selectedPack instanceof HTMLInputElement ? selectedPack.value.trim() : "";
+    const payload = {
+      topic,
+      targetDurationSec: 600,
+      jobType: "GENERATE_BEATS",
+      ...(characterPackId ? { characterPackId } : {})
+    };
+    try {
+      const res = await fetch("/api/episodes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(String(json?.error || ("create episode failed: " + res.status)));
+      const episodeId = String(json?.data?.episode?.id || "").trim();
+      if (episodeInput instanceof HTMLInputElement && episodeId) episodeInput.value = episodeId;
+      toast("에피소드 생성", episodeId ? ("생성 완료: " + episodeId) : "생성 완료", "ok");
+      setStatus("에피소드 생성 완료" + (episodeId ? ": " + episodeId : ""));
+    } catch (e) {
+      setStatus("에피소드 생성 실패");
+      toast("에피소드 생성", String(e), "bad");
+    }
+  });
+
+  q("studio-open-editor")?.addEventListener("click", () => {
+    if (!(episodeInput instanceof HTMLInputElement) || !episodeInput.value.trim()) {
+      toast("입력 필요", "episodeId를 입력하세요.", "warn");
+      setStatus("편집기 이동 실패: episodeId 누락");
+      return;
+    }
+    setStatus("편집기 페이지로 이동 중...");
+    window.location.href = "/ui/episodes/" + encodeURIComponent(episodeInput.value.trim()) + "/editor";
+  });
+
+  q("studio-open-publish")?.addEventListener("click", () => {
+    if (!(episodeInput instanceof HTMLInputElement) || !episodeInput.value.trim()) {
+      toast("입력 필요", "episodeId를 입력하세요.", "warn");
+      setStatus("퍼블리시 이동 실패: episodeId 누락");
+      return;
+    }
+    setStatus("퍼블리시 페이지로 이동 중...");
+    window.location.href = "/ui/publish?episodeId=" + encodeURIComponent(episodeInput.value.trim());
+  });
+
+  q("studio-enqueue-preview")?.addEventListener("click", async () => {
+    if (!(episodeInput instanceof HTMLInputElement) || !episodeInput.value.trim()) {
+      toast("입력 필요", "episodeId를 입력하세요.", "warn");
+      setStatus("렌더 미리보기 큐 등록 실패: episodeId 누락");
+      return;
+    }
+    const episodeId = episodeInput.value.trim();
+    try {
+      const res = await fetch("/api/episodes/" + encodeURIComponent(episodeId) + "/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobType: "RENDER_PREVIEW" })
+      });
+      if (!res.ok) throw new Error("enqueue failed: " + res.status);
+      toast("렌더 미리보기", "큐 등록 완료", "ok");
+      setStatus("렌더 미리보기 큐 등록 완료");
+      window.location.href = "/ui/episodes/" + encodeURIComponent(episodeId);
+    } catch (e) {
+      setStatus("렌더 미리보기 큐 등록 실패");
+      toast("렌더 미리보기", String(e), "bad");
+    }
+  });
+
+  void loadAssets();
+  void loadPacks();
+})();
+</script>`;
+    return reply.type("text/html; charset=utf-8").send(uiPage("통합 스튜디오", html));
+  });
+
   app.get("/ui/character-generator", async (request, reply) => {
     const query = isRecord(request.query) ? request.query : {};
     const message = optionalString(query, "message");
     const error = optionalString(query, "error");
     const selectedJobId = optionalString(query, "jobId");
 
-    const [jobs, referenceAssets] = await Promise.all([
+    const [jobs, latestBible, referenceAssets, sessions, recentPacks] = await Promise.all([
       prisma.job.findMany({
         where: { type: GENERATE_CHARACTER_ASSETS_JOB_NAME },
         orderBy: { createdAt: "desc" },
@@ -1129,6 +2842,18 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           }
         }
       }),
+      prisma.channelBible.findFirst({
+        where: {
+          isActive: true
+        },
+        orderBy: {
+          version: "desc"
+        },
+        select: {
+          id: true,
+          json: true
+        }
+      }),
       prisma.asset.findMany({
         where: {
           status: "READY",
@@ -1141,27 +2866,53 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           channelId: true,
           createdAt: true
         }
+      }),
+      prisma.characterGenerationSession.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 60,
+        include: {
+          candidates: {
+            orderBy: [{ view: "asc" }, { createdAt: "desc" }],
+            take: 60
+          }
+        }
+      }),
+      prisma.characterPack.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          version: true,
+          status: true,
+          createdAt: true
+        }
       })
     ]);
 
     const selectedJob = selectedJobId ? jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null : jobs[0] ?? null;
-    const selectedManifestPath = (() => {
-      if (!selectedJob) {
-        return null;
-      }
-      const log = selectedJob.logs.find((row) => row.message.includes("ENQUEUED") || row.message.includes("generated"));
-      if (!log || !isRecord(log.details)) {
-        return null;
-      }
-      const value = log.details.manifestPath;
-      return typeof value === "string" && value.trim().length > 0 ? value : null;
-    })();
+    const selectedManifestPath = selectedJob ? getGenerationManifestPath(selectedJob.id) : null;
+    const selectedManifest = selectedManifestPath ? readGenerationManifest(selectedManifestPath) : null;
+    const selectedSession =
+      (selectedManifest?.sessionId
+        ? sessions.find((session) => session.id === selectedManifest.sessionId) ?? null
+        : null) ??
+      (selectedJob
+        ? sessions.find(
+            (session) =>
+              session.episodeId === selectedJob.episodeId &&
+              session.characterPackId === (selectedJob.episode?.characterPackId ?? null)
+          ) ?? null
+        : null);
+    const channelPresets = extractChannelStylePresets(latestBible?.json);
+    const promptRules = extractChannelPromptRules(latestBible?.json);
+    const mergedPresets = [
+      ...CHARACTER_STYLE_PRESETS.map((preset) => ({ id: preset.id, label: preset.label })),
+      ...channelPresets
+    ].filter((item, index, arr) => arr.findIndex((other) => other.id === item.id) === index);
 
-    const selectedManifest = selectedManifestPath && fs.existsSync(selectedManifestPath)
-      ? JSON.parse(fs.readFileSync(selectedManifestPath, "utf8"))
-      : null;
-
-    const styleOptions = CHARACTER_STYLE_PRESETS.map((preset) => `<option value="${escHtml(preset.id)}">${escHtml(preset.label)}</option>`).join("");
+    const styleOptions = mergedPresets
+      .map((preset) => `<option value="${escHtml(preset.id)}">${escHtml(preset.label)}</option>`)
+      .join("");
     const referenceOptions = referenceAssets
       .map(
         (asset) =>
@@ -1171,22 +2922,152 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       )
       .join("");
 
+    const groupedCandidates = {
+      front: selectedManifest?.candidates.filter((candidate) => candidate.view === "front") ?? [],
+      threeQuarter: selectedManifest?.candidates.filter((candidate) => candidate.view === "threeQuarter") ?? [],
+      profile: selectedManifest?.candidates.filter((candidate) => candidate.view === "profile") ?? []
+    };
+
+    const selectedPackId = selectedJob?.episode?.characterPackId ?? selectedManifest?.characterPackId ?? null;
+    const selectedArtifacts = selectedPackId ? getCharacterArtifacts(selectedPackId) : null;
+    const selectedPreviewExists = selectedArtifacts ? fs.existsSync(selectedArtifacts.previewPath) : false;
+    const selectedPreviewUrl = selectedPackId
+      ? `/artifacts/characters/${encodeURIComponent(selectedPackId)}/preview.mp4`
+      : null;
+    const selectedQcExists = selectedArtifacts ? fs.existsSync(selectedArtifacts.qcReportPath) : false;
+    const selectedQcUrl = selectedPackId
+      ? `/artifacts/characters/${encodeURIComponent(selectedPackId)}/qc_report.json`
+      : null;
+
+    const bestByView = {
+      front: groupedCandidates.front.sort((a, b) => b.score - a.score)[0] ?? null,
+      threeQuarter: groupedCandidates.threeQuarter.sort((a, b) => b.score - a.score)[0] ?? null,
+      profile: groupedCandidates.profile.sort((a, b) => b.score - a.score)[0] ?? null
+    };
+    const consistencyValues = (selectedManifest?.candidates ?? [])
+      .map((candidate) => candidate.consistencyScore)
+      .filter((score): score is number => typeof score === "number");
+    const consistencyAverage =
+      consistencyValues.length > 0
+        ? consistencyValues.reduce((sum, score) => sum + score, 0) / consistencyValues.length
+        : null;
+    const consistencyLowCount = consistencyValues.filter((score) => score < 0.48).length;
+    const consistencyCriticalCount = consistencyValues.filter((score) => score < 0.34).length;
+    const consistencySummaryTone =
+      consistencyAverage === null ? "muted" : consistencyAverage < 0.48 ? "warn" : consistencyAverage < 0.62 ? "bad" : "ok";
+
+    const candidateCard = (
+      view: "front" | "threeQuarter" | "profile",
+      candidate: GenerationManifestCandidate,
+      required: boolean
+    ): string => {
+      const absolutePath = path.isAbsolute(candidate.filePath)
+        ? candidate.filePath
+        : selectedManifestPath
+          ? path.resolve(path.dirname(selectedManifestPath), candidate.filePath)
+          : candidate.filePath;
+      const imageUrl = toArtifactUrlFromAbsolutePath(absolutePath);
+      const warnings = candidate.warnings.length > 0 ? candidate.warnings.join(", ") : "-";
+      const rejections = candidate.rejections.length > 0 ? candidate.rejections.join(", ") : "-";
+      const breakdown = candidate.breakdown;
+      const breakdownLine = breakdown
+        ? `Quality=${typeof breakdown.qualityScore === "number" ? breakdown.qualityScore.toFixed(3) : "-"} / Consistency=${
+            typeof breakdown.consistencyScore === "number" ? breakdown.consistencyScore.toFixed(3) : "-"
+          } / Round=${typeof breakdown.generationRound === "number" ? breakdown.generationRound : "-"}`
+        : "Quality=- / Consistency=- / Round=-";
+      const breakdownLine2 = breakdown
+        ? `Alpha=${typeof breakdown.alphaScore === "number" ? breakdown.alphaScore.toFixed(3) : "-"} / BBox=${
+            typeof breakdown.occupancyScore === "number" ? breakdown.occupancyScore.toFixed(3) : "-"
+          } / Sharp=${typeof breakdown.sharpnessScore === "number" ? breakdown.sharpnessScore.toFixed(3) : "-"} / Noise=${
+            typeof breakdown.noiseScore === "number" ? breakdown.noiseScore.toFixed(3) : "-"
+          }`
+        : "Alpha=- / BBox=- / Sharp=- / Noise=-";
+
+      return `<label class="candidate"><div><input type="radio" name="${escHtml(
+        `${view}CandidateId`
+      )}" value="${escHtml(candidate.id)}"${required ? " required" : ""}/><strong>${escHtml(
+        candidate.id
+      )}</strong></div><div>score=${escHtml(candidate.score.toFixed(3))} / style=${escHtml(
+        candidate.styleScore.toFixed(3)
+      )} / consistency=${escHtml(candidate.consistencyScore === null ? "-" : candidate.consistencyScore.toFixed(3))} / seed=${escHtml(
+        candidate.seed
+      )}</div><div>${escHtml(
+        breakdownLine
+      )}</div><div>${escHtml(
+        breakdownLine2
+      )}</div><div>warnings: ${escHtml(
+        warnings
+      )}</div><div>rejections: ${escHtml(rejections)}</div>${
+        imageUrl
+          ? `<img src="${escHtml(imageUrl)}" alt="${escHtml(candidate.id)}" style="width:100%;max-height:220px;object-fit:contain;border:1px solid #d6deea;border-radius:8px;background:#fff"/>`
+          : `<div class="error">preview unavailable</div>`
+      }</label>`;
+    };
+
+    const regenerateSection =
+      selectedJob && selectedManifest
+        ? `<section class="card"><h2>Step 4.5) 뷰별 재생성</h2><div class="notice">front/threeQuarter/profile 중 마음에 안 드는 뷰만 재생성할 수 있습니다. 동일 seed 재시도 또는 seed 변경 재시도를 선택하세요.</div><div class="grid two">${(
+            ["front", "threeQuarter", "profile"] as const
+          )
+            .map((view) => {
+              const best = bestByView[view];
+              const seedValue = best?.seed ?? DEFAULT_GENERATION_SEED;
+              const candidateCountValue = Math.max(
+                1,
+                selectedManifest.candidates.filter((candidate) => candidate.view === view).length
+              );
+              return `<form method="post" action="/ui/character-generator/regenerate-view" class="candidate"><input type="hidden" name="generateJobId" value="${escHtml(
+                selectedJob.id
+              )}"/><input type="hidden" name="viewToGenerate" value="${escHtml(view)}"/><h3>${escHtml(
+                view
+              )}</h3><div>best score: ${escHtml(best ? best.score.toFixed(3) : "-")}</div><label>candidateCount<input name="candidateCount" value="${escHtml(
+                candidateCountValue
+              )}" /></label><label>seed<input name="seed" value="${escHtml(
+                seedValue
+              )}" /></label><label><input type="checkbox" name="boostNegativePrompt" value="true" checked/> negative prompt 강화</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" name="regenerateSameSeed" value="true">동일 seed 재생성</button><button class="secondary" type="submit" name="regenerateSameSeed" value="false">seed 변경 재생성</button></div></form>`;
+            })
+            .join("")}</div></section>`
+        : "";
+
+    const pickSection =
+      selectedJob && selectedManifest && selectedManifest.status === "PENDING_HITL"
+        ? `<section class="card"><h2>Step 5) 후보 선택 + Pick</h2><form method="post" action="/ui/character-generator/pick" class="grid"><input type="hidden" name="generateJobId" value="${escHtml(
+            selectedJob.id
+          )}"/><div><h3>front</h3><div class="grid two">${groupedCandidates.front
+            .sort((a, b) => b.score - a.score)
+            .map((candidate, index) => candidateCard("front", candidate, index === 0))
+            .join("")}</div></div><div><h3>threeQuarter</h3><div class="grid two">${groupedCandidates.threeQuarter
+            .sort((a, b) => b.score - a.score)
+            .map((candidate, index) => candidateCard("threeQuarter", candidate, index === 0))
+            .join("")}</div></div><div><h3>profile</h3><div class="grid two">${groupedCandidates.profile
+            .sort((a, b) => b.score - a.score)
+            .map((candidate, index) => candidateCard("profile", candidate, index === 0))
+            .join("")}</div></div><button type="submit">Pick 선택 완료 -> Pack Build + Preview 실행</button></form></section>`
+        : "";
+
     const rows = jobs
       .map((job) => {
         const manifestGuess = getGenerationManifestPath(job.id);
         const manifestExists = fs.existsSync(manifestGuess);
+        const manifest = manifestExists ? readGenerationManifest(manifestGuess) : null;
+        const providerWarning = manifest?.providerWarning;
         return `<tr><td><a href="/ui/character-generator?jobId=${encodeURIComponent(job.id)}">${escHtml(job.id)}</a></td><td>${escHtml(
           job.episodeId
-        )}</td><td>${job.episode ? `<a href="/ui/episodes/${escHtml(job.episode.id)}">${escHtml(job.episode.topic)}</a>` : "-"}</td><td><span class="badge ${uiBadge(
-          job.status
-        )}">${escHtml(job.status)}</span></td><td>${escHtml(job.progress)}%</td><td>${
+        )}</td><td>${job.episode ? `<a href="/ui/episodes/${escHtml(job.episode.id)}">${escHtml(
+          job.episode.topic
+        )}</a>` : "-"}</td><td><span class="badge ${uiBadge(job.status)}">${escHtml(job.status)}</span></td><td>${escHtml(
+          job.progress
+        )}%</td><td>${
           manifestExists
             ? `<a href="/artifacts/characters/generations/${encodeURIComponent(job.id)}/generation_manifest.json">manifest</a>`
             : "-"
+        }${
+          providerWarning ? `<div class="badge warn" style="margin-left:6px">${escHtml(providerWarning)}</div>` : ""
         }</td><td>${escHtml(job.createdAt.toLocaleString("ko-KR", { hour12: false }))}</td></tr>`;
       })
       .join("");
 
+    const selectedFailureSummary = pickFirstLine(selectedJob?.lastError ?? null);
     const selectedSection = selectedJob
       ? `<section class="card"><h2>Selected Generation Job</h2><p>jobId: <strong>${escHtml(
           selectedJob.id
@@ -1194,16 +3075,93 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           selectedJob.status
         )}</span></p><p>episode: <a href="/ui/episodes/${escHtml(selectedJob.episodeId)}">${escHtml(
           selectedJob.episodeId
-        )}</a></p><p>manifest path: <code>${escHtml(selectedManifestPath ?? "not generated yet")}</code></p><pre>${escHtml(
+        )}</a></p><p>session: ${
+          selectedSession
+            ? `<strong>${escHtml(selectedSession.id)}</strong> <span class="badge ${uiBadge(selectedSession.status)}">${escHtml(
+                selectedSession.status
+              )}</span>`
+            : `<span class="badge muted">N/A</span>`
+        }</p><p>manifest path: <code>${escHtml(selectedManifestPath ?? "not generated yet")}</code></p><p>generator status: <span class="badge ${uiBadge(
+          selectedManifest?.status ?? selectedJob.status
+        )}">${escHtml(selectedManifest?.status ?? "N/A")}</span></p>${
+          selectedManifest?.providerWarning
+            ? `<div class="notice">provider warning: ${escHtml(selectedManifest.providerWarning)}</div>`
+            : ""
+        }${
+          selectedManifest
+            ? `<div class="card" style="margin:10px 0"><h3>Consistency QC Summary</h3><p>avg consistency: <span class="badge ${uiBadge(
+                consistencySummaryTone
+              )}">${escHtml(consistencyAverage === null ? "-" : consistencyAverage.toFixed(3))}</span></p><p>low (&lt;0.48): <strong>${escHtml(
+                consistencyLowCount
+              )}</strong> / critical (&lt;0.34): <strong>${escHtml(
+                consistencyCriticalCount
+              )}</strong> / measured: <strong>${escHtml(consistencyValues.length)}</strong></p></div>`
+            : ""
+        }${
+          selectedFailureSummary
+            ? `<div class="error">실패 요약: ${escHtml(selectedFailureSummary)}<details><summary>자세히 보기</summary><pre>${escHtml(
+                selectedJob.lastError ?? ""
+              )}</pre></details></div>`
+            : ""
+        }<div id="generation-status" data-job-id="${escHtml(selectedJob.id)}" class="notice" aria-live="polite">상태 폴링 중...</div><div class="actions"><button id="generation-retry" type="button" class="secondary" style="display:none">폴링 재시도</button></div><details><summary>manifest 상세</summary><pre>${escHtml(
           JSON.stringify(selectedManifest ?? null, null, 2)
-        )}</pre></section>`
+        )}</pre></details></section>`
       : "";
 
-    const html = `<section class="card"><h1>Character Generator</h1>${
+    const previewSection =
+      selectedPackId && selectedPreviewUrl
+        ? `<section class="card"><h2>Step 6) Preview + 활성화</h2><p>characterPackId: <code>${escHtml(
+            selectedPackId
+          )}</code></p>${
+            selectedPreviewExists
+              ? `<video controls style="width:100%;max-width:960px;border:1px solid #d6deea;border-radius:8px;background:#000"><source src="${escHtml(
+                  selectedPreviewUrl
+                )}" type="video/mp4"/>브라우저가 video 태그를 지원하지 않습니다.</video>`
+              : `<div class="notice">preview.mp4가 아직 생성되지 않았습니다. Pick 이후 worker 진행 상태를 확인하세요.</div>`
+          }<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${
+            selectedPreviewExists
+              ? `<a class="secondary" href="${escHtml(selectedPreviewUrl)}" target="_blank" rel="noreferrer">preview.mp4 열기</a>`
+              : ""
+          }${
+            selectedQcExists && selectedQcUrl
+              ? `<a class="secondary" href="${escHtml(selectedQcUrl)}" target="_blank" rel="noreferrer">qc_report.json 열기</a>`
+              : ""
+          }</div><form method="post" action="/ui/character-generator/set-active" style="margin-top:10px"><input type="hidden" name="characterPackId" value="${escHtml(
+            selectedPackId
+          )}"/><button type="submit">Set Active (APPROVED)</button></form></section>`
+        : "";
+    const approvedPack = recentPacks.find((pack) => pack.status === "APPROVED") ?? null;
+    const rollbackOptions = recentPacks
+      .filter((pack) => pack.id !== approvedPack?.id)
+      .map(
+        (pack) =>
+          `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
+      )
+      .join("");
+    const compareOptions = recentPacks
+      .map(
+        (pack) =>
+          `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
+      )
+      .join("");
+    const rollbackSection = `<section class="card"><h2>Step 7) Active Pack Rollback</h2><p>current approved: <strong>${escHtml(
+      approvedPack?.id ?? "(none)"
+    )}</strong></p><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>rollback target<select name="targetCharacterPackId">${
+      rollbackOptions || '<option value="">No rollback target</option>'
+    }</select></label><button type="submit"${rollbackOptions ? "" : " disabled"}>Rollback Active Pack</button></form></section>`;
+    const compareSection = `<section class="card"><h2>Step 8) A/B Compare</h2><form method="get" action="/ui/character-generator/compare" class="grid two"><label>A pack<select name="leftPackId">${
+      compareOptions || '<option value="">No packs</option>'
+    }</select></label><label>B pack<select name="rightPackId">${
+      compareOptions || '<option value="">No packs</option>'
+    }</select></label><button type="submit"${compareOptions ? "" : " disabled"}>Open Compare</button></form></section>`;
+
+    const html = `<section class="card"><h1>Character Generator Wizard</h1>${
       message ? `<div class="notice">${escHtml(message)}</div>` : ""
-    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/character-generator/create" class="grid"><div class="grid two"><label>mode<select name="mode"><option value="new">new</option><option value="reference">reference</option></select></label><label>provider<select name="provider"><option value="mock">mock</option><option value="comfyui">comfyui (optional)</option></select></label><label>promptPreset<select name="promptPreset">${styleOptions}</select></label><label>topic(optional)<input name="topic" placeholder="Character Generator Demo"/></label><label>positivePrompt(optional)<textarea name="positivePrompt" rows="2" placeholder="orange cat mascot, friendly style"></textarea></label><label>negativePrompt(optional)<textarea name="negativePrompt" rows="2" placeholder="text, watermark, busy background"></textarea></label><label>referenceAssetId(reference mode)<select name="referenceAssetId"><option value=\"\">(none)</option>${referenceOptions}</select></label><label>candidateCount<input name="candidateCount" value="4"/></label><label>seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label>autoPick<select name="autoPick"><option value="true">true</option><option value="false">false</option></select></label><label>requireHitlPick<select name="requireHitlPick"><option value="false">false</option><option value="true">true</option></select></label></div><button type="submit">Generate Character Assets</button></form></section>${selectedSection}<section class=\"card\"><h2>Recent Generation Jobs</h2><table><thead><tr><th>Job</th><th>Episode</th><th>Topic</th><th>Status</th><th>Progress</th><th>Manifest</th><th>Created</th></tr></thead><tbody>${
-      rows || '<tr><td colspan="7">No generation jobs</td></tr>'
-    }</tbody></table></section>`;
+    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/character-generator/create" class="grid"><h2>Step 1) 모드 선택</h2><div class="grid two"><label>mode<select name="mode"><option value="new">new (prompt)</option><option value="reference">reference (내 이미지 기반)</option></select></label><label>provider <span class="hint" data-tooltip="외부 provider 실패 시 mock 폴백됩니다">?</span><select name="provider"><option value="mock">mock (기본 무료)</option><option value="comfyui">comfyui (옵션)</option><option value="remoteApi">remoteApi (옵션)</option></select></label></div><h2>Step 2) 스타일 프리셋</h2><div class="grid two"><label>promptPreset<select name="promptPreset">${styleOptions}</select></label><label>topic(optional)<input name="topic" placeholder="Character Generator Demo"/></label><label>positivePrompt(optional)<textarea name="positivePrompt" rows="2" placeholder="orange cat mascot, friendly style"></textarea></label><label>negativePrompt(optional)<textarea name="negativePrompt" rows="2" placeholder="text, watermark, extra fingers, watermark"></textarea></label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> negative prompt 강화(손/텍스트/워터마크 억제)</label></div><div class="notice">채널 바이블 룰 자동 반영: forbidden=${escHtml(
+      promptRules.forbiddenTerms.join(", ") || "(none)"
+    )} / negative=${escHtml(promptRules.negativePromptTerms.join(", ") || "(none)")}</div><h2>Step 3) 후보 수/시드/HITL 설정</h2><div class="grid two"><label>referenceAssetId(reference mode)<select name="referenceAssetId"><option value=\"\">(none)</option>${referenceOptions}</select></label><label>candidateCount <span class="hint" data-tooltip="너무 높으면 비용/시간 증가">?</span><input name="candidateCount" value="4"/></label><label>seed <span class="hint" data-tooltip="같은 입력+seed면 재현성 유지">?</span><input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label>autoPick<select name="autoPick"><option value="false">false (직접 선택)</option><option value="true">true (자동 선택)</option></select></label><label>requireHitlPick<select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select></label></div><h2>Step 4) Generate + 진행 상태</h2><div class="notice">Generate를 누르면 아래 Selected Job 영역에서 상태를 자동 폴링합니다. ComfyUI 설정/오프라인이면 자동 mock 폴백됩니다.</div><button type="submit" data-primary-action="1">Generate Character Assets</button></form></section>${selectedSection}${regenerateSection}${pickSection}${previewSection}${rollbackSection}${compareSection}<section class=\"card\"><h2>Recent Generation Jobs</h2><table><thead><tr><th>Job</th><th>Episode</th><th>Topic</th><th>Status</th><th>Progress</th><th>Manifest</th><th>Created</th></tr></thead><tbody>${
+      rows || '<tr><td colspan="7"><div class="notice">생성 작업이 없습니다. 위에서 Generate를 실행하세요.</div></td></tr>'
+    }</tbody></table></section><script>(function(){const el=document.getElementById("generation-status");if(!el){return;}const retryBtn=document.getElementById("generation-retry");const jobId=el.dataset.jobId;if(!jobId){return;}let timer=null;let failCount=0;const stageLabel=(status)=>{switch(String(status||"").toUpperCase()){case"QUEUED":return"대기중";case"RUNNING":return"생성중";case"SUCCEEDED":return"완료";case"FAILED":return"실패";case"CANCELLED":return"취소";default:return String(status||"unknown");}};const schedule=(ms)=>{if(timer){clearTimeout(timer);}timer=setTimeout(()=>{void tick();},ms);};const toast=(title,msg,tone)=>{if(typeof window.__ecsToast==="function"){window.__ecsToast(title,msg,tone||"warn");}};const speak=(msg)=>{if(typeof window.__ecsSpeak==="function"){window.__ecsSpeak(msg);}};const tick=async()=>{try{const res=await fetch("/api/character-generator/jobs/"+encodeURIComponent(jobId));if(!res.ok){throw new Error("poll failed: "+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error("poll: no data");}failCount=0;if(retryBtn){retryBtn.style.display="none";}const manifestStatus=data.manifest&&data.manifest.status?" / manifest="+data.manifest.status:"";const text="status="+stageLabel(data.status)+" progress="+data.progress+"%"+manifestStatus;el.textContent=text;speak(text);if(data.status==="SUCCEEDED"||data.status==="FAILED"||data.status==="CANCELLED"){if(data.manifestExists){toast("Generator", "작업이 종료되어 결과 화면으로 이동합니다.", data.status==="SUCCEEDED"?"ok":"warn");setTimeout(()=>{window.location.href="/ui/character-generator?jobId="+encodeURIComponent(jobId);},500);}return;}schedule(2000);}catch(error){failCount+=1;const wait=Math.min(15000,2000*Math.pow(2,failCount));el.textContent="폴링 실패. "+wait+"ms 후 재시도합니다.";if(retryBtn){retryBtn.style.display="inline-block";}toast("Polling", String(error), "warn");schedule(wait);}};if(retryBtn){retryBtn.addEventListener("click",()=>{failCount=0;void tick();});}void tick();})();</script>`;
 
     return reply.type("text/html; charset=utf-8").send(uiPage("Character Generator", html));
   });
@@ -1221,13 +3179,240 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          `Enqueued ${GENERATE_CHARACTER_ASSETS_JOB_NAME} for episode ${created.episodeId}`
+          created.reusedExisting
+            ? `Reused in-flight generation job ${created.generateJobId} (episode ${created.episodeId})`
+            : `Enqueued ${GENERATE_CHARACTER_ASSETS_JOB_NAME} for episode ${created.episodeId}`
         )}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
     }
+  });
+
+  app.post("/ui/character-generator/pick", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    try {
+      const generateJobId = optionalString(body, "generateJobId");
+      if (!generateJobId) {
+        throw createHttpError(400, "generateJobId is required");
+      }
+
+      const selection: CharacterGenerationSelection = {
+        front: optionalString(body, "frontCandidateId") ?? "",
+        threeQuarter: optionalString(body, "threeQuarterCandidateId") ?? "",
+        profile: optionalString(body, "profileCandidateId") ?? ""
+      };
+      if (!selection.front || !selection.threeQuarter || !selection.profile) {
+        throw createHttpError(400, "front/threeQuarter/profile candidate must be selected");
+      }
+
+      const created = await createCharacterGenerationPick(prisma, queue, queueName, {
+        generateJobId,
+        selection
+      });
+
+      return reply.redirect(
+        `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
+          "HITL pick accepted. BUILD_CHARACTER_PACK queued."
+        )}`
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+    }
+  });
+
+  app.post("/ui/character-generator/regenerate-view", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    try {
+      const generateJobId = optionalString(body, "generateJobId");
+      if (!generateJobId) {
+        throw createHttpError(400, "generateJobId is required");
+      }
+      const viewToGenerate = parseGenerationView(body.viewToGenerate, "viewToGenerate");
+      const candidateCount = Math.min(parsePositiveInt(body.candidateCount, "candidateCount", 4), 8);
+      const seed = parsePositiveInt(body.seed, "seed", DEFAULT_GENERATION_SEED);
+      const regenerateSameSeed = parseBoolean(body.regenerateSameSeed, "regenerateSameSeed", true);
+      const boostNegativePrompt = parseBoolean(body.boostNegativePrompt, "boostNegativePrompt", false);
+
+      const created = await createCharacterGenerationRegenerateView(prisma, queue, queueName, {
+        generateJobId,
+        viewToGenerate,
+        candidateCount,
+        seed,
+        regenerateSameSeed,
+        boostNegativePrompt
+      });
+
+      return reply.redirect(
+        `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
+          `Regenerate enqueued for ${created.view} (${regenerateSameSeed ? "same seed" : "new seed"})`
+        )}`
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+    }
+  });
+
+  app.post("/ui/character-generator/set-active", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    try {
+      const characterPackId = optionalString(body, "characterPackId");
+      if (!characterPackId) {
+        throw createHttpError(400, "characterPackId is required");
+      }
+
+      const targetPack = await prisma.characterPack.findUnique({
+        where: { id: characterPackId },
+        select: { id: true, channelId: true }
+      });
+      if (!targetPack) {
+        throw createHttpError(404, `character pack not found: ${characterPackId}`);
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.characterPack.updateMany({
+          where: {
+            status: "APPROVED",
+            channelId: targetPack.channelId,
+            id: {
+              not: characterPackId
+            }
+          },
+          data: {
+            status: "ARCHIVED"
+          }
+        });
+
+        await tx.characterPack.update({
+          where: { id: characterPackId },
+          data: {
+            status: "APPROVED"
+          }
+        });
+      });
+
+      return reply.redirect(
+        `/ui/character-generator?message=${encodeURIComponent(`Character pack ${characterPackId} is now APPROVED.`)}`
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+    }
+  });
+
+  app.post("/ui/character-generator/rollback-active", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    try {
+      const targetCharacterPackId = optionalString(body, "targetCharacterPackId");
+      if (!targetCharacterPackId) {
+        throw createHttpError(400, "targetCharacterPackId is required");
+      }
+
+      const targetPack = await prisma.characterPack.findUnique({
+        where: { id: targetCharacterPackId },
+        select: { id: true, channelId: true }
+      });
+      if (!targetPack) {
+        throw createHttpError(404, `character pack not found: ${targetCharacterPackId}`);
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.characterPack.updateMany({
+          where: {
+            status: "APPROVED",
+            channelId: targetPack.channelId,
+            id: {
+              not: targetCharacterPackId
+            }
+          },
+          data: {
+            status: "ARCHIVED"
+          }
+        });
+        await tx.characterPack.update({
+          where: { id: targetCharacterPackId },
+          data: {
+            status: "APPROVED"
+          }
+        });
+      });
+
+      return reply.redirect(
+        `/ui/character-generator?message=${encodeURIComponent(`Rolled back active pack to ${targetCharacterPackId}.`)}`
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+    }
+  });
+
+  app.get("/ui/character-generator/compare", async (request, reply) => {
+    const query = isRecord(request.query) ? request.query : {};
+    const leftPackId = optionalString(query, "leftPackId");
+    const rightPackId = optionalString(query, "rightPackId");
+    if (!leftPackId || !rightPackId) {
+      throw createHttpError(400, "leftPackId and rightPackId are required");
+    }
+
+    const [leftPack, rightPack] = await Promise.all([
+      prisma.characterPack.findUnique({
+        where: { id: leftPackId },
+        select: {
+          id: true,
+          version: true,
+          status: true
+        }
+      }),
+      prisma.characterPack.findUnique({
+        where: { id: rightPackId },
+        select: {
+          id: true,
+          version: true,
+          status: true
+        }
+      })
+    ]);
+
+    if (!leftPack || !rightPack) {
+      throw createHttpError(404, "one or more character packs were not found");
+    }
+
+    const leftArtifacts = getCharacterArtifacts(leftPack.id);
+    const rightArtifacts = getCharacterArtifacts(rightPack.id);
+    const leftPreviewExists = fs.existsSync(leftArtifacts.previewPath);
+    const rightPreviewExists = fs.existsSync(rightArtifacts.previewPath);
+    const leftQcExists = fs.existsSync(leftArtifacts.qcReportPath);
+    const rightQcExists = fs.existsSync(rightArtifacts.qcReportPath);
+
+    const panel = (
+      side: "A" | "B",
+      pack: { id: string; version: number; status: string },
+      previewExists: boolean,
+      qcExists: boolean
+    ) => `<section class="card"><h2>${escHtml(side)}: ${escHtml(pack.id)}</h2><p>version: <strong>${escHtml(
+      pack.version
+    )}</strong></p><p>status: <span class="badge ${uiBadge(pack.status)}">${escHtml(pack.status)}</span></p>${
+      previewExists
+        ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px"><source src="/artifacts/characters/${encodeURIComponent(
+            pack.id
+          )}/preview.mp4" type="video/mp4"/></video>`
+        : `<div class="error">preview.mp4 missing</div>`
+    }<p><a href="/artifacts/characters/${encodeURIComponent(pack.id)}/pack.json">pack.json</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
+      pack.id
+    )}/preview.mp4">preview.mp4</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
+      pack.id
+    )}/qc_report.json">qc_report.json</a> ${qcExists ? "(exists)" : "(missing)"}</p></section>`;
+
+    const html = `<section class="card"><h1>Character Pack A/B Compare</h1><p><a href="/ui/character-generator">Back to Character Generator</a></p><div class="grid two">${panel(
+      "A",
+      leftPack,
+      leftPreviewExists,
+      leftQcExists
+    )}${panel("B", rightPack, rightPreviewExists, rightQcExists)}</div></section>`;
+    return reply.type("text/html; charset=utf-8").send(uiPage("Character Pack Compare", html));
   });
 
   app.get("/ui/characters", async (request, reply) => {
@@ -1289,6 +3474,24 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       : null;
 
     const selectedArtifacts = selectedPack ? getCharacterArtifacts(selectedPack.id) : null;
+    const selectedPreviewExists = selectedArtifacts ? fs.existsSync(selectedArtifacts.previewPath) : false;
+    const selectedQcExists = selectedArtifacts ? fs.existsSync(selectedArtifacts.qcReportPath) : false;
+    const selectedPreviewUrl = selectedPack
+      ? `/artifacts/characters/${encodeURIComponent(selectedPack.id)}/preview.mp4`
+      : null;
+    const selectedQcUrl = selectedPack
+      ? `/artifacts/characters/${encodeURIComponent(selectedPack.id)}/qc_report.json`
+      : null;
+    const selectedQcReport =
+      selectedArtifacts && selectedQcExists
+        ? (() => {
+            try {
+              return JSON.parse(fs.readFileSync(selectedArtifacts.qcReportPath, "utf8")) as unknown;
+            } catch {
+              return null;
+            }
+          })()
+        : null;
 
     const assetOptions = readyAssets
       .map(
@@ -1328,6 +3531,17 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             )
             .join("")
         : "";
+    const selectedQcIssues = readQcIssues(selectedQcReport);
+    const selectedQcIssueRows = selectedQcIssues
+      .map(
+        (issue, index) =>
+          `<tr><td>${index + 1}</td><td>${escHtml(issue.check)}</td><td><span class="badge ${uiBadge(
+            issue.severity
+          )}">${escHtml(issue.severity)}</span></td><td>${escHtml(issue.message)}</td><td><pre>${escHtml(
+            JSON.stringify(issue.details, null, 2)
+          )}</pre></td></tr>`
+      )
+      .join("");
 
     const selectedSection = selectedPack
       ? `<section class="card"><h2>Selected Pack</h2><p>id: <strong>${escHtml(selectedPack.id)}</strong></p><p>version: <strong>${escHtml(
@@ -1350,7 +3564,25 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           selectedPack.episodes[0]
             ? `<a href="/ui/episodes/${escHtml(selectedPack.episodes[0].id)}">${escHtml(selectedPack.episodes[0].id)}</a>`
             : "-"
-        }</p></div></div><pre>${escHtml(JSON.stringify(selectedPack.json, null, 2))}</pre></section><section class="card"><h2>Selected Pack Jobs</h2><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created</th></tr></thead><tbody>${
+        }</p></div></div>${
+          selectedPreviewExists && selectedPreviewUrl
+            ? `<section class="card"><h3>Preview Player</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
+                selectedPreviewUrl
+              )}"></video><p><a href="${escHtml(selectedPreviewUrl)}">Open preview.mp4</a></p></section>`
+            : `<section class="card"><h3>Preview Player</h3><div class="error">preview.mp4가 아직 생성되지 않았습니다.</div></section>`
+        }${
+          selectedQcExists
+            ? selectedQcIssues.length > 0
+              ? `<section class="card"><h3>QC Issues</h3><table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${selectedQcIssueRows}</tbody></table><p><a href="${escHtml(
+                  selectedQcUrl ?? ""
+                )}">Open qc_report.json</a></p></section>`
+              : `<section class="card"><h3>QC Report</h3><div class="notice">이슈 없음</div><pre>${escHtml(
+                  JSON.stringify(selectedQcReport, null, 2)
+                )}</pre></section>`
+            : `<section class="card"><h3>QC Report</h3><div class="error">qc_report.json이 아직 생성되지 않았습니다.</div></section>`
+        }<details><summary>pack.json 보기</summary><pre>${escHtml(
+          JSON.stringify(selectedPack.json, null, 2)
+        )}</pre></details></section><section class="card"><h2>Selected Pack Jobs</h2><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created</th></tr></thead><tbody>${
           selectedJobs || '<tr><td colspan="5">No jobs</td></tr>'
         }</tbody></table></section>`
       : "";
