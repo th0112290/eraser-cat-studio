@@ -3006,7 +3006,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
           mode: generation.mode,
           promptPreset: promptBundle.presetId,
           sessionId,
-          viewToGenerate: generation.viewToGenerate ?? null
+          viewToGenerate: generation.viewToGenerate ?? null,
+          continuitySummary: manifest.reference.continuity ?? null
         })
       }
     });
