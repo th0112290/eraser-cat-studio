@@ -2145,6 +2145,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
   let continuityReferenceSessionId: string | null = null;
   let continuitySnapshot: GenerationManifest["reference"]["continuity"] | undefined;
   if (generation.mode === "reference") {
+    continuitySnapshot = {
+      enabled: false,
+      attempted: false,
+      applied: false,
+      reason: "reference_mode"
+    };
     if (!generation.referenceAssetId) {
       throw new Error("reference mode requires generation.referenceAssetId");
     }
