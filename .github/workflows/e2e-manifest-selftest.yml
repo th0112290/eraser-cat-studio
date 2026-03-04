@@ -1,0 +1,27 @@
+name: E2E Manifest Selftest
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/smokeE2E.mjs"
+      - ".github/workflows/e2e-manifest-selftest.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/smokeE2E.mjs"
+      - ".github/workflows/e2e-manifest-selftest.yml"
+
+jobs:
+  manifest-selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run manifest fallback selftest
+        env:
+          SMOKE_E2E_MANIFEST_SELFTEST: "1"
+        run: node scripts/smokeE2E.mjs
