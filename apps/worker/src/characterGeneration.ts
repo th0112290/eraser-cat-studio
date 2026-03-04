@@ -1507,6 +1507,10 @@ async function resolveFrontReferenceFromSession(
 ): Promise<{
   referenceImageBase64: string;
   referenceMimeType: string;
+  picked: boolean;
+  score: number;
+  rejectionCount: number;
+  updatedAtMs: number;
 } | undefined> {
   const rows = await prisma.characterGenerationCandidate.findMany({
     where: {
@@ -1579,7 +1583,11 @@ async function resolveFrontReferenceFromSession(
   }
   return {
     referenceImageBase64: best.referenceImageBase64,
-    referenceMimeType: best.referenceMimeType
+    referenceMimeType: best.referenceMimeType,
+    picked: best.picked,
+    score: best.score,
+    rejectionCount: best.rejectionCount,
+    updatedAtMs: best.updatedAtMs
   };
 }
 
@@ -1611,6 +1619,16 @@ async function resolveAutoContinuityReference(input: {
       sessionId: string;
       referenceImageBase64: string;
       referenceMimeType: string;
+      diagnostics: {
+        searchedSessionCount: number;
+        preferredPoolCount: number;
+        fallbackPoolCount: number;
+        sourcePool: "preferred" | "fallback";
+        candidatePicked: boolean;
+        candidateScore: number;
+        candidateRejectionCount: number;
+        candidateUpdatedAt: string;
+      };
     }
   | undefined
 > {
@@ -1658,6 +1676,7 @@ async function resolveAutoContinuityReference(input: {
   });
 
   const queue = [...preferred.map((row) => row.id), ...fallback.map((row) => row.id)];
+  const preferredSet = new Set(preferred.map((row) => row.id));
   const visited = new Set<string>();
   for (const sessionId of queue) {
     if (visited.has(sessionId)) {
@@ -1669,7 +1688,17 @@ async function resolveAutoContinuityReference(input: {
       return {
         sessionId,
         referenceImageBase64: resolved.referenceImageBase64,
-        referenceMimeType: resolved.referenceMimeType
+        referenceMimeType: resolved.referenceMimeType,
+        diagnostics: {
+          searchedSessionCount: visited.size,
+          preferredPoolCount: preferred.length,
+          fallbackPoolCount: fallback.length,
+          sourcePool: preferredSet.has(sessionId) ? "preferred" : "fallback",
+          candidatePicked: resolved.picked,
+          candidateScore: resolved.score,
+          candidateRejectionCount: resolved.rejectionCount,
+          candidateUpdatedAt: new Date(resolved.updatedAtMs).toISOString()
+        }
       };
     }
   }
@@ -2088,6 +2117,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
       referenceAnalysis = await analyzeImage(continuityBuffer);
       await helpers.logJob(jobDbId, "info", "Auto continuity reference applied", {
         sourceSessionId: continuity.sessionId,
+        characterPackId: character.characterPackId,
+        policy: continuityConfig,
+        diagnostics: continuity.diagnostics
+      });
+    } else {
+      await helpers.logJob(jobDbId, "info", "Auto continuity reference skipped", {
         characterPackId: character.characterPackId,
         policy: continuityConfig
       });
