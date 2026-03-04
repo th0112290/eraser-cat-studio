@@ -1155,6 +1155,15 @@ function normalizeGenerationConfig(generation: CharacterGenerationPayload | unde
   };
 }
 
+function resolveAutoContinuityOverride(generation: CharacterGenerationPayload | undefined): boolean | undefined {
+  if (!isRecord(generation)) {
+    return undefined;
+  }
+  const record = generation as Record<string, unknown>;
+  const value = record.autoContinuityReference;
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function toDbGenerationMode(mode: CharacterGenerationPayload["mode"]): "NEW" | "REFERENCE" {
   return mode === "reference" ? "REFERENCE" : "NEW";
 }
@@ -2053,6 +2062,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
 }): Promise<void> {
   const { prisma, payload, jobDbId, maxAttempts, retryBackoffMs, helpers } = input;
   const character = requireCharacter(payload);
+  const continuityAutoOverride = resolveAutoContinuityOverride(character.generation);
   const generation = normalizeGenerationConfig(character.generation);
   let sessionId: string | undefined;
 
@@ -2096,6 +2106,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     styleHints
   });
   const continuityConfig = readContinuityReferenceConfig();
+  const continuityAutoEnabled = continuityAutoOverride ?? shouldAutoContinuityReference();
 
   let referenceAnalysis: ImageAnalysis | undefined;
   let referenceImageBase64: string | undefined;
@@ -2167,7 +2178,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     !selectedCandidateIds &&
     generation.mode === "new" &&
     !referenceImageBase64 &&
-    shouldAutoContinuityReference()
+    continuityAutoEnabled
   ) {
     const continuity = await resolveAutoContinuityReference({
       prisma,
@@ -2253,10 +2264,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
     }
   } else if (generation.mode === "new") {
     continuitySnapshot = {
-      enabled: shouldAutoContinuityReference(),
+      enabled: continuityAutoEnabled,
       attempted: false,
       applied: false,
-      reason: shouldAutoContinuityReference() ? "not_attempted" : "disabled"
+      reason: continuityAutoEnabled ? "not_attempted" : "disabled"
     };
   }
 
