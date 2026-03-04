@@ -1828,11 +1828,72 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
   if (enabled === undefined || attempted === undefined || applied === undefined || reason.length === 0) {
     return undefined;
   }
+  const asOptionalNumber = (input: unknown): number | undefined =>
+    typeof input === "number" && Number.isFinite(input) ? input : undefined;
+  const asOptionalNullableNumber = (input: unknown): number | null | undefined =>
+    input === null ? null : typeof input === "number" && Number.isFinite(input) ? input : undefined;
+  const asOptionalNullableString = (input: unknown): string | null | undefined =>
+    input === null ? null : typeof input === "string" && input.trim().length > 0 ? input.trim() : undefined;
+
+  const policyRaw = isRecord(value.policy) ? value.policy : undefined;
+  const parsedPolicy =
+    policyRaw &&
+    typeof policyRaw.maxSessionAgeHours === "number" &&
+    Number.isFinite(policyRaw.maxSessionAgeHours) &&
+    typeof policyRaw.minScore === "number" &&
+    Number.isFinite(policyRaw.minScore) &&
+    typeof policyRaw.maxRejections === "number" &&
+    Number.isFinite(policyRaw.maxRejections) &&
+    typeof policyRaw.requirePicked === "boolean" &&
+    typeof policyRaw.requireScore === "boolean" &&
+    typeof policyRaw.candidateTake === "number" &&
+    Number.isFinite(policyRaw.candidateTake) &&
+    typeof policyRaw.preferredSessionTake === "number" &&
+    Number.isFinite(policyRaw.preferredSessionTake) &&
+    typeof policyRaw.fallbackSessionTake === "number" &&
+    Number.isFinite(policyRaw.fallbackSessionTake)
+      ? {
+          maxSessionAgeHours: policyRaw.maxSessionAgeHours,
+          minScore: policyRaw.minScore,
+          maxRejections: policyRaw.maxRejections,
+          requirePicked: policyRaw.requirePicked,
+          requireScore: policyRaw.requireScore,
+          candidateTake: policyRaw.candidateTake,
+          preferredSessionTake: policyRaw.preferredSessionTake,
+          fallbackSessionTake: policyRaw.fallbackSessionTake,
+          requestOverride:
+            typeof policyRaw.requestOverride === "boolean" || policyRaw.requestOverride === null
+              ? policyRaw.requestOverride
+              : null
+        }
+      : undefined;
+
   return {
     enabled,
     attempted,
     applied,
-    reason
+    reason,
+    ...(asOptionalNumber(value.searchedSessionCount) !== undefined
+      ? { searchedSessionCount: asOptionalNumber(value.searchedSessionCount) }
+      : {}),
+    ...(asOptionalNumber(value.preferredPoolCount) !== undefined
+      ? { preferredPoolCount: asOptionalNumber(value.preferredPoolCount) }
+      : {}),
+    ...(asOptionalNumber(value.fallbackPoolCount) !== undefined
+      ? { fallbackPoolCount: asOptionalNumber(value.fallbackPoolCount) }
+      : {}),
+    ...(value.sourcePool === "preferred" || value.sourcePool === "fallback" ? { sourcePool: value.sourcePool } : {}),
+    ...(typeof value.candidatePicked === "boolean" ? { candidatePicked: value.candidatePicked } : {}),
+    ...(asOptionalNullableNumber(value.candidateScore) !== undefined
+      ? { candidateScore: asOptionalNullableNumber(value.candidateScore) }
+      : {}),
+    ...(asOptionalNullableNumber(value.candidateRejectionCount) !== undefined
+      ? { candidateRejectionCount: asOptionalNullableNumber(value.candidateRejectionCount) }
+      : {}),
+    ...(asOptionalNullableString(value.candidateUpdatedAt) !== undefined
+      ? { candidateUpdatedAt: asOptionalNullableString(value.candidateUpdatedAt) }
+      : {}),
+    ...(parsedPolicy ? { policy: parsedPolicy } : {})
   };
 }
 
