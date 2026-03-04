@@ -1573,7 +1573,7 @@ async function resolveFrontReferenceFromSession(
   referenceImageBase64: string;
   referenceMimeType: string;
   picked: boolean;
-  score: number;
+  score: number | null;
   rejectionCount: number;
   updatedAtMs: number;
 } | undefined> {
@@ -1598,7 +1598,8 @@ async function resolveFrontReferenceFromSession(
     referenceImageBase64: string;
     referenceMimeType: string;
     picked: boolean;
-    score: number;
+    score: number | null;
+    rankScore: number;
     rejectionCount: number;
     updatedAtMs: number;
   };
@@ -1638,7 +1639,8 @@ async function resolveFrontReferenceFromSession(
       referenceImageBase64: data.toString("base64"),
       referenceMimeType: mimeType,
       picked: row.picked,
-      score: score ?? -1,
+      score,
+      rankScore: score ?? -1,
       rejectionCount,
       updatedAtMs: row.updatedAt.getTime()
     };
@@ -1665,14 +1667,14 @@ async function resolveFrontReferenceFromSession(
 }
 
 function isBetterContinuityCandidate(
-  next: { picked: boolean; score: number; rejectionCount: number; updatedAtMs: number },
-  current: { picked: boolean; score: number; rejectionCount: number; updatedAtMs: number }
+  next: { picked: boolean; rankScore: number; rejectionCount: number; updatedAtMs: number },
+  current: { picked: boolean; rankScore: number; rejectionCount: number; updatedAtMs: number }
 ): boolean {
   if (next.picked !== current.picked) {
     return next.picked;
   }
-  if (next.score !== current.score) {
-    return next.score > current.score;
+  if (next.rankScore !== current.rankScore) {
+    return next.rankScore > current.rankScore;
   }
   if (next.rejectionCount !== current.rejectionCount) {
     return next.rejectionCount < current.rejectionCount;
@@ -1695,7 +1697,7 @@ async function resolveAutoContinuityReference(input: {
         referenceMimeType: string;
         sourcePool: "preferred" | "fallback";
         candidatePicked: boolean;
-        candidateScore: number;
+        candidateScore: number | null;
         candidateRejectionCount: number;
         candidateUpdatedAt: string;
       }
