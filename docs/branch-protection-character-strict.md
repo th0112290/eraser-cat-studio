@@ -37,6 +37,7 @@
    - `pnpm ci:checks:capture -- --json`
    - 가이드 경로까지 같이 출력하려면: `pnpm ci:checks:capture -- --json --web`
    - 파일로 저장하려면: `pnpm ci:checks:capture -- --json --out out/pr-checks.json`
+   - 기본 경로(`out/pr-checks.json`)로 저장하려면: `pnpm ci:checks:capture -- --json --save`
 3. 결과에서 `checkNames` 배열 또는 텍스트 목록을 확인한다.
 4. `Character Strict Smoke / smoke-character-strict`에 해당하는 항목을 branch protection required check로 등록한다.
 
