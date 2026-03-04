@@ -54,6 +54,10 @@ pnpm ci:checks:capture -- --json
 - 자동 탐색 소스:
   - `gh repo view --json nameWithOwner`
   - `gh pr view --json number`
+- 자동 탐색 실패 시 스크립트가 힌트 코드를 함께 출력한다:
+  - `gh_not_installed`
+  - `gh_not_authenticated`
+  - `no_pr_for_current_branch`
 
 ## Troubleshooting
 - 체크 항목이 선택 목록에 안 보이면:

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 function parseArgs(argv) {
   const out = {};
@@ -33,22 +33,53 @@ function usage() {
 }
 
 function runGh(args) {
-  try {
-    return execFileSync("gh", args, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"]
-    }).trim();
-  } catch {
-    return "";
+  const result = spawnSync("gh", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (result.error) {
+    return {
+      ok: false,
+      stdout: "",
+      stderr: result.error.message
+    };
   }
+  const stdout = String(result.stdout ?? "").trim();
+  const stderr = String(result.stderr ?? "").trim();
+  return {
+    ok: result.status === 0,
+    stdout,
+    stderr
+  };
 }
 
 function autoDetectFromGh() {
-  const repo = runGh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
-  const pr = runGh(["pr", "view", "--json", "number", "--jq", ".number"]);
+  const repoResult = runGh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+  const prResult = runGh(["pr", "view", "--json", "number", "--jq", ".number"]);
+  const reasons = [];
+  if (!repoResult.ok || !prResult.ok) {
+    const combined = `${repoResult.stderr}\n${prResult.stderr}`.toLowerCase();
+    if (combined.includes("not recognized") || combined.includes("enoent") || combined.includes("command not found")) {
+      reasons.push("gh_not_installed");
+    }
+    if (combined.includes("not logged in") || combined.includes("authenticate") || combined.includes("gh auth login")) {
+      reasons.push("gh_not_authenticated");
+    }
+    if (
+      combined.includes("no pull requests") ||
+      combined.includes("could not resolve to a pull request") ||
+      combined.includes("not a pull request")
+    ) {
+      reasons.push("no_pr_for_current_branch");
+    }
+    if (reasons.length === 0) {
+      reasons.push("gh_auto_detect_failed");
+    }
+  }
   return {
-    repo: repo.length > 0 ? repo : null,
-    pr: pr.length > 0 ? pr : null
+    repo: repoResult.ok && repoResult.stdout.length > 0 ? repoResult.stdout : null,
+    pr: prResult.ok && prResult.stdout.length > 0 ? prResult.stdout : null,
+    reasons
   };
 }
 
@@ -88,20 +119,25 @@ async function main() {
   const token = String(process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "").trim();
   const printJson = args.json === "true";
 
+  let autoDetected = null;
   if (!repo || !prValue) {
-    const detected = autoDetectFromGh();
-    if (!repo && detected.repo) {
-      repo = detected.repo;
+    autoDetected = autoDetectFromGh();
+    if (!repo && autoDetected.repo) {
+      repo = autoDetected.repo;
     }
-    if (!prValue && detected.pr) {
-      prValue = detected.pr;
+    if (!prValue && autoDetected.pr) {
+      prValue = autoDetected.pr;
     }
   }
 
   if (!repo || !prValue) {
+    const reasonText =
+      autoDetected && autoDetected.reasons.length > 0
+        ? ` auto-detect hints: ${autoDetected.reasons.join(", ")}`
+        : "";
     usage();
     throw new Error(
-      "Missing --repo/--pr. Provide args/env, or run on a PR branch with authenticated gh CLI."
+      `Missing --repo/--pr. Provide args/env, or run on a PR branch with authenticated gh CLI.${reasonText}`
     );
   }
   const pr = Number.parseInt(prValue, 10);
