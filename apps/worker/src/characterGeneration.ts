@@ -1928,6 +1928,32 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
   };
 }
 
+function formatContinuityDescriptor(
+  continuity: GenerationManifest["reference"]["continuity"] | undefined
+): string | null {
+  if (!continuity?.reason) {
+    return null;
+  }
+  const parts = [`Continuity=${continuity.reason}`];
+  if (continuity.attemptedSourceSessionId) {
+    parts.push(`source=${continuity.attemptedSourceSessionId}`);
+  }
+  if (continuity.sourcePool) {
+    parts.push(`pool=${continuity.sourcePool}`);
+  }
+  return parts.join(" ");
+}
+
+function formatContinuitySentence(
+  continuity: GenerationManifest["reference"]["continuity"] | undefined
+): string {
+  const descriptor = formatContinuityDescriptor(continuity);
+  if (!descriptor) {
+    return "";
+  }
+  return ` ${descriptor}.`;
+}
+
 async function persistSelectedCandidates(input: {
   prisma: PrismaClient;
   sessionId?: string;
@@ -2173,24 +2199,8 @@ async function persistSelectedCandidates(input: {
         status: "READY",
         statusMessage:
           source === "hitl"
-            ? `HITL selection applied and build queued.${
-                manifest.reference.continuity?.reason
-                  ? ` Continuity=${manifest.reference.continuity.reason}${
-                      manifest.reference.continuity.attemptedSourceSessionId
-                        ? ` source=${manifest.reference.continuity.attemptedSourceSessionId}`
-                        : ""
-                    }.`
-                  : ""
-              }`
-            : `Auto-selected and build queued.${
-                manifest.reference.continuity?.reason
-                  ? ` Continuity=${manifest.reference.continuity.reason}${
-                      manifest.reference.continuity.attemptedSourceSessionId
-                        ? ` source=${manifest.reference.continuity.attemptedSourceSessionId}`
-                        : ""
-                    }.`
-                  : ""
-              }`
+            ? `HITL selection applied and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
+            : `Auto-selected and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
       }
     });
   }
@@ -3050,13 +3060,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
             2
           )}).`
         : "";
-    const continuitySourceText = continuitySnapshot?.attemptedSourceSessionId
-      ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
+    const continuityDescriptor = formatContinuityDescriptor(continuitySnapshot);
+    const continuityText = continuityDescriptor
+      ? ` Continuity: ${continuityDescriptor}${continuitySnapshot?.applied ? " (applied)." : "."}`
       : "";
-    const continuityText =
-      continuitySnapshot && continuitySnapshot.reason
-        ? ` Continuity: ${continuitySnapshot.reason}${continuitySourceText}${continuitySnapshot.applied ? " (applied)." : "."}`
-        : "";
     await prisma.agentSuggestion.create({
       data: {
         episodeId: payload.episodeId,
@@ -3104,44 +3111,22 @@ export async function handleGenerateCharacterAssetsJob(input: {
       data: {
         status: "READY",
         statusMessage: generation.viewToGenerate
-          ? `Candidates ready for view ${generation.viewToGenerate}. Pick to continue.${
-              continuitySnapshot?.reason
-                ? ` Continuity=${continuitySnapshot.reason}${
-                    continuitySnapshot.attemptedSourceSessionId
-                      ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
-                      : ""
-                  }.`
-                : ""
-            }`
+          ? `Candidates ready for view ${generation.viewToGenerate}. Pick to continue.${formatContinuitySentence(
+              continuitySnapshot
+            )}`
           : missingGeneratedViews.length > 0
             ? `Partial generation complete. Missing: ${missingGeneratedViews.join(", ")}${
-                continuitySnapshot?.reason
-                  ? ` | Continuity=${continuitySnapshot.reason}${
-                      continuitySnapshot.attemptedSourceSessionId
-                        ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
-                        : ""
-                    }`
+                formatContinuityDescriptor(continuitySnapshot)
+                  ? ` | ${formatContinuityDescriptor(continuitySnapshot)}`
                   : ""
               }`
             : lowQualityGeneratedViews.length > 0
               ? `Candidates generated but quality below threshold for: ${lowQualityGeneratedViews.join(", ")}${
-                  continuitySnapshot?.reason
-                    ? ` | Continuity=${continuitySnapshot.reason}${
-                        continuitySnapshot.attemptedSourceSessionId
-                          ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
-                          : ""
-                      }`
+                  formatContinuityDescriptor(continuitySnapshot)
+                    ? ` | ${formatContinuityDescriptor(continuitySnapshot)}`
                     : ""
                 }`
-              : `Candidates ready. Waiting for pick.${
-                  continuitySnapshot?.reason
-                    ? ` Continuity=${continuitySnapshot.reason}${
-                        continuitySnapshot.attemptedSourceSessionId
-                          ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
-                          : ""
-                      }.`
-                    : ""
-                }`
+              : `Candidates ready. Waiting for pick.${formatContinuitySentence(continuitySnapshot)}`
       }
     });
 
