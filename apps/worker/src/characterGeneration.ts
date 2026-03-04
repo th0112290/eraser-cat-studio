@@ -140,6 +140,26 @@ type GenerationManifest = {
     sourceSessionId?: string | null;
     phash: string | null;
     palette: Array<[number, number, number]> | null;
+    continuity?: {
+      enabled: boolean;
+      attempted: boolean;
+      applied: boolean;
+      reason: string;
+      searchedSessionCount?: number;
+      preferredPoolCount?: number;
+      fallbackPoolCount?: number;
+      sourcePool?: "preferred" | "fallback";
+      candidatePicked?: boolean;
+      candidateScore?: number | null;
+      candidateRejectionCount?: number | null;
+      candidateUpdatedAt?: string | null;
+      policy?: {
+        maxSessionAgeHours: number;
+        minScore: number;
+        maxRejections: number;
+        requirePicked: boolean;
+      };
+    };
   };
   candidates: Array<{
     id: string;
@@ -1749,6 +1769,25 @@ function extractCandidateRejectionCount(value: unknown): number {
   return raw.filter((item) => typeof item === "string" && item.trim().length > 0).length;
 }
 
+function parseManifestContinuity(value: unknown): GenerationManifest["reference"]["continuity"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
+  const attempted = typeof value.attempted === "boolean" ? value.attempted : undefined;
+  const applied = typeof value.applied === "boolean" ? value.applied : undefined;
+  const reason = typeof value.reason === "string" ? value.reason.trim() : "";
+  if (enabled === undefined || attempted === undefined || applied === undefined || reason.length === 0) {
+    return undefined;
+  }
+  return {
+    enabled,
+    attempted,
+    applied,
+    reason
+  };
+}
+
 async function persistSelectedCandidates(input: {
   prisma: PrismaClient;
   sessionId?: string;
@@ -2055,6 +2094,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
   let referenceImageBase64: string | undefined;
   let referenceMimeType: string | undefined;
   let continuityReferenceSessionId: string | null = null;
+  let continuitySnapshot: GenerationManifest["reference"]["continuity"] | undefined;
   if (generation.mode === "reference") {
     if (!generation.referenceAssetId) {
       throw new Error("reference mode requires generation.referenceAssetId");
@@ -2150,6 +2190,21 @@ export async function handleGenerateCharacterAssetsJob(input: {
             candidateUpdatedAt: continuity.match.candidateUpdatedAt
           }
         });
+        continuitySnapshot = {
+          enabled: true,
+          attempted: true,
+          applied: true,
+          reason: "matched",
+          searchedSessionCount: continuity.diagnostics.searchedSessionCount,
+          preferredPoolCount: continuity.diagnostics.preferredPoolCount,
+          fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
+          sourcePool: continuity.match.sourcePool,
+          candidatePicked: continuity.match.candidatePicked,
+          candidateScore: continuity.match.candidateScore,
+          candidateRejectionCount: continuity.match.candidateRejectionCount,
+          candidateUpdatedAt: continuity.match.candidateUpdatedAt,
+          policy: continuityConfig
+        };
       } catch (error) {
         referenceImageBase64 = undefined;
         referenceMimeType = undefined;
@@ -2161,6 +2216,16 @@ export async function handleGenerateCharacterAssetsJob(input: {
           diagnostics: continuity.diagnostics,
           error: errorMessage(error)
         });
+        continuitySnapshot = {
+          enabled: true,
+          attempted: true,
+          applied: false,
+          reason: "invalid_source",
+          searchedSessionCount: continuity.diagnostics.searchedSessionCount,
+          preferredPoolCount: continuity.diagnostics.preferredPoolCount,
+          fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
+          policy: continuityConfig
+        };
       }
     } else {
       await helpers.logJob(jobDbId, "info", "Auto continuity reference skipped", {
@@ -2168,7 +2233,24 @@ export async function handleGenerateCharacterAssetsJob(input: {
         policy: continuityConfig,
         diagnostics: continuity.diagnostics
       });
+      continuitySnapshot = {
+        enabled: true,
+        attempted: true,
+        applied: false,
+        reason: continuity.diagnostics.reason ?? "skipped",
+        searchedSessionCount: continuity.diagnostics.searchedSessionCount,
+        preferredPoolCount: continuity.diagnostics.preferredPoolCount,
+        fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
+        policy: continuityConfig
+      };
     }
+  } else if (generation.mode === "new") {
+    continuitySnapshot = {
+      enabled: shouldAutoContinuityReference(),
+      attempted: false,
+      applied: false,
+      reason: shouldAutoContinuityReference() ? "not_attempted" : "disabled"
+    };
   }
 
   if (selectedCandidateIds) {
@@ -2284,6 +2366,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     const providerRequestedRaw = asString(parsedManifest.providerRequested).trim();
     const providerWarningRaw = asString(parsedManifest.providerWarning).trim();
     const parsedReference = isRecord(parsedManifest.reference) ? parsedManifest.reference : {};
+    const parsedContinuity = parseManifestContinuity(parsedReference.continuity);
 
     const manifest = withManifestHashes({
       schemaVersion: "1.0",
@@ -2318,7 +2401,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 item.length === 3 &&
                 item.every((value) => typeof value === "number")
             ) as Array<[number, number, number]>)
-          : null
+          : null,
+        continuity: parsedContinuity ?? continuitySnapshot
       },
       candidates: parsedCandidates.map((entry) => ({
         id: entry.id,
@@ -2737,7 +2821,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
       assetId: generation.referenceAssetId ?? null,
       sourceSessionId: continuityReferenceSessionId,
       phash: referenceAnalysis?.phash ?? null,
-      palette: referenceAnalysis?.palette ?? null
+      palette: referenceAnalysis?.palette ?? null,
+      continuity: continuitySnapshot
     },
     candidates: [
       ...retainedManifestCandidates,
