@@ -1527,7 +1527,13 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     const concreteStyleOptionsB = CONCRETE_STYLE_VALUES
       .map((idValue) => `<option value="${idValue}" ${idValue === AB_DEFAULT_STYLE_B ? "selected" : ""}>${idValue}</option>`)
       .join("");
-    const selectedRunProfile = normalizeRunProfile(q(request.query, "profile"));
+    const shotsReady = artifacts.shotsFileExists === true || fs.existsSync(localOut.shots);
+    const recommendedRunProfile: RunProfileId =
+      !shotsReady || !previewExists ? "preview" : !finalExists || !uploadManifestExists ? "full" : "full";
+    const requestedRunProfile = q(request.query, "profile");
+    const selectedRunProfile = requestedRunProfile
+      ? normalizeRunProfile(requestedRunProfile)
+      : recommendedRunProfile;
     const runProfileOptions = RUN_PROFILE_VALUES
       .map((profileId) => {
         const label =
@@ -1555,28 +1561,31 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       })
       .join("");
     const recommendAction = (() => {
-      const shotsReady = artifacts.shotsFileExists === true || fs.existsSync(localOut.shots);
       if (!shotsReady) {
         return {
           title: "추천: COMPILE_SHOTS 먼저 실행",
-          detail: "shots.json이 없어 render 단계가 실패할 수 있습니다. COMPILE_SHOTS를 먼저 수행하세요."
+          detail: "shots.json이 없어 render 단계가 실패할 수 있습니다. COMPILE_SHOTS를 먼저 수행하세요.",
+          profile: "preview" as RunProfileId
         };
       }
       if (!previewExists) {
         return {
           title: "추천: Preview 렌더 실행",
-          detail: "preview.mp4가 아직 없습니다. Run Profile을 preview로 실행해 빠르게 확인하세요."
+          detail: "preview.mp4가 아직 없습니다. Run Profile을 preview로 실행해 빠르게 확인하세요.",
+          profile: "preview" as RunProfileId
         };
       }
       if (!finalExists || !uploadManifestExists) {
         return {
           title: "추천: Full pipeline 실행",
-          detail: "최종 결과(final/manifest)가 아직 완성되지 않았습니다. full 프로필로 마무리하세요."
+          detail: "최종 결과(final/manifest)가 아직 완성되지 않았습니다. full 프로필로 마무리하세요.",
+          profile: "full" as RunProfileId
         };
       }
       return {
         title: "파이프라인 주요 산출물 준비 완료",
-        detail: "preview/final/manifest가 모두 존재합니다. 필요 시 style A/B 비교나 publish를 진행하세요."
+        detail: "preview/final/manifest가 모두 존재합니다. 필요 시 style A/B 비교나 publish를 진행하세요.",
+        profile: "full" as RunProfileId
       };
     })();
 
@@ -1609,7 +1618,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   </div>
   <div class="card">
     <h3>Studio Control Panel</h3>
-    <div class="notice"><strong>${esc(recommendAction.title)}</strong><br/>${esc(recommendAction.detail)}</div>
+    <div class="notice"><strong>${esc(recommendAction.title)}</strong><br/>${esc(recommendAction.detail)}<br/>추천 프로필: <strong>${esc(recommendAction.profile)}</strong></div>
     <form method="post" action="/ui/episodes/${esc(id)}/run-profile" class="grid two">
       <label>runProfile
         <select name="profile">${runProfileOptions}</select>
