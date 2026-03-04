@@ -2175,6 +2175,9 @@ async function persistSelectedCandidates(input: {
       manifestHash: hashedManifest.manifestHash,
       continuitySummary: hashedManifest.reference.continuity ?? null,
       continuityDescriptor: formatContinuityDescriptor(hashedManifest.reference.continuity),
+      continuityReason: hashedManifest.reference.continuity?.reason ?? null,
+      continuityApplied: hashedManifest.reference.continuity?.applied ?? null,
+      continuityAttempted: hashedManifest.reference.continuity?.attempted ?? null,
       manifestPath,
       selectedAssetIds: assetIds,
       buildJobDbId: buildJobId,
@@ -3097,7 +3100,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
           sessionId,
           viewToGenerate: generation.viewToGenerate ?? null,
           continuitySummary: manifest.reference.continuity ?? null,
-          continuityDescriptor: formatContinuityDescriptor(manifest.reference.continuity)
+          continuityDescriptor: formatContinuityDescriptor(manifest.reference.continuity),
+          continuityReason: manifest.reference.continuity?.reason ?? null,
+          continuityApplied: manifest.reference.continuity?.applied ?? null,
+          continuityAttempted: manifest.reference.continuity?.attempted ?? null
         })
       }
     });
@@ -3152,6 +3158,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
       manifestHash: manifest.manifestHash,
       continuitySummary: manifest.reference.continuity ?? null,
       continuityDescriptor: formatContinuityDescriptor(manifest.reference.continuity),
+      continuityReason: manifest.reference.continuity?.reason ?? null,
+      continuityApplied: manifest.reference.continuity?.applied ?? null,
+      continuityAttempted: manifest.reference.continuity?.attempted ?? null,
       sessionId,
       viewToGenerate: generation.viewToGenerate ?? null,
       lowQualityViews: lowQualityGeneratedViews,
