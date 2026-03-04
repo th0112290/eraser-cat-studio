@@ -110,8 +110,13 @@ function extractFromData(data, pathParts) {
 }
 
 function collectManifestPathCandidates(episodeOutDir, latestJob, jobsData) {
-  const candidates = [path.join(episodeOutDir, "upload_manifest.json")];
-  const addCandidate = (value) => {
+  const candidates = [
+    {
+      path: path.join(episodeOutDir, "upload_manifest.json"),
+      source: "default"
+    }
+  ];
+  const addCandidate = (value, source) => {
     if (typeof value !== "string") {
       return;
     }
@@ -119,23 +124,48 @@ function collectManifestPathCandidates(episodeOutDir, latestJob, jobsData) {
     if (trimmed.length === 0) {
       return;
     }
-    candidates.push(trimmed);
+    candidates.push({ path: trimmed, source });
   };
 
-  addCandidate(extractFromData(latestJob, ["details", "manifestPath"]));
+  addCandidate(extractFromData(latestJob, ["details", "manifestPath"]), "latestJob.details.manifestPath");
   if (Array.isArray(jobsData)) {
-    for (const row of jobsData) {
-      addCandidate(extractFromData(row, ["details", "manifestPath"]));
+    for (let index = 0; index < jobsData.length; index += 1) {
+      const row = jobsData[index];
+      const rowId = normalizeString(extractFromData(row, ["id"]), `index:${index}`);
+      addCandidate(extractFromData(row, ["details", "manifestPath"]), `jobs[${rowId}].details.manifestPath`);
     }
   }
 
-  return [...new Set(candidates)];
+  const deduped = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (seen.has(candidate.path)) {
+      continue;
+    }
+    seen.add(candidate.path);
+    deduped.push(candidate);
+  }
+
+  return deduped;
 }
 
 function resolveManifestPath(episodeOutDir, latestJob, jobsData) {
   const candidates = collectManifestPathCandidates(episodeOutDir, latestJob, jobsData);
-  const existing = candidates.find((candidate) => fs.existsSync(candidate));
-  return existing ?? candidates[0];
+  const existing = candidates.find((candidate) => fs.existsSync(candidate.path));
+  if (existing) {
+    return {
+      path: existing.path,
+      source: existing.source,
+      exists: true,
+      candidates
+    };
+  }
+  return {
+    path: candidates[0].path,
+    source: candidates[0].source,
+    exists: false,
+    candidates
+  };
 }
 
 function printFixHints(extraReason) {
@@ -506,8 +536,9 @@ async function main() {
     const previewExistsFromApi = bool(extractFromData(statusData, ["preview", "exists"]));
     const previewExists = previewExistsFromApi || fs.existsSync(previewPath);
     const qcExists = fs.existsSync(qcPath);
-    const resolvedManifestPath = resolveManifestPath(episodeOutDir, latestJob, jobsData);
-    const manifestExists = fs.existsSync(resolvedManifestPath);
+    const manifestInfo = resolveManifestPath(episodeOutDir, latestJob, jobsData);
+    const resolvedManifestPath = manifestInfo.path;
+    const manifestExists = manifestInfo.exists;
 
     const previewReady = episodeStatus === "PREVIEW_READY" || episodeStatus === "COMPLETED";
     const packageDone = manifestExists || (latestJobType === "PACKAGE_OUTPUTS" && latestJobStatus === "SUCCEEDED");
@@ -517,7 +548,7 @@ async function main() {
     pollCount += 1;
     if (pollCount % 5 === 0) {
       console.log(
-        `[smoke:e2e] episode=${episodeId} status=${episodeStatus} latest=${latestJobId}:${latestJobType}:${latestJobStatus} preview=${previewExists ? "yes" : "no"} qc=${qcExists ? "yes" : "no"} manifest=${manifestExists ? "yes" : "no"}`
+        `[smoke:e2e] episode=${episodeId} status=${episodeStatus} latest=${latestJobId}:${latestJobType}:${latestJobStatus} preview=${previewExists ? "yes" : "no"} qc=${qcExists ? "yes" : "no"} manifest=${manifestExists ? "yes" : "no"} manifestSource=${manifestInfo.source} manifestCandidates=${manifestInfo.candidates.length}`
       );
     }
 
@@ -551,6 +582,8 @@ async function main() {
       console.log(`  preview=${previewPath}`);
       console.log(`  qc=${qcPath}`);
       console.log(`  manifest=${resolvedManifestPath}`);
+      console.log(`  manifestSource=${manifestInfo.source}`);
+      console.log(`  manifestCandidates=${manifestInfo.candidates.map((candidate) => `${candidate.source}:${candidate.path}`).join(" | ")}`);
       console.log(`  mp4=${mp4Files.join(", ")}`);
       writeLastRunMetadata({
         status: "PASS",
@@ -560,7 +593,9 @@ async function main() {
         outDir: episodeOutDir,
         previewPath,
         qcPath,
-        manifestPath: resolvedManifestPath ?? defaultManifestPath
+        manifestPath: resolvedManifestPath ?? defaultManifestPath,
+        manifestSource: manifestInfo.source,
+        manifestCandidates: manifestInfo.candidates
       });
       return;
     }
