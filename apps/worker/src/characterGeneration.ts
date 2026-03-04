@@ -2393,6 +2393,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
       applied: false,
       reason
     };
+    await helpers.logJob(jobDbId, "info", "Auto continuity reference not attempted", {
+      characterPackId: character.characterPackId,
+      reason,
+      policy: continuityPolicy
+    });
   }
 
   if (selectedCandidateIds) {
