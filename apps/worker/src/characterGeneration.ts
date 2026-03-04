@@ -2398,7 +2398,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
       enabled: continuityAutoEnabled,
       attempted: false,
       applied: false,
-      reason
+      reason,
+      policy: continuityPolicy
     };
     await helpers.logJob(jobDbId, "info", "Auto continuity reference not attempted", {
       characterPackId: character.characterPackId,
