@@ -148,6 +148,8 @@ type GenerationManifest = {
       attemptedSourceSessionId?: string;
       cutoffUpdatedAt?: string;
       queuedSessionCount?: number;
+      uniqueQueuedSessionCount?: number;
+      duplicateSessionCount?: number;
       searchedSessionCount?: number;
       searchedSessionIdsPreview?: string[];
       preferredPoolCount?: number;
@@ -1709,6 +1711,8 @@ async function resolveAutoContinuityReference(input: {
   diagnostics: {
     cutoffUpdatedAt: string;
     queuedSessionCount: number;
+    uniqueQueuedSessionCount: number;
+    duplicateSessionCount: number;
     searchedSessionCount: number;
     searchedSessionIdsPreview: string[];
     preferredPoolCount: number;
@@ -1761,6 +1765,9 @@ async function resolveAutoContinuityReference(input: {
   });
 
   const queue = [...preferred.map((row) => row.id), ...fallback.map((row) => row.id)];
+  const uniqueQueuedSessionIds = new Set(queue);
+  const uniqueQueuedSessionCount = uniqueQueuedSessionIds.size;
+  const duplicateSessionCount = Math.max(0, queue.length - uniqueQueuedSessionCount);
   const preferredSet = new Set(preferred.map((row) => row.id));
   const visited = new Set<string>();
   const visitedOrder: string[] = [];
@@ -1786,6 +1793,8 @@ async function resolveAutoContinuityReference(input: {
         diagnostics: {
           cutoffUpdatedAt: cutoffDate.toISOString(),
           queuedSessionCount: queue.length,
+          uniqueQueuedSessionCount,
+          duplicateSessionCount,
           searchedSessionCount: visited.size,
           searchedSessionIdsPreview: visitedOrder.slice(0, 5),
           preferredPoolCount: preferred.length,
@@ -1804,6 +1813,8 @@ async function resolveAutoContinuityReference(input: {
     diagnostics: {
       cutoffUpdatedAt: cutoffDate.toISOString(),
       queuedSessionCount: queue.length,
+      uniqueQueuedSessionCount,
+      duplicateSessionCount,
       searchedSessionCount: visited.size,
       searchedSessionIdsPreview: visitedOrder.slice(0, 5),
       preferredPoolCount: preferred.length,
@@ -1908,6 +1919,12 @@ function parseManifestContinuity(value: unknown): GenerationManifest["reference"
     ...(asOptionalString(value.cutoffUpdatedAt) ? { cutoffUpdatedAt: asOptionalString(value.cutoffUpdatedAt) } : {}),
     ...(asOptionalNumber(value.queuedSessionCount) !== undefined
       ? { queuedSessionCount: asOptionalNumber(value.queuedSessionCount) }
+      : {}),
+    ...(asOptionalNumber(value.uniqueQueuedSessionCount) !== undefined
+      ? { uniqueQueuedSessionCount: asOptionalNumber(value.uniqueQueuedSessionCount) }
+      : {}),
+    ...(asOptionalNumber(value.duplicateSessionCount) !== undefined
+      ? { duplicateSessionCount: asOptionalNumber(value.duplicateSessionCount) }
       : {}),
     ...(asOptionalNumber(value.searchedSessionCount) !== undefined
       ? { searchedSessionCount: asOptionalNumber(value.searchedSessionCount) }
@@ -2394,6 +2411,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
           attemptedSourceSessionId: continuity.match.sessionId,
           cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
           queuedSessionCount: continuity.diagnostics.queuedSessionCount,
+          uniqueQueuedSessionCount: continuity.diagnostics.uniqueQueuedSessionCount,
+          duplicateSessionCount: continuity.diagnostics.duplicateSessionCount,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
@@ -2425,6 +2444,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
           attemptedSourceSessionId: continuity.match.sessionId,
           cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
           queuedSessionCount: continuity.diagnostics.queuedSessionCount,
+          uniqueQueuedSessionCount: continuity.diagnostics.uniqueQueuedSessionCount,
+          duplicateSessionCount: continuity.diagnostics.duplicateSessionCount,
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
@@ -2445,6 +2466,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
         reason: continuity.diagnostics.reason ?? "skipped",
         cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
         queuedSessionCount: continuity.diagnostics.queuedSessionCount,
+        uniqueQueuedSessionCount: continuity.diagnostics.uniqueQueuedSessionCount,
+        duplicateSessionCount: continuity.diagnostics.duplicateSessionCount,
         searchedSessionCount: continuity.diagnostics.searchedSessionCount,
         searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
         preferredPoolCount: continuity.diagnostics.preferredPoolCount,
