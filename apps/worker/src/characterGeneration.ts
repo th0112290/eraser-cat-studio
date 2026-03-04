@@ -1518,10 +1518,22 @@ async function resolveFrontReferenceFromSession(
     take: 10,
     select: {
       localPath: true,
+      picked: true,
+      updatedAt: true,
       scoreJson: true,
       qcJson: true
     }
   });
+
+  type RankedReference = {
+    referenceImageBase64: string;
+    referenceMimeType: string;
+    picked: boolean;
+    score: number;
+    rejectionCount: number;
+    updatedAtMs: number;
+  };
+  let best: RankedReference | null = null;
 
   for (const row of rows) {
     const localPath = typeof row.localPath === "string" ? row.localPath.trim() : "";
@@ -1545,13 +1557,46 @@ async function resolveFrontReferenceFromSession(
         ? qc.mime.trim()
         : "image/png";
     const data = fs.readFileSync(localPath);
-    return {
+    const candidate: RankedReference = {
       referenceImageBase64: data.toString("base64"),
-      referenceMimeType: mimeType
+      referenceMimeType: mimeType,
+      picked: row.picked,
+      score: score ?? -1,
+      rejectionCount,
+      updatedAtMs: row.updatedAt.getTime()
     };
+    if (!best) {
+      best = candidate;
+      continue;
+    }
+    if (isBetterContinuityCandidate(candidate, best)) {
+      best = candidate;
+    }
   }
 
-  return undefined;
+  if (!best) {
+    return undefined;
+  }
+  return {
+    referenceImageBase64: best.referenceImageBase64,
+    referenceMimeType: best.referenceMimeType
+  };
+}
+
+function isBetterContinuityCandidate(
+  next: { picked: boolean; score: number; rejectionCount: number; updatedAtMs: number },
+  current: { picked: boolean; score: number; rejectionCount: number; updatedAtMs: number }
+): boolean {
+  if (next.picked !== current.picked) {
+    return next.picked;
+  }
+  if (next.score !== current.score) {
+    return next.score > current.score;
+  }
+  if (next.rejectionCount !== current.rejectionCount) {
+    return next.rejectionCount < current.rejectionCount;
+  }
+  return next.updatedAtMs > current.updatedAtMs;
 }
 
 async function resolveAutoContinuityReference(input: {
