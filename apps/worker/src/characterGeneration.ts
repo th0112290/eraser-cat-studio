@@ -162,6 +162,7 @@ type GenerationManifest = {
         candidateTake: number;
         preferredSessionTake: number;
         fallbackSessionTake: number;
+        requestOverride: boolean | null;
       };
     };
   };
@@ -2138,6 +2139,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
   });
   const continuityConfig = readContinuityReferenceConfig();
   const continuityAutoEnabled = continuityAutoOverride ?? shouldAutoContinuityReference();
+  const continuityPolicy = {
+    ...continuityConfig,
+    requestOverride: continuityAutoOverride ?? null
+  };
 
   let referenceAnalysis: ImageAnalysis | undefined;
   let referenceImageBase64: string | undefined;
@@ -2235,7 +2240,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         await helpers.logJob(jobDbId, "info", "Auto continuity reference applied", {
           sourceSessionId: continuity.match.sessionId,
           characterPackId: character.characterPackId,
-          policy: continuityConfig,
+          policy: continuityPolicy,
           diagnostics: {
             ...continuity.diagnostics,
             sourcePool: continuity.match.sourcePool,
@@ -2258,7 +2263,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           candidateScore: continuity.match.candidateScore,
           candidateRejectionCount: continuity.match.candidateRejectionCount,
           candidateUpdatedAt: continuity.match.candidateUpdatedAt,
-          policy: continuityConfig
+          policy: continuityPolicy
         };
       } catch (error) {
         referenceImageBase64 = undefined;
@@ -2267,7 +2272,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         referenceAnalysis = undefined;
         await helpers.logJob(jobDbId, "warn", "Auto continuity reference ignored due to invalid source", {
           characterPackId: character.characterPackId,
-          policy: continuityConfig,
+          policy: continuityPolicy,
           diagnostics: continuity.diagnostics,
           error: errorMessage(error)
         });
@@ -2279,13 +2284,13 @@ export async function handleGenerateCharacterAssetsJob(input: {
           searchedSessionCount: continuity.diagnostics.searchedSessionCount,
           preferredPoolCount: continuity.diagnostics.preferredPoolCount,
           fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
-          policy: continuityConfig
+          policy: continuityPolicy
         };
       }
     } else {
       await helpers.logJob(jobDbId, "info", "Auto continuity reference skipped", {
         characterPackId: character.characterPackId,
-        policy: continuityConfig,
+        policy: continuityPolicy,
         diagnostics: continuity.diagnostics
       });
       continuitySnapshot = {
@@ -2296,7 +2301,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         searchedSessionCount: continuity.diagnostics.searchedSessionCount,
         preferredPoolCount: continuity.diagnostics.preferredPoolCount,
         fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
-        policy: continuityConfig
+        policy: continuityPolicy
       };
     }
   } else if (generation.mode === "new") {
