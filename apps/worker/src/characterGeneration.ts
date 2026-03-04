@@ -3000,6 +3000,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
             2
           )}).`
         : "";
+    const continuityText =
+      continuitySnapshot && continuitySnapshot.reason
+        ? ` Continuity: ${continuitySnapshot.reason}${continuitySnapshot.applied ? " (applied)." : "."}`
+        : "";
     await prisma.agentSuggestion.create({
       data: {
         episodeId: payload.episodeId,
@@ -3011,7 +3015,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           : "Choose best character view candidates",
         summary: generation.viewToGenerate
           ? `View-only regenerate completed for ${generation.viewToGenerate}. Pick candidates to continue.`
-          : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText} Select one candidate per view from generation manifest.`,
+          : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText}${continuityText} Select one candidate per view from generation manifest.`,
         payload: toPrismaJson({
           manifestPath,
           provider: providerName,
