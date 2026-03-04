@@ -2272,11 +2272,21 @@ export async function handleGenerateCharacterAssetsJob(input: {
       };
     }
   } else if (generation.mode === "new") {
+    const hasHitlSelection = Boolean(selectedCandidateIds);
+    const hasReferenceAlready = Boolean(referenceImageBase64);
+    let reason = "not_attempted";
+    if (!continuityAutoEnabled) {
+      reason = "disabled";
+    } else if (hasHitlSelection) {
+      reason = "hitl_selection_present";
+    } else if (hasReferenceAlready) {
+      reason = "reference_already_present";
+    }
     continuitySnapshot = {
       enabled: continuityAutoEnabled,
       attempted: false,
       applied: false,
-      reason: continuityAutoEnabled ? "not_attempted" : "disabled"
+      reason
     };
   }
 
