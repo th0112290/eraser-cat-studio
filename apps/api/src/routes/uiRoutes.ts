@@ -645,9 +645,46 @@ function badgeClass(status: string): string {
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${esc(title)}</title><style>
-body{margin:0;font-family:Segoe UI,Noto Sans KR,sans-serif;background:#f5f7fb;color:#1a2433}header{background:#fff;border-bottom:1px solid #d6deea;position:sticky;top:0}nav{max-width:1200px;margin:0 auto;padding:12px 18px;display:flex;gap:14px;align-items:center}nav strong{margin-right:auto}main{max-width:1200px;margin:18px auto;padding:0 18px;display:grid;gap:12px}.card{background:#fff;border:1px solid #d6deea;border-radius:12px;padding:14px}.notice{padding:9px;border-left:4px solid #2f7eed;background:#edf4ff}.error{padding:9px;border-left:4px solid #d92d20;background:#fff0ef}.grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}a{color:#0f5bd8;text-decoration:none}a:hover{text-decoration:underline}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #e3e8f1;padding:7px;text-align:left;vertical-align:top}.badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}.badge.ok{background:#eaf6ed;color:#1d7a34}.badge.warn{background:#fff8e8;color:#945f02}.badge.bad{background:#fff1ef;color:#b42318}.badge.muted{background:#f2f4f7;color:#475467}input,select,textarea,button{font:inherit;border:1px solid #ccd6e5;border-radius:8px;padding:7px 9px}textarea{width:100%;min-height:220px;resize:vertical}button{background:#0f5bd8;color:#fff;border:none;font-weight:700;cursor:pointer}.secondary{background:#eef3fc;color:#143d6a;border:1px solid #cad8f2}pre{margin:0;background:#0b1220;color:#d3e1ff;padding:10px;border-radius:8px;overflow:auto;font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:8px}.inline{display:inline-flex;gap:8px;align-items:center}
-.toast-wrap{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999}.toast{background:#0b1220;color:#f8fbff;border-radius:10px;padding:10px 12px;box-shadow:0 8px 22px rgba(0,0,0,.2);min-width:240px;max-width:460px}.toast.ok{background:#14532d}.toast.warn{background:#854d0e}.toast.bad{background:#7f1d1d}.toast .title{font-weight:700;margin-bottom:4px}.submit-loading{opacity:.72;pointer-events:none}.submit-loading::after{content:"...";margin-left:4px}.field-error{color:#b42318;font-size:12px;padding-top:2px}.hint{display:inline-block;border-bottom:1px dotted #8ca1bf;color:#305f99;cursor:help;font-size:12px}
-.shortcut-help{position:fixed;inset:0;background:rgba(11,18,32,.45);display:none;align-items:center;justify-content:center;z-index:9998}.shortcut-help.open{display:flex}.shortcut-card{width:min(620px,90vw);background:#fff;border-radius:12px;border:1px solid #d6deea;padding:14px}.shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}.sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+:root{--bg:#f3f6f9;--bg2:#e8eef4;--ink:#15202b;--muted:#4a5a6a;--line:#cfdae6;--card:#ffffffdd;--primary:#0f766e;--primary-ink:#effcf9;--accent:#ea580c;--good:#166534;--warn:#92400e;--bad:#b91c1c;--soft:#f7fafc}
+*{box-sizing:border-box}
+body{margin:0;font-family:"SUIT Variable","Pretendard Variable","Avenir Next","Noto Sans KR",sans-serif;color:var(--ink);background:radial-gradient(1200px 420px at 20% -10%,#d9f0ea 0,#d9f0ea00 70%),radial-gradient(1200px 520px at 85% -25%,#ffe3cf 0,#ffe3cf00 65%),linear-gradient(180deg,var(--bg),var(--bg2));min-height:100vh}
+header{position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);background:#ffffffb8;border-bottom:1px solid var(--line)}
+nav{max-width:1240px;margin:0 auto;padding:12px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+nav strong{margin-right:auto;font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:#0b3d39}
+nav a{color:#174e4a;text-decoration:none;padding:7px 10px;border-radius:999px;border:1px solid transparent;transition:.2s ease}
+nav a:hover{background:#e7f3f1;border-color:#bfd9d5}
+main{max-width:1240px;margin:20px auto;padding:0 18px 28px;display:grid;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 10px 28px #18354a14}
+.card h1,.card h2,.card h3{margin-top:0}
+.notice{padding:10px 11px;border-left:4px solid #0f766e;background:#e8f8f5;border-radius:10px}
+.error{padding:10px 11px;border-left:4px solid var(--bad);background:#fff1f2;border-radius:10px}
+.grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+a{color:#0f766e;text-decoration:none}a:hover{text-decoration:underline}
+table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #dbe6f1;border-radius:12px;overflow:hidden}
+th,td{border-bottom:1px solid #e8eef5;padding:8px 9px;text-align:left;vertical-align:top}
+th{background:#f6fbff;color:#334155;font-weight:700}
+.badge{display:inline-block;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700}
+.badge.ok{background:#e9f8ee;color:var(--good)}.badge.warn{background:#fff7e8;color:var(--warn)}.badge.bad{background:#fff1f2;color:var(--bad)}.badge.muted{background:#eef2f7;color:#475569}
+input,select,textarea,button{font:inherit;border:1px solid #c7d5e4;border-radius:10px;padding:8px 10px;background:#fff}
+input:focus,select:focus,textarea:focus{outline:2px solid #0f766e33;border-color:#0f766e}
+textarea{width:100%;min-height:220px;resize:vertical}
+button{background:linear-gradient(180deg,#0f857b,#0f766e);color:var(--primary-ink);border:none;font-weight:800;letter-spacing:.01em;cursor:pointer;transition:.18s ease;box-shadow:0 6px 14px #0f766e3a}
+button:hover{transform:translateY(-1px);box-shadow:0 9px 16px #0f766e45}
+.secondary{background:#f3f8fd;color:#0b3d62;border:1px solid #c5d7eb;box-shadow:none}
+pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;overflow:auto;font-size:12px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}.inline{display:inline-flex;gap:8px;align-items:center}
+.toast-wrap{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999}
+.toast{background:#0f172a;color:#f8fbff;border-radius:11px;padding:10px 12px;box-shadow:0 10px 24px #0000002b;min-width:240px;max-width:460px}
+.toast.ok{background:#14532d}.toast.warn{background:#9a5a00}.toast.bad{background:#7f1d1d}.toast .title{font-weight:800;margin-bottom:4px}
+.submit-loading{opacity:.72;pointer-events:none}.submit-loading::after{content:"...";margin-left:4px}
+.field-error{color:#b42318;font-size:12px;padding-top:2px}
+.hint{display:inline-block;border-bottom:1px dotted #8ca1bf;color:#305f99;cursor:help;font-size:12px}
+.shortcut-help{position:fixed;inset:0;background:#0f172a73;display:none;align-items:center;justify-content:center;z-index:9998}
+.shortcut-help.open{display:flex}
+.shortcut-card{width:min(620px,90vw);background:#ffffff;border-radius:14px;border:1px solid var(--line);padding:14px;box-shadow:0 20px 44px #00000026}
+.shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
+.sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+@media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px}}
 </style></head><body><header><nav><strong>Eraser Cat Control Plane</strong><a href="/ui">Dashboard</a><a href="/ui/jobs">Jobs</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/hitl">HITL</a><a href="/ui/episodes">Render Preview</a><a href="/ui/publish">Publish</a><a href="/ui/health">Health</a><a href="/ui/artifacts">Artifacts</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말 (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>Shortcuts</h2><table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g then e</td><td>Episodes 이동</td></tr><tr><td>g then j</td><td>Jobs 이동</td></tr><tr><td>g then h</td><td>Health 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
 (() => {
   const toastWrap = document.getElementById('toast-wrap');
