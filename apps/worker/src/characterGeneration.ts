@@ -3007,9 +3007,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
             2
           )}).`
         : "";
+    const continuitySourceText = continuitySnapshot?.attemptedSourceSessionId
+      ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
+      : "";
     const continuityText =
       continuitySnapshot && continuitySnapshot.reason
-        ? ` Continuity: ${continuitySnapshot.reason}${continuitySnapshot.applied ? " (applied)." : "."}`
+        ? ` Continuity: ${continuitySnapshot.reason}${continuitySourceText}${continuitySnapshot.applied ? " (applied)." : "."}`
         : "";
     await prisma.agentSuggestion.create({
       data: {
@@ -3059,18 +3062,42 @@ export async function handleGenerateCharacterAssetsJob(input: {
         status: "READY",
         statusMessage: generation.viewToGenerate
           ? `Candidates ready for view ${generation.viewToGenerate}. Pick to continue.${
-              continuitySnapshot?.reason ? ` Continuity=${continuitySnapshot.reason}.` : ""
+              continuitySnapshot?.reason
+                ? ` Continuity=${continuitySnapshot.reason}${
+                    continuitySnapshot.attemptedSourceSessionId
+                      ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
+                      : ""
+                  }.`
+                : ""
             }`
           : missingGeneratedViews.length > 0
             ? `Partial generation complete. Missing: ${missingGeneratedViews.join(", ")}${
-                continuitySnapshot?.reason ? ` | Continuity=${continuitySnapshot.reason}` : ""
+                continuitySnapshot?.reason
+                  ? ` | Continuity=${continuitySnapshot.reason}${
+                      continuitySnapshot.attemptedSourceSessionId
+                        ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
+                        : ""
+                    }`
+                  : ""
               }`
             : lowQualityGeneratedViews.length > 0
               ? `Candidates generated but quality below threshold for: ${lowQualityGeneratedViews.join(", ")}${
-                  continuitySnapshot?.reason ? ` | Continuity=${continuitySnapshot.reason}` : ""
+                  continuitySnapshot?.reason
+                    ? ` | Continuity=${continuitySnapshot.reason}${
+                        continuitySnapshot.attemptedSourceSessionId
+                          ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
+                          : ""
+                      }`
+                    : ""
                 }`
               : `Candidates ready. Waiting for pick.${
-                  continuitySnapshot?.reason ? ` Continuity=${continuitySnapshot.reason}.` : ""
+                  continuitySnapshot?.reason
+                    ? ` Continuity=${continuitySnapshot.reason}${
+                        continuitySnapshot.attemptedSourceSessionId
+                          ? ` source=${continuitySnapshot.attemptedSourceSessionId}`
+                          : ""
+                      }.`
+                    : ""
                 }`
       }
     });
