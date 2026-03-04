@@ -2350,6 +2350,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         referenceAnalysis = undefined;
         await helpers.logJob(jobDbId, "warn", "Auto continuity reference ignored due to invalid source", {
           characterPackId: character.characterPackId,
+          sourceSessionId: continuity.match.sessionId,
           policy: continuityPolicy,
           diagnostics: continuity.diagnostics,
           error: errorMessage(error)
