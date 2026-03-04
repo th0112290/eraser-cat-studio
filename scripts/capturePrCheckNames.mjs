@@ -23,7 +23,7 @@ function parseArgs(argv) {
 
 function usage() {
   console.log(
-    "Usage: node scripts/capturePrCheckNames.mjs --repo <owner/repo> --pr <number> [--json]\n" +
+    "Usage: node scripts/capturePrCheckNames.mjs --repo <owner/repo> --pr <number> [--json] [--web]\n" +
       "Fallback order:\n" +
       "1) args --repo/--pr\n" +
       "2) env GITHUB_REPOSITORY/PR_NUMBER\n" +
@@ -118,6 +118,8 @@ async function main() {
   let prValue = String(args.pr ?? process.env.PR_NUMBER ?? "").trim();
   const token = String(process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "").trim();
   const printJson = args.json === "true";
+  const printGuide = args.web === "true";
+  const guidePath = "docs/branch-protection-character-strict.md";
 
   let autoDetected = null;
   if (!repo || !prValue) {
@@ -137,9 +139,10 @@ async function main() {
         : "";
     const recoveryText =
       " Recovery: `gh auth login` and run on PR branch, or run `pnpm ci:checks:capture -- --repo <owner/repo> --pr <number> --json`.";
+    const guideText = printGuide ? ` Guide: ${guidePath}.` : "";
     usage();
     throw new Error(
-      `Missing --repo/--pr. Provide args/env, or run on a PR branch with authenticated gh CLI.${reasonText}${recoveryText}`
+      `Missing --repo/--pr. Provide args/env, or run on a PR branch with authenticated gh CLI.${reasonText}${recoveryText}${guideText}`
     );
   }
   const pr = Number.parseInt(prValue, 10);
@@ -180,6 +183,9 @@ async function main() {
         2
       )
     );
+    if (printGuide) {
+      console.log(`\n[capture-pr-check-names] Guide: ${guidePath}`);
+    }
     return;
   }
 
@@ -191,6 +197,9 @@ async function main() {
   console.log("[capture-pr-check-names] Check names:");
   for (const name of names) {
     console.log(`- ${name}`);
+  }
+  if (printGuide) {
+    console.log(`[capture-pr-check-names] Guide: ${guidePath}`);
   }
 }
 

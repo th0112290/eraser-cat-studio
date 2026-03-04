@@ -35,6 +35,7 @@
    - `PR_NUMBER` (예: `123`)
 2. 실행:
    - `pnpm ci:checks:capture -- --json`
+   - 가이드 경로까지 같이 출력하려면: `pnpm ci:checks:capture -- --json --web`
 3. 결과에서 `checkNames` 배열 또는 텍스트 목록을 확인한다.
 4. `Character Strict Smoke / smoke-character-strict`에 해당하는 항목을 branch protection required check로 등록한다.
 
