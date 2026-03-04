@@ -135,9 +135,11 @@ async function main() {
       autoDetected && autoDetected.reasons.length > 0
         ? ` auto-detect hints: ${autoDetected.reasons.join(", ")}`
         : "";
+    const recoveryText =
+      " Recovery: `gh auth login` and run on PR branch, or run `pnpm ci:checks:capture -- --repo <owner/repo> --pr <number> --json`.";
     usage();
     throw new Error(
-      `Missing --repo/--pr. Provide args/env, or run on a PR branch with authenticated gh CLI.${reasonText}`
+      `Missing --repo/--pr. Provide args/env, or run on a PR branch with authenticated gh CLI.${reasonText}${recoveryText}`
     );
   }
   const pr = Number.parseInt(prValue, 10);
