@@ -2309,7 +2309,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     const hasReferenceAlready = Boolean(referenceImageBase64);
     let reason = "not_attempted";
     if (!continuityAutoEnabled) {
-      reason = "disabled";
+      reason = continuityAutoOverride === false ? "disabled_by_request" : "disabled_by_env";
     } else if (hasHitlSelection) {
       reason = "hitl_selection_present";
     } else if (hasReferenceAlready) {
