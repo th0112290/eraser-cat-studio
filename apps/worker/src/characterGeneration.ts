@@ -159,6 +159,8 @@ type GenerationManifest = {
         maxRejections: number;
         requirePicked: boolean;
         requireScore: boolean;
+        preferredSessionTake: number;
+        fallbackSessionTake: number;
       };
     };
   };
@@ -246,6 +248,8 @@ type ContinuityReferenceConfig = {
   maxRejections: number;
   requirePicked: boolean;
   requireScore: boolean;
+  preferredSessionTake: number;
+  fallbackSessionTake: number;
 };
 
 function toFiniteNonNegative(value: string | undefined, fallback: number): number {
@@ -315,7 +319,9 @@ function readContinuityReferenceConfig(): ContinuityReferenceConfig {
     minScore: clamp01(toFiniteNonNegative(process.env.CHARACTER_AUTO_CONTINUITY_MIN_SCORE, 0.62)),
     maxRejections: toNonNegativeInt(process.env.CHARACTER_AUTO_CONTINUITY_MAX_REJECTIONS, 1),
     requirePicked: !["false", "0", "no", "off"].includes(requirePickedFlag),
-    requireScore: !["false", "0", "no", "off"].includes(requireScoreFlag)
+    requireScore: !["false", "0", "no", "off"].includes(requireScoreFlag),
+    preferredSessionTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_PREFERRED_TAKE, 8),
+    fallbackSessionTake: toPositiveInt(process.env.CHARACTER_AUTO_CONTINUITY_FALLBACK_TAKE, 12)
   };
 }
 
@@ -1697,7 +1703,7 @@ async function resolveAutoContinuityReference(input: {
     select: {
       id: true
     },
-    take: 8
+    take: input.config.preferredSessionTake
   });
 
   const fallback = await input.prisma.characterGenerationSession.findMany({
@@ -1715,7 +1721,7 @@ async function resolveAutoContinuityReference(input: {
     select: {
       id: true
     },
-    take: 12
+    take: input.config.fallbackSessionTake
   });
 
   const queue = [...preferred.map((row) => row.id), ...fallback.map((row) => row.id)];
