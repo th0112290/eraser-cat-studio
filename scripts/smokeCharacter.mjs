@@ -172,6 +172,36 @@ function readManifestFromPath(manifestPath) {
   }
 }
 
+function resolveManifestPathFromJobData(data) {
+  const candidates = [];
+  if (typeof data?.manifestPath === "string" && data.manifestPath.trim().length > 0) {
+    candidates.push(data.manifestPath.trim());
+  }
+  const logs = Array.isArray(data?.logs) ? data.logs : [];
+  for (const entry of logs) {
+    const manifestPath = entry?.details?.manifestPath;
+    if (typeof manifestPath === "string" && manifestPath.trim().length > 0) {
+      candidates.push(manifestPath.trim());
+    }
+  }
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0] ?? null;
+}
+
+function resolveManifestStatus(...manifests) {
+  for (const manifest of manifests) {
+    const raw = manifest?.status;
+    if (typeof raw === "string" && raw.trim().length > 0) {
+      return raw.trim();
+    }
+  }
+  return "unknown";
+}
+
 async function main() {
   console.log(`[smoke:character] API base: ${API_BASE_URL}`);
   console.log(`[smoke:character] requireContinuity=${REQUIRE_CONTINUITY ? "1" : "0"}`);
@@ -212,11 +242,15 @@ async function main() {
 
   const generationDetail = await fetchJson(`${API_BASE_URL}/api/character-generator/jobs/${encodeURIComponent(generateJobId)}`);
   const manifest = generationDetail?.data?.manifest ?? null;
-  const manifestPath = typeof generationDetail?.data?.manifestPath === "string" ? generationDetail.data.manifestPath : null;
+  const manifestPath = resolveManifestPathFromJobData(generationDetail?.data ?? null);
   if (!manifest) {
     throw new Error("Generation manifest missing after generate job success");
   }
   const fallbackGenerateManifest = readManifestFromPath(manifestPath);
+  const generateManifestStatus = resolveManifestStatus(manifest, fallbackGenerateManifest);
+  if (generateManifestStatus === "unknown") {
+    throw new Error("generate manifest status missing (api+file)");
+  }
   const hasGenerateContinuity =
     assertContinuityShape(manifest, "generateManifest") ||
     assertContinuityShape(fallbackGenerateManifest, "generateManifest(file)");
@@ -259,11 +293,14 @@ async function main() {
   }
 
   const finalGenerate = await fetchJson(`${API_BASE_URL}/api/character-generator/jobs/${encodeURIComponent(pickGenerateJobId)}`);
-  const manifestStatus = String(finalGenerate?.data?.manifest?.status ?? "unknown");
   const finalManifest = finalGenerate?.data?.manifest ?? null;
-  const finalManifestPath = typeof finalGenerate?.data?.manifestPath === "string" ? finalGenerate.data.manifestPath : null;
+  const finalManifestPath = resolveManifestPathFromJobData(finalGenerate?.data ?? null);
+  const fallbackFinalManifest = readManifestFromPath(finalManifestPath);
+  const manifestStatus = resolveManifestStatus(finalManifest, fallbackFinalManifest);
+  if (manifestStatus === "unknown") {
+    throw new Error("final manifest status missing (api+file)");
+  }
   if (finalManifest) {
-    const fallbackFinalManifest = readManifestFromPath(finalManifestPath);
     const hasFinalContinuity =
       assertContinuityShape(finalManifest, "finalManifest") ||
       assertContinuityShape(fallbackFinalManifest, "finalManifest(file)");
