@@ -4,6 +4,7 @@ import path from "node:path";
 const API_BASE_URL = process.env.API_BASE_URL?.trim() || "http://localhost:3000";
 const POLL_INTERVAL_MS = Number.parseInt(process.env.SMOKE_POLL_MS ?? "1200", 10);
 const POLL_TIMEOUT_MS = Number.parseInt(process.env.SMOKE_TIMEOUT_MS ?? "360000", 10);
+const REQUIRE_CONTINUITY = process.env.SMOKE_REQUIRE_CONTINUITY === "1";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -156,8 +157,24 @@ function assertContinuityShape(manifest, label) {
   return true;
 }
 
+function readManifestFromPath(manifestPath) {
+  if (typeof manifestPath !== "string" || manifestPath.trim().length === 0) {
+    return null;
+  }
+  try {
+    if (!fs.existsSync(manifestPath)) {
+      return null;
+    }
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   console.log(`[smoke:character] API base: ${API_BASE_URL}`);
+  console.log(`[smoke:character] requireContinuity=${REQUIRE_CONTINUITY ? "1" : "0"}`);
 
   const seed = Number.parseInt(process.env.SMOKE_CHARACTER_SEED ?? "4242", 10);
   const topic = `Smoke Character Session ${new Date().toISOString()}`;
@@ -195,12 +212,19 @@ async function main() {
 
   const generationDetail = await fetchJson(`${API_BASE_URL}/api/character-generator/jobs/${encodeURIComponent(generateJobId)}`);
   const manifest = generationDetail?.data?.manifest ?? null;
+  const manifestPath = typeof generationDetail?.data?.manifestPath === "string" ? generationDetail.data.manifestPath : null;
   if (!manifest) {
     throw new Error("Generation manifest missing after generate job success");
   }
-  const hasGenerateContinuity = assertContinuityShape(manifest, "generateManifest");
+  const fallbackGenerateManifest = readManifestFromPath(manifestPath);
+  const hasGenerateContinuity =
+    assertContinuityShape(manifest, "generateManifest") ||
+    assertContinuityShape(fallbackGenerateManifest, "generateManifest(file)");
   if (!hasGenerateContinuity) {
-    console.log("[smoke:character] WARN: generateManifest.reference.continuity missing");
+    if (REQUIRE_CONTINUITY) {
+      throw new Error("Missing generateManifest.reference.continuity (api+file)");
+    }
+    console.log("[smoke:character] WARN: generateManifest.reference.continuity missing (api+file)");
   }
 
   const frontBest = pickBestCandidate(manifest, "front");
@@ -237,10 +261,17 @@ async function main() {
   const finalGenerate = await fetchJson(`${API_BASE_URL}/api/character-generator/jobs/${encodeURIComponent(pickGenerateJobId)}`);
   const manifestStatus = String(finalGenerate?.data?.manifest?.status ?? "unknown");
   const finalManifest = finalGenerate?.data?.manifest ?? null;
+  const finalManifestPath = typeof finalGenerate?.data?.manifestPath === "string" ? finalGenerate.data.manifestPath : null;
   if (finalManifest) {
-    const hasFinalContinuity = assertContinuityShape(finalManifest, "finalManifest");
+    const fallbackFinalManifest = readManifestFromPath(finalManifestPath);
+    const hasFinalContinuity =
+      assertContinuityShape(finalManifest, "finalManifest") ||
+      assertContinuityShape(fallbackFinalManifest, "finalManifest(file)");
     if (!hasFinalContinuity) {
-      console.log("[smoke:character] WARN: finalManifest.reference.continuity missing");
+      if (REQUIRE_CONTINUITY) {
+        throw new Error("Missing finalManifest.reference.continuity (api+file)");
+      }
+      console.log("[smoke:character] WARN: finalManifest.reference.continuity missing (api+file)");
     }
   }
   const lastError = firstLine(finalGenerate?.data?.lastError ?? "");
