@@ -12,6 +12,7 @@
     "smoke:e2e:overrides": "node scripts/smokeActionOverrides.mjs",
     "smoke:e2e:split": "node scripts/smokeSplit.mjs",
     "ci:checks:capture": "node scripts/capturePrCheckNames.mjs",
+    "ci:checks:verify": "node scripts/capturePrCheckNames.mjs --strict-required",
     "smoke:character": "node scripts/smokeCharacter.mjs",
     "smoke:character:strict": "node --input-type=module -e \"process.env.SMOKE_REQUIRE_CONTINUITY='1'; await import('./scripts/smokeCharacter.mjs');\"",
     "smoke:character:hitl": "node scripts/smokeCharacter.mjs",

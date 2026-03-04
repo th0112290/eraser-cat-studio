@@ -38,7 +38,7 @@ function parseArgs(argv) {
 
 function usage() {
   console.log(
-    "Usage: node scripts/capturePrCheckNames.mjs --repo <owner/repo> --pr <number> [--json] [--web] [--out <path>] [--save]\n" +
+    "Usage: node scripts/capturePrCheckNames.mjs --repo <owner/repo> --pr <number> [--json] [--web] [--out <path>] [--save] [--strict-required]\n" +
       "Fallback order:\n" +
       "1) args --repo/--pr\n" +
       "2) env GITHUB_REPOSITORY/PR_NUMBER\n" +
@@ -149,6 +149,7 @@ async function main() {
   const printJson = args.json === "true";
   const printGuide = args.web === "true";
   const saveDefaultOut = args.save === "true";
+  const strictRequired = args["strict-required"] === "true";
   const outPath =
     typeof args.out === "string" && args.out.trim().length > 0
       ? path.resolve(args.out.trim())
@@ -218,6 +219,12 @@ async function main() {
     fs.writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   }
 
+  const missing = payload.requiredCheckCoverage.filter((coverage) => !coverage.matched);
+  const failMessage =
+    missing.length > 0
+      ? `[capture-pr-check-names] Missing required checks: ${missing.map((item) => item.expectedLabel).join("; ")}`
+      : null;
+
   if (printJson) {
     console.log(JSON.stringify(payload, null, 2));
     if (outPath) {
@@ -225,6 +232,9 @@ async function main() {
     }
     if (printGuide) {
       console.log(`\n[capture-pr-check-names] Guide: ${guidePath}`);
+    }
+    if (strictRequired && failMessage) {
+      throw new Error(failMessage);
     }
     return;
   }
@@ -246,11 +256,8 @@ async function main() {
       console.log(`- MISSING ${coverage.expectedLabel}`);
     }
   }
-  const missing = payload.requiredCheckCoverage.filter((coverage) => !coverage.matched);
   if (missing.length > 0) {
-    console.log(
-      `[capture-pr-check-names] Missing required checks: ${missing.map((item) => item.expectedLabel).join("; ")}`
-    );
+    console.log(failMessage);
     console.log(
       "[capture-pr-check-names] Action: run target workflows on PR once, then re-run this command and update branch protection labels."
     );
@@ -260,6 +267,9 @@ async function main() {
   }
   if (printGuide) {
     console.log(`[capture-pr-check-names] Guide: ${guidePath}`);
+  }
+  if (strictRequired && failMessage) {
+    throw new Error(failMessage);
   }
 }
 

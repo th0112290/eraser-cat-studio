@@ -38,6 +38,8 @@ Use this when check labels differ by repo settings.
 - `PR_NUMBER` (example: `123`)
 2. Run:
 - `pnpm ci:checks:capture -- --json --save --web`
+- Strict fail mode (exit 1 when any required check is missing):
+  - `pnpm ci:checks:verify -- --json --save --web`
 3. Open `out/pr-checks.json` and check `checkNames`.
 4. Check `requiredCheckCoverage`:
 - `matched: true` for both required targets.
