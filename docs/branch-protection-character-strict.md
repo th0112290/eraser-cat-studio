@@ -25,6 +25,27 @@
 3. 체크가 실패하면 merge가 차단되는지 확인한다.
 4. 체크가 성공하면 merge 가능 상태로 전환되는지 확인한다.
 
+## Auto Capture PR Check Names
+- 목적: Branch protection에 넣어야 하는 "정확한 체크 이름"을 자동으로 수집한다.
+
+### Command
+1. 환경변수 설정:
+   - `GITHUB_TOKEN` (repo read 권한 포함)
+   - `GITHUB_REPOSITORY` (예: `owner/repo`)
+   - `PR_NUMBER` (예: `123`)
+2. 실행:
+   - `pnpm ci:checks:capture -- --json`
+3. 결과에서 `checkNames` 배열 또는 텍스트 목록을 확인한다.
+4. `Character Strict Smoke / smoke-character-strict`에 해당하는 항목을 branch protection required check로 등록한다.
+
+### Example (PowerShell)
+```powershell
+$env:GITHUB_TOKEN="ghp_xxx"
+$env:GITHUB_REPOSITORY="owner/repo"
+$env:PR_NUMBER="123"
+pnpm ci:checks:capture -- --json
+```
+
 ## Troubleshooting
 - 체크 항목이 선택 목록에 안 보이면:
   - PR에서 워크플로를 1회 이상 성공 실행한 뒤 다시 확인한다.
