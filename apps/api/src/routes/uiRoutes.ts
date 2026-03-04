@@ -1561,6 +1561,20 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       })
       .join("");
     const recommendAction = (() => {
+      if (styleQcMain.failCount > 0) {
+        return {
+          title: "추천: Style Preview로 QC fail 먼저 해소",
+          detail: `STYLE_QC fail=${styleQcMain.failCount} 입니다. full 실행 전에 style preset/hookBoost를 조정하세요.`,
+          profile: "preview" as RunProfileId
+        };
+      }
+      if (styleQcMain.warnCount > 0) {
+        return {
+          title: "추천: A/B 비교로 품질 경고 확인",
+          detail: `STYLE_QC warn=${styleQcMain.warnCount} 입니다. preview A/B 비교 후 full 실행을 권장합니다.`,
+          profile: "preview" as RunProfileId
+        };
+      }
       if (!shotsReady) {
         return {
           title: "추천: COMPILE_SHOTS 먼저 실행",
