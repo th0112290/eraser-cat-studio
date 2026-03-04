@@ -2166,6 +2166,7 @@ async function persistSelectedCandidates(input: {
       inputHash: hashedManifest.inputHash,
       manifestHash: hashedManifest.manifestHash,
       continuitySummary: hashedManifest.reference.continuity ?? null,
+      continuityDescriptor: formatContinuityDescriptor(hashedManifest.reference.continuity),
       manifestPath,
       selectedAssetIds: assetIds,
       buildJobDbId: buildJobId,
@@ -3084,7 +3085,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
           promptPreset: promptBundle.presetId,
           sessionId,
           viewToGenerate: generation.viewToGenerate ?? null,
-          continuitySummary: manifest.reference.continuity ?? null
+          continuitySummary: manifest.reference.continuity ?? null,
+          continuityDescriptor: formatContinuityDescriptor(manifest.reference.continuity)
         })
       }
     });
@@ -3138,6 +3140,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
       inputHash: manifest.inputHash,
       manifestHash: manifest.manifestHash,
       continuitySummary: manifest.reference.continuity ?? null,
+      continuityDescriptor: formatContinuityDescriptor(manifest.reference.continuity),
       sessionId,
       viewToGenerate: generation.viewToGenerate ?? null,
       lowQualityViews: lowQualityGeneratedViews,
