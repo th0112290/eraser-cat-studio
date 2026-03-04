@@ -16,6 +16,7 @@ const HEALTH_WAIT_MS = Number.parseInt(process.env.SMOKE_HEALTH_WAIT_MS ?? "4500
 const FORCE_NEW_EPISODE = (process.env.SMOKE_FORCE_NEW_EPISODE ?? "1").trim().toLowerCase() !== "0";
 const LAST_RUN_PATH = process.env.SMOKE_LAST_RUN_PATH?.trim() || path.join(repoRoot, "out", "smoke_e2e_last.json");
 const PIPELINE_TARGET = (process.env.SMOKE_PIPELINE_TARGET ?? "full").trim().toLowerCase();
+const RUN_MANIFEST_SELFTEST = (process.env.SMOKE_E2E_MANIFEST_SELFTEST ?? "0").trim().toLowerCase() === "1";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -166,6 +167,42 @@ function resolveManifestPath(episodeOutDir, latestJob, jobsData) {
     exists: false,
     candidates
   };
+}
+
+function runManifestFallbackSelftest() {
+  const testRoot = path.join(repoRoot, "out", "smoke_e2e_manifest_selftest");
+  fs.mkdirSync(testRoot, { recursive: true });
+  const fallbackPath = path.join(testRoot, "upload_manifest_fallback.json");
+  fs.writeFileSync(
+    fallbackPath,
+    `${JSON.stringify({ status: "TEST" }, null, 2)}\n`,
+    "utf8"
+  );
+
+  const latestJob = {
+    details: {
+      manifestPath: fallbackPath
+    }
+  };
+  const jobsData = [
+    {
+      id: "selftest-job-1",
+      details: {
+        manifestPath: fallbackPath
+      }
+    }
+  ];
+
+  const resolved = resolveManifestPath(testRoot, latestJob, jobsData);
+  if (resolved.path !== fallbackPath || resolved.source !== "latestJob.details.manifestPath" || !resolved.exists) {
+    throw new Error(
+      `manifest selftest failed: path=${resolved.path} source=${resolved.source} exists=${String(resolved.exists)}`
+    );
+  }
+
+  console.log("SMOKE E2E MANIFEST SELFTEST: PASS");
+  console.log(`  resolvedPath=${resolved.path}`);
+  console.log(`  source=${resolved.source}`);
 }
 
 function printFixHints(extraReason) {
@@ -401,6 +438,11 @@ function assertInfraReady(healthResult) {
 }
 
 async function main() {
+  if (RUN_MANIFEST_SELFTEST) {
+    runManifestFallbackSelftest();
+    return;
+  }
+
   if (!Number.isInteger(TIMEOUT_MS) || TIMEOUT_MS <= 0) {
     throw new Error("SMOKE_TIMEOUT_MS must be a positive integer");
   }
