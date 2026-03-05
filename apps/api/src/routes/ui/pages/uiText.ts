@@ -1,13 +1,13 @@
 export const UI_TEXT = {
   assets: {
-    title: "Assets (Detail Mode)",
-    intro: "Use Studio for the fast flow. This page is for asset inspection and detailed checks.",
+    title: "Assets (Advanced View)",
+    intro: "Use Studio for the fast flow. This page is for asset inspection and advanced checks.",
     upload: "Upload",
     uploadResultIdle: "Waiting",
     uploadInProgress: "Uploading...",
     uploadAction: "Upload + start asset processing",
     recentAssets: "Recent Assets",
-    filterPlaceholder: "Search (ID / type / status)",
+    filterPlaceholder: "Search by ID / type / status",
     selectedAsset: "Selected Asset",
     noAssets: "No assets found.",
     noSelectedAsset: "No asset selected.",
@@ -40,14 +40,14 @@ export const UI_TEXT = {
     title: "Jobs",
     latest: "Latest 100 jobs",
     latestBadge: "Newest first",
-    filterPlaceholder: "Search job id / episode / status",
+    filterPlaceholder: "Search by job ID / episode / status",
     noJobs: "No jobs yet. Start one from dashboard or episodes."
   },
   hitl: {
     title: "HITL Rerender",
     runAction: "Run selected rerender",
     failedJobs: "Failed Jobs",
-    filterPlaceholder: "Search job / episode / error",
+    filterPlaceholder: "Search by job / episode / error",
     failedShotHelp: "Format: shot_1,shot_2",
     failedShotHint: "Separate multiple values with commas.",
     noFailedJobs: "No failed jobs right now."
@@ -65,7 +65,7 @@ export const UI_TEXT = {
     quickLinkAction: "Open Quick Links",
     episodeHelp: "Show quick links for this episode.",
     indexTitle: "out/ index",
-    indexFilterPlaceholder: "Search file / path",
+    indexFilterPlaceholder: "Search by file / path",
     noArtifacts: "No artifacts found."
   },
   common: {
@@ -91,4 +91,3 @@ export function renderTableEmptyRow(colspan: number, message: string): string {
 export function renderInlineError(message: string): string {
   return `<div class="error">${esc(message)}</div>`;
 }
-

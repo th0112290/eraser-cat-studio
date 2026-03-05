@@ -55,6 +55,28 @@ const requiredNavLabelCandidates = [
   ["Artifacts", "산출물", "아티팩트"]
 ];
 
+const requiredNavHrefList = [
+  "/ui",
+  "/ui/studio",
+  "/ui/jobs",
+  "/ui/assets",
+  "/ui/characters",
+  "/ui/character-generator",
+  "/ui/hitl",
+  "/ui/episodes",
+  "/ui/publish",
+  "/ui/health",
+  "/ui/artifacts"
+];
+
+const requiredTableFilterByPage = new Map([
+  ["/ui/assets", ["data-table-filter", "asset-filter"]],
+  ["/ui/episodes", ['data-table-filter="episodes-table"']],
+  ["/ui/jobs", ['data-table-filter="jobs-table"']],
+  ["/ui/hitl", ['data-table-filter="hitl-failed-table"']],
+  ["/ui/artifacts", ['data-table-filter="artifact-index-table"']]
+]);
+
 const mojibakeTokens = [
   "?먯",
   "?듯",
@@ -91,6 +113,12 @@ async function checkPage(path) {
     }
   }
 
+  for (const href of requiredNavHrefList) {
+    if (!html.includes(`href="${href}"`)) {
+      throw new Error(`${path} missing nav href: ${href}`);
+    }
+  }
+
   if (path.startsWith("/ui/episodes/") && !requiredPageHeadings.has(path)) {
     const dynamicHeadings = ["Episode Detail"];
     const matched = dynamicHeadings.some((heading) => html.includes(heading));
@@ -119,6 +147,14 @@ async function checkPage(path) {
     const matched = keywordCandidates.some((keyword) => html.includes(keyword));
     if (!matched) {
       throw new Error(`${path} missing expected keyword: ${keywordCandidates.join(" | ")}`);
+    }
+  }
+
+  const tableFilterCandidates = requiredTableFilterByPage.get(path);
+  if (tableFilterCandidates) {
+    const matched = tableFilterCandidates.some((token) => html.includes(token));
+    if (!matched) {
+      throw new Error(`${path} missing table filter token: ${tableFilterCandidates.join(" | ")}`);
     }
   }
   if (path.startsWith("/ui/episodes/") && !requiredPageKeywords.has(path)) {
