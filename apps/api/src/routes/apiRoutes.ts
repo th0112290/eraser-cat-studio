@@ -41,7 +41,7 @@ type RegisterApiRoutesInput = {
   app: FastifyInstance;
   prisma: PrismaClient;
   queue: Queue;
-  assetQueue?: Queue;
+  assetQueue: Queue;
   queueName: string;
 };
 
@@ -731,7 +731,7 @@ function fmtUiDate(value: Date): string {
 
 export function registerApiRoutes(input: RegisterApiRoutesInput): void {
   const { app, prisma, queue, queueName } = input;
-  const assetQueue = input.assetQueue ?? queue;
+  const assetQueue = input.assetQueue;
 
   app.register(multipart, {
     limits: {

@@ -5,6 +5,7 @@ import { parse as parseQueryString } from "node:querystring";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import type { JobsOptions, Queue } from "bullmq";
+import { Queue as BullQueue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { EpisodeJobPayload } from "./scheduleService";
 import {
@@ -12,8 +13,8 @@ import {
   MockYouTubeUploader,
   readUploadManifest,
   type UploadManifest
-} from "../../../../packages/publish/src/index";
-import { createDefaultNotifier, estimateJobCost } from "../../../../packages/ops/src/index";
+} from "@ec/publish";
+import { createDefaultNotifier, estimateJobCost } from "@ec/ops";
 import { registerAnalyticsRoutes } from "./analyticsService";
 import { registerAdminOpsRoutes } from "./adminOpsService";
 import { registerAgentRoutes } from "./agentService";
@@ -39,6 +40,7 @@ const DEMO_CHANNEL_NAME = "Extreme Demo Channel";
 const DEMO_TOPIC = "Extreme Demo";
 const DEMO_MAX_ATTEMPTS = 2;
 const DEMO_BACKOFF_MS = 1000;
+const ASSET_QUEUE_NAME = "asset-ingest-jobs";
 const STATIC_ARTIFACTS_PREFIX = "/artifacts/";
 const STATIC_ARTIFACTS_ENABLED = (process.env.FF_STATIC_ARTIFACTS ?? "true").trim().toLowerCase() === "true";
 const MINIO_HEALTH_PATH = "/minio/health/live";
@@ -567,6 +569,11 @@ export function registerPublishRoutes(input: {
 }): void {
   const { app, prisma, queue } = input;
   const queueName = queue.name ?? DEMO_QUEUE_NAME;
+  const assetQueue = new BullQueue(ASSET_QUEUE_NAME, {
+    connection: {
+      url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+    }
+  });
 
   registerFormBody(app);
 
@@ -574,6 +581,7 @@ export function registerPublishRoutes(input: {
     app,
     prisma,
     queue,
+    assetQueue: assetQueue as unknown as Queue,
     queueName
   });
 
@@ -589,6 +597,10 @@ export function registerPublishRoutes(input: {
     prisma,
     queue,
     queueName
+  });
+
+  app.addHook("onClose", async () => {
+    await assetQueue.close().catch(() => undefined);
   });
 
   app.addHook("preValidation", async (request) => {

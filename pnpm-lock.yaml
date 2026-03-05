@@ -16,6 +16,12 @@ importers:
       '@ec/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@ec/ops':
+        specifier: workspace:*
+        version: link:../../packages/ops
+      '@ec/publish':
+        specifier: workspace:*
+        version: link:../../packages/publish
       '@ec/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -184,6 +190,10 @@ importers:
         version: 5.22.0
 
   packages/image-gen:
+    dependencies:
+      '@ec/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.15.24

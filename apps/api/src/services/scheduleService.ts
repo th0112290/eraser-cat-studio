@@ -1,7 +1,7 @@
 ﻿import { BacklogStatus, JobType, SlotStatus } from "@prisma/client";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { JobsOptions, Queue } from "bullmq";
-import { estimateJobCost } from "../../../../packages/ops/src/index";
+import { estimateJobCost } from "@ec/ops";
 
 const DEFAULT_WINDOW_DAYS = 7;
 const DEFAULT_WEEKLY_TARGET = 3;

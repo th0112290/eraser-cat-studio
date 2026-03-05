@@ -17,7 +17,7 @@ import {
   saveRetentionCurve,
   type RetentionPoint
 } from "@ec/analytics";
-import { createDefaultNotifier, estimateJobCost } from "../../../../packages/ops/src/index";
+import { createDefaultNotifier, estimateJobCost } from "@ec/ops";
 import { writeAuditLog } from "./auditService";
 import type { EpisodeJobPayload } from "./scheduleService";
 import { enqueueWithResilience } from "./enqueueWithResilience";

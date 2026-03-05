@@ -3,6 +3,13 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@ec/analytics": ["../../packages/analytics/src/index.ts"],
+      "@ec/ops": ["../../packages/ops/src/index.ts"],
+      "@ec/publish": ["../../packages/publish/src/index.ts"],
+      "@ec/shared": ["../../packages/shared/src/index.ts"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

@@ -9,6 +9,9 @@
   "scripts": {
     "image-gen:demo": "pnpm exec tsx src/mockDemo.ts"
   },
+  "dependencies": {
+    "@ec/shared": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.15.24",
     "tsx": "^4.19.0",

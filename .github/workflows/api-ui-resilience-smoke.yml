@@ -11,7 +11,11 @@ on:
       - "packages/audio/**"
       - "packages/render-orchestrator/**"
       - "packages/analytics/**"
+      - "packages/ops/**"
+      - "packages/publish/**"
+      - "packages/story/**"
       - "scripts/smokeUiRoutes.mjs"
+      - "scripts/smokeUiVisualContract.mjs"
       - "docs/ui-smoke-checklist.md"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -44,7 +48,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
         run: pnpm db:generate

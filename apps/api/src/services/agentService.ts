@@ -7,7 +7,7 @@ import {
   type PrismaClient
 } from "@prisma/client";
 import { Queue, type JobsOptions } from "bullmq";
-import { createDefaultNotifier, estimateJobCost } from "../../../../packages/ops/src/index";
+import { createDefaultNotifier, estimateJobCost } from "@ec/ops";
 import { writeAuditLog } from "./auditService";
 
 type JsonRecord = Record<string, unknown>;

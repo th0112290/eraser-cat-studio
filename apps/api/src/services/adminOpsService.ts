@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { JobStatus, JobType, type Prisma, type PrismaClient } from "@prisma/client";
-import { createDefaultNotifier } from "../../../../packages/ops/src/index";
+import { createDefaultNotifier } from "@ec/ops";
 import { writeAuditLog } from "./auditService";
 
 type JsonRecord = Record<string, unknown>;
