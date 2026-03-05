@@ -905,7 +905,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
           ? healthz.body.error
           : `healthz unavailable (${healthz.statusCode})`;
 
-      return reply.type("text/html; charset=utf-8").send(page("Health", `<section class="card"><h1>헬스 리포트</h1><div class="error">${esc(fallbackMessage)}</div><p><a href="/health">/health JSON 열기</a></p></section>`));
+      return reply.type("text/html; charset=utf-8").send(page("Health", `<section class="card"><h1>Health Report</h1><div class="error">${esc(fallbackMessage)}</div><p><a href="/health">Open /health JSON</a></p></section>`));
     }
 
     const data = healthz.body.data;
@@ -946,7 +946,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     return reply.type("text/html; charset=utf-8").send(
       page(
         "Health",
-        `<section class="card"><h1>헬스 리포트</h1><p>overall: <span class="badge ${overallOk ? "ok" : "bad"}">${overallOk ? "up" : "down"}</span></p><p>checkedAt: ${esc(checkedAt)}</p><p>queue: ${esc(baseHealthData.queue ?? "-")} / redis=${esc(baseHealthData.redis ?? "-")} / queueReady=${esc(baseHealthData.queueReady ?? "-")}</p>${overallOk ? '<div class="notice">핵심 서비스가 정상입니다.</div>' : '<div class="error">하나 이상의 서비스가 비정상입니다. 아래 복구 명령을 실행하세요.</div>'}</section><section class="card"><h2>Run Profile 중복 실행 보호</h2><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">중복 실행 캐시/통계 초기화</button></form></div><table><thead><tr><th>Dedup Key</th><th>Job</th><th>Age</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">최근 dedup 기록이 없습니다.</div></td></tr>'}</tbody></table></section><section class="card"><h2>서비스 상태</h2><table><thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>복구 명령 (PowerShell)</h2><table><thead><tr><th>Name</th><th>Command</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
+        `<section class="card"><h1>Health Report</h1><p>overall: <span class="badge ${overallOk ? "ok" : "bad"}">${overallOk ? "up" : "down"}</span></p><p>checkedAt: ${esc(checkedAt)}</p><p>queue: ${esc(baseHealthData.queue ?? "-")} / redis=${esc(baseHealthData.redis ?? "-")} / queueReady=${esc(baseHealthData.queueReady ?? "-")}</p>${overallOk ? '<div class="notice">Core services are healthy.</div>' : '<div class="error">One or more services are degraded. Run recovery commands below.</div>'}</section><section class="card"><h2>Run Profile Dedup Guard</h2><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">Reset dedup cache/stats</button></form></div><table><thead><tr><th>Dedup Key</th><th>Job</th><th>Age</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">No recent dedup entries.</div></td></tr>'}</tbody></table></section><section class="card"><h2>Service Status</h2><table><thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>Recovery Commands (PowerShell)</h2><table><thead><tr><th>Name</th><th>Command</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
       )
     );
   });
@@ -955,7 +955,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     runProfileDedupCache.clear();
     runProfileDedupStats.hits = 0;
     runProfileDedupStats.enqueues = 0;
-    return reply.redirect(`/ui/health?message=${encodeURIComponent("Run profile dedup 캐시/통계를 초기화했습니다.")}`);
+    return reply.redirect(`/ui/health?message=${encodeURIComponent("Run profile dedup cache/stats reset.")}`);
   });
 
   app.post("/ui/actions/demo-extreme", async (_request, reply) => {
@@ -1528,10 +1528,10 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const shots = shotRows.join("");
     const stageObjects = stageShotObjects.length > 0
       ? stageShotObjects.join("")
-      : `<div class="muted-text">샷이 없습니다. COMPILE_SHOTS를 먼저 실행해 주세요.</div>`;
+      : `<div class="muted-text">No shots found. Run COMPILE_SHOTS first.</div>`;
     const templateItems = templateShotItems.length > 0
       ? templateShotItems.join("")
-      : `<li data-editor-search-item>샷 템플릿이 아직 없습니다.</li>`;
+      : `<li data-editor-search-item>No shot templates yet.</li>`;
 
     const snapshotsPath = editorSnapshotsDir(id);
     const snapshots = fs.existsSync(snapshotsPath)
@@ -1539,7 +1539,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       : [];
     const snapshotItems = snapshots.length > 0
       ? snapshots.map((name) => `<a class="editor-chip" href="/artifacts/${encodeURIComponent(id)}/editor_snapshots/${encodeURIComponent(name)}">${esc(name)}</a>`).join("")
-      : `<span class="muted-text">스냅샷이 아직 없습니다.</span>`;
+      : `<span class="muted-text">No snapshots yet.</span>`;
 
     const body = `<section class="card editor-shell" id="editor-shell">
 <style>
@@ -1586,67 +1586,67 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 </style>
 <div class="editor-topbar">
   <div>
-    <h1>샷 타임라인 에디터</h1>
+    <h1>Shot Timeline Editor</h1>
     <p>episodeId: <a href="/ui/episodes/${esc(id)}">${esc(id)}</a> | history: ${history.pointer + 1} / ${history.states.length}</p>
   </div>
   <div class="editor-top-actions">
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="undo"/><button type="submit" ${history.pointer <= 0 ? "disabled" : ""}>Undo</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="redo"/><button type="submit" ${history.pointer >= history.states.length - 1 ? "disabled" : ""}>Redo</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1">Save Snapshot</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Preview 렌더</button></form>
-    <button type="button" class="secondary" id="editor-left-toggle" aria-expanded="true">왼쪽 패널 접기</button>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Preview Render</button></form>
+    <button type="button" class="secondary" id="editor-left-toggle" aria-expanded="true">Collapse Left Panel</button>
   </div>
 </div>
 ${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
 ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}
-<div class="notice">Shortcut: <strong>r</strong>는 메인 액션 버튼 실행, 행 순서는 Up/Down으로 조정합니다.</div>
+<div class="notice">Shortcut: <strong>r</strong> runs the primary action. Reorder rows with Up/Down.</div>
 <div class="editor-layout">
   <aside class="editor-left">
-    <h2>라이브러리</h2>
+    <h2>Library</h2>
     <div class="editor-tabs" role="tablist" aria-label="Library tabs">
       <button id="editor-tab-btn-templates" type="button" role="tab" aria-selected="true" aria-controls="editor-tab-panel-templates" tabindex="0" class="secondary active" data-editor-tab-btn="templates">Templates</button>
       <button id="editor-tab-btn-elements" type="button" role="tab" aria-selected="false" aria-controls="editor-tab-panel-elements" tabindex="-1" class="secondary" data-editor-tab-btn="elements">Elements</button>
       <button id="editor-tab-btn-uploads" type="button" role="tab" aria-selected="false" aria-controls="editor-tab-panel-uploads" tabindex="-1" class="secondary" data-editor-tab-btn="uploads">Uploads</button>
     </div>
-    <input id="editor-left-search" class="editor-search" type="search" placeholder="라이브러리 검색" aria-label="왼쪽 패널 라이브러리 검색"/>
+    <input id="editor-left-search" class="editor-search" type="search" placeholder="Search library" aria-label="Search left panel library"/>
     <div id="editor-tab-panel-templates" role="tabpanel" aria-labelledby="editor-tab-btn-templates" class="editor-tab-panel active" data-editor-tab="templates"><ul>${templateItems}<li data-editor-search-item>Intro lower-third</li><li data-editor-search-item>CTA end card</li></ul></div>
     <div id="editor-tab-panel-elements" role="tabpanel" aria-labelledby="editor-tab-btn-elements" class="editor-tab-panel" data-editor-tab="elements" hidden><ul><li data-editor-search-item>Shape: rounded rect</li><li data-editor-search-item>Arrow line</li><li data-editor-search-item>Subtitle block</li><li data-editor-search-item>Brand-safe icon</li></ul></div>
     <div id="editor-tab-panel-uploads" role="tabpanel" aria-labelledby="editor-tab-btn-uploads" class="editor-tab-panel" data-editor-tab="uploads" hidden><ul><li data-editor-search-item>voiceover_wave.png</li><li data-editor-search-item>chart_overlay.svg</li><li data-editor-search-item>product_cutout.webp</li></ul></div>
   </aside>
   <section class="editor-center">
-    <h2>편집 캔버스</h2>
+    <h2>Edit Canvas</h2>
     <div class="editor-stage">
       <div id="editor-context-toolbar" class="editor-context-toolbar" hidden>
-        <span id="editor-context-label" class="editor-context-label">선택 없음</span>
-        <button type="button" class="secondary" data-editor-placeholder-action="크롭">크롭</button>
-        <button type="button" class="secondary" data-editor-placeholder-action="애니메이션">애니메이션</button>
-        <button type="button" class="secondary" data-editor-placeholder-action="스타일">스타일</button>
+        <span id="editor-context-label" class="editor-context-label">No selection</span>
+        <button type="button" class="secondary" data-editor-placeholder-action="Crop">Crop</button>
+        <button type="button" class="secondary" data-editor-placeholder-action="Animation">Animation</button>
+        <button type="button" class="secondary" data-editor-placeholder-action="Style">Style</button>
       </div>
       <div class="editor-stage-grid">
         ${stageObjects}
-        <button type="button" class="editor-object" data-editor-object="placeholder:title" data-editor-label="템플릿: 타이틀 카드"><span>템플릿</span><small>타이틀 카드</small></button>
-        <button type="button" class="editor-object" data-editor-object="placeholder:sticker" data-editor-label="템플릿: 스티커 팩"><span>템플릿</span><small>스티커 팩</small></button>
+        <button type="button" class="editor-object" data-editor-object="placeholder:title" data-editor-label="Template: Title Card"><span>Template</span><small>Title Card</small></button>
+        <button type="button" class="editor-object" data-editor-object="placeholder:sticker" data-editor-label="Template: Sticker Pack"><span>Template</span><small>Sticker Pack</small></button>
       </div>
     </div>
     <div class="editor-table-wrap">
       <table>
         <thead><tr><th>#</th><th>shot_id</th><th>start</th><th>duration</th><th>transition</th><th>camera keys</th><th>order</th><th>override</th></tr></thead>
-        <tbody>${shots || '<tr><td colspan="8"><div class="notice">타임라인 행이 아직 없습니다.</div></td></tr>'}</tbody>
+        <tbody>${shots || '<tr><td colspan="8"><div class="notice">No timeline rows yet.</div></td></tr>'}</tbody>
       </table>
     </div>
   </section>
   <aside class="editor-right">
-    <h2>속성 패널</h2>
+    <h2>Inspector</h2>
     <p id="editor-inspector-target" class="muted-text">Select an object in CenterStage or the timeline table.</p>
     <div class="field"><label>Opacity</label><input value="100%" disabled/></div>
     <div class="field"><label>Blend Mode</label><select disabled><option>Normal</option></select></div>
     <div class="field"><label>Transform</label><input value="x:0 y:0 scale:1.0" disabled/></div>
-    <p class="muted-text">속성 패널은 다음 티켓에서 기능이 확장됩니다.</p>
+    <p class="muted-text">Inspector capabilities will be expanded in the next ticket.</p>
   </aside>
 </div>
 <section class="editor-bottom">
   <div>
-    <h2>하단 스냅샷</h2>
+    <h2>Bottom Snapshots</h2>
     <p>Recent snapshots stay linked for quick rollback and comparison.</p>
   </div>
   <div class="editor-strip">${snapshotItems}</div>
@@ -1688,7 +1688,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     });
     if (toolbar instanceof HTMLElement) toolbar.hidden = false;
     if (toolbarLabel instanceof HTMLElement) toolbarLabel.textContent = label;
-    if (inspector instanceof HTMLElement) inspector.textContent = '선택됨: ' + label;
+    if (inspector instanceof HTMLElement) inspector.textContent = 'Selected: ' + label;
   };
   shell.querySelectorAll('[data-editor-object]').forEach((node) => {
     if (!(node instanceof HTMLElement)) return;
@@ -1718,7 +1718,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     leftToggle.addEventListener('click', () => {
       const collapsed = shell.classList.toggle('editor-left-collapsed');
       leftToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      leftToggle.textContent = collapsed ? '왼쪽 패널 펼치기' : '왼쪽 패널 접기';
+      leftToggle.textContent = collapsed ? 'Expand Left Panel' : 'Collapse Left Panel';
     });
   }
   const setActiveTab = (tab, focus = false) => {
@@ -1773,8 +1773,8 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   shell.querySelectorAll('[data-editor-placeholder-action]').forEach((node) => {
     if (!(node instanceof HTMLButtonElement)) return;
     node.addEventListener('click', () => {
-      const action = String(node.dataset.editorPlaceholderAction || '동작');
-      toast('에디터', action + ' 기능은 다음 티켓(TICKET-UI-201)에서 확장됩니다.', 'warn');
+      const action = String(node.dataset.editorPlaceholderAction || 'Action');
+      toast('Editor', action + ' will be expanded in next ticket (TICKET-UI-201).', 'warn');
     });
   });
   if (searchInput instanceof HTMLInputElement) {
@@ -1906,7 +1906,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
         const msg = isRecord(compileRes.body) && typeof compileRes.body.error === "string" ? compileRes.body.error : `style preview prepare failed (${compileRes.statusCode})`;
         return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}?error=${encodeURIComponent(msg)}`);
       }
-      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}?message=${encodeURIComponent("shots.json이 없어 COMPILE_SHOTS를 먼저 enqueue했습니다. 완료 후 Style Preview를 다시 실행하세요.")}`);
+      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}?message=${encodeURIComponent("shots.json was missing, so COMPILE_SHOTS was enqueued first. Run Style Preview again after completion.")}`);
     }
 
     const res = await injectJson(app, "POST", `/api/episodes/${encodeURIComponent(id)}/enqueue`, {
@@ -1936,13 +1936,13 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     const styleA = normalizeAbStylePresetId(b(body, "styleA"), AB_DEFAULT_STYLE_A);
     const styleB = normalizeAbStylePresetId(b(body, "styleB"), AB_DEFAULT_STYLE_B);
     if (styleA === styleB) {
-      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}?error=${encodeURIComponent("A/B 스타일은 서로 달라야 합니다.")}`);
+      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}?error=${encodeURIComponent("A/B styles must be different.")}`);
     }
 
     const out = getEpisodeOutPaths(id);
     const baseShotsDoc = readJsonFileSafe(out.shots);
     if (!baseShotsDoc) {
-      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}?error=${encodeURIComponent("shots.json이 없습니다. 먼저 COMPILE_SHOTS를 실행하세요.")}`);
+      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}?error=${encodeURIComponent("shots.json is missing. Run COMPILE_SHOTS first.")}`);
     }
 
     const variantAPaths = getAbVariantPaths(id, "A");

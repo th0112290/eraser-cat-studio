@@ -15,17 +15,17 @@ const pages = [
 ];
 
 const requiredPageHeadings = new Map([
-  ["/ui", ["대시보드", "Dashboard"]],
-  ["/ui/assets", ["에셋", "Assets"]],
+  ["/ui", ["Dashboard", "대시보드"]],
+  ["/ui/assets", ["Assets", "에셋"]],
   ["/ui/studio", ["통합 스튜디오", "Studio"]],
   ["/ui/character-generator", ["캐릭터 생성기", "Character Generator"]],
   ["/ui/characters", ["캐릭터 팩", "Character Pack"]],
-  ["/ui/episodes", ["에피소드", "Episodes"]],
-  ["/ui/jobs", ["작업", "Jobs"]],
-  ["/ui/hitl", ["검수", "HITL"]],
-  ["/ui/publish", ["퍼블리시", "Publish"]],
-  ["/ui/health", ["헬스", "Health"]],
-  ["/ui/artifacts", ["아티팩트", "Artifacts"]]
+  ["/ui/episodes", ["Episodes", "에피소드"]],
+  ["/ui/jobs", ["Jobs", "작업"]],
+  ["/ui/hitl", ["HITL", "검수"]],
+  ["/ui/publish", ["Publish", "퍼블리시"]],
+  ["/ui/health", ["Health", "헬스"]],
+  ["/ui/artifacts", ["Artifacts", "아티팩트"]]
 ]);
 
 const requiredPageKeywords = new Map([
@@ -37,8 +37,8 @@ const requiredPageKeywords = new Map([
   ["/ui/jobs", ["Latest 100 jobs", "Jobs", "최근 100개 작업", "작업"]],
   ["/ui/hitl", ["HITL Rerender", "Failed Jobs", "검수 재렌더", "실패 작업"]],
   ["/ui/publish", ["episodeId", "Run publish", "퍼블리시 실행"]],
-  ["/ui/health", ["서비스 상태", "Service Status"]],
-  ["/ui/artifacts", ["out/ 인덱스", "out/ index"]]
+  ["/ui/health", ["Service Status", "서비스 상태"]],
+  ["/ui/artifacts", ["out/ index", "out/ 인덱스"]]
 ]);
 
 const requiredNavLabelCandidates = [
