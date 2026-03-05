@@ -10,18 +10,18 @@
 
 export function renderUiPage(title: string, body: string): string {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${esc(title)}</title><style>
-:root{--bg:#f3f6f9;--bg2:#e8eef4;--ink:#15202b;--muted:#4a5a6a;--line:#cfdae6;--card:#ffffffdd;--primary:#0f766e;--primary-ink:#effcf9;--accent:#ea580c;--good:#166534;--warn:#92400e;--bad:#b91c1c;--soft:#f7fafc}
+:root{--bg:#eef4f3;--bg2:#e2ecea;--ink:#102126;--muted:#405663;--line:#c4d7dc;--card:#ffffffec;--card-strong:#ffffff;--primary:#0e7a74;--primary-ink:#f1fffc;--accent:#d97706;--good:#166534;--warn:#975a16;--bad:#b42318;--soft:#f6fbfb;--ring:#7cc9c3;--shadow:#11354622}
 *{box-sizing:border-box}
-body{margin:0;font-family:"SUIT Variable","Pretendard Variable","Avenir Next","Noto Sans KR",sans-serif;color:var(--ink);background:radial-gradient(1200px 420px at 20% -10%,#d9f0ea 0,#d9f0ea00 70%),radial-gradient(1200px 520px at 85% -25%,#ffe3cf 0,#ffe3cf00 65%),linear-gradient(180deg,var(--bg),var(--bg2));min-height:100vh}
-header{position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);background:#ffffffb8;border-bottom:1px solid var(--line)}
-nav{max-width:1240px;margin:0 auto;padding:12px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-nav strong{margin-right:auto;font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:#0b3d39}
-nav a{color:#174e4a;text-decoration:none;padding:7px 10px;border-radius:999px;border:1px solid transparent;transition:.2s ease}
-nav a:hover{background:#e7f3f1;border-color:#bfd9d5}
-nav a.active{background:#dff2ee;border-color:#9dcfc8;color:#0a3f3a}
+body{margin:0;font-family:"SUIT Variable","Sora","Pretendard Variable","Noto Sans KR",sans-serif;color:var(--ink);background:radial-gradient(980px 420px at 16% -8%,#caebe5 0,#caebe500 72%),radial-gradient(980px 520px at 88% -18%,#ffe4c7 0,#ffe4c700 70%),linear-gradient(180deg,var(--bg),var(--bg2));min-height:100vh}
+header{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:#ffffffbf;border-bottom:1px solid #b7ccd2}
+nav{max-width:1240px;margin:0 auto;padding:11px 18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+nav strong{margin-right:auto;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#0c3f3b}
+nav a{color:#134f55;text-decoration:none;padding:7px 11px;border-radius:999px;border:1px solid transparent;transition:.2s ease;font-weight:650}
+nav a:hover{background:#e6f5f2;border-color:#b7d9d5;transform:translateY(-1px)}
+nav a.active{background:linear-gradient(180deg,#e1f5ef,#d8efe8);border-color:#93c9c2;color:#0d3d3a}
 main{max-width:1240px;margin:20px auto;padding:0 18px 28px;display:grid;gap:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 10px 28px #18354a14}
-.card h1,.card h2,.card h3{margin-top:0}
+.card{background:linear-gradient(180deg,var(--card),var(--card-strong));border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 14px 32px var(--shadow)}
+.card h1,.card h2,.card h3{margin-top:0}.card h1{font-size:28px;letter-spacing:-.02em}.card h2{font-size:20px;letter-spacing:-.01em}
 .notice{padding:10px 11px;border-left:4px solid #0f766e;background:#e8f8f5;border-radius:10px}
 .error{padding:10px 11px;border-left:4px solid var(--bad);background:#fff1f2;border-radius:10px}
 .grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
@@ -42,7 +42,7 @@ main{max-width:1240px;margin:20px auto;padding:0 18px 28px;display:grid;gap:14px
 .guide-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .section-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
 .muted-text{color:#55657a;font-size:12px}
-.table-wrap{overflow:auto;border:1px solid #dbe6f1;border-radius:12px;background:#fff}
+.table-wrap{overflow:auto;border:1px solid #d3e2eb;border-radius:14px;background:#fff}
 .table-wrap table{border:none;border-radius:0;min-width:720px}
 .table-wrap th{position:sticky;top:0;z-index:1}
 tbody tr:nth-child(even){background:#fbfdff}
@@ -56,15 +56,15 @@ tbody tr:hover{background:#f1f8ff}
 a{color:#0f766e;text-decoration:none}a:hover{text-decoration:underline}
 table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #dbe6f1;border-radius:12px;overflow:hidden}
 th,td{border-bottom:1px solid #e8eef5;padding:8px 9px;text-align:left;vertical-align:top}
-th{background:#f6fbff;color:#334155;font-weight:700}
+th{background:#f2f9fc;color:#2f4552;font-weight:700}
 .badge{display:inline-block;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700}
 .badge.ok{background:#e9f8ee;color:var(--good)}.badge.warn{background:#fff7e8;color:var(--warn)}.badge.bad{background:#fff1f2;color:var(--bad)}.badge.muted{background:#eef2f7;color:#475569}
 input,select,textarea,button{font:inherit;border:1px solid #c7d5e4;border-radius:10px;padding:8px 10px;background:#fff}
-input:focus,select:focus,textarea:focus{outline:2px solid #0f766e33;border-color:#0f766e}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--ring);border-color:#0f766e}
 textarea{width:100%;min-height:220px;resize:vertical}
-button{background:linear-gradient(180deg,#0f857b,#0f766e);color:var(--primary-ink);border:none;font-weight:800;letter-spacing:.01em;cursor:pointer;transition:.18s ease;box-shadow:0 6px 14px #0f766e3a}
-button:hover{transform:translateY(-1px);box-shadow:0 9px 16px #0f766e45}
-.secondary{background:#f3f8fd;color:#0b3d62;border:1px solid #c5d7eb;box-shadow:none}
+button{background:linear-gradient(180deg,#119189,#0e7a74);color:var(--primary-ink);border:none;font-weight:800;letter-spacing:.01em;cursor:pointer;transition:.18s ease;box-shadow:0 7px 16px #0f766e35}
+button:hover{transform:translateY(-1px);box-shadow:0 10px 20px #0f766e42}
+.secondary{background:linear-gradient(180deg,#fbfdff,#f2f8fc);color:#164d68;border:1px solid #bdd2e3;box-shadow:none}
 pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;overflow:auto;font-size:12px}
 .actions{display:flex;flex-wrap:wrap;gap:8px}.inline{display:inline-flex;gap:8px;align-items:center}
 .toast-wrap{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999}
@@ -77,7 +77,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
 .shortcut-help.open{display:flex}
 .shortcut-card{width:min(620px,90vw);background:#ffffff;border-radius:14px;border:1px solid var(--line);padding:14px;box-shadow:0 20px 44px #00000026}
 .shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
-.sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+.sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}main>.card{animation:fadeUp .34s ease both}main>.card:nth-child(2){animation-delay:.04s}main>.card:nth-child(3){animation-delay:.08s}main>.card:nth-child(4){animation-delay:.12s}@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px;font-size:12px}.status-row{padding:7px 9px}.quick-grid{grid-template-columns:1fr}.table-wrap table{min-width:620px}.actions{gap:6px}.field small{font-size:11px}}
 </style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">Dashboard</a><a href="/ui/studio">Studio</a><a href="/ui/jobs">Jobs</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/hitl">HITL</a><a href="/ui/episodes">Episodes</a><a href="/ui/publish">Publish</a><a href="/ui/health">Health</a><a href="/ui/artifacts">Artifacts</a><button id="shortcut-open" type="button" class="secondary" title="Keyboard shortcuts (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>Keyboard Shortcuts</h2><table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody><tr><td>?</td><td>Toggle help</td></tr><tr><td>g → e</td><td>Go to episodes</td></tr><tr><td>g → j</td><td>Go to jobs</td></tr><tr><td>g → h</td><td>Go to health</td></tr><tr><td>r</td><td>Run primary action</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">Close</button></div></div></div><script>
 (() => {
