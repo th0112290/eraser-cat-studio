@@ -7,6 +7,15 @@ import type { Queue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createValidator, sha256Hex, stableStringify } from "@ec/shared";
 import type { EpisodeJobPayload } from "../services/scheduleService";
+import { renderUiPage } from "./ui/uiPage";
+import {
+  buildArtifactsPageBody,
+  buildHitlPageBody,
+  buildJobDetailPageBody,
+  buildJobsPageBody,
+  buildPublishPageBody
+} from "./ui/pages/operationsPages";
+import { buildDashboardPageBody, buildEpisodesPageBody } from "./ui/pages/dashboardEpisodesPages";
 
 type JsonRecord = Record<string, unknown>;
 type RegisterUiRoutesInput = {
@@ -91,6 +100,12 @@ function b(body: unknown, key: string): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function flashHtml(query: unknown): string {
+  const message = q(query, "message");
+  const error = q(query, "error");
+  return `${message ? `<div class="notice">${esc(message)}</div>` : ""}${error ? `<div class="error">${esc(error)}</div>` : ""}`;
 }
 
 function n(value: unknown, fallback: number): number {
@@ -644,245 +659,7 @@ function badgeClass(status: string): string {
 }
 
 function page(title: string, body: string): string {
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${esc(title)}</title><style>
-:root{--bg:#f3f6f9;--bg2:#e8eef4;--ink:#15202b;--muted:#4a5a6a;--line:#cfdae6;--card:#ffffffdd;--primary:#0f766e;--primary-ink:#effcf9;--accent:#ea580c;--good:#166534;--warn:#92400e;--bad:#b91c1c;--soft:#f7fafc}
-*{box-sizing:border-box}
-body{margin:0;font-family:"SUIT Variable","Pretendard Variable","Avenir Next","Noto Sans KR",sans-serif;color:var(--ink);background:radial-gradient(1200px 420px at 20% -10%,#d9f0ea 0,#d9f0ea00 70%),radial-gradient(1200px 520px at 85% -25%,#ffe3cf 0,#ffe3cf00 65%),linear-gradient(180deg,var(--bg),var(--bg2));min-height:100vh}
-header{position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);background:#ffffffb8;border-bottom:1px solid var(--line)}
-nav{max-width:1240px;margin:0 auto;padding:12px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-nav strong{margin-right:auto;font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:#0b3d39}
-nav a{color:#174e4a;text-decoration:none;padding:7px 10px;border-radius:999px;border:1px solid transparent;transition:.2s ease}
-nav a:hover{background:#e7f3f1;border-color:#bfd9d5}
-main{max-width:1240px;margin:20px auto;padding:0 18px 28px;display:grid;gap:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 10px 28px #18354a14}
-.card h1,.card h2,.card h3{margin-top:0}
-.notice{padding:10px 11px;border-left:4px solid #0f766e;background:#e8f8f5;border-radius:10px}
-.error{padding:10px 11px;border-left:4px solid var(--bad);background:#fff1f2;border-radius:10px}
-.grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-a{color:#0f766e;text-decoration:none}a:hover{text-decoration:underline}
-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #dbe6f1;border-radius:12px;overflow:hidden}
-th,td{border-bottom:1px solid #e8eef5;padding:8px 9px;text-align:left;vertical-align:top}
-th{background:#f6fbff;color:#334155;font-weight:700}
-.badge{display:inline-block;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700}
-.badge.ok{background:#e9f8ee;color:var(--good)}.badge.warn{background:#fff7e8;color:var(--warn)}.badge.bad{background:#fff1f2;color:var(--bad)}.badge.muted{background:#eef2f7;color:#475569}
-input,select,textarea,button{font:inherit;border:1px solid #c7d5e4;border-radius:10px;padding:8px 10px;background:#fff}
-input:focus,select:focus,textarea:focus{outline:2px solid #0f766e33;border-color:#0f766e}
-textarea{width:100%;min-height:220px;resize:vertical}
-button{background:linear-gradient(180deg,#0f857b,#0f766e);color:var(--primary-ink);border:none;font-weight:800;letter-spacing:.01em;cursor:pointer;transition:.18s ease;box-shadow:0 6px 14px #0f766e3a}
-button:hover{transform:translateY(-1px);box-shadow:0 9px 16px #0f766e45}
-.secondary{background:#f3f8fd;color:#0b3d62;border:1px solid #c5d7eb;box-shadow:none}
-pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;overflow:auto;font-size:12px}
-.actions{display:flex;flex-wrap:wrap;gap:8px}.inline{display:inline-flex;gap:8px;align-items:center}
-.toast-wrap{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999}
-.toast{background:#0f172a;color:#f8fbff;border-radius:11px;padding:10px 12px;box-shadow:0 10px 24px #0000002b;min-width:240px;max-width:460px}
-.toast.ok{background:#14532d}.toast.warn{background:#9a5a00}.toast.bad{background:#7f1d1d}.toast .title{font-weight:800;margin-bottom:4px}
-.submit-loading{opacity:.72;pointer-events:none}.submit-loading::after{content:"...";margin-left:4px}
-.field-error{color:#b42318;font-size:12px;padding-top:2px}
-.hint{display:inline-block;border-bottom:1px dotted #8ca1bf;color:#305f99;cursor:help;font-size:12px}
-.shortcut-help{position:fixed;inset:0;background:#0f172a73;display:none;align-items:center;justify-content:center;z-index:9998}
-.shortcut-help.open{display:flex}
-.shortcut-card{width:min(620px,90vw);background:#ffffff;border-radius:14px;border:1px solid var(--line);padding:14px;box-shadow:0 20px 44px #00000026}
-.shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
-.sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
-@media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px}}
-</style></head><body><header><nav><strong>Eraser Cat Control Plane</strong><a href="/ui">Dashboard</a><a href="/ui/jobs">Jobs</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/hitl">HITL</a><a href="/ui/episodes">Render Preview</a><a href="/ui/publish">Publish</a><a href="/ui/health">Health</a><a href="/ui/artifacts">Artifacts</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말 (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>Shortcuts</h2><table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g then e</td><td>Episodes 이동</td></tr><tr><td>g then j</td><td>Jobs 이동</td></tr><tr><td>g then h</td><td>Health 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
-(() => {
-  const toastWrap = document.getElementById('toast-wrap');
-  const live = document.getElementById('global-live');
-  const shortcut = document.getElementById('shortcut-help');
-  const openShortcut = document.getElementById('shortcut-open');
-  const closeShortcut = document.getElementById('shortcut-close');
-  if (openShortcut && shortcut) openShortcut.addEventListener('click', () => shortcut.classList.add('open'));
-  if (closeShortcut && shortcut) closeShortcut.addEventListener('click', () => shortcut.classList.remove('open'));
-
-  const speak = (text) => { if (live) live.textContent = text; };
-  const classifyError = (msg) => {
-    const text = (msg || '').toLowerCase();
-    if (text.includes('503') || text.includes('unavailable') || text.includes('redis')) return { label: 'ServiceUnavailable', tone: 'bad' };
-    if (text.includes('404') || text.includes('not found')) return { label: 'NotFound', tone: 'warn' };
-    if (text.includes('400') || text.includes('required') || text.includes('validation')) return { label: 'Validation', tone: 'warn' };
-    return { label: 'UnknownError', tone: 'bad' };
-  };
-  const toast = (title, message, tone = 'ok', timeoutMs = 5000) => {
-    if (!toastWrap) return;
-    const node = document.createElement('div');
-    node.className = 'toast ' + tone;
-    node.innerHTML = '<div class="title">' + title + '</div><div>' + message + '</div>';
-    toastWrap.appendChild(node);
-    speak(title + ': ' + message);
-    setTimeout(() => node.remove(), timeoutMs);
-  };
-
-  const url = new URL(window.location.href);
-  const message = url.searchParams.get('message');
-  const error = url.searchParams.get('error');
-  if (message) {
-    toast('Success', message, 'ok');
-    document.querySelectorAll('.notice').forEach((el, idx) => { if (idx === 0) el.remove(); });
-  }
-  if (error) {
-    const c = classifyError(error);
-    toast(c.label, error, c.tone, 7000);
-    document.querySelectorAll('.error').forEach((el, idx) => { if (idx === 0) el.remove(); });
-  }
-
-  document.querySelectorAll('form').forEach((form) => {
-    form.addEventListener('submit', (event) => {
-      const failedShotIds = form.querySelector('input[name="failedShotIds"]');
-      if (failedShotIds instanceof HTMLInputElement) {
-        const value = failedShotIds.value.trim();
-        if (value.length > 0 && !/^shot_[\\w-]+(\\s*,\\s*shot_[\\w-]+)*$/.test(value)) {
-          event.preventDefault();
-          const next = failedShotIds.nextElementSibling;
-          if (!next || !(next instanceof HTMLElement) || !next.classList.contains('field-error')) {
-            const msg = document.createElement('div');
-            msg.className = 'field-error';
-            msg.textContent = '형식: shot_1,shot_2';
-            failedShotIds.insertAdjacentElement('afterend', msg);
-          }
-          toast('Validation', 'failedShotIds 형식이 잘못되었습니다.', 'warn');
-          failedShotIds.focus();
-          return;
-        }
-      }
-      const submit = form.querySelector('button[type="submit"]');
-      if (submit instanceof HTMLButtonElement) {
-        if (submit.dataset.busy === '1') {
-          event.preventDefault();
-          return;
-        }
-        submit.dataset.busy = '1';
-        submit.classList.add('submit-loading');
-        submit.disabled = true;
-      }
-      const runGroup = form.dataset.runGroup;
-      if (runGroup) {
-        document.querySelectorAll('form[data-run-group="' + runGroup + '"] button[type="submit"]').forEach((node) => {
-          if (!(node instanceof HTMLButtonElement)) return;
-          node.dataset.busy = '1';
-          node.classList.add('submit-loading');
-          node.disabled = true;
-        });
-      }
-    });
-  });
-
-  document.querySelectorAll('[data-tooltip]').forEach((node) => {
-    if (node instanceof HTMLElement && !node.title) {
-      node.title = String(node.dataset.tooltip || '');
-    }
-  });
-
-  const runLive = document.getElementById('run-profile-live');
-  if (runLive instanceof HTMLElement) {
-    const episodeId = String(runLive.dataset.episodeId || '').trim();
-    const hintForError = (msg) => {
-      const text = String(msg || '').toLowerCase();
-      if (text.includes('shots.json')) return '힌트: COMPILE_SHOTS를 먼저 실행하세요.';
-      if (text.includes('redis') || text.includes('queue') || text.includes('503') || text.includes('unavailable')) return '힌트: /ui/health에서 queue/redis를 확인하세요.';
-      return '힌트: /ui/jobs에서 lastError를 확인하세요.';
-    };
-    const renderLive = (item) => {
-      if (!item) {
-        runLive.innerHTML = '최근 실행 이력이 없습니다.';
-        return;
-      }
-      const status = String(item.status || 'UNKNOWN');
-      const type = String(item.type || '-');
-      const progress = Number.isFinite(Number(item.progress)) ? Number(item.progress) : 0;
-      const jobId = String(item.id || '');
-      const base = '최근 작업: ' + type + ' / ' + status + ' / ' + progress + '%';
-      if (status === 'FAILED') {
-        const err = String(item.lastError || '(none)');
-        runLive.textContent = base + ' | ' + err + ' | ' + hintForError(err);
-        runLive.classList.remove('notice');
-        runLive.classList.add('error');
-        return;
-      }
-      runLive.textContent = base;
-      runLive.classList.remove('error');
-      runLive.classList.add('notice');
-      if (jobId) {
-        const a = document.createElement('a');
-        a.href = '/ui/jobs/' + encodeURIComponent(jobId);
-        a.textContent = ' (job)';
-        runLive.appendChild(a);
-      }
-    };
-    const poll = async () => {
-      if (!episodeId) return;
-      try {
-        const res = await fetch('/api/jobs?episodeId=' + encodeURIComponent(episodeId) + '&limit=10', { headers: { accept: 'application/json' } });
-        if (!res.ok) throw new Error('poll failed: ' + res.status);
-        const json = await res.json();
-        const list = Array.isArray(json && json.data) ? json.data : [];
-        const latest = list.length > 0 ? list[0] : null;
-        renderLive(latest);
-      } catch (e) {
-        runLive.classList.remove('notice');
-        runLive.classList.add('error');
-        runLive.textContent = '상태 갱신 실패: ' + String(e);
-      }
-    };
-    let timer = null;
-    const startPolling = () => {
-      if (timer !== null) return;
-      timer = setInterval(() => { void poll(); }, 5000);
-    };
-    const stopPolling = () => {
-      if (timer === null) return;
-      clearInterval(timer);
-      timer = null;
-    };
-    const onVisibility = () => {
-      if (document.hidden) {
-        stopPolling();
-        return;
-      }
-      void poll();
-      startPolling();
-    };
-    void poll();
-    startPolling();
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('beforeunload', () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', onVisibility);
-    });
-  }
-
-  let pendingGo = false;
-  window.addEventListener('keydown', (e) => {
-    const target = e.target;
-    const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable);
-    if (editing) return;
-    if (e.key === '?') {
-      e.preventDefault();
-      if (shortcut) shortcut.classList.toggle('open');
-      return;
-    }
-    if (pendingGo) {
-      pendingGo = false;
-      if (e.key === 'e') window.location.href = '/ui/episodes';
-      if (e.key === 'j') window.location.href = '/ui/jobs';
-      if (e.key === 'h') window.location.href = '/ui/health';
-      return;
-    }
-    if (e.key === 'g') {
-      pendingGo = true;
-      setTimeout(() => { pendingGo = false; }, 1500);
-      return;
-    }
-    if (e.key === 'r') {
-      const primary = document.querySelector('button[data-primary-action="1"], form button[type="submit"]');
-      if (primary instanceof HTMLButtonElement && !primary.disabled) {
-        e.preventDefault();
-        primary.click();
-      }
-    }
-  });
-})();
-</script></body></html>`;
+  return renderUiPage(title, body);
 }
 
 function internalHeaders(withJson: boolean): Record<string, string> {
@@ -1107,57 +884,14 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     } catch {
       // keep fallback status values
     }
-
-    const body = `
-<section class="card"><h1>Dashboard</h1>
-${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
-${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}
-<div class="grid two">
-  <div class="card">
-    <h2>현재 상태</h2>
-    <p>health: <span class="badge ${badgeClass(overall)}">${esc(overall)}</span></p>
-    <p>database: <span class="badge ${badgeClass(dbStatus)}">${esc(dbStatus)}</span></p>
-    <p>redis: <span class="badge ${badgeClass(redisStatus)}">${esc(redisStatus)}</span></p>
-    <p>minio: <span class="badge ${badgeClass(minioStatus)}">${esc(minioStatus)}</span></p>
-    <p>queueReady: <span class="badge ${queueReady ? "ok" : "bad"}">${esc(queueReady)}</span></p>
-    <p><a href="/ui/health">Open full health report</a></p>
-  </div>
-  <div class="card">
-    <h2>Quick Actions</h2>
-    <form method="post" action="/ui/actions/demo-extreme" class="inline"><button type="submit" data-primary-action="1">Demo Extreme 실행</button></form>
-    <form method="post" action="/ui/actions/generate-preview" class="grid"><label>Preview topic<input name="topic" value="UI Preview Demo"/></label><label>targetDurationSec<input name="targetDurationSec" value="600"/></label><div class="actions"><button type="submit">원클릭 Preview Render 시작</button></div></form>
-    <form method="post" action="/ui/actions/generate-full" class="grid"><label>Full pipeline topic<input name="topic" value="UI Full Pipeline Demo"/></label><label>targetDurationSec<input name="targetDurationSec" value="600"/></label><div class="actions"><button type="submit" class="secondary">Run Final + Package</button></div></form>
-  </div>
-</div>
-</section>
-
-<section class="card"><h2>Control Plane</h2>
-<div class="grid two">
-<a href="/ui/jobs">Jobs</a>
-<a href="/ui/assets">Assets</a>
-<a href="/ui/characters">Characters</a>
-<a href="/ui/character-generator">Character Generator</a>
-<a href="/ui/hitl">HITL</a>
-<a href="/ui/episodes">Render Preview</a>
-<a href="/ui/publish">Publish</a>
-<a href="/ui/health">Health Report</a>
-</div>
-</section>
-
-<section class="card"><h2>원클릭 개발 실행 가이드</h2>
-<ol>
-<li>Infra 시작: <code>pnpm docker:up</code></li>
-<li>DB 마이그레이션: <code>pnpm db:migrate</code></li>
-<li>API 실행: <code>pnpm -C apps/api run dev</code></li>
-<li>Worker 실행: <code>pnpm -C apps/worker run dev</code></li>
-</ol>
-<div class="actions">
-<button type="button" onclick="navigator.clipboard.writeText('pnpm docker:up')">Copy docker:up</button>
-<button type="button" onclick="navigator.clipboard.writeText('pnpm db:migrate')">Copy db:migrate</button>
-<button type="button" onclick="navigator.clipboard.writeText('pnpm -C apps/api run dev')">Copy api dev</button>
-<button type="button" onclick="navigator.clipboard.writeText('pnpm -C apps/worker run dev')">Copy worker dev</button>
-</div>
-</section>`;
+    const body = buildDashboardPageBody({
+      flash: flashHtml(request.query),
+      overall: `<span class="badge ${badgeClass(overall)}">${esc(overall)}</span>`,
+      dbStatus: `<span class="badge ${badgeClass(dbStatus)}">${esc(dbStatus)}</span>`,
+      redisStatus: `<span class="badge ${badgeClass(redisStatus)}">${esc(redisStatus)}</span>`,
+      minioStatus: `<span class="badge ${badgeClass(minioStatus)}">${esc(minioStatus)}</span>`,
+      queueReady: `<span class="badge ${queueReady ? "ok" : "bad"}">${esc(queueReady)}</span>`
+    });
 
     return reply.type("text/html; charset=utf-8").send(page("Dashboard", body));
   });
@@ -1469,8 +1203,14 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     document.removeEventListener('visibilitychange', onVisibility);
   });
 })();</script>`;
-
-    return reply.type("text/html; charset=utf-8").send(page("Episodes", `<section class="card"><h1>Episodes</h1>${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}<form method="post" action="/ui/episodes" class="grid two"><label>topic<input name="topic" required data-tooltip="예: Q4 성장률 분석"/></label><label>channelId(optional)<input name="channelId"/></label><label>targetDurationSec<input name="targetDurationSec" value="600"/></label><label>jobType<select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option></select></label><label>pipelineMode<select name="pipelineMode"><option value="preview">preview-only</option><option value="full">full(final+package)</option><option value="manual">manual</option></select></label><label>stylePreset <span class="hint" data-tooltip="AUTO면 episode snapshot tone/speed/KPI를 기반으로 자동 선택">?</span><select name="stylePresetId">${styleOptions}</select></label><label>hookBoost(0~1)<input type="range" name="hookBoost" min="0" max="1" step="0.05" value="${DEFAULT_HOOK_BOOST}" oninput="this.nextElementSibling.value=this.value"/><output>${DEFAULT_HOOK_BOOST}</output></label><div class="actions" style="grid-column:1/-1"><button type="submit" data-primary-action="1">Create Episode + Enqueue</button></div></form></section><section class="card"><h2>Latest Episodes</h2><p class="notice">목록은 7초마다 자동 갱신됩니다(백그라운드 탭에서는 중지).</p><table id="episodes-table"><thead><tr><th>ID</th><th>Topic</th><th>Status</th><th>Channel</th><th>Style</th><th>Latest Job</th><th>Duration</th><th>Created</th><th>Quick Run</th></tr></thead><tbody>${list || '<tr><td colspan="9"><div class="notice">에피소드가 없습니다. 위 폼에서 먼저 생성하세요.</div></td></tr>'}</tbody></table></section>${autoRefreshScript}`));
+    const episodesBody = buildEpisodesPageBody({
+      flash: flashHtml(request.query),
+      styleOptions,
+      defaultHookBoost: DEFAULT_HOOK_BOOST,
+      rows: list,
+      autoRefreshScript
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Episodes", episodesBody));
   });
 
   app.post("/ui/episodes", async (request, reply) => {
@@ -1577,7 +1317,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
           profileId === "preview"
             ? "preview (추천)"
             : profileId === "full"
-              ? "full (최종/패키지)"
+              ? "full (최종/패키징)"
               : "render_only (빠른 렌더)";
         return `<option value="${profileId}" ${profileId === selectedRunProfile ? "selected" : ""}>${label}</option>`;
       })
@@ -1607,7 +1347,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       }
       if (styleQcMain.warnCount > 0) {
         return {
-          title: "추천: A/B 비교로 품질 경고 확인",
+          title: "추천: A/B 비교로 잔여 경고 확인",
           detail: `STYLE_QC warn=${styleQcMain.warnCount} 입니다. preview A/B 비교 후 full 실행을 권장합니다.`,
           profile: "preview" as RunProfileId
         };
@@ -1629,13 +1369,13 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       if (!finalExists || !uploadManifestExists) {
         return {
           title: "추천: Full pipeline 실행",
-          detail: "최종 결과(final/manifest)가 아직 완성되지 않았습니다. full 프로필로 마무리하세요.",
+          detail: "최종 결과(final/manifest)가 아직 완성되지 않았습니다. full 프로파일로 마무리하세요.",
           profile: "full" as RunProfileId
         };
       }
       return {
         title: "파이프라인 주요 산출물 준비 완료",
-        detail: "preview/final/manifest가 모두 존재합니다. 필요 시 style A/B 비교나 publish를 진행하세요.",
+        detail: "preview/final/manifest가 모두 존재합니다. 필요 시 style A/B 비교 후 publish를 진행하세요.",
         profile: "full" as RunProfileId
       };
     })();
@@ -1687,7 +1427,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
         <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Jobs Monitor</a>
       </div>
     </form>
-    <p class="notice">프로필 설명: preview=빠른 프리뷰, full=최종 렌더+패키징, render_only=현재 shots 기준 preview 렌더만 수행</p>
+    <p class="notice">프로필 설명: preview=빠른 미리보기, full=최종 렌더+패키징, render_only=현재 shots 기준 preview 렌더만 실행</p>
     <div id="run-profile-live" data-episode-id="${esc(id)}" class="notice">최근 실행 상태를 불러오는 중...</div>
     <table><thead><tr><th>Latest Job Type</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">작업 이력이 없습니다. 위 Run Profile로 시작하세요.</div></td></tr>'}</tbody></table>
   </div>
@@ -1701,12 +1441,12 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     <form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="grid two">
       <label>Variant A Style<select name="styleA">${concreteStyleOptionsA}</select></label>
       <label>Variant B Style<select name="styleB">${concreteStyleOptionsB}</select></label>
-      <div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">A/B 프리뷰 비교 생성</button><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교 페이지</a></div>
+      <div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">A/B 미리보기 비교 생성</button><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교 페이지</a></div>
     </form>
     <p>A STYLE_QC: fail=${styleQcA.failCount} warn=${styleQcA.warnCount} forced=${esc(styleQcA.forcedStyle)} | B STYLE_QC: fail=${styleQcB.failCount} warn=${styleQcB.warnCount} forced=${esc(styleQcB.forcedStyle)}</p>
   </div>
   <div class="actions">
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">원클릭: Preview Render 시작</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">원클릭 Preview Render 시작</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="full"/>${styleHidden}<button type="submit" class="secondary">Run Final + Package</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit">Enqueue COMPILE_SHOTS</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">Render Preview</button></form>
@@ -1721,12 +1461,12 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
 </section>
 <section class="card">
   <h2>QC Report</h2>
-  ${qcExists ? (qcIssues.length > 0 ? `<table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${qcIssueRows}</tbody></table>` : `<div class="notice">qc_report.json이 존재하지만 실패 이슈가 없습니다.</div><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre>`) : '<div class="error">qc_report.json이 아직 없습니다.</div>'}
+  ${qcExists ? (qcIssues.length > 0 ? `<table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${qcIssueRows}</tbody></table>` : `<div class="notice">qc_report.json은 존재하지만 실패 이슈가 없습니다.</div><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre>`) : '<div class="error">qc_report.json이 아직 없습니다.</div>'}
 </section>
 <section class="card">
   <h2>Jobs</h2>
-  <div aria-live="polite" class="notice">작업 상태는 아래 테이블에서 실시간으로 갱신됩니다. 실패 시 Retry를 사용하세요.</div>
-  <table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Attempts</th><th>Backoff</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">작업 이력이 없습니다. 위의 Enqueue 버튼으로 시작하세요.</div></td></tr>'}</tbody></table>
+  <div aria-live="polite" class="notice">작업 상태는 아래 테이블에서 실시간 갱신됩니다. 실패 시 Retry를 사용하세요.</div>
+  <table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Attempts</th><th>Backoff</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">작업 이력이 없습니다. 위 Enqueue 버튼으로 시작하세요.</div></td></tr>'}</tbody></table>
   </section>`;
 
     return reply.type("text/html; charset=utf-8").send(page(`Episode ${id}`, episodeBody));
@@ -1765,25 +1505,283 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     }
 
     const shotsDoc = doc as JsonRecord & { shots: unknown[] };
-    const shots = shotsDoc.shots
-      .map((raw, index) => {
-        if (!isRecord(raw)) return "";
-        const shotId = typeof raw.shot_id === "string" ? raw.shot_id : `shot_${index + 1}`;
-        const startFrame = typeof raw.start_frame === "number" ? raw.start_frame : 0;
-        const durationFrames = typeof raw.duration_frames === "number" ? raw.duration_frames : 0;
-        const transition = typeof raw.transition === "string" ? raw.transition : "cut";
-        const keyframes = isRecord(raw.camera) && Array.isArray(raw.camera.keyframes) ? raw.camera.keyframes.length : 0;
-        return `<tr><td>${index + 1}</td><td><code>${esc(shotId)}</code></td><td>${startFrame}</td><td>${durationFrames}</td><td>${esc(transition)}</td><td>${keyframes}</td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="-1"/><button type="submit">Up</button></form><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="1"/><button type="submit">Down</button></form></td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="tweak"/><input type="hidden" name="shotId" value="${esc(shotId)}"/><label>zoom<input name="zoomMult" value="1.00" style="width:64px"/></label><label>panX<input name="panXDelta" value="0.00" style="width:64px"/></label><label>transition<input name="transitionStrength" value="0.50" style="width:64px"/></label><button type="submit">Apply</button></form></td></tr>`;
-      })
-      .join("");
+    const shotRows: string[] = [];
+    const stageShotObjects: string[] = [];
+    const templateShotItems: string[] = [];
+    shotsDoc.shots.forEach((raw, index) => {
+      if (!isRecord(raw)) return;
+      const shotId = typeof raw.shot_id === "string" ? raw.shot_id : `shot_${index + 1}`;
+      const startFrame = typeof raw.start_frame === "number" ? raw.start_frame : 0;
+      const durationFrames = typeof raw.duration_frames === "number" ? raw.duration_frames : 0;
+      const transition = typeof raw.transition === "string" ? raw.transition : "cut";
+      const keyframes = isRecord(raw.camera) && Array.isArray(raw.camera.keyframes) ? raw.camera.keyframes.length : 0;
+      const objectKey = `shot:${shotId}`;
+      const objectLabel = `Shot ${index + 1}: ${shotId}`;
+      shotRows.push(`<tr class="editor-shot-row" data-editor-object="${esc(objectKey)}" data-editor-label="${esc(objectLabel)}" tabindex="0" role="button" aria-label="Select shot ${index + 1}: ${esc(shotId)}"><td>${index + 1}</td><td><code>${esc(shotId)}</code></td><td>${startFrame}</td><td>${durationFrames}</td><td>${esc(transition)}</td><td>${keyframes}</td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="-1"/><button type="submit">Up</button></form><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="1"/><button type="submit">Down</button></form></td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="tweak"/><input type="hidden" name="shotId" value="${esc(shotId)}"/><label>zoom<input name="zoomMult" value="1.00" style="width:64px"/></label><label>panX<input name="panXDelta" value="0.00" style="width:64px"/></label><label>transition<input name="transitionStrength" value="0.50" style="width:64px"/></label><button type="submit">Apply</button></form></td></tr>`);
+      if (stageShotObjects.length < 8) {
+        stageShotObjects.push(`<button type="button" class="editor-object editor-object-shot" data-editor-object="${esc(objectKey)}" data-editor-label="${esc(objectLabel)}"><span>Shot ${index + 1}</span><small>${esc(shotId)}</small></button>`);
+      }
+      if (templateShotItems.length < 6) {
+        templateShotItems.push(`<li data-editor-search-item>Shot ${index + 1}: <code>${esc(shotId)}</code></li>`);
+      }
+    });
+    const shots = shotRows.join("");
+    const stageObjects = stageShotObjects.length > 0
+      ? stageShotObjects.join("")
+      : `<div class="muted-text">No shots yet. Run COMPILE_SHOTS to fill the stage.</div>`;
+    const templateItems = templateShotItems.length > 0
+      ? templateShotItems.join("")
+      : `<li data-editor-search-item>No shot templates yet.</li>`;
 
     const snapshotsPath = editorSnapshotsDir(id);
     const snapshots = fs.existsSync(snapshotsPath)
       ? fs.readdirSync(snapshotsPath).filter((name) => name.endsWith(".json")).sort((a, b) => b.localeCompare(a)).slice(0, 10)
       : [];
-    const snapshotItems = snapshots.length > 0 ? snapshots.map((name) => `<li><a href="/artifacts/${encodeURIComponent(id)}/editor_snapshots/${encodeURIComponent(name)}">${esc(name)}</a></li>`).join("") : "<li>(none)</li>";
+    const snapshotItems = snapshots.length > 0
+      ? snapshots.map((name) => `<a class="editor-chip" href="/artifacts/${encodeURIComponent(id)}/editor_snapshots/${encodeURIComponent(name)}">${esc(name)}</a>`).join("")
+      : `<span class="muted-text">No snapshots yet.</span>`;
 
-    const body = `<section class="card"><h1>Shot Timeline Editor</h1>${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}<p>episodeId: <a href="/ui/episodes/${esc(id)}">${esc(id)}</a></p><p>history: ${history.pointer + 1} / ${history.states.length}</p><div class="actions"><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="undo"/><button type="submit" ${history.pointer <= 0 ? "disabled" : ""}>Undo</button></form><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="redo"/><button type="submit" ${history.pointer >= history.states.length - 1 ? "disabled" : ""}>Redo</button></form><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1">Save Snapshot</button></form><form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Render Preview</button></form></div><div class="notice">단축키: <strong>r</strong> (현재 주요 액션), shot 이동은 Up/Down 버튼 사용</div></section><section class="card"><h2>Timeline</h2><table><thead><tr><th>#</th><th>shot_id</th><th>start</th><th>duration</th><th>transition</th><th>camera keys</th><th>order</th><th>override</th></tr></thead><tbody>${shots}</tbody></table></section><section class="card"><h2>Snapshots</h2><ul>${snapshotItems}</ul></section>`;
+    const body = `<section class="card editor-shell" id="editor-shell">
+<style>
+.editor-shell{padding:14px;display:grid;gap:12px}
+.editor-topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.editor-topbar h1{margin:0 0 4px}
+.editor-topbar p{margin:0;color:#425466;font-size:13px}
+.editor-top-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.editor-layout{display:grid;grid-template-columns:270px minmax(0,1fr) 280px;gap:12px;align-items:start}
+.editor-shell.editor-left-collapsed .editor-layout{grid-template-columns:minmax(0,1fr) 280px}
+.editor-shell.editor-left-collapsed .editor-left{display:none}
+.editor-left,.editor-center,.editor-right,.editor-bottom{border:1px solid #dbe6f1;border-radius:12px;background:#fff}
+.editor-left,.editor-right,.editor-bottom{padding:11px}
+.editor-center{padding:11px;display:grid;gap:10px}
+.editor-left h2,.editor-center h2,.editor-right h2,.editor-bottom h2{margin:0 0 8px;font-size:15px}
+.editor-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}
+.editor-tabs button{padding:7px 6px}
+.editor-tabs button.active{background:linear-gradient(180deg,#0f857b,#0f766e);color:#effcf9}
+.editor-search{width:100%;margin-bottom:8px}
+.editor-tab-panel{display:none}
+.editor-tab-panel[hidden]{display:none}
+.editor-tab-panel.active{display:block}
+.editor-tab-panel ul{margin:0;padding-left:18px;display:grid;gap:6px}
+.editor-stage{position:relative;min-height:220px;border:1px solid #d8e3ef;border-radius:10px;background:linear-gradient(180deg,#f9fcff,#f2f8ff);padding:10px}
+.editor-stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.editor-object{display:grid;gap:2px;justify-items:start;padding:8px;border-radius:10px;border:1px solid #c8d8ea;background:#fff;color:#12344d;font-size:12px;cursor:pointer}
+.editor-object small{font-size:11px;color:#4b647a}
+.editor-object.active{outline:2px solid #0f766e;background:#e8f8f5}
+.editor-context-toolbar{position:absolute;left:10px;top:10px;display:flex;gap:6px;align-items:center;padding:7px;border-radius:999px;background:#0f172a;color:#eef2ff;box-shadow:0 8px 20px #0f172a33}
+.editor-context-toolbar[hidden]{display:none}
+.editor-context-toolbar button{padding:5px 9px;border-radius:999px;box-shadow:none}
+.editor-context-label{font-size:12px;font-weight:700}
+.editor-table-wrap{overflow:auto;border:1px solid #dbe6f1;border-radius:10px}
+.editor-table-wrap table{min-width:760px;border:none;border-radius:0}
+.editor-shot-row{cursor:pointer}
+.editor-shot-row.is-selected{background:#e8f8f5}
+.editor-shot-row:focus-visible{outline:2px solid #0f766e;outline-offset:-2px}
+.editor-right .field{display:grid;gap:5px;margin-bottom:8px}
+.editor-bottom{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.editor-bottom p{margin:0;font-size:12px;color:#4b647a}
+.editor-strip{display:flex;gap:8px;flex-wrap:wrap}
+.editor-chip{display:inline-flex;align-items:center;padding:5px 8px;border:1px solid #c7d9eb;border-radius:999px;background:#f8fbff;font-size:12px}
+@media (max-width:1100px){.editor-layout{grid-template-columns:1fr}.editor-shell.editor-left-collapsed .editor-layout{grid-template-columns:1fr}}
+</style>
+<div class="editor-topbar">
+  <div>
+    <h1>Shot Timeline Editor</h1>
+    <p>episodeId: <a href="/ui/episodes/${esc(id)}">${esc(id)}</a> | history: ${history.pointer + 1} / ${history.states.length}</p>
+  </div>
+  <div class="editor-top-actions">
+    <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="undo"/><button type="submit" ${history.pointer <= 0 ? "disabled" : ""}>Undo</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="redo"/><button type="submit" ${history.pointer >= history.states.length - 1 ? "disabled" : ""}>Redo</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1">Save Snapshot</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Render Preview</button></form>
+    <button type="button" class="secondary" id="editor-left-toggle" aria-expanded="true">Collapse Left Panel</button>
+  </div>
+</div>
+${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
+${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}
+<div class="notice">Shortcut: <strong>r</strong>는 메인 액션 버튼 실행, 행 순서는 Up/Down으로 조정합니다.</div>
+<div class="editor-layout">
+  <aside class="editor-left">
+    <h2>라이브러리</h2>
+    <div class="editor-tabs" role="tablist" aria-label="Library tabs">
+      <button id="editor-tab-btn-templates" type="button" role="tab" aria-selected="true" aria-controls="editor-tab-panel-templates" tabindex="0" class="secondary active" data-editor-tab-btn="templates">Templates</button>
+      <button id="editor-tab-btn-elements" type="button" role="tab" aria-selected="false" aria-controls="editor-tab-panel-elements" tabindex="-1" class="secondary" data-editor-tab-btn="elements">Elements</button>
+      <button id="editor-tab-btn-uploads" type="button" role="tab" aria-selected="false" aria-controls="editor-tab-panel-uploads" tabindex="-1" class="secondary" data-editor-tab-btn="uploads">Uploads</button>
+    </div>
+    <input id="editor-left-search" class="editor-search" type="search" placeholder="Search library" aria-label="Search left panel library"/>
+    <div id="editor-tab-panel-templates" role="tabpanel" aria-labelledby="editor-tab-btn-templates" class="editor-tab-panel active" data-editor-tab="templates"><ul>${templateItems}<li data-editor-search-item>Intro lower-third</li><li data-editor-search-item>CTA end card</li></ul></div>
+    <div id="editor-tab-panel-elements" role="tabpanel" aria-labelledby="editor-tab-btn-elements" class="editor-tab-panel" data-editor-tab="elements" hidden><ul><li data-editor-search-item>Shape: rounded rect</li><li data-editor-search-item>Arrow line</li><li data-editor-search-item>Subtitle block</li><li data-editor-search-item>Brand-safe icon</li></ul></div>
+    <div id="editor-tab-panel-uploads" role="tabpanel" aria-labelledby="editor-tab-btn-uploads" class="editor-tab-panel" data-editor-tab="uploads" hidden><ul><li data-editor-search-item>voiceover_wave.png</li><li data-editor-search-item>chart_overlay.svg</li><li data-editor-search-item>product_cutout.webp</li></ul></div>
+  </aside>
+  <section class="editor-center">
+    <h2>편집 캔버스</h2>
+    <div class="editor-stage">
+      <div id="editor-context-toolbar" class="editor-context-toolbar" hidden>
+        <span id="editor-context-label" class="editor-context-label">No selection</span>
+        <button type="button" class="secondary" data-editor-placeholder-action="Crop">Crop</button>
+        <button type="button" class="secondary" data-editor-placeholder-action="Animate">Animate</button>
+        <button type="button" class="secondary" data-editor-placeholder-action="Style">Style</button>
+      </div>
+      <div class="editor-stage-grid">
+        ${stageObjects}
+        <button type="button" class="editor-object" data-editor-object="placeholder:title" data-editor-label="템플릿: 타이틀 카드"><span>템플릿</span><small>Title Card</small></button>
+        <button type="button" class="editor-object" data-editor-object="placeholder:sticker" data-editor-label="템플릿: 스티커 팩"><span>템플릿</span><small>Sticker Pack</small></button>
+      </div>
+    </div>
+    <div class="editor-table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>shot_id</th><th>start</th><th>duration</th><th>transition</th><th>camera keys</th><th>order</th><th>override</th></tr></thead>
+        <tbody>${shots || '<tr><td colspan="8"><div class="notice">No timeline rows yet.</div></td></tr>'}</tbody>
+      </table>
+    </div>
+  </section>
+  <aside class="editor-right">
+    <h2>속성 패널</h2>
+    <p id="editor-inspector-target" class="muted-text">Select an object in CenterStage or the timeline table.</p>
+    <div class="field"><label>Opacity</label><input value="100%" disabled/></div>
+    <div class="field"><label>Blend Mode</label><select disabled><option>Normal</option></select></div>
+    <div class="field"><label>Transform</label><input value="x:0 y:0 scale:1.0" disabled/></div>
+    <p class="muted-text">속성 패널은 다음 티켓에서 기능이 확장됩니다.</p>
+  </aside>
+</div>
+<section class="editor-bottom">
+  <div>
+    <h2>하단 스냅샷</h2>
+    <p>Recent snapshots stay linked for quick rollback and comparison.</p>
+  </div>
+  <div class="editor-strip">${snapshotItems}</div>
+</section>
+</section>
+<script>
+(() => {
+  const shell = document.getElementById('editor-shell');
+  if (!(shell instanceof HTMLElement)) return;
+  const toolbar = document.getElementById('editor-context-toolbar');
+  const toolbarLabel = document.getElementById('editor-context-label');
+  const inspector = document.getElementById('editor-inspector-target');
+  const leftToggle = document.getElementById('editor-left-toggle');
+  const tabButtons = Array.from(shell.querySelectorAll('[data-editor-tab-btn]'));
+  const tabPanels = Array.from(shell.querySelectorAll('[data-editor-tab]'));
+  const searchInput = document.getElementById('editor-left-search');
+  const toastWrap = document.getElementById('toast-wrap');
+  const toast = (title, message, tone = 'ok', timeoutMs = 2600) => {
+    if (!(toastWrap instanceof HTMLElement)) return;
+    const node = document.createElement('div');
+    node.className = 'toast ' + tone;
+    node.innerHTML = '<div class="title">' + title + '</div><div>' + message + '</div>';
+    toastWrap.appendChild(node);
+    setTimeout(() => node.remove(), timeoutMs);
+  };
+  const selectObject = (key, label) => {
+    shell.querySelectorAll('[data-editor-object]').forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      const active = node.dataset.editorObject === key;
+      node.classList.toggle('active', active);
+      if (node instanceof HTMLButtonElement) node.setAttribute('aria-pressed', active ? 'true' : 'false');
+      if (node.classList.contains('editor-shot-row')) {
+        node.setAttribute('aria-selected', active ? 'true' : 'false');
+      }
+    });
+    shell.querySelectorAll('.editor-shot-row').forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      node.classList.toggle('is-selected', node.dataset.editorObject === key);
+    });
+    if (toolbar instanceof HTMLElement) toolbar.hidden = false;
+    if (toolbarLabel instanceof HTMLElement) toolbarLabel.textContent = label;
+    if (inspector instanceof HTMLElement) inspector.textContent = 'Selected: ' + label;
+  };
+  shell.querySelectorAll('[data-editor-object]').forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    node.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.closest('form') || target.closest('input') || target.closest('label'))) {
+        return;
+      }
+      const key = node.dataset.editorObject || '';
+      if (!key) return;
+      const label = node.dataset.editorLabel || key;
+      selectObject(key, label);
+    });
+    if (node.classList.contains('editor-shot-row')) {
+      node.addEventListener('keydown', (event) => {
+        if (!(event instanceof KeyboardEvent)) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        const key = node.dataset.editorObject || '';
+        if (!key) return;
+        const label = node.dataset.editorLabel || key;
+        selectObject(key, label);
+      });
+    }
+  });
+  if (leftToggle instanceof HTMLButtonElement) {
+    leftToggle.addEventListener('click', () => {
+      const collapsed = shell.classList.toggle('editor-left-collapsed');
+      leftToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      leftToggle.textContent = collapsed ? 'Expand Left Panel' : 'Collapse Left Panel';
+    });
+  }
+  const setActiveTab = (tab, focus = false) => {
+    tabButtons.forEach((btn) => {
+      if (!(btn instanceof HTMLElement)) return;
+      const active = btn.dataset.editorTabBtn === tab;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      btn.setAttribute('tabindex', active ? '0' : '-1');
+      if (focus && active && btn instanceof HTMLButtonElement) btn.focus();
+    });
+    tabPanels.forEach((panel) => {
+      if (!(panel instanceof HTMLElement)) return;
+      const active = panel.dataset.editorTab === tab;
+      panel.classList.toggle('active', active);
+      panel.hidden = !active;
+    });
+  };
+  const applySearch = () => {
+    const activePanel = tabPanels.find((panel) => panel instanceof HTMLElement && panel.classList.contains('active'));
+    if (!(activePanel instanceof HTMLElement)) return;
+    const query = searchInput instanceof HTMLInputElement ? searchInput.value.trim().toLowerCase() : '';
+    activePanel.querySelectorAll('[data-editor-search-item]').forEach((item) => {
+      if (!(item instanceof HTMLElement)) return;
+      const text = String(item.textContent || '').toLowerCase();
+      item.style.display = !query || text.includes(query) ? '' : 'none';
+    });
+  };
+  tabButtons.forEach((btn, index) => {
+    if (!(btn instanceof HTMLElement)) return;
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.editorTabBtn || 'templates';
+      setActiveTab(tab);
+      applySearch();
+    });
+    btn.addEventListener('keydown', (event) => {
+      if (!(event instanceof KeyboardEvent)) return;
+      let nextIndex = index;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabButtons.length;
+      else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabButtons.length) % tabButtons.length;
+      else if (event.key === 'Home') nextIndex = 0;
+      else if (event.key === 'End') nextIndex = tabButtons.length - 1;
+      else return;
+      event.preventDefault();
+      const next = tabButtons[nextIndex];
+      if (!(next instanceof HTMLElement)) return;
+      const tab = next.dataset.editorTabBtn || 'templates';
+      setActiveTab(tab, true);
+      applySearch();
+    });
+  });
+  shell.querySelectorAll('[data-editor-placeholder-action]').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) return;
+    node.addEventListener('click', () => {
+      const action = String(node.dataset.editorPlaceholderAction || 'Action');
+      toast('Editor', action + ' is a placeholder for TICKET-UI-201', 'warn');
+    });
+  });
+  if (searchInput instanceof HTMLInputElement) {
+    searchInput.addEventListener('input', applySearch);
+  }
+})();
+</script>`;
     return reply.type("text/html; charset=utf-8").send(page(`Editor ${id}`, body));
   });
 
@@ -2231,22 +2229,20 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       .map((job) => `<tr><td><a href="/ui/jobs/${esc(job.id)}">${esc(job.id)}</a></td><td>${job.episode ? `<a href="/ui/episodes/${esc(job.episode.id)}">${esc(job.episode.topic)}</a>` : "-"}</td><td>${esc(job.type)}</td><td><span class="badge ${badgeClass(String(job.status))}">${esc(job.status)}</span></td><td>${esc(job.progress)}%</td><td>${fmtDate(job.createdAt.toISOString())}</td></tr>`)
       .join("");
 
-    return reply.type("text/html; charset=utf-8").send(
-      page(
-        "Jobs",
-        `<section class="card"><h1>Jobs</h1>${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}<table><thead><tr><th>Job</th><th>Episode</th><th>Type</th><th>Status</th><th>Progress</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="6"><div class="notice">아직 작업이 없습니다. Dashboard에서 Quick Action을 실행하세요.</div></td></tr>'}</tbody></table></section>`
-      )
-    );
+    const jobsBody = buildJobsPageBody({
+      flash: flashHtml(request.query),
+      rows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Jobs", jobsBody));
   });
 
   app.get("/ui/publish", async (request, reply) => {
     const episodeId = q(request.query, "episodeId") ?? "";
-    return reply.type("text/html; charset=utf-8").send(
-      page(
-        "Publish",
-        `<section class="card"><h1>Publish</h1>${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}<form method="post" action="/ui/publish" class="grid two"><label>episodeId <span class="hint" data-tooltip="Episode Detail의 ID를 입력하세요">?</span><input name="episodeId" value="${esc(episodeId)}" placeholder="clx..." required/></label><div class="actions" style="align-items:end"><button type="submit" data-primary-action="1">Publish 실행</button></div></form><p><a href="/ui/jobs">작업 상태는 Jobs에서 확인</a></p></section>`
-      )
-    );
+    const publishBody = buildPublishPageBody({
+      flash: flashHtml(request.query),
+      episodeId: esc(episodeId)
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Publish", publishBody));
   });
 
   app.post("/ui/publish", async (request, reply) => {
@@ -2291,7 +2287,22 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     const canRetry = job.status === "FAILED";
     const errorStack = job.lastError ? `<details><summary>lastError stack 펼치기/접기</summary><pre>${esc(job.lastError)}</pre></details>` : "<p>lastError: (none)</p>";
 
-    return reply.type("text/html; charset=utf-8").send(page(`Job ${id}`, `<section class="card"><h1>Job Detail</h1>${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}<p>jobId: <strong>${esc(job.id)}</strong></p><p>episodeId: <a href="/ui/episodes/${esc(episodeId)}">${esc(episodeId)}</a></p><p>type: ${esc(job.type)}</p><p>status: <span class="badge ${badgeClass(String(job.status ?? ""))}">${esc(job.status)}</span></p><p>progress: ${esc(job.progress)}%</p><p>attempts: ${esc(job.attemptsMade)} / ${esc(job.maxAttempts)} (backoff: ${esc(job.retryBackoffMs)}ms)</p>${errorStack}<div class="actions">${canRetry ? `<form method="post" action="/ui/jobs/${esc(id)}/retry"><button type="submit">Retry (FAILED job)</button></form>` : `<button type="button" class="secondary" disabled>Retry는 FAILED 상태에서만 가능</button>`}<a href="/artifacts/${esc(episodeId)}/">Open artifacts folder</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}">Artifacts shortcuts</a></div></section><section class="card"><h2>Job Logs</h2><table><thead><tr><th>Created</th><th>Level</th><th>Message</th><th>Details</th></tr></thead><tbody>${logRows || '<tr><td colspan="4">No logs</td></tr>'}</tbody></table></section>`));
+    const retryAction = canRetry
+      ? `<form method="post" action="/ui/jobs/${esc(id)}/retry"><button type="submit">Retry (FAILED job)</button></form>` 
+      : `<button type="button" class="secondary" disabled>Retry is available only when status is FAILED</button>`;
+    const jobDetailBody = buildJobDetailPageBody({
+      flash: flashHtml(request.query),
+      jobId: esc(job.id),
+      episodeId: esc(episodeId),
+      type: esc(job.type),
+      statusBadge: `<span class="badge ${badgeClass(String(job.status ?? ""))}">${esc(job.status)}</span>`,
+      progress: esc(job.progress),
+      attempts: `${esc(job.attemptsMade)} / ${esc(job.maxAttempts)} (backoff: ${esc(job.retryBackoffMs)}ms)`,
+      errorStack,
+      retryAction,
+      logRows
+    });
+    return reply.type("text/html; charset=utf-8").send(page(`Job ${id}`, jobDetailBody));
   });
 
   app.post("/ui/jobs/:id/retry", async (request, reply) => {
@@ -2323,7 +2334,13 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       .map((job) => `<tr><td><a href="/ui/jobs/${esc(job.id)}">${esc(job.id)}</a></td><td><a href="/ui/episodes/${esc(job.episodeId)}">${esc(job.episodeId)}</a></td><td>${esc(job.episode?.topic ?? "-")}</td><td>${esc(job.type)}</td><td>${fmtDate(job.createdAt.toISOString())}</td><td>${esc(job.lastError ?? "")}</td></tr>`)
       .join("");
 
-    return reply.type("text/html; charset=utf-8").send(page("HITL", `<section class="card"><h1>HITL Rerender</h1>${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}<form method="post" action="/ui/hitl/rerender" class="grid"><div class="grid two"><label>episodeId<input name="episodeId" value="${esc(q(request.query, "episodeId") ?? "")}" required/></label><label>failedShotIds <span class="hint" data-tooltip="형식: shot_1,shot_2">?</span><input name="failedShotIds" value="${esc(q(request.query, "failedShotIds") ?? "")}" placeholder="shot_1,shot_2" required/></label></div><label><input type="checkbox" name="dryRun" value="true"/> dryRun</label><div class="actions"><button type="submit" data-primary-action="1">Rerender selected shots</button></div></form></section><section class="card"><h2>Failed Jobs</h2><table><thead><tr><th>Job</th><th>Episode</th><th>Topic</th><th>Type</th><th>Created</th><th>Error</th></tr></thead><tbody>${rows || '<tr><td colspan="6"><div class="notice">실패한 작업이 없습니다. 문제가 재현되면 여기에 표시됩니다.</div></td></tr>'}</tbody></table></section>`));
+    const hitlBody = buildHitlPageBody({
+      flash: flashHtml(request.query),
+      episodeIdValue: esc(q(request.query, "episodeId") ?? ""),
+      failedShotIdsValue: esc(q(request.query, "failedShotIds") ?? ""),
+      rows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("HITL", hitlBody));
   });
 
   app.post("/ui/hitl/rerender", async (request, reply) => {
@@ -2378,9 +2395,18 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       episodeLinks = `<ul>${links.map((x) => `<li><a href="${x.url}">${x.label}</a> <span class="badge ${x.exists ? "ok" : "bad"}">${x.exists ? "exists" : "missing"}</span></li>`).join("")}</ul>`;
     }
 
-    return reply.type("text/html; charset=utf-8").send(page("Artifacts", `<section class="card"><h1>Artifacts</h1>${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}<p><a href="/artifacts/">Open /artifacts/</a></p><form method="get" action="/ui/artifacts" class="inline"><label>episodeId <input name="episodeId" value="${esc(episodeId ?? "")}"/></label><button type="submit" class="secondary" data-primary-action="1">Open shortcuts</button></form>${episodeLinks}</section><section class="card"><h2>out/ index</h2><table><thead><tr><th>Type</th><th>Name</th><th>URL</th></tr></thead><tbody>${rows || '<tr><td colspan="3"><div class="notice">아직 생성된 아티팩트가 없습니다. Episode를 렌더링하면 여기에 표시됩니다.</div></td></tr>'}</tbody></table></section>`));
+    const artifactsBody = buildArtifactsPageBody({
+      flash: flashHtml(request.query),
+      episodeId: esc(episodeId ?? ""),
+      episodeLinks,
+      rows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Artifacts", artifactsBody));
   });
 }
+
+
+
 
 
 

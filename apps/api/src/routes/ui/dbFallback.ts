@@ -8,7 +8,10 @@ export function isDbUnavailableError(error: unknown): boolean {
     msg.includes("can't reach database server") ||
     msg.includes("prismaclientinitializationerror") ||
     msg.includes("connect econnrefused") ||
-    msg.includes("database unavailable")
+    msg.includes("database unavailable") ||
+    msg.includes("terminating connection due to administrator command") ||
+    msg.includes("server closed the connection unexpectedly") ||
+    msg.includes("the database system is shutting down")
   );
 }
 

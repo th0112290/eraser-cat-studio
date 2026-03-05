@@ -21,10 +21,10 @@ export function buildDashboardPageBody(input: DashboardPageBodyInput): string {
 ${input.flash}
 <section class="card" style="margin-bottom:12px;border:1px solid #b9d3ff;background:linear-gradient(180deg,#f4f8ff,#eef5ff)">
   <h2 style="margin:0 0 8px">메인 시작점: 통합 스튜디오</h2>
-  <p style="margin:0 0 10px;color:#425466">캐릭터 생성, 에셋 업로드, 캐릭터 팩 선택, 에피소드/렌더/퍼블리시를 한 화면에서 진행합니다.</p>
+  <p style="margin:0 0 10px;color:#425466">캐릭터 생성, 에셋 업로드, 캐릭터팩 선택, 에피소드/렌더/퍼블리시를 한 화면에서 진행합니다.</p>
   <div class="actions">
-    <a href="/ui/studio"><button type="button" data-primary-action="1">통합 스튜디오 열기</button></a>
-    <a href="/ui/character-generator"><button type="button" class="secondary">상세 생성기(고급)</button></a>
+    <a href="/ui/studio" class="secondary" style="padding:9px 12px;border-radius:10px;border:1px solid #c5d7eb">통합 스튜디오 열기</a>
+    <a href="/ui/character-generator" class="secondary" style="padding:9px 12px;border-radius:10px;border:1px solid #c5d7eb">상세 생성기(고급)</a>
   </div>
 </section>
 <div class="grid two">
@@ -44,20 +44,20 @@ ${input.flash}
     <div class="quick-grid">
       <form method="post" action="/ui/actions/demo-extreme" class="form-card">
         <h3>Demo Extreme</h3>
-        <div class="field"><small>Run env checks and pipeline smoke quickly.</small></div>
-        <div class="actions"><button type="submit" data-primary-action="1">Run Demo Extreme</button></div>
+        <div class="field"><small>환경 점검과 파이프라인 스모크를 빠르게 실행합니다.</small></div>
+        <div class="actions"><button type="submit" data-primary-action="1">Demo Extreme 실행</button></div>
       </form>
       <form method="post" action="/ui/actions/generate-preview" class="form-card">
         <h3>Preview Render</h3>
-        <div class="field"><label for="preview-topic">Preview topic</label><input id="preview-topic" name="topic" value="UI Preview Demo"/><small>Used as topic for script/shot generation.</small></div>
-        <div class="field"><label for="preview-duration">targetDurationSec</label><input id="preview-duration" name="targetDurationSec" value="600"/><small>Recommended: 120 to 900 seconds.</small></div>
-        <div class="actions"><button type="submit">Start Preview Render</button></div>
+        <div class="field"><label for="preview-topic">Preview topic</label><input id="preview-topic" name="topic" value="UI Preview Demo"/><small>스크립트/샷 생성 주제로 사용됩니다.</small></div>
+        <div class="field"><label for="preview-duration">targetDurationSec</label><input id="preview-duration" name="targetDurationSec" value="600"/><small>권장 범위: 120 ~ 900초</small></div>
+        <div class="actions"><button type="submit">Preview Render 시작</button></div>
       </form>
       <form method="post" action="/ui/actions/generate-full" class="form-card">
         <h3>Final + Package</h3>
-        <div class="field"><label for="full-topic">Full pipeline topic</label><input id="full-topic" name="topic" value="UI Full Pipeline Demo"/><small>Used for full render and packaging.</small></div>
-        <div class="field"><label for="full-duration">targetDurationSec</label><input id="full-duration" name="targetDurationSec" value="600"/><small>Target duration for final output.</small></div>
-        <div class="actions"><button type="submit" class="secondary">Run Final + Package</button></div>
+        <div class="field"><label for="full-topic">Full pipeline topic</label><input id="full-topic" name="topic" value="UI Full Pipeline Demo"/><small>최종 렌더 + 패키징용 주제입니다.</small></div>
+        <div class="field"><label for="full-duration">targetDurationSec</label><input id="full-duration" name="targetDurationSec" value="600"/><small>최종 출력 목표 길이입니다.</small></div>
+        <div class="actions"><button type="submit" class="secondary">Final + Package 실행</button></div>
       </form>
     </div>
   </div>
@@ -72,7 +72,7 @@ ${input.flash}
 <a href="/ui/characters">캐릭터</a>
 <a href="/ui/character-generator">캐릭터 생성기</a>
 <a href="/ui/hitl">검수(HITL)</a>
-<a href="/ui/episodes">렌더 미리보기</a>
+<a href="/ui/episodes">에피소드</a>
 <a href="/ui/publish">퍼블리시</a>
 <a href="/ui/health">헬스 리포트</a>
 </div>

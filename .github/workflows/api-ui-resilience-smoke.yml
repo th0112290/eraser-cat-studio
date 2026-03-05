@@ -76,6 +76,9 @@ jobs:
       - name: Smoke UI in DB-up mode
         run: pnpm smoke:ui:up
 
+      - name: Smoke UI visual contract
+        run: pnpm smoke:ui:visual
+
       - name: Stop postgres for DB-down mode
         run: docker compose -f docker/docker-compose.yml stop postgres
 
