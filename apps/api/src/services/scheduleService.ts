@@ -4,6 +4,7 @@ import type { JobsOptions, Queue } from "bullmq";
 import { estimateJobCost } from "@ec/ops";
 import type { EpisodeJobPayload } from "@ec/shared";
 export type { EpisodeJobPayload } from "@ec/shared";
+import { apiQueueRetentionOptions } from "./jobRetention";
 
 const DEFAULT_WINDOW_DAYS = 7;
 const DEFAULT_WEEKLY_TARGET = 3;
@@ -140,8 +141,7 @@ async function enqueueWithIdempotency(
       type: "exponential",
       delay: backoffMs
     },
-    removeOnComplete: false,
-    removeOnFail: false
+    ...apiQueueRetentionOptions()
   };
 
   try {

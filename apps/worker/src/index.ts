@@ -54,6 +54,7 @@ import type { Prisma } from "@prisma/client";
 import { getAssetObject } from "./assetStorage";
 import { handleAssetIngestJob } from "./assetIngest";
 import { handleGenerateCharacterAssetsJob } from "./characterGeneration";
+import { workerQueueRetentionOptions } from "./jobRetention";
 
 bootstrapEnv();
 
@@ -956,8 +957,7 @@ async function addToQueue(name: string, payload: EpisodeJobPayload, maxAttempts:
     jobId: payload.jobDbId,
     attempts: maxAttempts,
     backoff: { type: "exponential", delay: retryBackoffMs },
-    removeOnComplete: false,
-    removeOnFail: false,
+    ...workerQueueRetentionOptions(),
     ...(retryPriority !== undefined ? { priority: retryPriority } : {})
   };
   try {

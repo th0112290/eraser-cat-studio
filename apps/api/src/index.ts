@@ -10,6 +10,7 @@ import { autoScheduleSeason } from "./services/scheduleService";
 import type { EpisodeJobPayload } from "./services/scheduleService";
 import { buildWeeklyReport, startOfUtcWeek, weeklyReportToCsv } from "./services/reportService";
 import { registerPublishRoutes } from "./services/publishService";
+import { apiQueueRetentionOptions } from "./services/jobRetention";
 import { isDbUnavailableError } from "./routes/ui/dbFallback";
 import { createServiceUnavailablePayload } from "./errors/errorPayload";
 import type {
@@ -447,8 +448,7 @@ async function enqueueWithIdempotency(name: string, payload: EpisodeJobPayload, 
   const options: JobsOptions = {
     jobId: payload.jobDbId,
     attempts: maxAttempts,
-    removeOnComplete: false,
-    removeOnFail: false
+    ...apiQueueRetentionOptions()
   };
 
   const activeQueue = requireQueue();

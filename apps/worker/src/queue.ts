@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { Queue } from "bullmq";
 import type { EpisodeJobPayload as SharedEpisodeJobPayload } from "@ec/shared";
 import { bootstrapEnv } from "./bootstrapEnv";
+import { workerQueueRetentionOptions } from "./jobRetention";
 
 bootstrapEnv();
 
@@ -113,7 +114,6 @@ export const queue = new Queue<SharedEpisodeJobPayload>(QUEUE_NAME, {
       type: "exponential",
       delay: DEFAULT_RETRY_BACKOFF_MS
     },
-    removeOnComplete: false,
-    removeOnFail: false
+    ...workerQueueRetentionOptions()
   }
 });

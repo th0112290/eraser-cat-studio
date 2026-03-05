@@ -10,6 +10,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { EpisodeJobPayload } from "@ec/shared";
 import { makeStorageKey, putAssetObject } from "../services/assetStorage";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
+import { apiQueueRetentionOptions } from "../services/jobRetention";
 import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
 import { buildAssetsPageBody } from "./ui/pages/assetsPage";
 import { renderUiPage as uiPage } from "./ui/uiPage";
@@ -1440,8 +1441,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
                 type: "exponential",
                 delay: DEFAULT_RETRY_BACKOFF_MS
               },
-              removeOnComplete: false,
-              removeOnFail: false
+              ...apiQueueRetentionOptions()
             }
           );
           retryBullmqJobId = String(queued.id);
@@ -1491,8 +1491,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
               type: "exponential",
               delay: DEFAULT_RETRY_BACKOFF_MS
             },
-            removeOnComplete: false,
-            removeOnFail: false
+            ...apiQueueRetentionOptions()
           }
         );
         retryBullmqJobId = String(queued.id);
@@ -1572,8 +1571,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
             type: "exponential",
             delay: DEFAULT_RETRY_BACKOFF_MS
           },
-          removeOnComplete: false,
-          removeOnFail: false
+          ...apiQueueRetentionOptions()
         }
       );
       bullmqJobId = String(queued.id);

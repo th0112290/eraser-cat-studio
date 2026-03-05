@@ -1,4 +1,5 @@
 import type { JobsOptions, Queue } from "bullmq";
+import { apiQueueRetentionOptions } from "./jobRetention";
 
 type PayloadWithJobId = { jobDbId: string };
 
@@ -61,8 +62,7 @@ export async function enqueueWithResilience<T extends PayloadWithJobId>(
       type: "exponential",
       delay: input.backoffMs
     },
-    removeOnComplete: false,
-    removeOnFail: false
+    ...apiQueueRetentionOptions()
   };
 
   for (let attempt = 0; attempt <= maxEnqueueRetries; attempt += 1) {

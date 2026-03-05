@@ -6,7 +6,8 @@ import type { FastifyInstance } from "fastify";
 import type { Queue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createValidator, sha256Hex, stableStringify } from "@ec/shared";
-import type { EpisodeJobPayload } from "../services/scheduleService";
+import type { EpisodeJobPayload } from "@ec/shared";
+import { apiQueueRetentionOptions } from "../services/jobRetention";
 import { renderUiPage } from "./ui/uiPage";
 import {
   buildArtifactsPageBody,
@@ -734,8 +735,7 @@ async function enqueuePreviewVariantJob(input: {
       type: "exponential",
       delay: PREVIEW_JOB_DEFAULT_BACKOFF_MS
     },
-    removeOnComplete: false,
-    removeOnFail: false
+    ...apiQueueRetentionOptions()
   });
 
   const bullmqJobId = String(queued.id);

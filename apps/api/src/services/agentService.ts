@@ -9,6 +9,7 @@ import {
 import { Queue, type JobsOptions } from "bullmq";
 import { createDefaultNotifier, estimateJobCost } from "@ec/ops";
 import type { EpisodeJobPayload } from "@ec/shared";
+import { apiQueueRetentionOptions } from "./jobRetention";
 import { writeAuditLog } from "./auditService";
 
 type JsonRecord = Record<string, unknown>;
@@ -696,8 +697,7 @@ async function enqueueWithIdempotency(
       type: "exponential",
       delay: backoffMs
     },
-    removeOnComplete: false,
-    removeOnFail: false
+    ...apiQueueRetentionOptions()
   };
 
   try {

@@ -15,6 +15,7 @@ import {
   type UploadManifest
 } from "@ec/publish";
 import { createDefaultNotifier, estimateJobCost } from "@ec/ops";
+import { apiQueueRetentionOptions } from "./jobRetention";
 import { registerAnalyticsRoutes } from "./analyticsService";
 import { registerAdminOpsRoutes } from "./adminOpsService";
 import { registerAgentRoutes } from "./agentService";
@@ -461,8 +462,7 @@ async function enqueueWithIdempotency(
       type: "exponential",
       delay: backoffMs
     },
-    removeOnComplete: false,
-    removeOnFail: false
+    ...apiQueueRetentionOptions()
   };
 
   try {
