@@ -8,6 +8,7 @@ import { sha256Hex, stableStringify } from "@ec/shared";
 import type { EpisodeJobPayload } from "../services/scheduleService";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
 import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
+import { renderUiPage as uiPage } from "./ui/uiPage";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -406,84 +407,6 @@ function uiBadge(status: string): string {
   return "muted";
 }
 
-function uiPage(title: string, body: string): string {
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escHtml(
-    title
-  )}</title><style>body{margin:0;font-family:Segoe UI,Noto Sans KR,sans-serif;background:#f5f7fb;color:#1a2433}header{background:#fff;border-bottom:1px solid #d6deea;position:sticky;top:0}nav{max-width:1200px;margin:0 auto;padding:12px 18px;display:flex;gap:14px;align-items:center}nav strong{margin-right:auto}main{max-width:1200px;margin:18px auto;padding:0 18px;display:grid;gap:12px}.card{background:#fff;border:1px solid #d6deea;border-radius:12px;padding:14px}.notice{padding:9px;border-left:4px solid #2f7eed;background:#edf4ff}.error{padding:9px;border-left:4px solid #d92d20;background:#fff0ef}.grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}a{color:#0f5bd8;text-decoration:none}a:hover{text-decoration:underline}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #e3e8f1;padding:7px;text-align:left;vertical-align:top}.badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}.badge.ok{background:#eaf6ed;color:#1d7a34}.badge.warn{background:#fff8e8;color:#945f02}.badge.bad{background:#fff1ef;color:#b42318}.badge.muted{background:#f2f4f7;color:#475467}input,select,button,textarea{font:inherit;border:1px solid #ccd6e5;border-radius:8px;padding:7px 9px}button{background:#0f5bd8;color:#fff;border:none;font-weight:700;cursor:pointer}.secondary{background:#eef3fc;color:#143d6a;border:1px solid #cad8f2}pre{margin:0;background:#0b1220;color:#d3e1ff;padding:10px;border-radius:8px;overflow:auto;font-size:12px}.candidate{display:grid;gap:6px;border:1px solid #d6deea;border-radius:10px;padding:10px;background:#f9fbff}.candidate strong{word-break:break-all}details summary{cursor:pointer;font-weight:700}.toast-wrap{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999}.toast{background:#0b1220;color:#f8fbff;border-radius:10px;padding:10px 12px;box-shadow:0 8px 22px rgba(0,0,0,.2);min-width:240px;max-width:460px}.toast.ok{background:#14532d}.toast.warn{background:#854d0e}.toast.bad{background:#7f1d1d}.submit-loading{opacity:.72;pointer-events:none}.submit-loading::after{content:"...";margin-left:4px}.hint{display:inline-block;border-bottom:1px dotted #8ca1bf;color:#305f99;cursor:help;font-size:12px}.sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}</style></head><body><header><nav><strong>Eraser Cat \\uCE90\\uB9AD\\uD130</strong><a href="/ui">\\uB300\\uC2DC\\uBCF4\\uB4DC</a><a href="/ui/studio">\\uD1B5\\uD569 \\uC2A4\\uD29C\\uB514\\uC624</a><a href="/ui/assets">\\uC5D0\\uC14B</a><a href="/ui/characters">\\uCE90\\uB9AD\\uD130</a><a href="/ui/character-generator">\\uCE90\\uB9AD\\uD130 \\uC0DD\\uC131\\uAE30</a><a href="/ui/artifacts">\\uC544\\uD2F0\\uD329\\uD2B8</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말 (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite"></div><script>
-(() => {
-  const toastWrap = document.getElementById('toast-wrap');
-  const live = document.getElementById('global-live');
-  const speak = (text) => { if (live) live.textContent = text; };
-  const toast = (title, message, tone = 'ok', timeoutMs = 5000) => {
-    if (!toastWrap) return;
-    const node = document.createElement('div');
-    node.className = 'toast ' + tone;
-    node.innerHTML = '<div><strong>' + title + '</strong></div><div>' + message + '</div>';
-    toastWrap.appendChild(node);
-    speak(title + ': ' + message);
-    setTimeout(() => node.remove(), timeoutMs);
-  };
-  window.__ecsToast = toast;
-  window.__ecsSpeak = speak;
-
-  const url = new URL(window.location.href);
-  const message = url.searchParams.get('message');
-  const error = url.searchParams.get('error');
-  if (message) toast('성공', message, 'ok');
-  if (error) toast('오류', error, 'bad', 7000);
-
-  document.querySelectorAll('form').forEach((form) => {
-    form.addEventListener('submit', (event) => {
-      const submit = form.querySelector('button[type="submit"]');
-      if (!(submit instanceof HTMLButtonElement)) return;
-      if (submit.dataset.busy === '1') {
-        event.preventDefault();
-        return;
-      }
-      submit.dataset.busy = '1';
-      submit.disabled = true;
-      submit.classList.add('submit-loading');
-    });
-  });
-
-  document.querySelectorAll('[data-tooltip]').forEach((node) => {
-    if (node instanceof HTMLElement && !node.title) {
-      node.title = String(node.dataset.tooltip || '');
-    }
-  });
-
-  let pendingGo = false;
-  window.addEventListener('keydown', (e) => {
-    const t = e.target;
-    const editing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || (t instanceof HTMLElement && t.isContentEditable);
-    if (editing) return;
-    if (e.key === '?') {
-      e.preventDefault();
-      toast("단축키", "g + c: 캐릭터 생성기, g + a: 에셋, r: 주요 액션");
-      return;
-    }
-    if (pendingGo) {
-      pendingGo = false;
-      if (e.key === 'c') window.location.href = '/ui/character-generator';
-      if (e.key === 'a') window.location.href = '/ui/assets';
-      return;
-    }
-    if (e.key === 'g') {
-      pendingGo = true;
-      setTimeout(() => { pendingGo = false; }, 1500);
-      return;
-    }
-    if (e.key === 'r') {
-      const primary = document.querySelector('button[data-primary-action="1"], form button[type="submit"]');
-      if (primary instanceof HTMLButtonElement && !primary.disabled) {
-        e.preventDefault();
-        primary.click();
-      }
-    }
-  });
-})();
-</script></body></html>`;
-}
 
 function parseAssetIdsFromBody(body: JsonRecord): CharacterAssetIds {
   const nested = isRecord(body.assetIds) ? body.assetIds : undefined;

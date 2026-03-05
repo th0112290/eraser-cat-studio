@@ -11,6 +11,7 @@ import type { EpisodeJobPayload } from "../services/scheduleService";
 import { makeStorageKey, putAssetObject } from "../services/assetStorage";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
 import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
+import { renderUiPage as uiPage } from "./ui/uiPage";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -725,11 +726,6 @@ function fmtUiDate(value: Date): string {
   return value.toLocaleString("ko-KR", { hour12: false });
 }
 
-function uiPage(title: string, body: string): string {
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escHtml(
-    title
-  )}</title><style>body{margin:0;font-family:Segoe UI,Noto Sans KR,sans-serif;background:#f5f7fb;color:#1a2433}header{background:#fff;border-bottom:1px solid #d6deea;position:sticky;top:0}nav{max-width:1100px;margin:0 auto;padding:12px 18px;display:flex;gap:14px;align-items:center}nav strong{margin-right:auto}main{max-width:1100px;margin:18px auto;padding:0 18px;display:grid;gap:12px}.card{background:#fff;border:1px solid #d6deea;border-radius:12px;padding:14px}a{color:#0f5bd8;text-decoration:none}a:hover{text-decoration:underline}.grid{display:grid;gap:10px}.two{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #e3e8f1;padding:7px;text-align:left}.badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}.badge.ok{background:#eaf6ed;color:#1d7a34}.badge.warn{background:#fff8e8;color:#945f02}.badge.bad{background:#fff1ef;color:#b42318}.badge.muted{background:#f2f4f7;color:#475467}input,select,button{font:inherit;border:1px solid #ccd6e5;border-radius:8px;padding:7px 9px}button{background:#0f5bd8;color:#fff;border:none;font-weight:700;cursor:pointer}pre{margin:0;background:#0b1220;color:#d3e1ff;padding:10px;border-radius:8px;overflow:auto;font-size:12px}.preview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.preview-card{border:1px solid #e3e8f1;border-radius:10px;padding:8px;background:#f8fbff}.preview-card img{width:100%;max-height:240px;object-fit:contain;background:#fff;border:1px solid #dce5f3;border-radius:8px}</style></head><body><header><nav><strong>Eraser Cat 에셋</strong><a href=\"/ui\">대시보드</a><a href=\"/ui/studio\">통합 스튜디오</a><a href=\"/ui/assets\">에셋</a><a href=\"/ui/characters\">캐릭터</a><a href=\"/ui/character-generator\">캐릭터 생성기</a><a href=\"/ui/artifacts\">아티팩트</a></nav></header><main>${body}</main></body></html>`;
-}
 
 export function registerApiRoutes(input: RegisterApiRoutesInput): void {
   const { app, prisma, queue, queueName } = input;

@@ -1,4 +1,4 @@
-function esc(value: unknown): string {
+﻿function esc(value: unknown): string {
   const text = String(value ?? "");
   return text
     .replaceAll("&", "&amp;")
@@ -78,7 +78,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
 .shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
 .sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
 @media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px}.status-row{padding:7px 9px}.quick-grid{grid-template-columns:1fr}}
-</style></head><body><header><nav><strong>Eraser Cat 컨트롤</strong><a href="/ui">대시보드</a><a href="/ui/studio">통합 스튜디오</a><a href="/ui/jobs">작업</a><a href="/ui/assets">에셋</a><a href="/ui/characters">캐릭터</a><a href="/ui/character-generator">캐릭터 생성기</a><a href="/ui/hitl">검수(HITL)</a><a href="/ui/episodes">렌더 미리보기</a><a href="/ui/publish">퍼블리시</a><a href="/ui/health">헬스</a><a href="/ui/artifacts">아티팩트</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말 (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>단축키</h2><table><thead><tr><th>키</th><th>동작</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g then e</td><td>에피소드 이동</td></tr><tr><td>g then j</td><td>작업 이동</td></tr><tr><td>g then h</td><td>헬스 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
+</style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">대시보드</a><a href="/ui/studio">통합 스튜디오</a><a href="/ui/jobs">작업</a><a href="/ui/assets">에셋</a><a href="/ui/characters">캐릭터</a><a href="/ui/character-generator">캐릭터 생성기</a><a href="/ui/hitl">검수(HITL)</a><a href="/ui/episodes">에피소드</a><a href="/ui/publish">퍼블리시</a><a href="/ui/health">헬스</a><a href="/ui/artifacts">아티팩트</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말(?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>단축키</h2><table><thead><tr><th>키</th><th>동작</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g then e</td><td>에피소드 이동</td></tr><tr><td>g then j</td><td>작업 이동</td></tr><tr><td>g then h</td><td>헬스 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
 (() => {
   const toastWrap = document.getElementById('toast-wrap');
   const live = document.getElementById('global-live');
@@ -164,7 +164,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
             msg.textContent = '형식: shot_1,shot_2';
             failedShotIds.insertAdjacentElement('afterend', msg);
           }
-          toast('Validation', 'failedShotIds 형식이 잘못되었습니다.', 'warn');
+          toast('Validation', 'failedShotIds 형식이 올바르지 않습니다.', 'warn');
           failedShotIds.focus();
           return;
         }
@@ -203,7 +203,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
     const hintForError = (msg) => {
       const text = String(msg || '').toLowerCase();
       if (text.includes('shots.json')) return '힌트: COMPILE_SHOTS를 먼저 실행하세요.';
-      if (text.includes('redis') || text.includes('queue') || text.includes('503') || text.includes('unavailable')) return '힌트: /ui/health에서 queue/redis를 확인하세요.';
+      if (text.includes('redis') || text.includes('queue') || text.includes('503') || text.includes('unavailable')) return '힌트: /ui/health에서 queue/redis 상태를 확인하세요.';
       return '힌트: /ui/jobs에서 lastError를 확인하세요.';
     };
     const renderLive = (item) => {
