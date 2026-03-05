@@ -5,6 +5,7 @@
     "prisma": "dotenv -e ../../.env -o -- prisma",
     "generate": "dotenv -e ../../.env -o -- prisma generate",
     "migrate:dev": "dotenv -e ../../.env -o -- prisma migrate dev && dotenv -e ../../.env -o -- prisma generate",
+    "migrate:deploy": "dotenv -e ../../.env -o -- prisma migrate deploy && dotenv -e ../../.env -o -- prisma generate",
     "studio": "dotenv -e ../../.env -o -- prisma studio",
     "format": "dotenv -e ../../.env -o -- prisma format"
   },
