@@ -2875,7 +2875,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .join("");
 
     const selectedSection = selectedPack
-      ? `<section class="card"><h2>선택된 팩</h2><p>id: <strong>${escHtml(selectedPack.id)}</strong></p><p>version: <strong>${escHtml(
+      ? `<section class="card"><h2>Selected Pack</h2><p>id: <strong>${escHtml(selectedPack.id)}</strong></p><p>version: <strong>${escHtml(
           selectedPack.version
         )}</strong></p><p>status: <span class="badge ${uiBadge(selectedPack.status)}">${escHtml(
           selectedPack.status
@@ -2897,39 +2897,38 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             : "-"
         }</p></div></div>${
           selectedPreviewExists && selectedPreviewUrl
-            ? `<section class="card"><h3>프리뷰 재생기</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
+            ? `<section class="card"><h3>Preview Player</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
                 selectedPreviewUrl
-              )}"></video><p><a href="${escHtml(selectedPreviewUrl)}">preview.mp4 열기</a></p></section>`
-            : `<section class="card"><h3>프리뷰 재생기</h3><div class="error">preview.mp4가 아직 생성되지 않았습니다.</div></section>`
+              )}"></video><p><a href="${escHtml(selectedPreviewUrl)}">Open preview.mp4</a></p></section>`
+            : `<section class="card"><h3>Preview Player</h3><div class="error">preview.mp4 is not generated yet.</div></section>`
         }${
           selectedQcExists
             ? selectedQcIssues.length > 0
-              ? `<section class="card"><h3>QC 이슈</h3><table><thead><tr><th>#</th><th>검사 항목</th><th>심각도</th><th>메시지</th><th>상세</th></tr></thead><tbody>${selectedQcIssueRows}</tbody></table><p><a href="${escHtml(
+              ? `<section class="card"><h3>QC Issues</h3><table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${selectedQcIssueRows}</tbody></table><p><a href="${escHtml(
                   selectedQcUrl ?? ""
-                )}">qc_report.json 열기</a></p></section>`
-              : `<section class="card"><h3>QC 리포트</h3><div class="notice">이슈 없음</div><pre>${escHtml(
+                )}">Open qc_report.json</a></p></section>`
+              : `<section class="card"><h3>QC Report</h3><div class="notice">No issues</div><pre>${escHtml(
                   JSON.stringify(selectedQcReport, null, 2)
                 )}</pre></section>`
-            : `<section class="card"><h3>QC 리포트</h3><div class="error">qc_report.json이 아직 생성되지 않았습니다.</div></section>`
-        }<details><summary>pack.json 보기</summary><pre>${escHtml(
+            : `<section class="card"><h3>QC Report</h3><div class="error">qc_report.json is not generated yet.</div></section>`
+        }<details><summary>View pack.json</summary><pre>${escHtml(
           JSON.stringify(selectedPack.json, null, 2)
-        )}</pre></details></section><section class="card"><h2>선택된 팩 작업</h2><table><thead><tr><th>작업</th><th>유형</th><th>상태</th><th>진행률</th><th>생성 시각</th></tr></thead><tbody>${
-          selectedJobs || '<tr><td colspan="5">작업 없음</td></tr>'
+        )}</pre></details></section><section class="card"><h2>Selected Pack Jobs</h2><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
+          selectedJobs || '<tr><td colspan="5">No jobs</td></tr>'
         }</tbody></table></section>`
       : "";
 
-    const html = `<section class="card"><h1>\uCE90\uB9AD\uD130 \uD329 (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">\uBE60\uB978 \uD750\uB984\uC740 <a href="/ui/studio">\uD1B5\uD569 \uC2A4\uD29C\uB514\uC624</a>\uB97C \uC0AC\uC6A9\uD558\uC138\uC694. \uC774 \uD398\uC774\uC9C0\uB294 \uD329 \uC218\uB3D9 \uC810\uAC80/\uC0DD\uC131\uC6A9\uC785\uB2C8\uB2E4.</div>${
+    const html = `<section class="card"><h1>\uCE90\uB9AD\uD130 \uD329 (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">For fast flow, use <a href="/ui/studio">Studio</a>. This page is for manual pack inspection and creation.</div>${
       message ? `<div class="notice">${escHtml(message)}</div>` : ""
-    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/characters/create" class="grid"><div class="grid two"><label>정면(front) 에셋<select name="front" required>${
-      assetOptions || '<option value="">사용 가능한 READY 에셋 없음</option>'
-    }</select></label><label>3/4(threeQuarter) 에셋<select name="threeQuarter" required>${
-      assetOptions || '<option value="">사용 가능한 READY 에셋 없음</option>'
-    }</select></label><label>측면(profile) 에셋<select name="profile" required>${
-      assetOptions || '<option value="">사용 가능한 READY 에셋 없음</option>'
-    }</select></label><label>주제(선택)<input name="topic" placeholder="캐릭터 프리뷰"/></label></div><button type="submit">캐릭터 팩 생성 + 프리뷰 작업 등록</button></form></section>${selectedSection}<section class="card"><h2>\uCD5C\uADFC \uCE90\uB9AD\uD130 \uD329</h2><table><thead><tr><th>ID</th><th>버전</th><th>상태</th><th>에피소드</th><th>프리뷰</th><th>생성 시각</th></tr></thead><tbody>${
-      packRows || '<tr><td colspan="6">캐릭터 팩이 없습니다</td></tr>'
+    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/characters/create" class="grid"><div class="grid two"><label>Front Asset<select name="front" required>${
+      assetOptions || '<option value="">No READY assets available</option>'
+    }</select></label><label>ThreeQuarter Asset<select name="threeQuarter" required>${
+      assetOptions || '<option value="">No READY assets available</option>'
+    }</select></label><label>Profile Asset<select name="profile" required>${
+      assetOptions || '<option value="">No READY assets available</option>'
+    }</select></label><label>Topic (optional)<input name="topic" placeholder="character preview"/></label></div><button type="submit">Create character pack + enqueue preview</button></form></section>${selectedSection}<section class="card"><h2>\uCD5C\uADFC \uCE90\uB9AD\uD130 \uD329</h2><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created At</th></tr></thead><tbody>${
+      packRows || '<tr><td colspan="6">No character packs</td></tr>'
     }</tbody></table></section>`;
-
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329", html));
   });
 
@@ -2951,7 +2950,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/characters?characterPackId=${encodeURIComponent(created.characterPackId)}&message=${encodeURIComponent(
-          `캐릭터 팩 생성 완료: ${created.characterPackId} / ${BUILD_CHARACTER_PACK_JOB_NAME} 큐 등록`
+          `Character pack created: ${created.characterPackId} / ${BUILD_CHARACTER_PACK_JOB_NAME} queued`
         )}`
       );
     } catch (error) {
