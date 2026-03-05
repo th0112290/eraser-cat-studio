@@ -16,6 +16,7 @@ export const PACKAGE_OUTPUTS_JOB_NAME = "PACKAGE_OUTPUTS";
 export const BUILD_CHARACTER_PACK_JOB_NAME = "BUILD_CHARACTER_PACK";
 export const RENDER_CHARACTER_PREVIEW_JOB_NAME = "RENDER_CHARACTER_PREVIEW";
 export const ASSET_INGEST_JOB_NAME = "ASSET_INGEST";
+export const ASSET_QUEUE_NAME = "asset-ingest-jobs";
 export const GENERATE_CHARACTER_ASSETS_JOB_NAME = "GENERATE_CHARACTER_ASSETS";
 
 export const EPISODE_JOB_NAME = GENERATE_BEATS_JOB_NAME;
@@ -148,6 +149,13 @@ export type CharacterAssetSelection = {
 
 export type CharacterGenerationMode = "reference" | "new";
 export type CharacterGenerationProvider = "mock" | "comfyui";
+
+export type AssetIngestQueuePayload = {
+  assetId: string;
+  assetType: "character_reference" | "character_view" | "background" | "chart_source";
+  originalKey: string;
+  mime: string;
+};
 
 export type CharacterGenerationPayload = {
   mode: CharacterGenerationMode;

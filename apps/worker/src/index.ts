@@ -18,10 +18,8 @@ import {
 import { orchestrateRenderEpisode } from "@ec/render-orchestrator";
 import { createPublishManifest } from "@ec/publish";
 import {
-  FallbackTTSProvider,
   LocalMockMusicLibrary,
   MockTTSProvider,
-  PiperTTSProvider,
   runAudioPipeline,
   type BeatCue as AudioBeatCue,
   type ShotCue as AudioShotCue,
@@ -574,8 +572,8 @@ function resolveAudioPronunciationDictionaryPath(outDir: string): string {
 
 type PreviewTtsResolution = {
   provider: TTSProvider;
-  providerName: "mock" | "piper";
-  fallbackName?: "mock";
+  providerName: "mock";
+  fallbackName?: never;
   warning?: string;
 };
 
@@ -596,53 +594,22 @@ function parseJsonStringArray(value: string | undefined): string[] {
 
 function resolvePreviewTtsProvider(outDir: string, onFallback: (reason: string) => void): PreviewTtsResolution {
   const requested = (process.env.AUDIO_TTS_PROVIDER ?? "auto").trim().toLowerCase();
-  const modelPath = process.env.AUDIO_TTS_PIPER_MODEL?.trim();
-  const piperBin = process.env.AUDIO_TTS_PIPER_BIN?.trim() || "piper";
-  const piperSpeaker = process.env.AUDIO_TTS_PIPER_SPEAKER?.trim();
-  const piperTimeoutMs = parsePositiveInt(process.env.AUDIO_TTS_PIPER_TIMEOUT_MS, 120_000);
-  const piperExtraArgs = parseJsonStringArray(process.env.AUDIO_TTS_PIPER_EXTRA_ARGS);
+  void onFallback;
+  void parseJsonStringArray;
 
   const mockProvider = new MockTTSProvider(outDir);
 
-  if (requested === "mock") {
+  if (requested === "mock" || requested === "auto") {
     return {
       provider: mockProvider,
       providerName: "mock"
     };
   }
 
-  const shouldTryPiper = requested === "piper" || requested === "auto";
-  if (!shouldTryPiper) {
-    return {
-      provider: mockProvider,
-      providerName: "mock",
-      warning: `Unknown AUDIO_TTS_PROVIDER=${requested}; using mock`
-    };
-  }
-
-  if (!modelPath) {
-    const warning = "AUDIO_TTS_PIPER_MODEL is not configured; using mock TTS";
-    return {
-      provider: mockProvider,
-      providerName: "mock",
-      warning
-    };
-  }
-
-  const piperProvider = new PiperTTSProvider(outDir, {
-    binPath: piperBin,
-    modelPath,
-    ...(piperSpeaker && piperSpeaker.length > 0 ? { speakerId: parseNonNegativeInt(piperSpeaker, 0) } : {}),
-    timeoutMs: piperTimeoutMs,
-    ...(piperExtraArgs.length > 0 ? { extraArgs: piperExtraArgs } : {})
-  });
-
   return {
-    provider: new FallbackTTSProvider(piperProvider, mockProvider, {
-      onFallback: (error) => onFallback(error.message)
-    }),
-    providerName: "piper",
-    fallbackName: "mock"
+    provider: mockProvider,
+    providerName: "mock",
+    warning: `AUDIO_TTS_PROVIDER=${requested} is not supported in this build; using mock`
   };
 }
 
