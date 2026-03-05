@@ -225,6 +225,15 @@ function createHttpError(statusCode: number, message: string, details?: unknown)
   return error;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isDbUnavailableError(error: unknown): boolean {
+  const msg = errorMessage(error).toLowerCase();
+  return msg.includes("can't reach database server") || msg.includes("prismaclientinitializationerror");
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -3092,6 +3101,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const message = optionalString(query, "message");
     const error = optionalString(query, "error");
     const selectedJobId = optionalString(query, "jobId");
+    try {
 
     const [jobs, latestBible, referenceAssets, sessions, recentPacks] = await Promise.all([
       prisma.job.findMany({
@@ -3434,7 +3444,24 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       rows || '<tr><td colspan="7"><div class="notice">생성 작업이 없습니다. 위에서 생성 실행을 눌러주세요.</div></td></tr>'
     }</tbody></table></section><script>(function(){const el=document.getElementById("generation-status");if(!el){return;}const retryBtn=document.getElementById("generation-retry");const jobId=el.dataset.jobId;if(!jobId){return;}let timer=null;let failCount=0;const stageLabel=(status)=>{switch(String(status||"").toUpperCase()){case"QUEUED":return"대기중";case"RUNNING":return"생성중";case"SUCCEEDED":return"완료";case"FAILED":return"실패";case"CANCELLED":return"취소";default:return String(status||"unknown");}};const schedule=(ms)=>{if(timer){clearTimeout(timer);}timer=setTimeout(()=>{void tick();},ms);};const toast=(title,msg,tone)=>{if(typeof window.__ecsToast==="function"){window.__ecsToast(title,msg,tone||"warn");}};const speak=(msg)=>{if(typeof window.__ecsSpeak==="function"){window.__ecsSpeak(msg);}};const tick=async()=>{try{const res=await fetch("/api/character-generator/jobs/"+encodeURIComponent(jobId));if(!res.ok){throw new Error("상태 조회 실패: "+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error("상태 조회 응답에 데이터가 없습니다.");}failCount=0;if(retryBtn){retryBtn.style.display="none";}const manifestStatus=data.manifest&&data.manifest.status?" / 매니페스트="+data.manifest.status:"";const text="상태="+stageLabel(data.status)+" 진행률="+data.progress+"%"+manifestStatus;el.textContent=text;speak(text);if(data.status==="SUCCEEDED"||data.status==="FAILED"||data.status==="CANCELLED"){if(data.manifestExists){toast("생성기", "작업이 종료되어 결과 화면으로 이동합니다.", data.status==="SUCCEEDED"?"ok":"warn");setTimeout(()=>{window.location.href="/ui/character-generator?jobId="+encodeURIComponent(jobId);},500);}return;}schedule(2000);}catch(error){failCount+=1;const wait=Math.min(15000,2000*Math.pow(2,failCount));el.textContent="폴링 실패. "+wait+"ms 후 재시도합니다.";if(retryBtn){retryBtn.style.display="inline-block";}toast("상태조회", String(error), "warn");schedule(wait);}};if(retryBtn){retryBtn.addEventListener("click",()=>{failCount=0;void tick();});}void tick();})();</script>`;
 
-    return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30", html));
+      return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30", html));
+    } catch (routeError) {
+      if (isDbUnavailableError(routeError)) {
+        const body = `<section class="card"><h1>캐릭터 생성기 (상세 모드)</h1><div class="error">DB 연결이 없어 생성기 데이터를 불러오지 못했습니다.</div><p>조치: <code>pnpm docker:up</code> 또는 DB 실행 상태를 확인한 뒤 새로고침하세요.</p><pre>${escHtml(
+          JSON.stringify(
+            {
+              error: "database_unavailable",
+              hint: "Start PostgreSQL and retry.",
+              route: "/ui/character-generator"
+            },
+            null,
+            2
+          )
+        )}</pre></section>`;
+        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("캐릭터 생성기", body));
+      }
+      throw routeError;
+    }
   });
 
   app.post("/ui/character-generator/create", async (request, reply) => {

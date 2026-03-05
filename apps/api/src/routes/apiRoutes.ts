@@ -675,6 +675,11 @@ function storageKeyExistsLocally(storageKey: string | null | undefined): boolean
   return fs.existsSync(localPath);
 }
 
+function isDbUnavailableError(error: unknown): boolean {
+  const msg = errorMessage(error).toLowerCase();
+  return msg.includes("can't reach database server") || msg.includes("prismaclientinitializationerror");
+}
+
 function internalHeaders(): Record<string, string> {
   const apiKey = process.env.API_KEY?.trim();
   if (apiKey) {
@@ -1594,85 +1599,103 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
   });
 
   app.get("/ui/assets", async (request, reply) => {
-    const selectedAssetId = optionalQueryString(request.query, "assetId");
-    const assets = await prisma.asset.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 50
-    });
+    try {
+      const selectedAssetId = optionalQueryString(request.query, "assetId");
+      const assets = await prisma.asset.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50
+      });
 
-    const selected = selectedAssetId
-      ? await prisma.asset.findUnique({
-          where: { id: selectedAssetId }
+      const selected = selectedAssetId
+        ? await prisma.asset.findUnique({
+            where: { id: selectedAssetId }
+          })
+        : assets[0] ?? null;
+
+      const rows = assets
+        .map((asset) => {
+          const qcBadge = getQcBadgeSummary(asset.status, asset.qcJson);
+          return `<tr><td><a href="/ui/assets?assetId=${encodeURIComponent(asset.id)}">${escHtml(asset.id)}</a></td><td>${escHtml(
+            asset.assetType ?? "-"
+          )}</td><td><span class="badge ${uiBadgeClass(asset.status)}">${escHtml(
+            asset.status
+          )}</span></td><td><span class="badge ${qcBadge.className}" title="${escHtml(qcBadge.reason)}">${escHtml(
+            qcBadge.level
+          )}</span></td><td>${escHtml(asset.mime ?? "-")}</td><td>${escHtml(
+            asset.sizeBytes ? asset.sizeBytes.toString() : "-"
+          )}</td><td>${escHtml(fmtUiDate(asset.createdAt))}</td></tr>`;
         })
-      : assets[0] ?? null;
+        .join("");
 
-    const rows = assets
-      .map((asset) => {
-        const qcBadge = getQcBadgeSummary(asset.status, asset.qcJson);
-        return `<tr><td><a href="/ui/assets?assetId=${encodeURIComponent(asset.id)}">${escHtml(asset.id)}</a></td><td>${escHtml(
-          asset.assetType ?? "-"
-        )}</td><td><span class="badge ${uiBadgeClass(asset.status)}">${escHtml(
-          asset.status
-        )}</span></td><td><span class="badge ${qcBadge.className}" title="${escHtml(qcBadge.reason)}">${escHtml(
-          qcBadge.level
-        )}</span></td><td>${escHtml(asset.mime ?? "-")}</td><td>${escHtml(
-          asset.sizeBytes ? asset.sizeBytes.toString() : "-"
-        )}</td><td>${escHtml(fmtUiDate(asset.createdAt))}</td></tr>`;
-      })
-      .join("");
+      const originalUrl = selected ? storageKeyToArtifactUrl(selected.originalKey ?? selected.storageKey) : null;
+      const normalized1024Url = selected ? storageKeyToArtifactUrl(selected.normalizedKey1024) : null;
+      const normalized2048Url = selected ? storageKeyToArtifactUrl(selected.normalizedKey2048) : null;
+      const canPreviewImage = selected ? (selected.mime ?? "").startsWith("image/") : false;
+      const previewLabel = (label: string): string => {
+        if (label === "original") return "원본";
+        if (label === "normalized1024") return "정규화 1024";
+        if (label === "normalized2048") return "정규화 2048";
+        return label;
+      };
 
-    const originalUrl = selected ? storageKeyToArtifactUrl(selected.originalKey ?? selected.storageKey) : null;
-    const normalized1024Url = selected ? storageKeyToArtifactUrl(selected.normalizedKey1024) : null;
-    const normalized2048Url = selected ? storageKeyToArtifactUrl(selected.normalizedKey2048) : null;
-    const canPreviewImage = selected ? (selected.mime ?? "").startsWith("image/") : false;
-    const previewLabel = (label: string): string => {
-      if (label === "original") return "원본";
-      if (label === "normalized1024") return "정규화 1024";
-      if (label === "normalized2048") return "정규화 2048";
-      return label;
-    };
+      const previewCards = selected && canPreviewImage
+        ? [
+            { label: "original", key: selected.originalKey ?? selected.storageKey, url: originalUrl },
+            { label: "normalized1024", key: selected.normalizedKey1024, url: normalized1024Url },
+            { label: "normalized2048", key: selected.normalizedKey2048, url: normalized2048Url }
+          ]
+            .filter((entry) => typeof entry.key === "string" && entry.key.trim().length > 0 && entry.url)
+            .map(
+              (entry) =>
+                `<div class="preview-card"><h4>${escHtml(previewLabel(entry.label))}</h4><p><code>${escHtml(entry.key ?? "-")}</code></p>${
+                  storageKeyExistsLocally(entry.key)
+                    ? `<img src="${entry.url}" alt="${escHtml(previewLabel(entry.label))} 미리보기"/>`
+                    : `<p>로컬 미리보기를 찾을 수 없습니다.</p>`
+                }<p><a href="${entry.url}">열기: ${escHtml(previewLabel(entry.label))}</a></p></div>`
+            )
+            .join("")
+        : "";
 
-    const previewCards = selected && canPreviewImage
-      ? [
-          { label: "original", key: selected.originalKey ?? selected.storageKey, url: originalUrl },
-          { label: "normalized1024", key: selected.normalizedKey1024, url: normalized1024Url },
-          { label: "normalized2048", key: selected.normalizedKey2048, url: normalized2048Url }
-        ]
-          .filter((entry) => typeof entry.key === "string" && entry.key.trim().length > 0 && entry.url)
-          .map(
-            (entry) =>
-              `<div class="preview-card"><h4>${escHtml(previewLabel(entry.label))}</h4><p><code>${escHtml(entry.key ?? "-")}</code></p>${
-                storageKeyExistsLocally(entry.key)
-                  ? `<img src="${entry.url}" alt="${escHtml(previewLabel(entry.label))} 미리보기"/>`
-                  : `<p>로컬 미리보기를 찾을 수 없습니다.</p>`
-              }<p><a href="${entry.url}">열기: ${escHtml(previewLabel(entry.label))}</a></p></div>`
+      const selectedDetails = selected
+        ? `<div class="card"><h3>선택된 에셋</h3><p>ID: <strong>${escHtml(
+            selected.id
+          )}</strong></p><p>상태: <span class="badge ${uiBadgeClass(selected.status)}">${escHtml(
+            selected.status
+          )}</span></p><p>QC: <span class="badge ${getQcBadgeSummary(selected.status, selected.qcJson).className}" title="${escHtml(
+            getQcBadgeSummary(selected.status, selected.qcJson).reason
+          )}">${escHtml(getQcBadgeSummary(selected.status, selected.qcJson).level)}</span></p><p>MIME: <code>${escHtml(selected.mime ?? "-")}</code></p><p>원본 키: <code>${escHtml(
+            selected.originalKey ?? selected.storageKey
+          )}</code></p><p>정규화 1024: <code>${escHtml(
+            selected.normalizedKey1024 ?? "-"
+          )}</code></p><p>정규화 2048: <code>${escHtml(
+            selected.normalizedKey2048 ?? "-"
+          )}</code></p><p><a href="/api/assets/${encodeURIComponent(selected.id)}">JSON 열기</a></p>${
+            previewCards.length > 0 ? `<div class="preview-grid">${previewCards}</div>` : "<p>미리보기 가능한 이미지가 없습니다.</p>"
+          }<pre>${escHtml(
+            JSON.stringify(selected.qcJson ?? null, null, 2)
+          )}</pre></div>`
+        : `<div class="card"><h3>선택된 에셋</h3><p>\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p></div>`;
+
+      const body = `<style>.asset-shell{display:grid;gap:12px;grid-template-columns:minmax(360px,1fr) minmax(460px,1.35fr)}.asset-table-wrap{max-height:420px;overflow:auto;border:1px solid #dce5f3;border-radius:10px}.asset-table-wrap table{margin:0}.asset-head{display:flex;justify-content:space-between;gap:8px;align-items:center}@media (max-width:1100px){.asset-shell{grid-template-columns:1fr}}</style><section class="card"><h1>\uC5D0\uC14B (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">\uBE60\uB978 \uC791\uC5C5\uC740 <a href="/ui/studio">\uD1B5\uD569 \uC2A4\uD29C\uB514\uC624</a>\uC5D0\uC11C \uD55C \uD654\uBA74\uC73C\uB85C \uC9C4\uD589\uD558\uACE0, \uC774 \uD398\uC774\uC9C0\uB294 \uC5D0\uC14B \uAC80\uC218/\uC138\uBD80 \uC810\uAC80\uC5D0 \uC0AC\uC6A9\uD558\uC138\uC694.</div></section><section class="asset-shell"><section class="card"><h2>\uC5C5\uB85C\uB4DC</h2><form id="asset-upload-form" enctype="multipart/form-data" class="grid"><div class="grid two"><label>\uC5D0\uC14B \uC720\uD615<select name="assetType"><option value="character_reference">character_reference (레퍼런스)</option><option value="character_view">character_view (뷰 변형)</option><option value="background">background (배경)</option><option value="chart_source">chart_source (차트 소스)</option></select></label><label>\uD30C\uC77C<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label></div><button id="asset-upload-submit" type="submit">\uC5C5\uB85C\uB4DC + \uC5D0\uC14B \uCC98\uB9AC \uC2DC\uC791</button></form><pre id="asset-upload-result">\uB300\uAE30 \uC911</pre></section><section class="card"><div class="asset-head"><h2 style="margin:0">\uCD5C\uADFC \uC5D0\uC14B</h2><input id="asset-filter" placeholder="\uAC80\uC0C9 (ID/\uC720\uD615/\uC0C1\uD0DC)" /></div><div class="asset-table-wrap"><table id="asset-table"><thead><tr><th>ID</th><th>\uC720\uD615</th><th>\uC0C1\uD0DC</th><th>QC</th><th>MIME</th><th>\uC6A9\uB7C9</th><th>\uC0DD\uC131 \uC2DC\uAC01</th></tr></thead><tbody>${rows || '<tr><td colspan="7">\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4</td></tr>'}</tbody></table></div></section></section>${selectedDetails}<script>const form=document.getElementById(\"asset-upload-form\");const output=document.getElementById(\"asset-upload-result\");const submit=document.getElementById(\"asset-upload-submit\");const filter=document.getElementById(\"asset-filter\");const assetTable=document.getElementById(\"asset-table\");const applyFilter=()=>{if(!(filter instanceof HTMLInputElement)||!(assetTable instanceof HTMLTableElement))return;const q=filter.value.trim().toLowerCase();assetTable.querySelectorAll(\"tbody tr\").forEach((row)=>{if(!(row instanceof HTMLElement))return;const text=String(row.textContent||\"\").toLowerCase();row.style.display=!q||text.includes(q)?\"\":\"none\";});};if(filter){filter.addEventListener(\"input\",applyFilter);}if(form&&output&&submit){form.addEventListener(\"submit\",async(event)=>{event.preventDefault();submit.disabled=true;output.textContent=\"\uC5C5\uB85C\uB4DC \uC911...\";const fd=new FormData(form);try{const res=await fetch(\"/api/assets/upload\",{method:\"POST\",body:fd});const json=await res.json();output.textContent=JSON.stringify(json,null,2);if(res.ok&&json&&json.data&&json.data.assetId){window.location.href=\"/ui/assets?assetId=\"+encodeURIComponent(json.data.assetId);} }catch(error){output.textContent=String(error);}finally{submit.disabled=false;}});}</script>`;
+
+      return reply.type("text/html; charset=utf-8").send(uiPage("\uC5D0\uC14B", body));
+    } catch (error) {
+      if (isDbUnavailableError(error)) {
+        const body = `<section class="card"><h1>에셋 (상세 모드)</h1><div class="error">DB 연결이 없어 에셋 목록을 불러오지 못했습니다.</div><p>조치: <code>pnpm docker:up</code> 또는 DB 실행 상태를 확인한 뒤 새로고침하세요.</p><pre>${escHtml(
+          JSON.stringify(
+            {
+              error: "database_unavailable",
+              hint: "Start PostgreSQL and retry.",
+              route: "/ui/assets"
+            },
+            null,
+            2
           )
-          .join("")
-      : "";
-
-    const selectedDetails = selected
-      ? `<div class="card"><h3>선택된 에셋</h3><p>ID: <strong>${escHtml(
-          selected.id
-        )}</strong></p><p>상태: <span class="badge ${uiBadgeClass(selected.status)}">${escHtml(
-          selected.status
-        )}</span></p><p>QC: <span class="badge ${getQcBadgeSummary(selected.status, selected.qcJson).className}" title="${escHtml(
-          getQcBadgeSummary(selected.status, selected.qcJson).reason
-        )}">${escHtml(getQcBadgeSummary(selected.status, selected.qcJson).level)}</span></p><p>MIME: <code>${escHtml(selected.mime ?? "-")}</code></p><p>원본 키: <code>${escHtml(
-          selected.originalKey ?? selected.storageKey
-        )}</code></p><p>정규화 1024: <code>${escHtml(
-          selected.normalizedKey1024 ?? "-"
-        )}</code></p><p>정규화 2048: <code>${escHtml(
-          selected.normalizedKey2048 ?? "-"
-        )}</code></p><p><a href="/api/assets/${encodeURIComponent(selected.id)}">JSON 열기</a></p>${
-          previewCards.length > 0 ? `<div class="preview-grid">${previewCards}</div>` : "<p>미리보기 가능한 이미지가 없습니다.</p>"
-        }<pre>${escHtml(
-          JSON.stringify(selected.qcJson ?? null, null, 2)
-        )}</pre></div>`
-      : `<div class="card"><h3>선택된 에셋</h3><p>\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p></div>`;
-
-    const body = `<style>.asset-shell{display:grid;gap:12px;grid-template-columns:minmax(360px,1fr) minmax(460px,1.35fr)}.asset-table-wrap{max-height:420px;overflow:auto;border:1px solid #dce5f3;border-radius:10px}.asset-table-wrap table{margin:0}.asset-head{display:flex;justify-content:space-between;gap:8px;align-items:center}@media (max-width:1100px){.asset-shell{grid-template-columns:1fr}}</style><section class="card"><h1>\uC5D0\uC14B (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">\uBE60\uB978 \uC791\uC5C5\uC740 <a href="/ui/studio">\uD1B5\uD569 \uC2A4\uD29C\uB514\uC624</a>\uC5D0\uC11C \uD55C \uD654\uBA74\uC73C\uB85C \uC9C4\uD589\uD558\uACE0, \uC774 \uD398\uC774\uC9C0\uB294 \uC5D0\uC14B \uAC80\uC218/\uC138\uBD80 \uC810\uAC80\uC5D0 \uC0AC\uC6A9\uD558\uC138\uC694.</div></section><section class="asset-shell"><section class="card"><h2>\uC5C5\uB85C\uB4DC</h2><form id="asset-upload-form" enctype="multipart/form-data" class="grid"><div class="grid two"><label>\uC5D0\uC14B \uC720\uD615<select name="assetType"><option value="character_reference">character_reference (레퍼런스)</option><option value="character_view">character_view (뷰 변형)</option><option value="background">background (배경)</option><option value="chart_source">chart_source (차트 소스)</option></select></label><label>\uD30C\uC77C<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label></div><button id="asset-upload-submit" type="submit">\uC5C5\uB85C\uB4DC + \uC5D0\uC14B \uCC98\uB9AC \uC2DC\uC791</button></form><pre id="asset-upload-result">\uB300\uAE30 \uC911</pre></section><section class="card"><div class="asset-head"><h2 style="margin:0">\uCD5C\uADFC \uC5D0\uC14B</h2><input id="asset-filter" placeholder="\uAC80\uC0C9 (ID/\uC720\uD615/\uC0C1\uD0DC)" /></div><div class="asset-table-wrap"><table id="asset-table"><thead><tr><th>ID</th><th>\uC720\uD615</th><th>\uC0C1\uD0DC</th><th>QC</th><th>MIME</th><th>\uC6A9\uB7C9</th><th>\uC0DD\uC131 \uC2DC\uAC01</th></tr></thead><tbody>${rows || '<tr><td colspan="7">\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4</td></tr>'}</tbody></table></div></section></section>${selectedDetails}<script>const form=document.getElementById(\"asset-upload-form\");const output=document.getElementById(\"asset-upload-result\");const submit=document.getElementById(\"asset-upload-submit\");const filter=document.getElementById(\"asset-filter\");const assetTable=document.getElementById(\"asset-table\");const applyFilter=()=>{if(!(filter instanceof HTMLInputElement)||!(assetTable instanceof HTMLTableElement))return;const q=filter.value.trim().toLowerCase();assetTable.querySelectorAll(\"tbody tr\").forEach((row)=>{if(!(row instanceof HTMLElement))return;const text=String(row.textContent||\"\").toLowerCase();row.style.display=!q||text.includes(q)?\"\":\"none\";});};if(filter){filter.addEventListener(\"input\",applyFilter);}if(form&&output&&submit){form.addEventListener(\"submit\",async(event)=>{event.preventDefault();submit.disabled=true;output.textContent=\"\uC5C5\uB85C\uB4DC \uC911...\";const fd=new FormData(form);try{const res=await fetch(\"/api/assets/upload\",{method:\"POST\",body:fd});const json=await res.json();output.textContent=JSON.stringify(json,null,2);if(res.ok&&json&&json.data&&json.data.assetId){window.location.href=\"/ui/assets?assetId=\"+encodeURIComponent(json.data.assetId);} }catch(error){output.textContent=String(error);}finally{submit.disabled=false;}});}</script>`;
-
-    return reply.type("text/html; charset=utf-8").send(uiPage("\uC5D0\uC14B", body));
+        )}</pre></section>`;
+        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("에셋", body));
+      }
+      throw error;
+    }
   });
 
   app.post("/api/hitl/rerender", async (request, reply) => {
