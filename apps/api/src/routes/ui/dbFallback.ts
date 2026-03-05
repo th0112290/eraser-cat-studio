@@ -7,8 +7,11 @@ export function isDbUnavailableError(error: unknown): boolean {
   return (
     msg.includes("can't reach database server") ||
     msg.includes("prismaclientinitializationerror") ||
+    msg.includes("prismaclientknownrequesterror") ||
     msg.includes("connect econnrefused") ||
     msg.includes("database unavailable") ||
+    msg.includes("does not exist in the current database") ||
+    msg.includes("relation") && msg.includes("does not exist") ||
     msg.includes("terminating connection due to administrator command") ||
     msg.includes("server closed the connection unexpectedly") ||
     msg.includes("the database system is shutting down")
