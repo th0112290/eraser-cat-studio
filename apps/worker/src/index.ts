@@ -1957,8 +1957,42 @@ worker.on("failed", async (bullJob, err) => {
   }
 
   const payload = rawPayload;
-  await setJobStatus(payload.jobDbId, "FAILED", { lastError: err.stack ?? err.message, finishedAt: new Date() });
-  await logJob(payload.jobDbId, "error", "Transition -> FAILED", { bullmqJobId: String(bullJob.id), jobName, error: err.message, stack: err.stack });
+  const configuredAttemptsRaw = bullJob.opts.attempts;
+  const configuredAttempts =
+    typeof configuredAttemptsRaw === "number" && Number.isFinite(configuredAttemptsRaw)
+      ? configuredAttemptsRaw
+      : 1;
+  const terminalFailure = bullJob.attemptsMade >= Math.max(1, configuredAttempts);
+
+  if (!terminalFailure) {
+    await setJobStatus(payload.jobDbId, "QUEUED", {
+      attemptsMade: bullJob.attemptsMade,
+      lastError: err.stack ?? err.message,
+      finishedAt: null
+    });
+    await logJob(payload.jobDbId, "warn", "Attempt failed, retry scheduled", {
+      bullmqJobId: String(bullJob.id),
+      jobName,
+      error: err.message,
+      attempt: bullJob.attemptsMade,
+      maxAttempts: configuredAttempts
+    });
+    return;
+  }
+
+  await setJobStatus(payload.jobDbId, "FAILED", {
+    attemptsMade: bullJob.attemptsMade,
+    lastError: err.stack ?? err.message,
+    finishedAt: new Date()
+  });
+  await logJob(payload.jobDbId, "error", "Transition -> FAILED", {
+    bullmqJobId: String(bullJob.id),
+    jobName,
+    error: err.message,
+    stack: err.stack,
+    attempt: bullJob.attemptsMade,
+    maxAttempts: configuredAttempts
+  });
   try {
     await setEpisodeStatus(payload.episodeId, "FAILED");
   } catch {
@@ -1975,6 +2009,15 @@ assetIngestWorker.on("failed", async (bullJob, error) => {
     return;
   }
   const safeError = error instanceof Error ? error.message : String(error);
+  const configuredAttemptsRaw = bullJob.opts.attempts;
+  const configuredAttempts =
+    typeof configuredAttemptsRaw === "number" && Number.isFinite(configuredAttemptsRaw)
+      ? configuredAttemptsRaw
+      : 1;
+  const terminalFailure = bullJob.attemptsMade >= Math.max(1, configuredAttempts);
+  if (!terminalFailure) {
+    return;
+  }
   try {
     await prisma.asset.update({
       where: { id: payload.assetId },
