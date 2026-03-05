@@ -9,6 +9,7 @@ import type { EpisodeJobPayload } from "../services/scheduleService";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
 import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
 import { renderUiPage as uiPage } from "./ui/uiPage";
+import { buildStudioBody } from "./ui/pages/studioPage";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -2489,6 +2490,9 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       }
       throw routeError;
     }
+    const cleanStudioHtml = buildStudioBody({ message, error });
+    return reply.type("text/html; charset=utf-8").send(uiPage("Studio", cleanStudioHtml));
+
     const html = `${message ? `<div class="notice">${escHtml(message)}</div>` : ""}${error ? `<div class="error">${escHtml(error)}</div>` : ""}
 <section class="card studio-shell">
   <style>
