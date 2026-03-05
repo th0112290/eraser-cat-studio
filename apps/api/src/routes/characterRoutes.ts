@@ -2559,7 +2559,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         );
         const body = renderDbUnavailableCard({
           title: "통합 스튜디오",
-          route: "/ui/studio"
+          route: "/ui/studio",
+          requestId: request.id
         });
         return reply.code(503).type("text/html; charset=utf-8").send(uiPage("통합 스튜디오", body));
       }
@@ -3471,7 +3472,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         );
         const body = renderDbUnavailableCard({
           title: "캐릭터 생성기 (상세 모드)",
-          route: "/ui/character-generator"
+          route: "/ui/character-generator",
+          requestId: request.id
         });
         return reply.code(503).type("text/html; charset=utf-8").send(uiPage("캐릭터 생성기", body));
       }

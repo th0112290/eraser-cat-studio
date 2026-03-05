@@ -1699,7 +1699,8 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
         );
         const body = renderDbUnavailableCard({
           title: "에셋 (상세 모드)",
-          route: "/ui/assets"
+          route: "/ui/assets",
+          requestId: request.id
         });
         return reply.code(503).type("text/html; charset=utf-8").send(uiPage("에셋", body));
       }
