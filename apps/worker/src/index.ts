@@ -29,8 +29,10 @@ import {
 } from "@ec/audio";
 import {
   ASSET_INGEST_JOB_NAME,
+  ASSET_QUEUE_NAME,
   BUILD_CHARACTER_PACK_JOB_NAME,
   COMPILE_SHOTS_JOB_NAME,
+  type AssetIngestQueuePayload,
   type CharacterAssetSelection,
   type CharacterPackJobPayload,
   EPISODE_JOB_NAME,
@@ -51,9 +53,8 @@ import {
 } from "./queue";
 import type { EpisodeJobPayload, PipelineJobName, RenderJobPayload } from "./queue";
 import type { Prisma } from "@prisma/client";
-import type { AssetIngestJobPayload } from "./assetIngest";
-import { handleAssetIngestJob } from "./assetIngest";
 import { getAssetObject } from "./assetStorage";
+import { handleAssetIngestJob } from "./assetIngest";
 import { handleGenerateCharacterAssetsJob } from "./characterGeneration";
 
 bootstrapEnv();
@@ -61,13 +62,17 @@ bootstrapEnv();
 const prismaModule = await import("@prisma/client");
 const { PrismaClient, Prisma: PrismaRuntime } = prismaModule;
 const prisma = new PrismaClient();
+const ASSET_INGEST_TIMEOUT_MS = Number.parseInt(process.env.ASSET_INGEST_TIMEOUT_MS ?? "20000", 10);
+const WORKER_LOCK_DURATION_MS = Number.parseInt(process.env.WORKER_LOCK_DURATION_MS ?? "900000", 10);
+const WORKER_STALLED_INTERVAL_MS = Number.parseInt(process.env.WORKER_STALLED_INTERVAL_MS ?? "60000", 10);
+const WORKER_MAX_STALLED_COUNT = Number.parseInt(process.env.WORKER_MAX_STALLED_COUNT ?? "5", 10);
 
 type JobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
 type ActiveJobStatus = "QUEUED" | "RUNNING";
 type EpisodeStatus = "GENERATING" | "PREVIEW_READY" | "COMPLETED" | "FAILED";
 type RenderStage = typeof RENDER_PREVIEW_JOB_NAME | typeof RENDER_FINAL_JOB_NAME | typeof RENDER_EPISODE_JOB_NAME;
 type CurrentJobState = { status: JobStatus; maxAttempts: number; retryBackoffMs: number };
-type WorkerQueuePayload = EpisodeJobPayload | AssetIngestJobPayload;
+type WorkerQueuePayload = EpisodeJobPayload;
 type StoredQcReport = {
   final_passed?: boolean;
   final_stage?: string;
@@ -331,18 +336,27 @@ function isEpisodePayload(value: unknown): value is EpisodeJobPayload {
   return typeof value.jobDbId === "string" && value.jobDbId.trim().length > 0 && typeof value.episodeId === "string" && value.episodeId.trim().length > 0;
 }
 
-function isAssetIngestPayload(value: unknown): value is AssetIngestJobPayload {
-  if (!isRecord(value)) {
+function isAssetIngestPayload(value: unknown): value is AssetIngestQueuePayload {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
+  const record = value as Record<string, unknown>;
+  return typeof record.assetId === "string";
+}
 
-  return (
-    typeof value.assetId === "string" &&
-    value.assetId.trim().length > 0 &&
-    typeof value.assetType === "string" &&
-    typeof value.originalKey === "string" &&
-    typeof value.mime === "string"
-  );
+async function withTimeout<T>(task: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+    return task;
+  }
+  return await Promise.race([
+    task,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      timer.unref?.();
+    })
+  ]);
 }
 
 function requireCharacterPayload(
@@ -1009,9 +1023,55 @@ async function withDownstreamEnqueueLock<T>(key: string, fn: () => Promise<T>): 
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withRedisDownstreamLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const enabled = parseBoolean(process.env.WORKER_DISTRIBUTED_STAGE_LOCK_ENABLED, true);
+  if (!enabled) {
+    return fn();
+  }
+
+  const acquireTimeoutMs = parsePositiveInt(process.env.WORKER_DISTRIBUTED_STAGE_LOCK_ACQUIRE_TIMEOUT_MS, 5000);
+  const retryDelayMs = parsePositiveInt(process.env.WORKER_DISTRIBUTED_STAGE_LOCK_RETRY_DELAY_MS, 100);
+  const lockTtlMs = parsePositiveInt(process.env.WORKER_DISTRIBUTED_STAGE_LOCK_TTL_MS, 120000);
+  const redisKey = `worker:stage-lock:${key}`;
+  const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+
+  const client = await queue.client.catch(() => null);
+  if (!client) {
+    return fn();
+  }
+
+  const startedAt = Date.now();
+  let acquired = false;
+  while (Date.now() - startedAt < acquireTimeoutMs) {
+    const ok = await (client as any).set(redisKey, token, "PX", lockTtlMs, "NX");
+    if (ok === "OK") {
+      acquired = true;
+      break;
+    }
+    await sleep(retryDelayMs);
+  }
+
+  if (!acquired) {
+    throw new Error(`downstream enqueue lock timeout: ${key}`);
+  }
+
+  try {
+    return await fn();
+  } finally {
+    const releaseScript =
+      "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+    await (client as any).eval(releaseScript, 1, redisKey, token).catch(() => undefined);
+  }
+}
+
 async function enqueueNext(input: { parentJobDbId: string; episodeId: string; type: PipelineJobName; templatePayload: EpisodeJobPayload; render?: RenderJobPayload; maxAttempts: number; retryBackoffMs: number }) {
   const lockKey = `${input.episodeId}:${input.type}`;
-  return withDownstreamEnqueueLock(lockKey, async () => {
+  return withRedisDownstreamLock(lockKey, async () =>
+    withDownstreamEnqueueLock(lockKey, async () => {
     const active = await prisma.job.findFirst({
       where: { episodeId: input.episodeId, type: input.type, status: { in: ["QUEUED", "RUNNING"] satisfies ActiveJobStatus[] } },
       orderBy: { createdAt: "desc" }
@@ -1032,7 +1092,7 @@ async function enqueueNext(input: { parentJobDbId: string; episodeId: string; ty
     await logJob(nextJob.id, "info", "Transition -> ENQUEUED", { source: "worker:pipeline", bullmqJobId: String(bull.id), type: input.type });
     await logJob(input.parentJobDbId, "info", "Pipeline next job enqueued", { nextType: input.type, nextJobDbId: nextJob.id, bullmqJobId: String(bull.id) });
     return nextJob;
-  });
+  }));
 }
 
 function parseBeatDoc(json: Prisma.JsonValue, fallbackEpisode: EpisodeInput): { episode: EpisodeInput; beats: Beat[] } {
@@ -1818,18 +1878,6 @@ const worker = new Worker<WorkerQueuePayload>(
     const jobName = String(bullJob.name);
     const rawPayload = bullJob.data as unknown;
 
-    if (jobName === ASSET_INGEST_JOB_NAME) {
-      if (!isAssetIngestPayload(rawPayload)) {
-        throw new Error("Invalid ASSET_INGEST payload");
-      }
-
-      return handleAssetIngestJob({
-        prisma,
-        payload: rawPayload,
-        bullmqJobId: String(bullJob.id)
-      });
-    }
-
     if (!isEpisodePayload(rawPayload)) {
       throw new Error(`Invalid payload for job=${jobName}`);
     }
@@ -1893,35 +1941,47 @@ const worker = new Worker<WorkerQueuePayload>(
     await logJob(jobDbId, "info", "Transition -> SUCCEEDED", { bullmqJobId: String(bullJob.id), jobName, attempt });
     return { ok: true };
   },
-  { connection: REDIS_CONNECTION, concurrency: 2 }
+  {
+    connection: REDIS_CONNECTION,
+    concurrency: 2,
+    lockDuration: WORKER_LOCK_DURATION_MS,
+    stalledInterval: WORKER_STALLED_INTERVAL_MS,
+    maxStalledCount: WORKER_MAX_STALLED_COUNT
+  }
+);
+
+const assetIngestWorker = new Worker<AssetIngestQueuePayload>(
+  ASSET_QUEUE_NAME,
+  async (bullJob) => {
+    if (String(bullJob.name) !== ASSET_INGEST_JOB_NAME) {
+      throw new Error(`asset worker received unsupported job: ${String(bullJob.name)}`);
+    }
+    if (!isAssetIngestPayload(bullJob.data)) {
+      throw new Error("Invalid ASSET_INGEST payload");
+    }
+    return withTimeout(
+      handleAssetIngestJob({
+        prisma,
+        payload: bullJob.data,
+        bullmqJobId: String(bullJob.id)
+      }),
+      ASSET_INGEST_TIMEOUT_MS,
+      `ASSET_INGEST job=${String(bullJob.id)}`
+    );
+  },
+  {
+    connection: REDIS_CONNECTION,
+    concurrency: 1,
+    lockDuration: WORKER_LOCK_DURATION_MS,
+    stalledInterval: WORKER_STALLED_INTERVAL_MS,
+    maxStalledCount: WORKER_MAX_STALLED_COUNT
+  }
 );
 
 worker.on("failed", async (bullJob, err) => {
   if (!bullJob) return;
   const jobName = String(bullJob.name);
   const rawPayload = bullJob.data as unknown;
-
-  if (jobName === ASSET_INGEST_JOB_NAME && isAssetIngestPayload(rawPayload)) {
-    const safeError = err instanceof Error ? err.message : String(err);
-    try {
-      await prisma.asset.update({
-        where: { id: rawPayload.assetId },
-        data: {
-          status: "FAILED",
-          qcJson: {
-            ok: false,
-            stage: "worker_failed",
-            error: safeError,
-            bullmqJobId: String(bullJob.id),
-            failedAt: new Date().toISOString()
-          }
-        }
-      });
-    } catch {
-      // Ignore secondary failure.
-    }
-    return;
-  }
 
   if (!isEpisodePayload(rawPayload)) {
     return;
@@ -1937,6 +1997,55 @@ worker.on("failed", async (bullJob, err) => {
   }
 });
 
+assetIngestWorker.on("failed", async (bullJob, error) => {
+  if (!bullJob || String(bullJob.name) !== ASSET_INGEST_JOB_NAME) {
+    return;
+  }
+  const payload = bullJob.data;
+  if (!isAssetIngestPayload(payload)) {
+    return;
+  }
+  const safeError = error instanceof Error ? error.message : String(error);
+  try {
+    await prisma.asset.update({
+      where: { id: payload.assetId },
+      data: {
+        status: "FAILED",
+        qcJson: {
+          ok: false,
+          stage: "worker_failed",
+          error: safeError,
+          bullmqJobId: String(bullJob.id),
+          failedAt: new Date().toISOString()
+        } as Prisma.JsonObject
+      }
+    });
+  } catch {
+    // ignore secondary failure
+  }
+});
+
+let isShuttingDown = false;
+
+async function shutdownWorker(signal: "SIGINT" | "SIGTERM"): Promise<void> {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  console.log(`[worker] shutting down signal=${signal}`);
+  await assetIngestWorker.close().catch(() => undefined);
+  await worker.close().catch(() => undefined);
+  await prisma.$disconnect().catch(() => undefined);
+  process.exit(0);
+}
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    void shutdownWorker(signal);
+  });
+}
+
 console.log(
-  `[worker] running. redis=${REDIS_URL} queue=${QUEUE_NAME} jobs=${EPISODE_JOB_NAME},${GENERATE_CHARACTER_ASSETS_JOB_NAME},${BUILD_CHARACTER_PACK_JOB_NAME},${COMPILE_SHOTS_JOB_NAME},${RENDER_CHARACTER_PREVIEW_JOB_NAME},${RENDER_PREVIEW_JOB_NAME},${RENDER_FINAL_JOB_NAME},${PACKAGE_OUTPUTS_JOB_NAME},${RENDER_EPISODE_JOB_NAME},${ASSET_INGEST_JOB_NAME}`
+  `[worker] running. redis=${REDIS_URL} queue=${QUEUE_NAME} jobs=${EPISODE_JOB_NAME},${GENERATE_CHARACTER_ASSETS_JOB_NAME},${BUILD_CHARACTER_PACK_JOB_NAME},${COMPILE_SHOTS_JOB_NAME},${RENDER_CHARACTER_PREVIEW_JOB_NAME},${RENDER_PREVIEW_JOB_NAME},${RENDER_FINAL_JOB_NAME},${PACKAGE_OUTPUTS_JOB_NAME},${RENDER_EPISODE_JOB_NAME}`
 );
+console.log(`[worker] asset ingest enabled. queue=${ASSET_QUEUE_NAME} job=${ASSET_INGEST_JOB_NAME}`);
