@@ -18,11 +18,14 @@ import {
 import { orchestrateRenderEpisode } from "@ec/render-orchestrator";
 import { createPublishManifest } from "@ec/publish";
 import {
+  FallbackTTSProvider,
   LocalMockMusicLibrary,
   MockTTSProvider,
+  PiperTTSProvider,
   runAudioPipeline,
   type BeatCue as AudioBeatCue,
-  type ShotCue as AudioShotCue
+  type ShotCue as AudioShotCue,
+  type TTSProvider
 } from "@ec/audio";
 import {
   ASSET_INGEST_JOB_NAME,
@@ -71,6 +74,33 @@ type StoredQcReport = {
   generated_at?: string;
   fallback_steps_applied?: string[];
   runs?: Array<{ issues?: Array<{ code?: string; severity?: string; message?: string; shotId?: string; details?: Record<string, unknown> }> }>;
+};
+
+type RenderFailureIssue = {
+  code: string;
+  severity: "INFO" | "WARN" | "ERROR";
+  message: string;
+  shotId: string | null;
+};
+
+type RetrySummaryReport = {
+  schema_version: "1.0";
+  generated_at: string;
+  episode_id: string;
+  stage: RenderStage;
+  attempt: number;
+  recovery_mode: boolean;
+  recovery_source: "explicit" | "qc_report" | "none";
+  requested_failed_shot_ids: string[];
+  partial_shots_path: string | null;
+  failed_shot_summary: {
+    total_error_issues: number;
+    unique_failed_shot_count: number;
+    unique_failed_shot_ids: string[];
+    by_code: Array<{ code: string; count: number }>;
+  };
+  issues: RenderFailureIssue[];
+  qc_report_path: string;
 };
 
 type ShotsDocumentLike = {
@@ -207,6 +237,16 @@ type CharacterOutputPaths = {
   qcReportPath: string;
 };
 
+type CharacterViewName = "front" | "threeQuarter" | "profile";
+type CharacterViewScoreSummary = {
+  candidateId: string | null;
+  source: "selected_candidate" | "best_in_view" | "missing";
+  alpha: number | null;
+  bbox: number | null;
+  sharpness: number | null;
+  consistency: number | null;
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const schemaValidator = new SchemaValidator(path.resolve(__dirname, "../../../packages/schemas"));
@@ -245,6 +285,28 @@ function uniqueStrings(values: string[]): string[] {
 
 function parseNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value || value.trim().length === 0) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  if (!value || value.trim().length === 0) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
 }
 
 function parseStringArray(value: unknown): string[] {
@@ -310,6 +372,98 @@ function getCharacterOutputPaths(characterPackId: string): CharacterOutputPaths 
     previewPath: path.join(outDir, "preview.mp4"),
     qcReportPath: path.join(outDir, "qc_report.json")
   };
+}
+
+function toNullableScore(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Number(value.toFixed(4)) : null;
+}
+
+function summarizeCharacterGenerationScores(character: CharacterPackJobPayload): {
+  manifestPath: string | null;
+  views: Record<CharacterViewName, CharacterViewScoreSummary>;
+  warnings: string[];
+} {
+  const emptyView = (): CharacterViewScoreSummary => ({
+    candidateId: null,
+    source: "missing",
+    alpha: null,
+    bbox: null,
+    sharpness: null,
+    consistency: null
+  });
+
+  const views: Record<CharacterViewName, CharacterViewScoreSummary> = {
+    front: emptyView(),
+    threeQuarter: emptyView(),
+    profile: emptyView()
+  };
+
+  const manifestPathRaw = character.generation?.manifestPath;
+  const manifestPath = typeof manifestPathRaw === "string" && manifestPathRaw.trim().length > 0 ? manifestPathRaw : null;
+  const warnings: string[] = [];
+
+  if (!manifestPath) {
+    warnings.push("generation_manifest_path_missing");
+    return { manifestPath, views, warnings };
+  }
+
+  if (!fs.existsSync(manifestPath)) {
+    warnings.push("generation_manifest_not_found");
+    return { manifestPath, views, warnings };
+  }
+
+  const parsed = readJsonFile<unknown>(manifestPath);
+  if (!isRecord(parsed) || !Array.isArray(parsed.candidates)) {
+    warnings.push("generation_manifest_invalid_shape");
+    return { manifestPath, views, warnings };
+  }
+
+  const selected = character.generation?.selectedCandidateIds;
+  const selectedMap: Record<CharacterViewName, string | null> = {
+    front: typeof selected?.front === "string" && selected.front.trim().length > 0 ? selected.front : null,
+    threeQuarter:
+      typeof selected?.threeQuarter === "string" && selected.threeQuarter.trim().length > 0
+        ? selected.threeQuarter
+        : null,
+    profile: typeof selected?.profile === "string" && selected.profile.trim().length > 0 ? selected.profile : null
+  };
+
+  for (const viewName of ["front", "threeQuarter", "profile"] as const) {
+    const candidates = parsed.candidates
+      .filter((entry): entry is Record<string, unknown> => isRecord(entry) && entry.view === viewName)
+      .sort((left, right) => {
+        const leftScore = typeof left.score === "number" ? left.score : -1;
+        const rightScore = typeof right.score === "number" ? right.score : -1;
+        return rightScore - leftScore;
+      });
+
+    const selectedId = selectedMap[viewName];
+    const selectedCandidate =
+      selectedId === null
+        ? null
+        : candidates.find((candidate) => typeof candidate.id === "string" && candidate.id === selectedId) ?? null;
+    const bestCandidate = candidates[0] ?? null;
+    const target = selectedCandidate ?? bestCandidate;
+
+    if (!target) {
+      views[viewName] = emptyView();
+      continue;
+    }
+
+    const breakdown = isRecord(target.breakdown) ? target.breakdown : {};
+    views[viewName] = {
+      candidateId: typeof target.id === "string" ? target.id : null,
+      source: selectedCandidate ? "selected_candidate" : "best_in_view",
+      alpha: toNullableScore(breakdown.alphaScore),
+      bbox: toNullableScore(breakdown.occupancyScore),
+      sharpness: toNullableScore(breakdown.sharpnessScore),
+      consistency: toNullableScore(
+        typeof target.consistencyScore === "number" ? target.consistencyScore : breakdown.consistencyScore
+      )
+    };
+  }
+
+  return { manifestPath, views, warnings };
 }
 
 function ensureCharacterOut(characterPackId: string): CharacterOutputPaths {
@@ -402,6 +556,80 @@ function resolveAudioPronunciationDictionaryPath(outDir: string): string {
     fs.writeFileSync(fallbackPath, "{}\n", "utf8");
   }
   return fallbackPath;
+}
+
+type PreviewTtsResolution = {
+  provider: TTSProvider;
+  providerName: "mock" | "piper";
+  fallbackName?: "mock";
+  warning?: string;
+};
+
+function parseJsonStringArray(value: string | undefined): string[] {
+  if (!value || value.trim().length === 0) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+}
+
+function resolvePreviewTtsProvider(outDir: string, onFallback: (reason: string) => void): PreviewTtsResolution {
+  const requested = (process.env.AUDIO_TTS_PROVIDER ?? "auto").trim().toLowerCase();
+  const modelPath = process.env.AUDIO_TTS_PIPER_MODEL?.trim();
+  const piperBin = process.env.AUDIO_TTS_PIPER_BIN?.trim() || "piper";
+  const piperSpeaker = process.env.AUDIO_TTS_PIPER_SPEAKER?.trim();
+  const piperTimeoutMs = parsePositiveInt(process.env.AUDIO_TTS_PIPER_TIMEOUT_MS, 120_000);
+  const piperExtraArgs = parseJsonStringArray(process.env.AUDIO_TTS_PIPER_EXTRA_ARGS);
+
+  const mockProvider = new MockTTSProvider(outDir);
+
+  if (requested === "mock") {
+    return {
+      provider: mockProvider,
+      providerName: "mock"
+    };
+  }
+
+  const shouldTryPiper = requested === "piper" || requested === "auto";
+  if (!shouldTryPiper) {
+    return {
+      provider: mockProvider,
+      providerName: "mock",
+      warning: `Unknown AUDIO_TTS_PROVIDER=${requested}; using mock`
+    };
+  }
+
+  if (!modelPath) {
+    const warning = "AUDIO_TTS_PIPER_MODEL is not configured; using mock TTS";
+    return {
+      provider: mockProvider,
+      providerName: "mock",
+      warning
+    };
+  }
+
+  const piperProvider = new PiperTTSProvider(outDir, {
+    binPath: piperBin,
+    modelPath,
+    ...(piperSpeaker && piperSpeaker.length > 0 ? { speakerId: parseNonNegativeInt(piperSpeaker, 0) } : {}),
+    timeoutMs: piperTimeoutMs,
+    ...(piperExtraArgs.length > 0 ? { extraArgs: piperExtraArgs } : {})
+  });
+
+  return {
+    provider: new FallbackTTSProvider(piperProvider, mockProvider, {
+      onFallback: (error) => onFallback(error.message)
+    }),
+    providerName: "piper",
+    fallbackName: "mock"
+  };
 }
 
 function buildAudioCues(beatsPath: string, shotsPath: string): {
@@ -507,6 +735,81 @@ function readFailedShotIdsFromQcReport(qcReportPath: string): string[] {
   } catch {
     return [];
   }
+}
+
+function readErrorIssuesFromQcReport(qcReportPath: string): RenderFailureIssue[] {
+  if (!fs.existsSync(qcReportPath)) return [];
+  try {
+    const report = JSON.parse(fs.readFileSync(qcReportPath, "utf8")) as StoredQcReport;
+    const runs = Array.isArray(report.runs) ? report.runs : [];
+    const issues = Array.isArray(runs[runs.length - 1]?.issues) ? runs[runs.length - 1]!.issues! : [];
+    const out: RenderFailureIssue[] = [];
+
+    for (const issue of issues) {
+      const severityRaw = asString(issue.severity, "INFO").toUpperCase();
+      const severity: RenderFailureIssue["severity"] =
+        severityRaw === "ERROR" ? "ERROR" : severityRaw === "WARN" ? "WARN" : "INFO";
+      if (severity !== "ERROR") continue;
+      out.push({
+        code: asString(issue.code, "unknown"),
+        severity,
+        message: asString(issue.message, "unknown"),
+        shotId: asString(issue.shotId, "").trim() || null
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function buildRetrySummaryReport(input: {
+  episodeId: string;
+  stage: RenderStage;
+  attempt: number;
+  recoveryMode: boolean;
+  recoverySource: "explicit" | "qc_report" | "none";
+  requestedFailedShotIds: string[];
+  partialShotsPath: string | null;
+  qcReportPath: string;
+}): RetrySummaryReport {
+  const issues = readErrorIssuesFromQcReport(input.qcReportPath);
+  const failedShotIds = uniqueStrings(
+    issues.map((issue) => (issue.shotId ? issue.shotId.trim() : "")).filter((shotId) => shotId.length > 0)
+  );
+  const codeCount = new Map<string, number>();
+  for (const issue of issues) {
+    const code = issue.code.trim() || "unknown";
+    codeCount.set(code, (codeCount.get(code) ?? 0) + 1);
+  }
+  const byCode = Array.from(codeCount.entries())
+    .map(([code, count]) => ({ code, count }))
+    .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
+
+  return {
+    schema_version: "1.0",
+    generated_at: new Date().toISOString(),
+    episode_id: input.episodeId,
+    stage: input.stage,
+    attempt: input.attempt,
+    recovery_mode: input.recoveryMode,
+    recovery_source: input.recoverySource,
+    requested_failed_shot_ids: input.requestedFailedShotIds,
+    partial_shots_path: input.partialShotsPath,
+    failed_shot_summary: {
+      total_error_issues: issues.length,
+      unique_failed_shot_count: failedShotIds.length,
+      unique_failed_shot_ids: failedShotIds,
+      by_code: byCode
+    },
+    issues,
+    qc_report_path: input.qcReportPath
+  };
+}
+
+function retrySummaryReportPath(episodeId: string, stage: RenderStage): string {
+  const out = getEpisodeOutputPaths(episodeId);
+  return path.join(out.outDir, `retry_summary_${stage.toLowerCase()}.json`);
 }
 
 function createPartialShotsPath(baseShotsPath: string, failedShotIds: string[], attempt: number): string | null {
@@ -664,7 +967,18 @@ async function persistQc(episodeId: string, jobDbId: string, qcReportPath: strin
 }
 
 async function addToQueue(name: string, payload: EpisodeJobPayload, maxAttempts: number, retryBackoffMs: number) {
-  const options: JobsOptions = { jobId: payload.jobDbId, attempts: maxAttempts, backoff: { type: "exponential", delay: retryBackoffMs }, removeOnComplete: false, removeOnFail: false };
+  const hasFailedShotIds =
+    Array.isArray(payload.render?.failedShotIds) &&
+    payload.render.failedShotIds.some((shotId) => typeof shotId === "string" && shotId.trim().length > 0);
+  const retryPriority = payload.render?.rerenderFailedShotsOnly === true || hasFailedShotIds ? 1 : undefined;
+  const options: JobsOptions = {
+    jobId: payload.jobDbId,
+    attempts: maxAttempts,
+    backoff: { type: "exponential", delay: retryBackoffMs },
+    removeOnComplete: false,
+    removeOnFail: false,
+    ...(retryPriority !== undefined ? { priority: retryPriority } : {})
+  };
   try {
     return await queue.add(name, payload, options);
   } catch {
@@ -674,27 +988,51 @@ async function addToQueue(name: string, payload: EpisodeJobPayload, maxAttempts:
   }
 }
 
-async function enqueueNext(input: { parentJobDbId: string; episodeId: string; type: PipelineJobName; templatePayload: EpisodeJobPayload; render?: RenderJobPayload; maxAttempts: number; retryBackoffMs: number }) {
-  const active = await prisma.job.findFirst({
-    where: { episodeId: input.episodeId, type: input.type, status: { in: ["QUEUED", "RUNNING"] satisfies ActiveJobStatus[] } },
-    orderBy: { createdAt: "desc" }
+const downstreamEnqueueLocks = new Map<string, Promise<void>>();
+
+async function withDownstreamEnqueueLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = downstreamEnqueueLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
   });
-  if (active) {
-    await logJob(input.parentJobDbId, "info", "Reusing active downstream job", { nextType: input.type, nextJobDbId: active.id });
-    return active;
+  const chain = prev.then(() => next);
+  downstreamEnqueueLocks.set(key, chain);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (downstreamEnqueueLocks.get(key) === chain) {
+      downstreamEnqueueLocks.delete(key);
+    }
   }
+}
 
-  const nextJob = await prisma.job.create({
-    data: { episodeId: input.episodeId, type: input.type, status: "QUEUED", progress: 0, maxAttempts: input.maxAttempts > 0 ? input.maxAttempts : MAX_JOB_ATTEMPTS, retryBackoffMs: input.retryBackoffMs > 0 ? input.retryBackoffMs : 1000 }
+async function enqueueNext(input: { parentJobDbId: string; episodeId: string; type: PipelineJobName; templatePayload: EpisodeJobPayload; render?: RenderJobPayload; maxAttempts: number; retryBackoffMs: number }) {
+  const lockKey = `${input.episodeId}:${input.type}`;
+  return withDownstreamEnqueueLock(lockKey, async () => {
+    const active = await prisma.job.findFirst({
+      where: { episodeId: input.episodeId, type: input.type, status: { in: ["QUEUED", "RUNNING"] satisfies ActiveJobStatus[] } },
+      orderBy: { createdAt: "desc" }
+    });
+    if (active) {
+      await logJob(input.parentJobDbId, "info", "Reusing active downstream job", { nextType: input.type, nextJobDbId: active.id });
+      return active;
+    }
+
+    const nextJob = await prisma.job.create({
+      data: { episodeId: input.episodeId, type: input.type, status: "QUEUED", progress: 0, maxAttempts: input.maxAttempts > 0 ? input.maxAttempts : MAX_JOB_ATTEMPTS, retryBackoffMs: input.retryBackoffMs > 0 ? input.retryBackoffMs : 1000 }
+    });
+    await logJob(nextJob.id, "info", "Transition -> QUEUED", { source: "worker:pipeline", parentJobDbId: input.parentJobDbId, type: input.type });
+
+    const payload: EpisodeJobPayload = { jobDbId: nextJob.id, episodeId: input.episodeId, schemaChecks: [], ...(input.templatePayload.pipeline ? { pipeline: input.templatePayload.pipeline } : {}), ...(input.render ? { render: input.render } : {}) };
+    const bull = await addToQueue(input.type, payload, nextJob.maxAttempts, nextJob.retryBackoffMs);
+    await prisma.job.update({ where: { id: nextJob.id }, data: { bullmqJobId: String(bull.id), status: "QUEUED", lastError: null } });
+    await logJob(nextJob.id, "info", "Transition -> ENQUEUED", { source: "worker:pipeline", bullmqJobId: String(bull.id), type: input.type });
+    await logJob(input.parentJobDbId, "info", "Pipeline next job enqueued", { nextType: input.type, nextJobDbId: nextJob.id, bullmqJobId: String(bull.id) });
+    return nextJob;
   });
-  await logJob(nextJob.id, "info", "Transition -> QUEUED", { source: "worker:pipeline", parentJobDbId: input.parentJobDbId, type: input.type });
-
-  const payload: EpisodeJobPayload = { jobDbId: nextJob.id, episodeId: input.episodeId, schemaChecks: [], ...(input.templatePayload.pipeline ? { pipeline: input.templatePayload.pipeline } : {}), ...(input.render ? { render: input.render } : {}) };
-  const bull = await addToQueue(input.type, payload, nextJob.maxAttempts, nextJob.retryBackoffMs);
-  await prisma.job.update({ where: { id: nextJob.id }, data: { bullmqJobId: String(bull.id), status: "QUEUED", lastError: null } });
-  await logJob(nextJob.id, "info", "Transition -> ENQUEUED", { source: "worker:pipeline", bullmqJobId: String(bull.id), type: input.type });
-  await logJob(input.parentJobDbId, "info", "Pipeline next job enqueued", { nextType: input.type, nextJobDbId: nextJob.id, bullmqJobId: String(bull.id) });
-  return nextJob;
 }
 
 function parseBeatDoc(json: Prisma.JsonValue, fallbackEpisode: EpisodeInput): { episode: EpisodeInput; beats: Beat[] } {
@@ -729,6 +1067,120 @@ function buildStoryInput(episode: { id: string; topic: string; targetDurationSec
   };
 }
 
+function parseCompileSpeed(value: unknown): "slow" | "medium" | "fast" | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "slow" || normalized === "medium" || normalized === "fast") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function parseCompileAbVariant(value: unknown): "A" | "B" | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "A" || normalized === "B") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function parseHookBoostValue(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.max(0, Math.min(1, value));
+}
+
+function firstDefinedString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const normalized = value.trim();
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function firstDefinedSpeed(...values: unknown[]): "slow" | "medium" | "fast" | undefined {
+  for (const value of values) {
+    const parsed = parseCompileSpeed(value);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function firstDefinedAbVariant(...values: unknown[]): "A" | "B" | undefined {
+  for (const value of values) {
+    const parsed = parseCompileAbVariant(value);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function firstDefinedKpiFocus(...values: unknown[]): string[] | undefined {
+  for (const value of values) {
+    const parsed = sanitizeStringArray(value);
+    if (parsed.length > 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function firstDefinedHookBoost(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const parsed = parseHookBoostValue(value);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function resolveCompileStyleOptions(payload: EpisodeJobPayload, episodeSnapshot: unknown, episodeTopic: string): {
+  stylePresetId?: string;
+  styleSeed?: string;
+  hookBoost?: number;
+  episodeTopic?: string;
+  episodeTitle?: string;
+  tone?: string;
+  speed?: "slow" | "medium" | "fast";
+  kpiFocus?: string[];
+  abVariant?: "A" | "B";
+  channelBible?: unknown;
+} {
+  const story = isRecord(payload.pipeline?.story) ? payload.pipeline.story : {};
+  const snapshot = isRecord(episodeSnapshot) ? episodeSnapshot : {};
+  const snapshotStyle = isRecord(snapshot.style) ? snapshot.style : {};
+  const snapshotSelector = isRecord(snapshot.style_selector) ? snapshot.style_selector : {};
+  const snapshotEpisode = isRecord(snapshot.episode) ? snapshot.episode : {};
+
+  return {
+    stylePresetId: firstDefinedString(story.stylePresetId, snapshotStyle.stylePresetId, snapshotSelector.stylePresetId),
+    styleSeed: firstDefinedString(story.styleSeed, snapshotSelector.styleSeed, snapshotStyle.styleSeed, snapshot.style_seed),
+    hookBoost: firstDefinedHookBoost(story.hookBoost, snapshotStyle.hookBoost, snapshotSelector.hookBoost),
+    episodeTopic: firstDefinedString(story.episodeTopic, snapshotEpisode.topic, snapshot.topic, episodeTopic),
+    episodeTitle: firstDefinedString(story.episodeTitle, snapshotEpisode.title, snapshot.title),
+    tone: firstDefinedString(story.tone, snapshotSelector.tone, snapshotStyle.tone),
+    speed: firstDefinedSpeed(story.speed, snapshotSelector.speed, snapshotStyle.speed),
+    kpiFocus: firstDefinedKpiFocus(story.kpiFocus, snapshotSelector.kpiFocus, snapshotStyle.kpiFocus),
+    abVariant: firstDefinedAbVariant(story.abVariant, snapshotSelector.abVariant, snapshotStyle.abVariant),
+    channelBible: snapshot.channelBible ?? snapshot.channel_bible
+  };
+}
+
 async function handleGenerate(payload: EpisodeJobPayload, jobDbId: string, current: CurrentJobState) {
   await setEpisodeStatus(payload.episodeId, "GENERATING");
   const episode = await prisma.episode.findUnique({ where: { id: payload.episodeId }, select: { id: true, topic: true, targetDurationSec: true, bibleId: true } });
@@ -740,30 +1192,31 @@ async function handleGenerate(payload: EpisodeJobPayload, jobDbId: string, curre
   if (!vr.ok) throw new Error("Schema validation failed: beats.schema.json");
   const out = ensureOut(payload.episodeId);
   writeJson(out.beatsPath, beatsDoc);
-  const hash = sha256Hex(stableStringify(beatsDoc));
   const beatsDocJson = toPrismaJsonValue(beatsDoc);
   if (beatsDocJson === null) throw new Error("beats doc serialization failed");
+  const hash = sha256Hex(stableStringify(beatsDocJson));
   await prisma.beatDoc.upsert({ where: { episodeId: payload.episodeId }, update: { schemaId: "beats.schema.json", json: beatsDocJson, hash }, create: { episodeId: payload.episodeId, schemaId: "beats.schema.json", json: beatsDocJson, hash } });
   await logJob(jobDbId, "info", "Beats generated", { beatsPath: out.beatsPath, beatsCount: beatsDoc.beats.length, hash });
   await enqueueNext({ parentJobDbId: jobDbId, episodeId: payload.episodeId, type: COMPILE_SHOTS_JOB_NAME, templatePayload: payload, maxAttempts: current.maxAttempts, retryBackoffMs: current.retryBackoffMs });
 }
 
 async function handleCompile(payload: EpisodeJobPayload, jobDbId: string, current: CurrentJobState) {
-  const episode = await prisma.episode.findUnique({ where: { id: payload.episodeId }, select: { id: true, topic: true, targetDurationSec: true, bibleId: true } });
+  const episode = await prisma.episode.findUnique({ where: { id: payload.episodeId }, select: { id: true, topic: true, targetDurationSec: true, bibleId: true, datasetVersionSnapshot: true } });
   if (!episode) throw new Error(`Episode not found: ${payload.episodeId}`);
   const beatDoc = await prisma.beatDoc.findUnique({ where: { episodeId: payload.episodeId }, select: { json: true } });
   if (!beatDoc) throw new Error(`BeatDoc not found: ${payload.episodeId}`);
   const fallbackEpisode: EpisodeInput = { episode_id: payload.episodeId, bible_ref: episode.bibleId ?? "channel_bible:default", topic: episode.topic, target_duration_sec: episode.targetDurationSec };
   const parsed = parseBeatDoc(beatDoc.json, fallbackEpisode);
-  const shots = compileShots(parsed.beats);
+  const compileStyleOptions = resolveCompileStyleOptions(payload, episode.datasetVersionSnapshot, parsed.episode.topic);
+  const shots = compileShots(parsed.beats, compileStyleOptions);
   const shotsDoc = toShotsDocument({ ...parsed.episode, episode_id: payload.episodeId }, shots, 30);
   const vr = schemaValidator.validate("shots.schema.json", shotsDoc);
   if (!vr.ok) throw new Error("Schema validation failed: shots.schema.json");
   const out = ensureOut(payload.episodeId);
   writeJson(out.shotsPath, shotsDoc);
-  const hash = sha256Hex(stableStringify(shotsDoc));
   const shotsDocJson = toPrismaJsonValue(shotsDoc);
   if (shotsDocJson === null) throw new Error("shots doc serialization failed");
+  const hash = sha256Hex(stableStringify(shotsDocJson));
   await prisma.shotDoc.upsert({ where: { episodeId: payload.episodeId }, update: { schemaId: "shots.schema.json", json: shotsDocJson, hash }, create: { episodeId: payload.episodeId, schemaId: "shots.schema.json", json: shotsDocJson, hash } });
   await logJob(jobDbId, "info", "Shots compiled", { shotsPath: out.shotsPath, shotsCount: shotsDoc.shots.length, hash });
   await enqueueNext({ parentJobDbId: jobDbId, episodeId: payload.episodeId, type: RENDER_PREVIEW_JOB_NAME, templatePayload: payload, render: { ...(payload.render ?? {}), shotsPath: out.shotsPath, outputPath: out.previewOutputPath, srtPath: out.previewSrtPath, qcReportPath: out.qcReportPath, renderLogPath: out.previewRenderLogPath }, maxAttempts: current.maxAttempts, retryBackoffMs: current.retryBackoffMs });
@@ -777,6 +1230,18 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
   const defaultPaths = renderDefaults(stage, payload.episodeId);
   const baseShotsPath = path.resolve(render.shotsPath ?? defaultPaths.shotsPath);
   const qcReportPath = path.resolve(render.qcReportPath ?? defaultPaths.qcReportPath);
+  let narrationAlignmentPath = render.narrationAlignmentPath;
+  const episodeForRender = await prisma.episode.findUnique({
+    where: { id: payload.episodeId },
+    select: {
+      characterPackId: true,
+      characterPack: {
+        select: {
+          json: true
+        }
+      }
+    }
+  });
 
   let failedShotIds: string[] = [];
   let recoverySource: "explicit" | "qc_report" | "none" = "none";
@@ -802,6 +1267,18 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
   }
 
   const recoveryMode = shotsPathForAttempt !== baseShotsPath;
+
+  if (stage === RENDER_PREVIEW_JOB_NAME) {
+    const audioResult = await runPreviewAudioArtifacts(payload.episodeId, jobDbId, baseShotsPath);
+    narrationAlignmentPath = audioResult.narrationAlignmentPath;
+  } else if (!narrationAlignmentPath) {
+    const out = ensureOut(payload.episodeId);
+    const candidate = path.join(out.outDir, "narration_alignment.json");
+    if (fs.existsSync(candidate)) {
+      narrationAlignmentPath = candidate;
+    }
+  }
+
   await logJob(jobDbId, "info", "Render pipeline started", {
     stage,
     attempt,
@@ -809,11 +1286,46 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
     recoverySource,
     failedShotIds,
     baseShotsPath,
-    partialShotsPath
+    partialShotsPath,
+    characterPackId: episodeForRender?.characterPackId ?? null,
+    narrationAlignmentPath: narrationAlignmentPath ?? null
   });
 
-  const result = await orchestrateRenderEpisode({ shotsPath: shotsPathForAttempt, outputPath: render.outputPath, srtPath: render.srtPath, qcReportPath: render.qcReportPath, renderLogPath: render.renderLogPath, compositionId: render.compositionId, dryRun: render.dryRun ?? false, qc: render.qc, preset: render.preset, attempt, maxAttempts: current.maxAttempts });
+  const result = await orchestrateRenderEpisode({
+    shotsPath: shotsPathForAttempt,
+    outputPath: render.outputPath,
+    srtPath: render.srtPath,
+    qcReportPath: render.qcReportPath,
+    renderLogPath: render.renderLogPath,
+    compositionId: render.compositionId,
+    dryRun: render.dryRun ?? false,
+    qc: render.qc,
+    preset: render.preset,
+    ...(narrationAlignmentPath ? { narrationAlignmentPath } : {}),
+    attempt,
+    maxAttempts: current.maxAttempts,
+    ...(episodeForRender?.characterPackId ? { characterPackId: episodeForRender.characterPackId } : {}),
+    ...(episodeForRender?.characterPack?.json ? { characterPack: episodeForRender.characterPack.json } : {})
+  });
   await persistQc(payload.episodeId, jobDbId, result.qcReportPath);
+  const retrySummary = buildRetrySummaryReport({
+    episodeId: payload.episodeId,
+    stage,
+    attempt,
+    recoveryMode,
+    recoverySource,
+    requestedFailedShotIds: failedShotIds,
+    partialShotsPath,
+    qcReportPath: result.qcReportPath
+  });
+  const retrySummaryPath = retrySummaryReportPath(payload.episodeId, stage);
+  writeJson(retrySummaryPath, retrySummary);
+  await logJob(jobDbId, "info", "Render retry summary aggregated", {
+    stage,
+    attempt,
+    retrySummaryPath,
+    failedShotSummary: retrySummary.failed_shot_summary
+  });
   await logJob(jobDbId, "info", "Render completed", {
     stage,
     outputPath: result.outputPath,
@@ -822,11 +1334,13 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
     renderLogPath: result.renderLogPath,
     recoveryMode,
     partialShotsPath,
-    failedShotIds
+    failedShotIds,
+    retrySummaryPath,
+    characterPackId: episodeForRender?.characterPackId ?? null,
+    narrationAlignmentPath: narrationAlignmentPath ?? null
   });
 
   if (stage === RENDER_PREVIEW_JOB_NAME) {
-    await runPreviewAudioArtifacts(payload.episodeId, jobDbId, baseShotsPath);
     await setEpisodeStatus(payload.episodeId, "PREVIEW_READY");
     if (shouldAutoRenderFinal(payload)) {
       const out = ensureOut(payload.episodeId);
@@ -853,10 +1367,19 @@ async function runPreviewAudioArtifacts(episodeId: string, jobDbId: string, shot
 
   const cues = buildAudioCues(out.beatsPath, shotsPath);
   const pronunciationDictionaryPath = resolveAudioPronunciationDictionaryPath(out.outDir);
+  let ttsFallbackReason: string | undefined;
+  const tts = resolvePreviewTtsProvider(out.outDir, (reason) => {
+    ttsFallbackReason = reason;
+  });
+  if (tts.warning) {
+    await logJob(jobDbId, "warn", "Preview TTS provider warning", {
+      warning: tts.warning
+    });
+  }
 
   const result = await runAudioPipeline(
     {
-      ttsProvider: new MockTTSProvider(out.outDir),
+      ttsProvider: tts.provider,
       musicLibrary: new LocalMockMusicLibrary(path.join(out.outDir, "assets"))
     },
     {
@@ -874,7 +1397,11 @@ async function runPreviewAudioArtifacts(episodeId: string, jobDbId: string, shot
     mixPath: result.mixPath,
     licenseLogPath: result.licenseLogPath,
     narrationPath: result.narrationPath,
-    sfxEvents: result.placementPlan.sfxEvents.length
+    narrationAlignmentPath: result.narrationAlignmentPath,
+    sfxEvents: result.placementPlan.sfxEvents.length,
+    ttsProvider: tts.providerName,
+    ttsFallback: ttsFallbackReason ? tts.fallbackName ?? null : null,
+    ttsFallbackReason: ttsFallbackReason ?? null
   });
 
   return result;
@@ -1079,11 +1606,11 @@ async function buildCharacterPackJson(payload: EpisodeJobPayload, jobDbId: strin
 
   writeJson(out.packPath, pack);
 
-  const hash = sha256Hex(stableStringify(pack));
   const packJson = toPrismaJsonValue(pack);
   if (packJson === null) {
     throw new Error("character pack serialization failed");
   }
+  const hash = sha256Hex(stableStringify(packJson));
 
   await prisma.characterPack.update({
     where: {
@@ -1188,6 +1715,7 @@ async function handleBuildCharacterPack(payload: EpisodeJobPayload, jobDbId: str
 async function handleRenderCharacterPreview(payload: EpisodeJobPayload, jobDbId: string) {
   const character = requireCharacterPayload(payload);
   const out = ensureCharacterOut(character.characterPackId);
+  const generationScoreSummary = summarizeCharacterGenerationScores(character);
 
   const characterPack = await prisma.characterPack.findUnique({
     where: {
@@ -1213,7 +1741,7 @@ async function handleRenderCharacterPreview(payload: EpisodeJobPayload, jobDbId:
     writeJson(out.packPath, pack);
   }
 
-  const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const remotionCli = path.resolve(REPO_ROOT, "apps", "video", "node_modules", "@remotion", "cli", "remotion-cli.js");
   const props = JSON.stringify({
     characterPackId: character.characterPackId,
     pack
@@ -1225,14 +1753,11 @@ async function handleRenderCharacterPreview(payload: EpisodeJobPayload, jobDbId:
   });
 
   await runCommand(
-    pnpmCommand,
+    process.execPath,
     [
-      "-C",
-      "apps/video",
-      "exec",
-      "remotion",
+      remotionCli,
       "render",
-      "src/index.ts",
+      "apps/video/src/index.ts",
       "CHARACTER-PACK-PREVIEW",
       out.previewPath,
       "--overwrite",
@@ -1247,6 +1772,11 @@ async function handleRenderCharacterPreview(payload: EpisodeJobPayload, jobDbId:
     ok: previewExists,
     characterPackId: character.characterPackId,
     generatedAt: new Date().toISOString(),
+    generationQc: {
+      manifestPath: generationScoreSummary.manifestPath,
+      views: generationScoreSummary.views,
+      warnings: generationScoreSummary.warnings
+    },
     checks: [
       {
         code: "CHARACTER_PACK_SCHEMA",

@@ -682,6 +682,10 @@ app.addHook("preHandler", async (request) => {
   if (API_KEY.length === 0) {
     return;
   }
+  const routePath = request.routeOptions?.url ?? "";
+  if (routePath.startsWith("/ui") || routePath.startsWith("/artifacts")) {
+    return;
+  }
 
   const rawValue = request.headers["x-api-key"];
   const providedKey = Array.isArray(rawValue) ? rawValue[0] : rawValue;
@@ -694,6 +698,18 @@ app.addHook("preHandler", async (request) => {
 app.addHook("onRequest", async (request, reply) => {
   const requestId = readRequestId(request);
   reply.header("x-request-id", requestId);
+});
+
+app.addHook("onSend", async (request, reply, payload) => {
+  const routePath = request.routeOptions?.url ?? "";
+  const isLegacyApiSurface =
+    (routePath.startsWith("/episodes") || routePath.startsWith("/jobs") || routePath.startsWith("/assets")) &&
+    !routePath.startsWith("/api");
+  if (isLegacyApiSurface) {
+    reply.header("x-api-legacy-route", "true");
+    reply.header("warning", '299 - "Legacy route is deprecated. Use /api/* route equivalents."');
+  }
+  return payload;
 });
 
 app.addHook("preHandler", async (request) => {
@@ -779,9 +795,11 @@ app.setErrorHandler((error, request, reply) => {
 });
 
 app.get("/health", async () => {
+  const overallStatus = queue !== null ? "ok" : "degraded";
   return {
     data: {
-      ok: true,
+      ok: overallStatus === "ok",
+      status: overallStatus,
       redis: redisHealth,
       queue: QUEUE_NAME,
       queueReady: queue !== null,

@@ -12,6 +12,8 @@ on:
       - "packages/image-gen/**"
       - "packages/shared/**"
       - "packages/render-orchestrator/**"
+      - "packages/audio/**"
+      - "packages/analytics/**"
       - "scripts/smokeCharacter.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -71,6 +73,13 @@ jobs:
         env:
           SMOKE_TIMEOUT_MS: "900000"
         run: pnpm smoke:character:strict
+
+      - name: Package smoke (shared/audio/render/analytics)
+        run: |
+          pnpm -C packages/shared run smoke:stableStringify
+          pnpm -C packages/audio run audio:smoke
+          pnpm -C packages/render-orchestrator run render:smoke
+          pnpm -C packages/analytics run analytics:smoke
 
       - name: Upload runtime logs
         if: always()

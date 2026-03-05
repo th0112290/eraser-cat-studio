@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { Queue, type JobsOptions } from "bullmq";
+import { Queue } from "bullmq";
 import {
   analyticsPaths,
   analyzeDropoffs,
@@ -16,10 +16,11 @@ import {
   saveRepurposePlan,
   saveRetentionCurve,
   type RetentionPoint
-} from "../../../../packages/analytics/src/index";
+} from "@ec/analytics";
 import { createDefaultNotifier, estimateJobCost } from "../../../../packages/ops/src/index";
 import { writeAuditLog } from "./auditService";
 import type { EpisodeJobPayload } from "./scheduleService";
+import { enqueueWithResilience } from "./enqueueWithResilience";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -244,35 +245,6 @@ async function loadShotTimings(prisma: PrismaClient, episodeId: string) {
   }
 
   return parseShotTimingsFromDocument(shotDoc.json);
-}
-
-async function enqueueWithIdempotency(
-  queue: Queue<EpisodeJobPayload>,
-  name: string,
-  payload: EpisodeJobPayload,
-  maxAttempts: number,
-  backoffMs: number
-) {
-  const options: JobsOptions = {
-    jobId: payload.jobDbId,
-    attempts: maxAttempts,
-    backoff: {
-      type: "exponential",
-      delay: backoffMs
-    },
-    removeOnComplete: false,
-    removeOnFail: false
-  };
-
-  try {
-    return await queue.add(name, payload, options);
-  } catch (error) {
-    const existingJob = await queue.getJob(payload.jobDbId);
-    if (existingJob) {
-      return existingJob;
-    }
-    throw error;
-  }
 }
 
 async function buildExistingRepurposeJobMap(prisma: PrismaClient, episodeId: string) {
@@ -614,14 +586,17 @@ export function registerAnalyticsRoutes(input: {
         };
 
         try {
-          const bullJob = await enqueueWithIdempotency(
+          const enqueueResult = await enqueueWithResilience({
             queue,
-            "GENERATE_METADATA",
+            name: "GENERATE_METADATA",
             payload,
-            retry.maxAttempts,
-            retry.backoffMs
-          );
-          const bullmqJobId = String(bullJob.id);
+            maxAttempts: retry.maxAttempts,
+            backoffMs: retry.backoffMs,
+            maxEnqueueRetries: 2,
+            retryDelayMs: 200,
+            redisUnavailableAsHttp503: true
+          });
+          const bullmqJobId = String(enqueueResult.job.id);
 
           await prisma.job.update({
             where: { id: job.id },
@@ -643,7 +618,10 @@ export function registerAnalyticsRoutes(input: {
                 queueName,
                 bullmqJobId,
                 segmentKey: candidate.segmentKey,
-                candidateId: candidate.id
+                candidateId: candidate.id,
+                enqueueMode: enqueueResult.mode,
+                enqueueAttemptCount: enqueueResult.attemptCount,
+                enqueueErrorSummary: enqueueResult.errorSummary
               })
             }
           });

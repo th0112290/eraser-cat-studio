@@ -18,9 +18,20 @@ export function readUploadManifest(manifestPath: string): UploadManifest {
   return JSON.parse(fs.readFileSync(manifestPath, "utf8")) as UploadManifest;
 }
 
+function resolveUploader(explicitUploader?: YouTubeUploader): YouTubeUploader {
+  if (explicitUploader) {
+    return explicitUploader;
+  }
+  const mode = (process.env.PUBLISH_UPLOADER ?? "mock").trim().toLowerCase();
+  if (mode === "mock") {
+    return new MockYouTubeUploader();
+  }
+  throw new Error(`Unsupported PUBLISH_UPLOADER: ${mode}. Set PUBLISH_UPLOADER=mock or pass explicit uploader.`);
+}
+
 export async function createPublishManifest(
   input: PublishPipelineInput,
-  uploader: YouTubeUploader = new MockYouTubeUploader()
+  uploader?: YouTubeUploader
 ): Promise<PublishPipelineResult> {
   const episodeDir = path.join(path.resolve(input.outputRootDir), input.episodeId);
   ensureDir(episodeDir);
@@ -41,7 +52,7 @@ export async function createPublishManifest(
 
   const manifestPath = path.join(episodeDir, "upload_manifest.json");
 
-  const upload = await uploader.upload({
+  const upload = await resolveUploader(uploader).upload({
     episodeId: input.episodeId,
     plannedPublishAt: input.plannedPublishAt,
     seo,

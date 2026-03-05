@@ -7,6 +7,10 @@ on:
     paths:
       - ".github/workflows/api-ui-resilience-smoke.yml"
       - "apps/api/**"
+      - "packages/shared/**"
+      - "packages/audio/**"
+      - "packages/render-orchestrator/**"
+      - "packages/analytics/**"
       - "scripts/smokeUiRoutes.mjs"
       - "docs/ui-smoke-checklist.md"
       - "package.json"
@@ -43,6 +47,13 @@ jobs:
 
       - name: Typecheck Video
         run: pnpm -C apps/video exec tsc -p tsconfig.json --noEmit
+
+      - name: Package smoke (shared/audio/render/analytics)
+        run: |
+          pnpm -C packages/shared run smoke:stableStringify
+          pnpm -C packages/audio run audio:smoke
+          pnpm -C packages/render-orchestrator run render:smoke
+          pnpm -C packages/analytics run analytics:smoke
 
       - name: Run fallback helper smoke
         run: pnpm -C apps/api run smoke:ui:fallback

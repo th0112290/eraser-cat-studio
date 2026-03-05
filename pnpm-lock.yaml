@@ -13,6 +13,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.883.0
         version: 3.1000.0
+      '@ec/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@ec/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -170,7 +173,7 @@ importers:
   packages/db:
     dependencies:
       '@prisma/client':
-        specifier: ^5.18.0
+        specifier: ^5.22.0
         version: 5.22.0(prisma@5.22.0)
     devDependencies:
       dotenv-cli:
@@ -179,6 +182,18 @@ importers:
       prisma:
         specifier: ^5.22.0
         version: 5.22.0
+
+  packages/image-gen:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.24
+        version: 22.19.13
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/ops:
     devDependencies:

@@ -26,11 +26,16 @@ function isAssetPayload(value: unknown): value is AssetIngestQueuePayload {
 
 const prisma = new PrismaClient();
 
+if (process.env.ASSET_ONLY_WORKER !== "1") {
+  console.error("[worker:asset] disabled. Set ASSET_ONLY_WORKER=1 to run this dedicated worker.");
+  process.exit(1);
+}
+
 const worker = new Worker<AssetIngestQueuePayload>(
   QUEUE_NAME,
   async (bullJob) => {
     if (String(bullJob.name) !== ASSET_INGEST_JOB_NAME) {
-      return { ok: true, skipped: true };
+      throw new Error(`asset worker received unsupported job: ${String(bullJob.name)}`);
     }
 
     if (!isAssetPayload(bullJob.data)) {

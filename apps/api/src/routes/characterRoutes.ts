@@ -2529,7 +2529,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       throw routeError;
     }
 
-    const [readyAssets, recentJobs, activeChannelBible] = await Promise.all([
+    const [readyAssets, recentJobs, approvedPacks, activeChannelBible] = await Promise.all([
       prisma.asset.findMany({
         where: {
           status: "READY",
@@ -2554,6 +2554,16 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
               topic: true
             }
           }
+        }
+      }),
+      prisma.characterPack.findMany({
+        where: { status: "APPROVED" },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          version: true,
+          status: true
         }
       }),
       prisma.channelBible.findFirst({
@@ -2638,6 +2648,51 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           )}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit">Apply HITL Selection + Build Pack</button></div></form></section>`
         : `<section class="card"><h2>Pick Candidates (HITL)</h2><div class="notice">A selected generation job is required.</div></section>`;
 
+    const previewSection =
+      selectedManifest && selectedManifest.characterPackId
+        ? (() => {
+            const artifacts = getCharacterArtifacts(selectedManifest.characterPackId);
+            const previewExists = fs.existsSync(artifacts.previewPath);
+            const qcExists = fs.existsSync(artifacts.qcReportPath);
+            return `<section class="card"><h2>Selected Pack Preview</h2><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
+              selectedManifest.characterPackId
+            )}">${escHtml(selectedManifest.characterPackId)}</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
+              selectedManifest.characterPackId
+            )}/pack.json">pack.json</a> | <a href="/artifacts/characters/${encodeURIComponent(
+              selectedManifest.characterPackId
+            )}/preview.mp4">preview.mp4</a> | <a href="/artifacts/characters/${encodeURIComponent(
+              selectedManifest.characterPackId
+            )}/qc_report.json">qc_report.json</a></p><p>preview: <span class="badge ${
+              previewExists ? "ok" : "bad"
+            }">${previewExists ? "exists" : "missing"}</span> / qc: <span class="badge ${
+              qcExists ? "ok" : "bad"
+            }">${qcExists ? "exists" : "missing"}</span></p><form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
+              selectedManifest.characterPackId
+            )}"/><button type="submit" class="secondary">Set Pack Active</button></form></section>`;
+          })()
+        : "";
+
+    const rollbackSection =
+      approvedPacks.length > 0
+        ? `<section class="card"><h2>Rollback Active Pack</h2><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>Target Pack<select name="targetCharacterPackId">${approvedPacks
+            .map(
+              (pack) =>
+                `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
+            )
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Rollback Active Pack</button></div></form></section>`
+        : `<section class="card"><h2>Rollback Active Pack</h2><div class="notice">No approved packs available.</div></section>`;
+
+    const compareSection =
+      approvedPacks.length >= 2
+        ? `<section class="card"><h2>Compare Approved Packs</h2><form method="get" action="/ui/character-generator/compare" class="grid two"><label>Left Pack<select name="leftPackId">${approvedPacks
+            .map((pack) => `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)})</option>`)
+            .join("")}</select></label><label>Right Pack<select name="rightPackId">${approvedPacks
+            .map((pack, index) => `<option value="${escHtml(pack.id)}"${index === 1 ? " selected" : ""}>${escHtml(
+              pack.id
+            )} (v${escHtml(pack.version)})</option>`)
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Open A/B Compare</button></div></form></section>`
+        : `<section class="card"><h2>Compare Approved Packs</h2><div class="notice">At least two approved packs are required.</div></section>`;
+
     const rows = recentJobs
       .map((job) => {
         const manifest = readGenerationManifest(getGenerationManifestPath(job.id));
@@ -2658,9 +2713,9 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       selectedSection,
       regenerateSection,
       pickSection,
-      previewSection: "",
-      rollbackSection: "",
-      compareSection: "",
+      previewSection,
+      rollbackSection,
+      compareSection,
       rows,
       statusScript: selectedJob ? buildCharacterGeneratorStatusScript() : ""
     });
