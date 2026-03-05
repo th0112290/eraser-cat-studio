@@ -29,6 +29,7 @@ const requiredPageHeadings = new Map([
 const requiredPageKeywords = new Map([
   ["/ui/assets", ["선택한 에셋", "최근 에셋"]],
   ["/ui/studio", ["빠른 시작 가이드", "원클릭 시작"]],
+  ["/ui/character-generator", ["생성 모드", "스타일/프롬프트", "생성 실행"]],
   ["/ui/jobs", ["최근 100개 작업", "Latest 100 jobs"]],
   ["/ui/hitl", ["검수 재렌더", "HITL Rerender"]],
   ["/ui/publish", ["episodeId", "퍼블리시 실행"]],
