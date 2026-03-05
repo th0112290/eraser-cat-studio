@@ -201,3 +201,16 @@ export const queue = new Queue<EpisodeJobPayload>(QUEUE_NAME, {
     removeOnFail: false
   }
 });
+
+export const assetIngestQueue = new Queue<AssetIngestQueuePayload>(ASSET_QUEUE_NAME, {
+  connection: REDIS_CONNECTION,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: {
+      type: "exponential",
+      delay: 1000
+    },
+    removeOnComplete: false,
+    removeOnFail: false
+  }
+});

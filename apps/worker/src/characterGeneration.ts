@@ -18,7 +18,7 @@ import {
 import {
   ASSET_INGEST_JOB_NAME,
   BUILD_CHARACTER_PACK_JOB_NAME,
-  queue,
+  assetIngestQueue,
   REPO_ROOT,
   type CharacterAssetSelection,
   type CharacterGenerationPayload,
@@ -64,6 +64,56 @@ type GenerationHelpers = {
   setEpisodeStatus: SetEpisodeStatus;
   addEpisodeJob: AddEpisodeJob;
 };
+
+type CharacterGenerationSessionDelegate = {
+  findUnique: (args: unknown) => Promise<any>;
+  findFirst: (args: unknown) => Promise<any>;
+  findMany: (args: unknown) => Promise<any[]>;
+  create: (args: unknown) => Promise<any>;
+  update: (args: unknown) => Promise<any>;
+};
+
+type CharacterGenerationCandidateDelegate = {
+  findMany: (args: unknown) => Promise<any[]>;
+  deleteMany: (args: unknown) => Promise<any>;
+  createMany: (args: unknown) => Promise<any>;
+  updateMany: (args: unknown) => Promise<any>;
+};
+
+function getCharacterGenerationSessionDelegate(prisma: PrismaClient): CharacterGenerationSessionDelegate | null {
+  const delegate = (prisma as unknown as Record<string, unknown>).characterGenerationSession;
+  if (!delegate || typeof delegate !== "object") {
+    return null;
+  }
+  const candidate = delegate as CharacterGenerationSessionDelegate;
+  if (
+    typeof candidate.findUnique !== "function" ||
+    typeof candidate.findFirst !== "function" ||
+    typeof candidate.findMany !== "function" ||
+    typeof candidate.create !== "function" ||
+    typeof candidate.update !== "function"
+  ) {
+    return null;
+  }
+  return candidate;
+}
+
+function getCharacterGenerationCandidateDelegate(prisma: PrismaClient): CharacterGenerationCandidateDelegate | null {
+  const delegate = (prisma as unknown as Record<string, unknown>).characterGenerationCandidate;
+  if (!delegate || typeof delegate !== "object") {
+    return null;
+  }
+  const candidate = delegate as CharacterGenerationCandidateDelegate;
+  if (
+    typeof candidate.findMany !== "function" ||
+    typeof candidate.deleteMany !== "function" ||
+    typeof candidate.createMany !== "function" ||
+    typeof candidate.updateMany !== "function"
+  ) {
+    return null;
+  }
+  return candidate;
+}
 
 type ImageAnalysis = {
   originalWidth: number;
@@ -1275,6 +1325,11 @@ async function upsertGenerationSession(input: {
   manifestPath: string;
   statusMessage: string;
 }): Promise<{ id: string }> {
+  const sessionDelegate = getCharacterGenerationSessionDelegate(input.prisma);
+  if (!sessionDelegate) {
+    return { id: input.generation.sessionId ?? `legacy-${input.episodeId}` };
+  }
+
   const data = {
     episodeId: input.episodeId,
     characterPackId: input.characterPackId,
@@ -1293,12 +1348,12 @@ async function upsertGenerationSession(input: {
   };
 
   if (input.generation.sessionId) {
-    const existing = await input.prisma.characterGenerationSession.findUnique({
+    const existing = await sessionDelegate.findUnique({
       where: { id: input.generation.sessionId },
       select: { id: true, episodeId: true }
     });
     if (existing && existing.episodeId === input.episodeId) {
-      await input.prisma.characterGenerationSession.update({
+      await sessionDelegate.update({
         where: { id: existing.id },
         data
       });
@@ -1306,7 +1361,7 @@ async function upsertGenerationSession(input: {
     }
   }
 
-  const latest = await input.prisma.characterGenerationSession.findFirst({
+  const latest = await sessionDelegate.findFirst({
     where: {
       episodeId: input.episodeId,
       characterPackId: input.characterPackId
@@ -1316,14 +1371,14 @@ async function upsertGenerationSession(input: {
   });
 
   if (latest) {
-    await input.prisma.characterGenerationSession.update({
+    await sessionDelegate.update({
       where: { id: latest.id },
       data
     });
     return { id: latest.id };
   }
 
-  const created = await input.prisma.characterGenerationSession.create({
+  const created = await sessionDelegate.create({
     data
   });
 
@@ -1339,23 +1394,27 @@ async function upsertSessionCandidates(input: {
   if (input.scored.length === 0) {
     return;
   }
+  const candidateDelegate = getCharacterGenerationCandidateDelegate(input.prisma);
+  if (!candidateDelegate) {
+    return;
+  }
 
   if (input.viewToGenerate) {
-    await input.prisma.characterGenerationCandidate.deleteMany({
+    await candidateDelegate.deleteMany({
       where: {
         sessionId: input.sessionId,
         view: toDbCandidateView(input.viewToGenerate)
       }
     });
   } else {
-    await input.prisma.characterGenerationCandidate.deleteMany({
+    await candidateDelegate.deleteMany({
       where: {
         sessionId: input.sessionId
       }
     });
   }
 
-  await input.prisma.characterGenerationCandidate.createMany({
+  await candidateDelegate.createMany({
     data: input.scored.map((entry) => ({
       sessionId: input.sessionId,
       view: toDbCandidateView(entry.candidate.view),
@@ -1385,13 +1444,18 @@ async function markSessionCandidatesPicked(input: {
   sessionId: string;
   selectedByView: Record<CharacterView, { candidateId: string; assetId: string }>;
 }): Promise<void> {
-  await input.prisma.characterGenerationCandidate.updateMany({
+  const candidateDelegate = getCharacterGenerationCandidateDelegate(input.prisma);
+  if (!candidateDelegate) {
+    return;
+  }
+
+  await candidateDelegate.updateMany({
     where: { sessionId: input.sessionId },
     data: { picked: false }
   });
 
   for (const selected of Object.values(input.selectedByView)) {
-    await input.prisma.characterGenerationCandidate.updateMany({
+    await candidateDelegate.updateMany({
       where: {
         sessionId: input.sessionId,
         candidateId: selected.candidateId
@@ -1583,7 +1647,12 @@ async function resolveFrontReferenceFromSession(
   rejectionCount: number;
   updatedAtMs: number;
 } | undefined> {
-  const rows = await prisma.characterGenerationCandidate.findMany({
+  const candidateDelegate = getCharacterGenerationCandidateDelegate(prisma);
+  if (!candidateDelegate) {
+    return undefined;
+  }
+
+  const rows = await candidateDelegate.findMany({
     where: {
       sessionId,
       view: "FRONT",
@@ -1720,6 +1789,23 @@ async function resolveAutoContinuityReference(input: {
     reason?: "matched" | "no_recent_ready_session" | "no_eligible_front_candidate";
   };
 }> {
+  const sessionDelegate = getCharacterGenerationSessionDelegate(input.prisma);
+  if (!sessionDelegate) {
+    return {
+      diagnostics: {
+        cutoffUpdatedAt: new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000).toISOString(),
+        queuedSessionCount: 0,
+        uniqueQueuedSessionCount: 0,
+        duplicateSessionCount: 0,
+        searchedSessionCount: 0,
+        searchedSessionIdsPreview: [],
+        preferredPoolCount: 0,
+        fallbackPoolCount: 0,
+        reason: "no_recent_ready_session"
+      }
+    };
+  }
+
   const cutoffDate = new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000);
   const whereBase: Prisma.CharacterGenerationSessionWhereInput = {
     status: "READY",
@@ -1732,7 +1818,7 @@ async function resolveAutoContinuityReference(input: {
     ...(input.currentSessionId ? { id: { not: input.currentSessionId } } : {})
   };
 
-  const preferred = await input.prisma.characterGenerationSession.findMany({
+  const preferred = await sessionDelegate.findMany({
     where: {
       ...whereBase,
       characterPackId: input.characterPackId
@@ -1746,7 +1832,7 @@ async function resolveAutoContinuityReference(input: {
     take: input.config.preferredSessionTake
   });
 
-  const fallback = await input.prisma.characterGenerationSession.findMany({
+  const fallback = await sessionDelegate.findMany({
     where: {
       ...whereBase,
       episode: {
@@ -2176,11 +2262,7 @@ async function persistSelectedCandidates(input: {
       removeOnFail: false
     };
 
-    const ingestQueued = await queue.add(
-      ASSET_INGEST_JOB_NAME,
-      ingestPayload as unknown as EpisodeJobPayload,
-      options
-    );
+    const ingestQueued = await assetIngestQueue.add(ASSET_INGEST_JOB_NAME, ingestPayload, options);
     const ingestJobId = String(ingestQueued.id);
 
     selectedAssets.set(view, {
@@ -2314,16 +2396,19 @@ async function persistSelectedCandidates(input: {
       }
     });
 
-    await prisma.characterGenerationSession.update({
-      where: { id: sessionId },
-      data: {
-        status: "READY",
-        statusMessage:
-          source === "hitl"
-            ? `HITL selection applied and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
-            : `Auto-selected and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
-      }
-    });
+    const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+    if (sessionDelegate) {
+      await sessionDelegate.update({
+        where: { id: sessionId },
+        data: {
+          status: "READY",
+          statusMessage:
+            source === "hitl"
+              ? `HITL selection applied and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
+              : `Auto-selected and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
+        }
+      });
+    }
   }
 }
 
@@ -2847,7 +2932,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
   ): Promise<CharacterGenerationCandidate[]> => {
     try {
       const result = await provider.generate(providerInput);
-      providerCallLogs.push(...result.callLogs);
+      if (Array.isArray((result as { callLogs?: unknown }).callLogs)) {
+        providerCallLogs.push(...((result as { callLogs?: CharacterProviderCallLog[] }).callLogs ?? []));
+      }
       providerWorkflowHash = result.workflowHash;
       providerGeneratedAt = result.generatedAt;
       return result.candidates;
@@ -2862,7 +2949,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
         provider: "mock"
       });
       const fallbackResult = await provider.generate(providerInput);
-      providerCallLogs.push(...fallbackResult.callLogs);
+      if (Array.isArray((fallbackResult as { callLogs?: unknown }).callLogs)) {
+        providerCallLogs.push(
+          ...((fallbackResult as { callLogs?: CharacterProviderCallLog[] }).callLogs ?? [])
+        );
+      }
       providerWorkflowHash = fallbackResult.workflowHash;
       providerGeneratedAt = fallbackResult.generatedAt;
       return fallbackResult.candidates;
@@ -3240,18 +3331,21 @@ export async function handleGenerateCharacterAssetsJob(input: {
     }
 
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    await prisma.characterGenerationSession.update({
-      where: { id: sessionId },
-      data: {
-        status: "READY",
-        statusMessage: buildHitlSessionStatusMessage({
-          viewToGenerate: generation.viewToGenerate,
-          missingGeneratedViews,
-          lowQualityGeneratedViews,
-          continuity: continuitySnapshot
-        })
-      }
-    });
+    const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+    if (sessionDelegate) {
+      await sessionDelegate.update({
+        where: { id: sessionId },
+        data: {
+          status: "READY",
+          statusMessage: buildHitlSessionStatusMessage({
+            viewToGenerate: generation.viewToGenerate,
+            missingGeneratedViews,
+            lowQualityGeneratedViews,
+            continuity: continuitySnapshot
+          })
+        }
+      });
+    }
 
     await helpers.logJob(jobDbId, "info", "Character generation completed (HITL required)", {
       manifestPath,
@@ -3308,15 +3402,18 @@ export async function handleGenerateCharacterAssetsJob(input: {
   });
   } catch (error) {
     if (sessionId) {
-      await prisma.characterGenerationSession
-        .update({
-          where: { id: sessionId },
-          data: {
-            status: "FAILED",
-            statusMessage: errorMessage(error)
-          }
-        })
-        .catch(() => undefined);
+      const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+      if (sessionDelegate) {
+        await sessionDelegate
+          .update({
+            where: { id: sessionId },
+            data: {
+              status: "FAILED",
+              statusMessage: errorMessage(error)
+            }
+          })
+          .catch(() => undefined);
+      }
     }
     throw error;
   }
