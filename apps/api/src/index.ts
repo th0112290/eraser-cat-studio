@@ -795,7 +795,80 @@ app.setErrorHandler((error, request, reply) => {
 });
 
 app.get("/health", async () => {
-  const overallStatus = queue !== null ? "ok" : "degraded";
+  let queueStats:
+    | {
+        wait: number;
+        active: number;
+        completed: number;
+        failed: number;
+        delayed: number;
+        paused: number;
+        prioritized: number;
+      }
+    | null = null;
+  let queueStatsError: string | null = null;
+  if (queue !== null) {
+    try {
+      const counts = await queue.getJobCounts(
+        "wait",
+        "active",
+        "completed",
+        "failed",
+        "delayed",
+        "paused",
+        "prioritized"
+      );
+      queueStats = {
+        wait: counts.wait ?? 0,
+        active: counts.active ?? 0,
+        completed: counts.completed ?? 0,
+        failed: counts.failed ?? 0,
+        delayed: counts.delayed ?? 0,
+        paused: counts.paused ?? 0,
+        prioritized: counts.prioritized ?? 0
+      };
+    } catch (error) {
+      queueStatsError = errorMessage(error);
+    }
+  }
+
+  let failedTrend:
+    | {
+        last15m: number;
+        last60m: number;
+        last24h: number;
+      }
+    | null = null;
+  let failedTrendError: string | null = null;
+  try {
+    const nowMs = Date.now();
+    const [last15m, last60m, last24h] = await Promise.all([
+      prisma.job.count({
+        where: {
+          status: "FAILED",
+          finishedAt: { gte: new Date(nowMs - 15 * 60 * 1000) }
+        }
+      }),
+      prisma.job.count({
+        where: {
+          status: "FAILED",
+          finishedAt: { gte: new Date(nowMs - 60 * 60 * 1000) }
+        }
+      }),
+      prisma.job.count({
+        where: {
+          status: "FAILED",
+          finishedAt: { gte: new Date(nowMs - 24 * 60 * 60 * 1000) }
+        }
+      })
+    ]);
+    failedTrend = { last15m, last60m, last24h };
+  } catch (error) {
+    failedTrendError = errorMessage(error);
+  }
+
+  const hasIssue = queue === null || queueStatsError !== null || failedTrendError !== null;
+  const overallStatus = hasIssue ? "degraded" : "ok";
   return {
     data: {
       ok: overallStatus === "ok",
@@ -805,7 +878,11 @@ app.get("/health", async () => {
       queueReady: queue !== null,
       authEnabled: API_KEY.length > 0,
       redisUrl: REDIS_URL,
+      ...(queueStats ? { queueStats } : {}),
+      ...(failedTrend ? { failedTrend } : {}),
       ...(lastRedisError ? { redisError: lastRedisError } : {}),
+      ...(queueStatsError ? { queueStatsError } : {}),
+      ...(failedTrendError ? { failedTrendError } : {}),
       loadedSchemas: validator.registry.list()
     }
   };
