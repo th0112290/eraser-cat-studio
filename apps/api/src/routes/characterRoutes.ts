@@ -2487,11 +2487,11 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           "UI fallback: database unavailable"
         );
         const body = renderDbUnavailableCard({
-          title: "??? ???(?? ??)",
+          title: "Character Generator (DB Fallback)",
           route: "/ui/character-generator",
           requestId: request.id
         });
-        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("??? ???", body));
+        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("Character Generator", body));
       }
       throw routeError;
     }
@@ -2737,7 +2737,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       pack.id
     )}/qc_report.json">qc_report.json</a> ${qcExists ? "(exists)" : "(missing)"}</p></section>`;
 
-    const html = `<section class="card"><h1>캐릭터 팩 A/B 비교</h1><p><a href="/ui/character-generator">\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30\uB85C \uB3CC\uC544\uAC00\uAE30</a></p><div class="grid two">${panel(
+    const html = `<section class="card"><h1>Character Pack A/B Compare</h1><p><a href="/ui/character-generator">Back to Character Generator</a></p><div class="grid two">${panel(
       "A",
       leftPack,
       leftPreviewExists,

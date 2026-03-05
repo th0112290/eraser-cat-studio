@@ -79,7 +79,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
 .shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
 .sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
 @media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px;font-size:12px}.status-row{padding:7px 9px}.quick-grid{grid-template-columns:1fr}.table-wrap table{min-width:620px}.actions{gap:6px}.field small{font-size:11px}}
-</style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">대시보드</a><a href="/ui/studio">통합 스튜디오</a><a href="/ui/jobs">작업</a><a href="/ui/assets">에셋</a><a href="/ui/characters">캐릭터</a><a href="/ui/character-generator">캐릭터 생성기</a><a href="/ui/hitl">검수(HITL)</a><a href="/ui/episodes">에피소드</a><a href="/ui/publish">퍼블리시</a><a href="/ui/health">헬스</a><a href="/ui/artifacts">아티팩트</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말(?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>단축키</h2><table><thead><tr><th>키</th><th>동작</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g → e</td><td>에피소드 이동</td></tr><tr><td>g → j</td><td>작업 이동</td></tr><tr><td>g → h</td><td>헬스 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
+</style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">Dashboard</a><a href="/ui/studio">Studio</a><a href="/ui/jobs">Jobs</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/hitl">HITL</a><a href="/ui/episodes">Episodes</a><a href="/ui/publish">Publish</a><a href="/ui/health">Health</a><a href="/ui/artifacts">Artifacts</a><button id="shortcut-open" type="button" class="secondary" title="Keyboard shortcuts (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>Keyboard Shortcuts</h2><table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody><tr><td>?</td><td>Toggle help</td></tr><tr><td>g → e</td><td>Go to episodes</td></tr><tr><td>g → j</td><td>Go to jobs</td></tr><tr><td>g → h</td><td>Go to health</td></tr><tr><td>r</td><td>Run primary action</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">Close</button></div></div></div><script>
 (() => {
   const toastWrap = document.getElementById('toast-wrap');
   const live = document.getElementById('global-live');
@@ -92,10 +92,10 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
   const speak = (text) => { if (live) live.textContent = text; };
   const classifyError = (msg) => {
     const text = (msg || '').toLowerCase();
-    if (text.includes('503') || text.includes('unavailable') || text.includes('redis')) return { label: '서비스 일시 중단', tone: 'bad' };
-    if (text.includes('404') || text.includes('not found')) return { label: '대상 없음', tone: 'warn' };
-    if (text.includes('400') || text.includes('required') || text.includes('validation')) return { label: '입력 오류', tone: 'warn' };
-    return { label: '알 수 없는 오류', tone: 'bad' };
+    if (text.includes('503') || text.includes('unavailable') || text.includes('redis')) return { label: 'Service unavailable', tone: 'bad' };
+    if (text.includes('404') || text.includes('not found')) return { label: 'Not found', tone: 'warn' };
+    if (text.includes('400') || text.includes('required') || text.includes('validation')) return { label: 'Invalid input', tone: 'warn' };
+    return { label: 'Unknown error', tone: 'bad' };
   };
   const toast = (title, message, tone = 'ok', timeoutMs = 5000) => {
     if (!toastWrap) return;
@@ -122,7 +122,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
   const message = url.searchParams.get('message');
   const error = url.searchParams.get('error');
   if (message) {
-    toast('성공', message, 'ok');
+    toast('Success', message, 'ok');
     document.querySelectorAll('.notice').forEach((el, idx) => { if (idx === 0) el.remove(); });
   }
   if (error) {
@@ -138,9 +138,9 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
-        toast('복사됨', text, 'ok', 2000);
+        toast('Copied', text, 'ok', 2000);
       } catch (e) {
-        toast('복사 실패', String(e), 'bad', 5000);
+        toast('Copy failed', String(e), 'bad', 5000);
       }
     });
   });
@@ -173,10 +173,10 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
           if (!next || !(next instanceof HTMLElement) || !next.classList.contains('field-error')) {
             const msg = document.createElement('div');
             msg.className = 'field-error';
-            msg.textContent = '형식: shot_1,shot_2';
+            msg.textContent = 'Format: shot_1,shot_2';
             failedShotIds.insertAdjacentElement('afterend', msg);
           }
-          toast('Validation', 'failedShotIds 형식이 올바르지 않습니다.', 'warn');
+          toast('Validation', 'failedShotIds format is invalid.', 'warn');
           failedShotIds.focus();
           return;
         }
@@ -214,13 +214,13 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
     const episodeId = String(runLive.dataset.episodeId || '').trim();
     const hintForError = (msg) => {
       const text = String(msg || '').toLowerCase();
-      if (text.includes('shots.json')) return '힌트: COMPILE_SHOTS를 먼저 실행하세요.';
-      if (text.includes('redis') || text.includes('queue') || text.includes('503') || text.includes('unavailable')) return '힌트: /ui/health에서 queue/redis 상태를 확인하세요.';
-      return '힌트: /ui/jobs에서 lastError를 확인하세요.';
+      if (text.includes('shots.json')) return 'Hint: run COMPILE_SHOTS first.';
+      if (text.includes('redis') || text.includes('queue') || text.includes('503') || text.includes('unavailable')) return 'Hint: check queue/redis at /ui/health.';
+      return 'Hint: check lastError on /ui/jobs.';
     };
     const renderLive = (item) => {
       if (!item) {
-        runLive.innerHTML = '최근 실행 이력이 없습니다.';
+        runLive.innerHTML = 'No recent run history.';
         return;
       }
       const status = String(item.status || 'UNKNOWN');
@@ -257,7 +257,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
       } catch (e) {
         runLive.classList.remove('notice');
         runLive.classList.add('error');
-        runLive.textContent = '상태 갱신 실패: ' + String(e);
+        runLive.textContent = 'Status refresh failed: ' + String(e);
       }
     };
     let timer = null;

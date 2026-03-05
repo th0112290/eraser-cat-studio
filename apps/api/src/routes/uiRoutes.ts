@@ -242,15 +242,15 @@ function normalizeRunProfileReturnTarget(value: unknown): RunProfileReturnTarget
 function runProfileFailureHint(message: string): string {
   const text = message.toLowerCase();
   if (text.includes("shots.json")) {
-    return "힌트: 먼저 COMPILE_SHOTS를 실행해 shots.json을 생성하세요.";
+    return "Hint: run COMPILE_SHOTS first to generate shots.json.";
   }
   if (text.includes("redis") || text.includes("queue") || text.includes("503") || text.includes("unavailable")) {
-    return "힌트: queue/redis 상태를 확인하고 /ui/health에서 서비스 상태를 점검하세요.";
+    return "Hint: check queue/redis status and verify /ui/health.";
   }
   if (text.includes("preview") || text.includes("render")) {
-    return "힌트: render 단계 실패입니다. /ui/jobs에서 lastError와 로그를 확인하세요.";
+    return "Hint: render step failed. Check lastError/logs on /ui/jobs.";
   }
-  return "힌트: /ui/jobs에서 실패한 job 로그를 확인 후 retry 하세요.";
+  return "Hint: check failed job logs on /ui/jobs, then retry.";
 }
 
 function runProfileDedupKey(input: {
@@ -1340,49 +1340,49 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const recommendAction = (() => {
       if (styleQcMain.failCount > 0) {
         return {
-          title: "추천: Style Preview로 QC fail 먼저 해소",
-          detail: `STYLE_QC fail=${styleQcMain.failCount} 입니다. full 실행 전에 style preset/hookBoost를 조정하세요.`,
+          title: "Recommended: resolve STYLE_QC fails with Style Preview",
+          detail: `STYLE_QC fail=${styleQcMain.failCount}. Adjust style preset/hookBoost before full run.`,
           profile: "preview" as RunProfileId
         };
       }
       if (styleQcMain.warnCount > 0) {
         return {
-          title: "추천: A/B 비교로 잔여 경고 확인",
-          detail: `STYLE_QC warn=${styleQcMain.warnCount} 입니다. preview A/B 비교 후 full 실행을 권장합니다.`,
+          title: "Recommended: review remaining warnings with A/B compare",
+          detail: `STYLE_QC warn=${styleQcMain.warnCount}. Run A/B preview compare before full run.`,
           profile: "preview" as RunProfileId
         };
       }
       if (!shotsReady) {
         return {
-          title: "추천: COMPILE_SHOTS 먼저 실행",
-          detail: "shots.json이 없어 render 단계가 실패할 수 있습니다. COMPILE_SHOTS를 먼저 수행하세요.",
+          title: "Recommended: run COMPILE_SHOTS first",
+          detail: "shots.json is missing and render may fail. Run COMPILE_SHOTS first.",
           profile: "preview" as RunProfileId
         };
       }
       if (!previewExists) {
         return {
-          title: "추천: Preview 렌더 실행",
-          detail: "preview.mp4가 아직 없습니다. Run Profile을 preview로 실행해 빠르게 확인하세요.",
+          title: "Recommended: run Preview render",
+          detail: "preview.mp4 is not available yet. Run profile as preview first.",
           profile: "preview" as RunProfileId
         };
       }
       if (!finalExists || !uploadManifestExists) {
         return {
-          title: "추천: Full pipeline 실행",
-          detail: "최종 결과(final/manifest)가 아직 완성되지 않았습니다. full 프로파일로 마무리하세요.",
+          title: "Recommended: run Full pipeline",
+          detail: "Final outputs (final/manifest) are not ready yet. Finish with full profile.",
           profile: "full" as RunProfileId
         };
       }
       return {
-        title: "파이프라인 주요 산출물 준비 완료",
-        detail: "preview/final/manifest가 모두 존재합니다. 필요 시 style A/B 비교 후 publish를 진행하세요.",
+        title: "Pipeline outputs are ready",
+        detail: "preview/final/manifest are all present. Run style A/B compare if needed, then publish.",
         profile: "full" as RunProfileId
       };
     })();
 
     const episodeBody = `
 <section class="card">
-  <h1>에피소드 상세</h1>
+  <h1>Episode Detail</h1>
   ${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
   ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}
   <p>episodeId: <strong>${esc(episode.id ?? id)}</strong></p>
@@ -1392,19 +1392,19 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   <p>outDir: <code>${esc(artifacts.outDir ?? localOut.outDir)}</code></p>
   <div class="grid two">
     <div class="card">
-      <h3>문서</h3>
-      <p>beats.json: <span class="badge ${artifacts.beatsFileExists ? "ok" : "bad"}">${artifacts.beatsFileExists ? "존재" : "없음"}</span></p>
-      <p>shots.json: <span class="badge ${artifacts.shotsFileExists ? "ok" : "bad"}">${artifacts.shotsFileExists ? "존재" : "없음"}</span></p>
-      <p>qc_report.json: <span class="badge ${qcExists ? "ok" : "bad"}">${qcExists ? "존재" : "없음"}</span></p>
+      <h3>Documents</h3>
+      <p>beats.json: <span class="badge ${artifacts.beatsFileExists ? "ok" : "bad"}">${artifacts.beatsFileExists ? "Exists" : "Missing"}</span></p>
+      <p>shots.json: <span class="badge ${artifacts.shotsFileExists ? "ok" : "bad"}">${artifacts.shotsFileExists ? "Exists" : "Missing"}</span></p>
+      <p>qc_report.json: <span class="badge ${qcExists ? "ok" : "bad"}">${qcExists ? "Exists" : "Missing"}</span></p>
       <p>STYLE_QC(main): fail=${styleQcMain.failCount} warn=${styleQcMain.warnCount} forced=${esc(styleQcMain.forcedStyle)}</p>
     </div>
     <div class="card">
-      <h3>렌더 산출물</h3>
-      <p>preview.mp4: <span class="badge ${previewExists ? "ok" : "bad"}">${previewExists ? "존재" : "없음"}</span></p>
-      <p>preview_A.mp4: <span class="badge ${previewAExists ? "ok" : "bad"}">${previewAExists ? "존재" : "없음"}</span></p>
-      <p>preview_B.mp4: <span class="badge ${previewBExists ? "ok" : "bad"}">${previewBExists ? "존재" : "없음"}</span></p>
-      <p>final.mp4: <span class="badge ${finalExists ? "ok" : "bad"}">${finalExists ? "존재" : "없음"}</span></p>
-      <p>upload_manifest.json: <span class="badge ${uploadManifestExists ? "ok" : "bad"}">${uploadManifestExists ? "존재" : "없음"}</span></p>
+      <h3>Render Outputs</h3>
+      <p>preview.mp4: <span class="badge ${previewExists ? "ok" : "bad"}">${previewExists ? "Exists" : "Missing"}</span></p>
+      <p>preview_A.mp4: <span class="badge ${previewAExists ? "ok" : "bad"}">${previewAExists ? "Exists" : "Missing"}</span></p>
+      <p>preview_B.mp4: <span class="badge ${previewBExists ? "ok" : "bad"}">${previewBExists ? "Exists" : "Missing"}</span></p>
+      <p>final.mp4: <span class="badge ${finalExists ? "ok" : "bad"}">${finalExists ? "Exists" : "Missing"}</span></p>
+      <p>upload_manifest.json: <span class="badge ${uploadManifestExists ? "ok" : "bad"}">${uploadManifestExists ? "Exists" : "Missing"}</span></p>
     </div>
   </div>
   <div class="card">
@@ -1423,50 +1423,50 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       </label>
       <input type="hidden" name="returnTo" value="episode"/>
       <div class="actions" style="grid-column:1/-1">
-        <button type="submit" data-primary-action="1">Run Profile (원클릭)</button>
-        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">작업 모니터</a>
+        <button type="submit" data-primary-action="1">Run Profile (One-click)</button>
+        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Job Monitor</a>
       </div>
     </form>
-    <p class="notice">프로필 설명: preview=빠른 미리보기, full=최종 렌더+패키징, render_only=현재 shots 기준 preview 렌더만 실행</p>
-    <div id="run-profile-live" data-episode-id="${esc(id)}" class="notice">최근 실행 상태를 불러오는 중...</div>
-    <table><thead><tr><th>최근 작업 유형</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">작업 이력이 없습니다. 위 Run Profile로 시작하세요.</div></td></tr>'}</tbody></table>
+    <p class="notice">Profile notes: preview=fast preview, full=final render+package, render_only=preview render from current shots.</p>
+    <div id="run-profile-live" data-episode-id="${esc(id)}" class="notice">Loading latest run status...</div>
+    <table><thead><tr><th>Recent Job Type</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">No job history. Start from Run Profile above.</div></td></tr>'}</tbody></table>
   </div>
   <div class="card">
-    <h3>스타일 컨트롤</h3>
+    <h3>Style Controls</h3>
     <form method="post" action="/ui/episodes/${esc(id)}/style-preview" class="grid two">
       <label>stylePreset<select name="stylePresetId">${styleOptions}</select></label>
       <label>hookBoost(0~1)<input type="range" name="hookBoost" min="0" max="1" step="0.05" value="${esc(style.hookBoost.toFixed(2))}" oninput="this.nextElementSibling.value=this.value"/><output>${esc(style.hookBoost.toFixed(2))}</output></label>
-      <div class="actions" style="grid-column:1/-1"><button type="submit">Style Preview 실행 (약 10초)</button></div>
+      <div class="actions" style="grid-column:1/-1"><button type="submit">Run Style Preview (~10s)</button></div>
     </form>
     <form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="grid two">
-      <label>Variant A 스타일<select name="styleA">${concreteStyleOptionsA}</select></label>
-      <label>Variant B 스타일<select name="styleB">${concreteStyleOptionsB}</select></label>
-      <div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">A/B 미리보기 비교 생성</button><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교 페이지</a></div>
+      <label>Variant A Style<select name="styleA">${concreteStyleOptionsA}</select></label>
+      <label>Variant B Style<select name="styleB">${concreteStyleOptionsB}</select></label>
+      <div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Generate A/B Preview Compare</button><a href="/ui/episodes/${esc(id)}/ab-compare">A/B Compare Page</a></div>
     </form>
     <p>A STYLE_QC: fail=${styleQcA.failCount} warn=${styleQcA.warnCount} forced=${esc(styleQcA.forcedStyle)} | B STYLE_QC: fail=${styleQcB.failCount} warn=${styleQcB.warnCount} forced=${esc(styleQcB.forcedStyle)}</p>
   </div>
   <div class="actions">
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">원클릭 Preview Render 시작</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">Start One-click Preview Render</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="full"/>${styleHidden}<button type="submit" class="secondary">Run Final + Package</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit">Enqueue COMPILE_SHOTS</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">Preview 렌더 실행</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">강제 Enqueue</button></form>
-    <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">샷 에디터(타임라인)</a>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">Run Preview Render</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">Force Enqueue</button></form>
+    <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Shot Editor (Timeline)</a>
   </div>
 </section>
 <section class="card">
-  <h2>Preview 플레이어</h2>
-  ${previewExists ? `<video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${previewUrl}"></video><p><a href="${previewUrl}">preview.mp4 바로 열기</a></p>` : '<div class="error">preview.mp4가 아직 생성되지 않았습니다. 위 버튼으로 Preview 렌더를 시작하세요.</div>'}
-  ${(previewAExists || previewBExists) ? `<p>${previewAExists ? `<a href="${previewAUrl}">preview_A.mp4 열기</a>` : "preview_A 없음"} | ${previewBExists ? `<a href="${previewBUrl}">preview_B.mp4 열기</a>` : "preview_B 없음"}</p>` : ""}
+  <h2>Preview Player</h2>
+  ${previewExists ? `<video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${previewUrl}"></video><p><a href="${previewUrl}">Open preview.mp4</a></p>` : '<div class="error">preview.mp4 is not generated yet. Start Preview render using the buttons above.</div>'}
+  ${(previewAExists || previewBExists) ? `<p>${previewAExists ? `<a href="${previewAUrl}">Open preview_A.mp4</a>` : "preview_A missing"} | ${previewBExists ? `<a href="${previewBUrl}">Open preview_B.mp4</a>` : "preview_B missing"}</p>` : ""}
 </section>
 <section class="card">
   <h2>QC Report</h2>
-  ${qcExists ? (qcIssues.length > 0 ? `<table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${qcIssueRows}</tbody></table>` : `<div class="notice">qc_report.json은 존재하지만 실패 이슈가 없습니다.</div><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre>`) : '<div class="error">qc_report.json이 아직 없습니다.</div>'}
+  ${qcExists ? (qcIssues.length > 0 ? `<table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${qcIssueRows}</tbody></table>` : `<div class="notice">qc_report.json exists and has no failing issues.</div><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre>`) : '<div class="error">qc_report.json is not available yet.</div>'}
 </section>
 <section class="card">
   <h2>Jobs</h2>
-  <div aria-live="polite" class="notice">작업 상태는 아래 테이블에서 실시간 갱신됩니다. 실패 시 Retry를 사용하세요.</div>
-  <table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Attempts</th><th>Backoff</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">작업 이력이 없습니다. 위 Enqueue 버튼으로 시작하세요.</div></td></tr>'}</tbody></table>
+  <div aria-live="polite" class="notice">Job status updates in the table below. Use Retry on failures.</div>
+  <table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Attempts</th><th>Backoff</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">No job history. Start with enqueue actions above.</div></td></tr>'}</tbody></table>
   </section>`;
 
     return reply.type("text/html; charset=utf-8").send(page(`Episode ${id}`, episodeBody));
@@ -2285,7 +2285,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
 
     const episodeId = job.episodeId;
     const canRetry = job.status === "FAILED";
-    const errorStack = job.lastError ? `<details><summary>lastError stack 펼치기/접기</summary><pre>${esc(job.lastError)}</pre></details>` : "<p>lastError: (none)</p>";
+    const errorStack = job.lastError ? `<details><summary>Toggle lastError stack</summary><pre>${esc(job.lastError)}</pre></details>` : "<p>lastError: (none)</p>";
 
     const retryAction = canRetry
       ? `<form method="post" action="/ui/jobs/${esc(id)}/retry"><button type="submit">Retry (FAILED job)</button></form>` 

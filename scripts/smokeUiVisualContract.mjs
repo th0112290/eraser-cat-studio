@@ -41,18 +41,18 @@ const requiredPageKeywords = new Map([
   ["/ui/artifacts", ["out/ 인덱스", "out/ index"]]
 ]);
 
-const requiredNavLabels = [
-  "대시보드",
-  "통합 스튜디오",
-  "작업",
-  "에셋",
-  "캐릭터",
-  "캐릭터 생성기",
-  "검수(HITL)",
-  "에피소드",
-  "퍼블리시",
-  "헬스",
-  "아티팩트"
+const requiredNavLabelCandidates = [
+  ["Dashboard", "대시보드"],
+  ["Studio", "통합 스튜디오"],
+  ["Jobs", "작업"],
+  ["Assets", "에셋"],
+  ["Characters", "캐릭터"],
+  ["Character Generator", "캐릭터 생성기"],
+  ["HITL", "검수(HITL)"],
+  ["Episodes", "에피소드"],
+  ["Publish", "퍼블리시"],
+  ["Health", "헬스"],
+  ["Artifacts", "아티팩트"]
 ];
 
 const mojibakeTokens = [
@@ -84,9 +84,25 @@ async function checkPage(path) {
 
   const html = await res.text();
 
-  for (const label of requiredNavLabels) {
-    if (!html.includes(label)) {
-      throw new Error(`${path} missing nav label: ${label}`);
+  for (const labels of requiredNavLabelCandidates) {
+    const matched = labels.some((label) => html.includes(label));
+    if (!matched) {
+      throw new Error(`${path} missing nav label set: ${labels.join(" | ")}`);
+    }
+  }
+
+  if (path.startsWith("/ui/episodes/") && !requiredPageHeadings.has(path)) {
+    const dynamicHeadings = ["Episode Detail", "에피소드 상세"];
+    const matched = dynamicHeadings.some((heading) => html.includes(heading));
+    if (!matched) {
+      throw new Error(`${path} missing page heading: ${dynamicHeadings.join(" | ")}`);
+    }
+  }
+  if (path.startsWith("/ui/jobs/") && !requiredPageHeadings.has(path)) {
+    const dynamicHeadings = ["Job Detail", "작업 상세"];
+    const matched = dynamicHeadings.some((heading) => html.includes(heading));
+    if (!matched) {
+      throw new Error(`${path} missing page heading: ${dynamicHeadings.join(" | ")}`);
     }
   }
 
@@ -105,10 +121,27 @@ async function checkPage(path) {
       throw new Error(`${path} missing expected keyword: ${keywordCandidates.join(" | ")}`);
     }
   }
+  if (path.startsWith("/ui/episodes/") && !requiredPageKeywords.has(path)) {
+    const dynamicKeywords = ["Run Profile", "Preview Player", "QC Report"];
+    const matched = dynamicKeywords.some((keyword) => html.includes(keyword));
+    if (!matched) {
+      throw new Error(`${path} missing expected keyword: ${dynamicKeywords.join(" | ")}`);
+    }
+  }
+  if (path.startsWith("/ui/jobs/") && !requiredPageKeywords.has(path)) {
+    const dynamicKeywords = ["Job Detail", "Job Logs", "Retry"];
+    const matched = dynamicKeywords.some((keyword) => html.includes(keyword));
+    if (!matched) {
+      throw new Error(`${path} missing expected keyword: ${dynamicKeywords.join(" | ")}`);
+    }
+  }
 
-  for (const token of mojibakeTokens) {
-    if (html.includes(token)) {
-      throw new Error(`${path} contains mojibake token: ${token}`);
+  const shouldCheckMojibake = pages.includes(path);
+  if (shouldCheckMojibake) {
+    for (const token of mojibakeTokens) {
+      if (html.includes(token)) {
+        throw new Error(`${path} contains mojibake token: ${token}`);
+      }
     }
   }
 
@@ -120,10 +153,44 @@ async function checkPage(path) {
   console.log(`[smoke:ui:visual] ${path} ok`);
 }
 
+function findFirstMatch(html, regex) {
+  const match = html.match(regex);
+  return match ? match[1] : null;
+}
+
+async function checkDetailPages() {
+  const episodesRes = await fetch(`${baseUrl}/ui/episodes`, {
+    headers: {
+      "x-request-id": "smoke-ui-visual"
+    }
+  });
+  if (episodesRes.ok) {
+    const html = await episodesRes.text();
+    const episodeId = findFirstMatch(html, /href="\/ui\/episodes\/([^"]+)"/);
+    if (episodeId) {
+      await checkPage(`/ui/episodes/${episodeId}`);
+    }
+  }
+
+  const jobsRes = await fetch(`${baseUrl}/ui/jobs`, {
+    headers: {
+      "x-request-id": "smoke-ui-visual"
+    }
+  });
+  if (jobsRes.ok) {
+    const html = await jobsRes.text();
+    const jobId = findFirstMatch(html, /href="\/ui\/jobs\/([^"]+)"/);
+    if (jobId) {
+      await checkPage(`/ui/jobs/${jobId}`);
+    }
+  }
+}
+
 async function main() {
   for (const path of pages) {
     await checkPage(path);
   }
+  await checkDetailPages();
   console.log("[smoke:ui:visual] PASS");
 }
 
