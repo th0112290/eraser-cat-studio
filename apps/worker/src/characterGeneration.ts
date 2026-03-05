@@ -2165,7 +2165,7 @@ async function persistSelectedCandidates(input: {
   episodeChannelId: string;
   jobDbId: string;
   character: CharacterPackJobPayload;
-  selectedByView: Record<CharacterView, ScoredCandidate>;
+  selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
   manifest: GenerationManifest;
   manifestPath: string;
   maxAttempts: number;
@@ -2194,6 +2194,7 @@ async function persistSelectedCandidates(input: {
   } = input;
 
   const selectedAssets = new Map<CharacterView, { assetId: string; originalKey: string; ingestJobId: string }>();
+  const allViews: CharacterView[] = ["front", "threeQuarter", "profile"];
 
   for (const [view, scoredCandidate] of Object.entries(selectedByView) as Array<[CharacterView, ScoredCandidate]>) {
     const candidate = scoredCandidate.candidate;
@@ -2268,11 +2269,41 @@ async function persistSelectedCandidates(input: {
     };
   }
 
+  const existingAssetIds = character.assetIds;
+  const resolvedAssetIds: Partial<Record<CharacterView, string>> = {};
+  for (const view of allViews) {
+    const fromSelected = selectedAssets.get(view)?.assetId;
+    const fromExisting = existingAssetIds?.[view];
+    const resolved = fromSelected ?? fromExisting;
+    if (!resolved) {
+      throw new Error(`Missing assetId for required view=${view}`);
+    }
+    resolvedAssetIds[view] = resolved;
+  }
   const assetIds: CharacterAssetSelection = {
-    front: selectedAssets.get("front")!.assetId,
-    threeQuarter: selectedAssets.get("threeQuarter")!.assetId,
-    profile: selectedAssets.get("profile")!.assetId
+    front: resolvedAssetIds.front!,
+    threeQuarter: resolvedAssetIds.threeQuarter!,
+    profile: resolvedAssetIds.profile!
   };
+
+  const existingSelectedIds = character.generation?.selectedCandidateIds;
+  const manifestSelectedByView = manifest.selectedByView ?? {};
+  const resolvedSelectedCandidateIds: Partial<Record<CharacterView, string>> = {};
+  for (const view of allViews) {
+    const fromSelected = selectedByView[view]?.candidate.id;
+    const fromManifest = manifestSelectedByView[view]?.candidateId;
+    const fromExisting = existingSelectedIds?.[view];
+    const resolved = fromSelected ?? fromManifest ?? fromExisting;
+    if (!resolved) {
+      throw new Error(`Missing selectedCandidateId for required view=${view}`);
+    }
+    resolvedSelectedCandidateIds[view] = resolved;
+  }
+
+  const frontSeedFromSelected = selectedByView.front?.candidate.seed;
+  const frontCandidateId = resolvedSelectedCandidateIds.front!;
+  const frontSeedFromManifest = manifest.candidates.find((row) => row.id === frontCandidateId)?.seed;
+  const resolvedSeed = frontSeedFromSelected ?? frontSeedFromManifest ?? character.generation?.seed ?? 101;
 
   const buildJobId = character.buildJobDbId;
   if (!buildJobId) {
@@ -2297,13 +2328,13 @@ async function persistSelectedCandidates(input: {
         promptPreset: manifest.promptPreset,
         positivePrompt: manifest.positivePrompt,
         negativePrompt: manifest.negativePrompt,
-        seed: selectedByView.front.candidate.seed,
+        seed: resolvedSeed,
         candidateCount: manifest.candidates.length,
         manifestPath,
         selectedCandidateIds: {
-          front: selectedByView.front.candidate.id,
-          threeQuarter: selectedByView.threeQuarter.candidate.id,
-          profile: selectedByView.profile.candidate.id
+          front: resolvedSelectedCandidateIds.front!,
+          threeQuarter: resolvedSelectedCandidateIds.threeQuarter!,
+          profile: resolvedSelectedCandidateIds.profile!
         }
       }
     }
