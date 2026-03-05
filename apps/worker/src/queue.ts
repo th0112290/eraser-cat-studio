@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Queue } from "bullmq";
-import type { RenderPreset } from "@ec/render-orchestrator";
+import type { EpisodeJobPayload as SharedEpisodeJobPayload } from "@ec/shared";
 import { bootstrapEnv } from "./bootstrapEnv";
 
 bootstrapEnv();
@@ -90,127 +90,22 @@ export function getEpisodeOutputPaths(episodeId: string): EpisodeOutputPaths {
   };
 }
 
-export type RenderDatasetRow = {
-  label: string;
-  value: number;
-  unit?: string;
-};
+export type {
+  AssetIngestQueuePayload,
+  CharacterAssetSelection,
+  CharacterGenerationMode,
+  CharacterGenerationPayload,
+  CharacterGenerationProvider,
+  CharacterGenerationSelection,
+  CharacterGenerationView,
+  CharacterPackJobPayload,
+  EpisodeJobPayload,
+  PipelineOptions,
+  PipelineStoryOptions,
+  RenderJobPayload
+} from "@ec/shared";
 
-export type RenderDatasetInput = {
-  rows: RenderDatasetRow[];
-  expectedSum?: number;
-  unit?: string;
-  sumTolerance?: number;
-};
-
-export type RenderQcPayload = {
-  dataset?: RenderDatasetInput;
-  minFontSizePx?: number;
-  pointerTolerancePx?: number;
-  expectOcclusion?: boolean;
-};
-
-export type RenderJobPayload = {
-  shotsPath?: string;
-  outputPath?: string;
-  srtPath?: string;
-  qcReportPath?: string;
-  renderLogPath?: string;
-  narrationAlignmentPath?: string;
-  compositionId?: string;
-  dryRun?: boolean;
-  rerenderFailedShotsOnly?: boolean;
-  failedShotIds?: string[];
-  qc?: RenderQcPayload;
-  preset?: Partial<RenderPreset>;
-};
-
-export type PipelineStoryOptions = {
-  bibleRef?: string;
-  outline?: string[];
-  paragraphs?: string[];
-  targetBeatCount?: number;
-  stylePresetId?: string;
-  styleSeed?: string;
-  hookBoost?: number;
-  episodeTopic?: string;
-  episodeTitle?: string;
-  tone?: string;
-  speed?: "slow" | "medium" | "fast";
-  kpiFocus?: string[];
-  abVariant?: "A" | "B";
-};
-
-export type PipelineOptions = {
-  autoRenderFinal?: boolean;
-  stopAfterPreview?: boolean;
-  finalPreset?: Partial<RenderPreset>;
-  story?: PipelineStoryOptions;
-  publish?: {
-    plannedPublishAt?: string;
-  };
-};
-
-export type CharacterAssetSelection = {
-  front: string;
-  threeQuarter: string;
-  profile: string;
-};
-
-export type CharacterGenerationMode = "reference" | "new";
-export type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi";
-export type CharacterGenerationView = "front" | "threeQuarter" | "profile";
-export type CharacterGenerationSelection = {
-  front: string;
-  threeQuarter: string;
-  profile: string;
-};
-
-export type AssetIngestQueuePayload = {
-  assetId: string;
-  assetType: "character_reference" | "character_view" | "background" | "chart_source";
-  originalKey: string;
-  mime: string;
-};
-
-export type CharacterGenerationPayload = {
-  sessionId?: string;
-  mode: CharacterGenerationMode;
-  provider?: CharacterGenerationProvider;
-  promptPreset?: string;
-  positivePrompt?: string;
-  negativePrompt?: string;
-  boostNegativePrompt?: boolean;
-  referenceAssetId?: string;
-  viewToGenerate?: CharacterGenerationView;
-  regenerateSameSeed?: boolean;
-  candidateCount?: number;
-  autoPick?: boolean;
-  requireHitlPick?: boolean;
-  seed?: number;
-  manifestPath?: string;
-  selectedCandidateIds?: CharacterGenerationSelection;
-};
-
-export type CharacterPackJobPayload = {
-  characterPackId: string;
-  version: number;
-  buildJobDbId?: string;
-  previewJobDbId?: string;
-  assetIds?: CharacterAssetSelection;
-  generation?: CharacterGenerationPayload;
-};
-
-export type EpisodeJobPayload = {
-  jobDbId: string;
-  episodeId: string;
-  schemaChecks?: Array<{ schemaId: string; data: unknown }>;
-  render?: RenderJobPayload;
-  pipeline?: PipelineOptions;
-  character?: CharacterPackJobPayload;
-};
-
-export const queue = new Queue<EpisodeJobPayload>(QUEUE_NAME, {
+export const queue = new Queue<SharedEpisodeJobPayload>(QUEUE_NAME, {
   connection: REDIS_CONNECTION,
   defaultJobOptions: {
     attempts: MAX_JOB_ATTEMPTS,

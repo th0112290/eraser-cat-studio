@@ -8,23 +8,13 @@ import {
 } from "@prisma/client";
 import { Queue, type JobsOptions } from "bullmq";
 import { createDefaultNotifier, estimateJobCost } from "@ec/ops";
+import type { EpisodeJobPayload } from "@ec/shared";
 import { writeAuditLog } from "./auditService";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
 type ActiveJobStatus = "QUEUED" | "RUNNING";
 type HitlReviewAction = "approve" | "reject";
-
-type EpisodeJobPayload = {
-  jobDbId: string;
-  episodeId: string;
-  schemaChecks?: Array<{ schemaId: string; data: Prisma.InputJsonValue }>;
-  render?: {
-    dryRun?: boolean;
-    rerenderFailedShotsOnly?: boolean;
-    failedShotIds?: string[];
-  };
-};
 
 type FeatureFlags = {
   director: boolean;

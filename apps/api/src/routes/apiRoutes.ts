@@ -7,7 +7,7 @@ import multipart from "@fastify/multipart";
 import sharp from "sharp";
 import type { Queue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import type { EpisodeJobPayload } from "../services/scheduleService";
+import type { EpisodeJobPayload } from "@ec/shared";
 import { makeStorageKey, putAssetObject } from "../services/assetStorage";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
 import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";

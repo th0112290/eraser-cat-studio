@@ -1,7 +1,9 @@
-﻿import { BacklogStatus, JobType, SlotStatus } from "@prisma/client";
+import { BacklogStatus, JobType, SlotStatus } from "@prisma/client";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { JobsOptions, Queue } from "bullmq";
 import { estimateJobCost } from "@ec/ops";
+import type { EpisodeJobPayload } from "@ec/shared";
+export type { EpisodeJobPayload } from "@ec/shared";
 
 const DEFAULT_WINDOW_DAYS = 7;
 const DEFAULT_WEEKLY_TARGET = 3;
@@ -11,29 +13,6 @@ const MAX_RETRY_ATTEMPTS = 5;
 const TARGET_WEEKDAYS = new Set<number>([1, 3, 5]);
 
 type JsonRecord = Record<string, unknown>;
-
-export type EpisodeJobPayload = {
-  jobDbId: string;
-  episodeId: string;
-  schemaChecks?: Array<{ schemaId: string; data: Prisma.InputJsonValue }>;
-  render?: {
-    shotsPath?: string;
-    outputPath?: string;
-    srtPath?: string;
-    qcReportPath?: string;
-    renderLogPath?: string;
-    narrationAlignmentPath?: string;
-    compositionId?: string;
-    dryRun?: boolean;
-    rerenderFailedShotsOnly?: boolean;
-    failedShotIds?: string[];
-  };
-  pipeline?: {
-    stopAfterPreview?: boolean;
-    autoRenderFinal?: boolean;
-  };
-  character?: Prisma.InputJsonValue;
-};
 
 export type BuildScheduleDatesInput = {
   startDate: Date;
@@ -510,6 +489,9 @@ export async function autoScheduleSeason(deps: AutoScheduleDeps, options: AutoSc
     items
   };
 }
+
+
+
 
 
 
