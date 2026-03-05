@@ -29,6 +29,15 @@ function asString(value: unknown): string | undefined {
 export type CreateCharacterProviderInput = {
   provider?: CharacterProviderName;
   comfyUiUrl?: string;
+  remoteApi?: {
+    baseUrl?: string;
+    apiKey?: string;
+    headerName?: string;
+    headerValuePrefix?: string;
+    timeoutMs?: number;
+    maxRetries?: number;
+    estimatedCostUsdPerImage?: number;
+  };
 };
 
 export function createCharacterProvider(input: CreateCharacterProviderInput): CharacterGenerationProvider {
@@ -46,6 +55,7 @@ export function createCharacterProvider(input: CreateCharacterProviderInput): Ch
 export function resolveProviderName(input: {
   requestedProvider?: string;
   comfyUiUrl?: string;
+  remoteApiBaseUrl?: string;
 }): CharacterProviderName {
   const requested = input.requestedProvider?.trim().toLowerCase();
   if (requested === "mock") {
@@ -54,9 +64,16 @@ export function resolveProviderName(input: {
   if (requested === "comfyui") {
     return "comfyui";
   }
+  if (requested === "remoteapi" || requested === "remote_api" || requested === "remote") {
+    return "remoteApi";
+  }
 
   if (input.comfyUiUrl && input.comfyUiUrl.trim().length > 0) {
     return "comfyui";
+  }
+
+  if (input.remoteApiBaseUrl && input.remoteApiBaseUrl.trim().length > 0) {
+    return "remoteApi";
   }
 
   return "mock";
@@ -112,6 +129,7 @@ export type {
   CharacterGenerationMode,
   CharacterGenerationProvider,
   CharacterGenerationProviderResult,
+  CharacterProviderCallLog,
   CharacterProviderGenerateInput,
   CharacterProviderName,
   CharacterView,

@@ -1807,7 +1807,7 @@ async function resolveAutoContinuityReference(input: {
   }
 
   const cutoffDate = new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000);
-  const whereBase: Prisma.CharacterGenerationSessionWhereInput = {
+  const whereBase: Record<string, unknown> = {
     status: "READY",
     NOT: {
       episodeId: input.episodeId

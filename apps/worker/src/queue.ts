@@ -116,6 +116,7 @@ export type RenderJobPayload = {
   srtPath?: string;
   qcReportPath?: string;
   renderLogPath?: string;
+  narrationAlignmentPath?: string;
   compositionId?: string;
   dryRun?: boolean;
   rerenderFailedShotsOnly?: boolean;
@@ -129,6 +130,15 @@ export type PipelineStoryOptions = {
   outline?: string[];
   paragraphs?: string[];
   targetBeatCount?: number;
+  stylePresetId?: string;
+  styleSeed?: string;
+  hookBoost?: number;
+  episodeTopic?: string;
+  episodeTitle?: string;
+  tone?: string;
+  speed?: "slow" | "medium" | "fast";
+  kpiFocus?: string[];
+  abVariant?: "A" | "B";
 };
 
 export type PipelineOptions = {
@@ -148,7 +158,13 @@ export type CharacterAssetSelection = {
 };
 
 export type CharacterGenerationMode = "reference" | "new";
-export type CharacterGenerationProvider = "mock" | "comfyui";
+export type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi";
+export type CharacterGenerationView = "front" | "threeQuarter" | "profile";
+export type CharacterGenerationSelection = {
+  front: string;
+  threeQuarter: string;
+  profile: string;
+};
 
 export type AssetIngestQueuePayload = {
   assetId: string;
@@ -158,17 +174,22 @@ export type AssetIngestQueuePayload = {
 };
 
 export type CharacterGenerationPayload = {
+  sessionId?: string;
   mode: CharacterGenerationMode;
   provider?: CharacterGenerationProvider;
   promptPreset?: string;
   positivePrompt?: string;
   negativePrompt?: string;
+  boostNegativePrompt?: boolean;
   referenceAssetId?: string;
+  viewToGenerate?: CharacterGenerationView;
+  regenerateSameSeed?: boolean;
   candidateCount?: number;
   autoPick?: boolean;
   requireHitlPick?: boolean;
   seed?: number;
   manifestPath?: string;
+  selectedCandidateIds?: CharacterGenerationSelection;
 };
 
 export type CharacterPackJobPayload = {

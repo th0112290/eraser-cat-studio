@@ -146,6 +146,7 @@ export class MockCharacterGenerationProvider implements CharacterGenerationProvi
         negativePrompt: input.negativePrompt
       }),
       generatedAt: new Date().toISOString(),
+      callLogs: [],
       candidates
     };
   }

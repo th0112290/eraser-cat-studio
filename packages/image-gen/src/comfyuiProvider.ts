@@ -115,6 +115,7 @@ export class ComfyUiCharacterGenerationProvider implements CharacterGenerationPr
           negativePrompt: input.negativePrompt
         }),
       generatedAt: new Date().toISOString(),
+      callLogs: [],
       candidates
     };
   }

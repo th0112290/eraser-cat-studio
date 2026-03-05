@@ -1,6 +1,6 @@
 export type CharacterGenerationMode = "reference" | "new";
 export type CharacterView = "front" | "threeQuarter" | "profile";
-export type CharacterProviderName = "mock" | "comfyui";
+export type CharacterProviderName = "mock" | "comfyui" | "remoteApi";
 
 export type StylePromptPreset = {
   id: string;
@@ -44,7 +44,20 @@ export type CharacterGenerationProviderResult = {
   provider: CharacterProviderName;
   workflowHash: string;
   generatedAt: string;
+  callLogs: CharacterProviderCallLog[];
   candidates: CharacterGenerationCandidate[];
+};
+
+export type CharacterProviderCallLog = {
+  provider: CharacterProviderName;
+  view: CharacterView;
+  candidateIndex: number;
+  attempt: number;
+  durationMs: number;
+  estimatedCostUsd: number;
+  result: "succeeded" | "failed";
+  errorSummary?: string;
+  statusCode?: number;
 };
 
 export interface CharacterGenerationProvider {

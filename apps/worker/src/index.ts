@@ -1234,8 +1234,7 @@ async function handleCompile(payload: EpisodeJobPayload, jobDbId: string, curren
   if (!beatDoc) throw new Error(`BeatDoc not found: ${payload.episodeId}`);
   const fallbackEpisode: EpisodeInput = { episode_id: payload.episodeId, bible_ref: episode.bibleId ?? "channel_bible:default", topic: episode.topic, target_duration_sec: episode.targetDurationSec };
   const parsed = parseBeatDoc(beatDoc.json, fallbackEpisode);
-  const compileStyleOptions = resolveCompileStyleOptions(payload, episode.datasetVersionSnapshot, parsed.episode.topic);
-  const shots = compileShots(parsed.beats, compileStyleOptions);
+  const shots = compileShots(parsed.beats);
   const shotsDoc = toShotsDocument({ ...parsed.episode, episode_id: payload.episodeId }, shots, 30);
   const vr = schemaValidator.validate("shots.schema.json", shotsDoc);
   if (!vr.ok) throw new Error("Schema validation failed: shots.schema.json");
@@ -1296,8 +1295,12 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
   const recoveryMode = shotsPathForAttempt !== baseShotsPath;
 
   if (stage === RENDER_PREVIEW_JOB_NAME) {
-    const audioResult = await runPreviewAudioArtifacts(payload.episodeId, jobDbId, baseShotsPath);
-    narrationAlignmentPath = audioResult.narrationAlignmentPath;
+    await runPreviewAudioArtifacts(payload.episodeId, jobDbId, baseShotsPath);
+    const previewOut = ensureOut(payload.episodeId);
+    const candidate = path.join(previewOut.outDir, "narration_alignment.json");
+    if (fs.existsSync(candidate)) {
+      narrationAlignmentPath = candidate;
+    }
   } else if (!narrationAlignmentPath) {
     const out = ensureOut(payload.episodeId);
     const candidate = path.join(out.outDir, "narration_alignment.json");
@@ -1424,7 +1427,6 @@ async function runPreviewAudioArtifacts(episodeId: string, jobDbId: string, shot
     mixPath: result.mixPath,
     licenseLogPath: result.licenseLogPath,
     narrationPath: result.narrationPath,
-    narrationAlignmentPath: result.narrationAlignmentPath,
     sfxEvents: result.placementPlan.sfxEvents.length,
     ttsProvider: tts.providerName,
     ttsFallback: ttsFallbackReason ? tts.fallbackName ?? null : null,
