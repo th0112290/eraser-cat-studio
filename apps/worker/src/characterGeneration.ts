@@ -2,7 +2,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
-import type { JobsOptions } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { sha256Hex, stableStringify } from "@ec/shared";
 import {
@@ -16,9 +15,7 @@ import {
   type CharacterView
 } from "@ec/image-gen";
 import {
-  ASSET_INGEST_JOB_NAME,
   BUILD_CHARACTER_PACK_JOB_NAME,
-  queue,
   REPO_ROOT,
   type CharacterAssetSelection,
   type CharacterGenerationPayload,
@@ -28,7 +25,7 @@ import {
   type EpisodeJobPayload
 } from "./queue";
 import { getAssetObject, makeStorageKey, putAssetObject } from "./assetStorage";
-import type { AssetIngestJobPayload } from "./assetIngest";
+import { handleAssetIngestJob, type AssetIngestJobPayload } from "./assetIngest";
 
 type JobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
 
@@ -2251,23 +2248,12 @@ async function persistSelectedCandidates(input: {
       mime: candidate.mimeType
     };
 
-    const options: JobsOptions = {
-      jobId: `asset-ingest-${asset.id}`,
-      attempts: 2,
-      backoff: {
-        type: "exponential",
-        delay: 1000
-      },
-      removeOnComplete: false,
-      removeOnFail: false
-    };
-
-    const ingestQueued = await queue.add(
-      ASSET_INGEST_JOB_NAME,
-      ingestPayload as unknown as EpisodeJobPayload,
-      options
-    );
-    const ingestJobId = String(ingestQueued.id);
+    await handleAssetIngestJob({
+      prisma,
+      ingestPayload,
+      bullmqJobId: `inline-asset-ingest-${asset.id}`
+    });
+    const ingestJobId = `inline-asset-ingest-${asset.id}`;
 
     selectedAssets.set(view, {
       assetId: asset.id,
@@ -2281,8 +2267,6 @@ async function persistSelectedCandidates(input: {
       assetIngestJobId: ingestJobId
     };
   }
-
-  await waitForAssetsReady(prisma, [...selectedAssets.values()].map((row) => row.assetId));
 
   const assetIds: CharacterAssetSelection = {
     front: selectedAssets.get("front")!.assetId,
