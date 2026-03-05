@@ -1,3 +1,5 @@
+import { renderTableEmptyRow, UI_TEXT } from "./uiText";
+
 type DashboardPageBodyInput = {
   flash: string;
   overall: string;
@@ -17,19 +19,19 @@ type EpisodesPageBodyInput = {
 
 export function buildDashboardPageBody(input: DashboardPageBodyInput): string {
   return `
-<section class="card dashboard-shell"><h1>대시보드</h1>
+<section class="card dashboard-shell"><h1>Dashboard</h1>
 ${input.flash}
 <section class="card" style="margin-bottom:12px;border:1px solid #b9d3ff;background:linear-gradient(180deg,#f4f8ff,#eef5ff)">
-  <h2 style="margin:0 0 8px">메인 시작점: 통합 스튜디오</h2>
-  <p style="margin:0 0 10px;color:#425466">캐릭터 생성, 에셋 업로드, 캐릭터팩 선택, 에피소드/렌더/퍼블리시를 한 화면에서 진행합니다.</p>
+  <h2 style="margin:0 0 8px">Main Entry: Studio</h2>
+  <p style="margin:0 0 10px;color:#425466">Run character generation, asset upload, character-pack selection, episode/render/publish from one page.</p>
   <div class="actions">
-    <a href="/ui/studio" class="secondary" style="padding:9px 12px;border-radius:10px;border:1px solid #c5d7eb">통합 스튜디오 열기</a>
-    <a href="/ui/character-generator" class="secondary" style="padding:9px 12px;border-radius:10px;border:1px solid #c5d7eb">상세 생성기(고급)</a>
+    <a href="/ui/studio" class="secondary" style="padding:9px 12px;border-radius:10px;border:1px solid #c5d7eb">Open Studio</a>
+    <a href="/ui/character-generator" class="secondary" style="padding:9px 12px;border-radius:10px;border:1px solid #c5d7eb">Open Advanced Generator</a>
   </div>
 </section>
 <div class="grid two">
   <div class="card">
-    <h2>서비스 상태</h2>
+    <h2>Service Status</h2>
     <div class="status-list">
       <div class="status-row"><span class="label">health</span>${input.overall}</div>
       <div class="status-row"><span class="label">database</span>${input.dbStatus}</div>
@@ -37,27 +39,27 @@ ${input.flash}
       <div class="status-row"><span class="label">minio</span>${input.minioStatus}</div>
       <div class="status-row"><span class="label">queueReady</span>${input.queueReady}</div>
     </div>
-    <p style="margin:10px 0 0"><a href="/ui/health">전체 헬스 리포트 열기</a></p>
+    <p style="margin:10px 0 0"><a href="/ui/health">Open full health report</a></p>
   </div>
   <div class="card">
-    <h2>빠른 실행</h2>
+    <h2>Quick Actions</h2>
     <div class="quick-grid">
       <form method="post" action="/ui/actions/demo-extreme" class="form-card">
         <h3>Demo Extreme</h3>
-        <div class="field"><small>환경 점검과 파이프라인 스모크를 빠르게 실행합니다.</small></div>
-        <div class="actions"><button type="submit" data-primary-action="1">Demo Extreme 실행</button></div>
+        <div class="field"><small>Run the demo pipeline quickly with sample script and timeline.</small></div>
+        <div class="actions"><button type="submit" data-primary-action="1">Run Demo Extreme</button></div>
       </form>
       <form method="post" action="/ui/actions/generate-preview" class="form-card">
         <h3>Preview Render</h3>
-        <div class="field"><label for="preview-topic">미리보기 주제</label><input id="preview-topic" name="topic" value="UI Preview Demo"/><small>스크립트/샷 생성 주제로 사용됩니다.</small></div>
-        <div class="field"><label for="preview-duration">targetDurationSec</label><input id="preview-duration" name="targetDurationSec" value="600"/><small>권장 범위: 120 ~ 900초</small></div>
-        <div class="actions"><button type="submit">Preview Render 시작</button></div>
+        <div class="field"><label for="preview-topic">Preview topic</label><input id="preview-topic" name="topic" value="UI Preview Demo"/><small>Used as script and render topic input.</small></div>
+        <div class="field"><label for="preview-duration">targetDurationSec</label><input id="preview-duration" name="targetDurationSec" value="600"/><small>Recommended range: 120 to 900 seconds.</small></div>
+        <div class="actions"><button type="submit">Start Preview Render</button></div>
       </form>
       <form method="post" action="/ui/actions/generate-full" class="form-card">
         <h3>Final + Package</h3>
-        <div class="field"><label for="full-topic">최종 파이프라인 주제</label><input id="full-topic" name="topic" value="UI Full Pipeline Demo"/><small>최종 렌더 + 패키징용 주제입니다.</small></div>
-        <div class="field"><label for="full-duration">targetDurationSec</label><input id="full-duration" name="targetDurationSec" value="600"/><small>최종 출력 목표 길이입니다.</small></div>
-        <div class="actions"><button type="submit" class="secondary">Final + Package 실행</button></div>
+        <div class="field"><label for="full-topic">Final pipeline topic</label><input id="full-topic" name="topic" value="UI Full Pipeline Demo"/><small>Topic for final render and packaging.</small></div>
+        <div class="field"><label for="full-duration">targetDurationSec</label><input id="full-duration" name="targetDurationSec" value="600"/><small>Target output length.</small></div>
+        <div class="actions"><button type="submit" class="secondary">Run Final + Package</button></div>
       </form>
     </div>
   </div>
@@ -66,24 +68,24 @@ ${input.flash}
 
 <section class="card"><h2>Control Plane</h2>
 <div class="link-grid">
-<a href="/ui/studio">통합 스튜디오</a>
-<a href="/ui/jobs">작업</a>
-<a href="/ui/assets">에셋</a>
-<a href="/ui/characters">캐릭터</a>
-<a href="/ui/character-generator">캐릭터 생성기</a>
-<a href="/ui/hitl">검수(HITL)</a>
-<a href="/ui/episodes">에피소드</a>
-<a href="/ui/publish">퍼블리시</a>
-<a href="/ui/health">헬스 리포트</a>
+<a href="/ui/studio">Studio</a>
+<a href="/ui/jobs">Jobs</a>
+<a href="/ui/assets">Assets</a>
+<a href="/ui/characters">Characters</a>
+<a href="/ui/character-generator">Character Generator</a>
+<a href="/ui/hitl">HITL</a>
+<a href="/ui/episodes">Episodes</a>
+<a href="/ui/publish">Publish</a>
+<a href="/ui/health">Health</a>
 </div>
 </section>
 
-<section class="card"><h2>빠른 개발 가이드</h2>
+<section class="card"><h2>Quick Setup Guide</h2>
 <ol>
-<li>인프라 실행: <code>pnpm docker:up</code></li>
-<li>DB 마이그레이션: <code>pnpm db:migrate</code></li>
-<li>API 실행: <code>pnpm -C apps/api run dev</code></li>
-<li>Worker 실행: <code>pnpm -C apps/worker run dev</code></li>
+<li>Start infra: <code>pnpm docker:up</code></li>
+<li>Run DB migration: <code>pnpm db:migrate</code></li>
+<li>Run API: <code>pnpm -C apps/api run dev</code></li>
+<li>Run Worker: <code>pnpm -C apps/worker run dev</code></li>
 </ol>
 <div class="guide-grid">
 <button type="button" data-copy="pnpm docker:up">Copy docker:up</button>
@@ -95,20 +97,21 @@ ${input.flash}
 }
 
 export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
+  const t = UI_TEXT.episodes;
   return `
 <section class="card dashboard-shell">
-  <h1>에피소드</h1>
+  <h1>${t.title}</h1>
   ${input.flash}
   <form method="post" action="/ui/episodes" class="quick-grid">
     <div class="form-card">
-      <h3>기본 정보</h3>
+      <h3>Base Settings</h3>
       <div class="field">
         <label for="episode-topic">topic</label>
-        <input id="episode-topic" name="topic" required data-tooltip="예: Q4 growth analysis"/>
-        <small>에피소드 생성 주제입니다.</small>
+        <input id="episode-topic" name="topic" required data-tooltip="ex) Q4 growth analysis"/>
+        <small>Topic used for episode generation.</small>
       </div>
       <div class="field">
-        <label for="episode-channel">channelId (선택)</label>
+        <label for="episode-channel">channelId (optional)</label>
         <input id="episode-channel" name="channelId"/>
       </div>
       <div class="field">
@@ -117,38 +120,41 @@ export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
       </div>
     </div>
     <div class="form-card">
-      <h3>파이프라인 옵션</h3>
+      <h3>Pipeline Options</h3>
       <div class="field">
         <label for="episode-jobType">jobType</label>
         <select id="episode-jobType" name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option></select>
       </div>
       <div class="field">
         <label for="episode-pipelineMode">pipelineMode</label>
-        <select id="episode-pipelineMode" name="pipelineMode"><option value="preview">preview-only</option><option value="full">full(final+package)</option><option value="manual">manual</option></select>
+        <select id="episode-pipelineMode" name="pipelineMode"><option value="preview">preview-only</option><option value="full">full (final + package)</option><option value="manual">manual</option></select>
       </div>
       <div class="field">
-        <label for="episode-stylePreset">stylePreset <span class="hint" data-tooltip="AUTO는 snapshot tone/speed/KPI 기반으로 스타일을 선택합니다">?</span></label>
+        <label for="episode-stylePreset">stylePreset <span class="hint" data-tooltip="AUTO chooses style from snapshot tone/speed/KPI.">?</span></label>
         <select id="episode-stylePreset" name="stylePresetId">${input.styleOptions}</select>
       </div>
       <div class="field">
-        <label for="episode-hookBoost">hookBoost(0~1)</label>
+        <label for="episode-hookBoost">hookBoost (0~1)</label>
         <input id="episode-hookBoost" type="range" name="hookBoost" min="0" max="1" step="0.05" value="${input.defaultHookBoost}" oninput="this.nextElementSibling.value=this.value"/>
         <output>${input.defaultHookBoost}</output>
       </div>
-      <div class="actions"><button type="submit" data-primary-action="1">에피소드 생성 + Enqueue</button></div>
+      <div class="actions"><button type="submit" data-primary-action="1">${t.createAndEnqueue}</button></div>
     </div>
   </form>
 </section>
 <section class="card">
   <div class="section-head">
-    <h2>최근 에피소드</h2>
-    <div class="quick-links"><a href="/ui/jobs">작업 열기</a><a href="/ui/artifacts">아티팩트 열기</a></div>
+    <h2>${t.recent}</h2>
+    <div class="quick-links"><a href="/ui/jobs">${t.quickLinksJobs}</a><a href="/ui/artifacts">${t.quickLinksArtifacts}</a></div>
   </div>
-  <p class="notice">목록은 7초마다 자동 갱신됩니다. <span class="kbd">/</span> 키로 검색창 포커스 이동.</p>
+  <p class="notice">${t.listHint} <span class="kbd">/</span> moves focus to search.</p>
   <div class="table-tools">
-    <input type="search" data-table-filter="episodes-table" placeholder="id/topic/status 검색"/>
-    <span class="muted-text">현재 페이지에서만 행을 필터링합니다.</span>
+    <input type="search" data-table-filter="episodes-table" placeholder="${t.tableFilterPlaceholder}"/>
+    <span class="muted-text">${t.localFilterHint}</span>
   </div>
-  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>ID</th><th>Topic</th><th>Status</th><th>Channel</th><th>Style</th><th>Latest Job</th><th>Duration</th><th>Created</th><th>Quick Run</th></tr></thead><tbody>${input.rows || '<tr><td colspan="9"><div class="notice">생성된 에피소드가 없습니다.</div></td></tr>'}</tbody></table></div>
+  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>ID</th><th>Topic</th><th>Status</th><th>Channel</th><th>Style</th><th>Latest Job</th><th>Duration</th><th>Created</th><th>Quick Run</th></tr></thead><tbody>${
+    input.rows || renderTableEmptyRow(9, t.noEpisodes)
+  }</tbody></table></div>
 </section>${input.autoRefreshScript}`;
 }
+
