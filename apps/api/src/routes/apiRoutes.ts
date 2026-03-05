@@ -1625,6 +1625,12 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
     const normalized1024Url = selected ? storageKeyToArtifactUrl(selected.normalizedKey1024) : null;
     const normalized2048Url = selected ? storageKeyToArtifactUrl(selected.normalizedKey2048) : null;
     const canPreviewImage = selected ? (selected.mime ?? "").startsWith("image/") : false;
+    const previewLabel = (label: string): string => {
+      if (label === "original") return "원본";
+      if (label === "normalized1024") return "정규화 1024";
+      if (label === "normalized2048") return "정규화 2048";
+      return label;
+    };
 
     const previewCards = selected && canPreviewImage
       ? [
@@ -1635,36 +1641,36 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
           .filter((entry) => typeof entry.key === "string" && entry.key.trim().length > 0 && entry.url)
           .map(
             (entry) =>
-              `<div class="preview-card"><h4>${escHtml(entry.label)}</h4><p><code>${escHtml(entry.key ?? "-")}</code></p>${
+              `<div class="preview-card"><h4>${escHtml(previewLabel(entry.label))}</h4><p><code>${escHtml(entry.key ?? "-")}</code></p>${
                 storageKeyExistsLocally(entry.key)
-                  ? `<img src="${entry.url}" alt="${escHtml(entry.label)} preview"/>`
-                  : `<p>local preview unavailable</p>`
-              }<p><a href="${entry.url}">Open ${escHtml(entry.label)}</a></p></div>`
+                  ? `<img src="${entry.url}" alt="${escHtml(previewLabel(entry.label))} 미리보기"/>`
+                  : `<p>로컬 미리보기를 찾을 수 없습니다.</p>`
+              }<p><a href="${entry.url}">열기: ${escHtml(previewLabel(entry.label))}</a></p></div>`
           )
           .join("")
       : "";
 
     const selectedDetails = selected
-      ? `<div class="card"><h3>Selected Asset</h3><p>id: <strong>${escHtml(
+      ? `<div class="card"><h3>선택된 에셋</h3><p>ID: <strong>${escHtml(
           selected.id
-        )}</strong></p><p>status: <span class="badge ${uiBadgeClass(selected.status)}">${escHtml(
+        )}</strong></p><p>상태: <span class="badge ${uiBadgeClass(selected.status)}">${escHtml(
           selected.status
-        )}</span></p><p>qc: <span class="badge ${getQcBadgeSummary(selected.status, selected.qcJson).className}" title="${escHtml(
+        )}</span></p><p>QC: <span class="badge ${getQcBadgeSummary(selected.status, selected.qcJson).className}" title="${escHtml(
           getQcBadgeSummary(selected.status, selected.qcJson).reason
-        )}">${escHtml(getQcBadgeSummary(selected.status, selected.qcJson).level)}</span></p><p>mime: <code>${escHtml(selected.mime ?? "-")}</code></p><p>original: <code>${escHtml(
+        )}">${escHtml(getQcBadgeSummary(selected.status, selected.qcJson).level)}</span></p><p>MIME: <code>${escHtml(selected.mime ?? "-")}</code></p><p>원본 키: <code>${escHtml(
           selected.originalKey ?? selected.storageKey
-        )}</code></p><p>normalized1024: <code>${escHtml(
+        )}</code></p><p>정규화 1024: <code>${escHtml(
           selected.normalizedKey1024 ?? "-"
-        )}</code></p><p>normalized2048: <code>${escHtml(
+        )}</code></p><p>정규화 2048: <code>${escHtml(
           selected.normalizedKey2048 ?? "-"
-        )}</code></p><p><a href="/api/assets/${encodeURIComponent(selected.id)}">Open JSON</a></p>${
+        )}</code></p><p><a href="/api/assets/${encodeURIComponent(selected.id)}">JSON 열기</a></p>${
           previewCards.length > 0 ? `<div class="preview-grid">${previewCards}</div>` : "<p>미리보기 가능한 이미지가 없습니다.</p>"
         }<pre>${escHtml(
           JSON.stringify(selected.qcJson ?? null, null, 2)
         )}</pre></div>`
-      : `<div class="card"><h3>Selected Asset</h3><p>\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p></div>`;
+      : `<div class="card"><h3>선택된 에셋</h3><p>\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p></div>`;
 
-    const body = `<section class="card"><h1>\uC5D0\uC14B (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">\uBE60\uB978 \uC81C\uC791\uC740 <a href="/ui/studio">\uD1B5\uD569 \uC2A4\uD29C\uB514\uC624</a>\uB97C \uC0AC\uC6A9\uD558\uC138\uC694. \uC774 \uD398\uC774\uC9C0\uB294 \uC5D0\uC14B \uAC1C\uBCC4 \uC810\uAC80\uC6A9\uC785\uB2C8\uB2E4.</div><form id="asset-upload-form" enctype="multipart/form-data" class="grid"><div class="grid two"><label>assetType<select name="assetType"><option value="character_reference">character_reference (레퍼런스)</option><option value="character_view">character_view (뷰 변형)</option><option value="background">background (배경)</option><option value="chart_source">chart_source (차트 소스)</option></select></label><label>file<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label></div><button id="asset-upload-submit" type="submit">\uC5C5\uB85C\uB4DC + \uC5D0\uC14B \uCC98\uB9AC \uC2DC\uC791</button></form><pre id="asset-upload-result"></pre></section><section class="card"><h2>\uCD5C\uADFC \uC5D0\uC14B</h2><table><thead><tr><th>ID</th><th>assetType</th><th>Status</th><th>QC</th><th>MIME</th><th>Bytes</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="7">\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4</td></tr>'}</tbody></table></section>${selectedDetails}<script>const form=document.getElementById(\"asset-upload-form\");const output=document.getElementById(\"asset-upload-result\");const submit=document.getElementById(\"asset-upload-submit\");if(form&&output&&submit){form.addEventListener(\"submit\",async(event)=>{event.preventDefault();submit.disabled=true;output.textContent=\"\uC5C5\uB85C\uB4DC \uC911...\";const fd=new FormData(form);try{const res=await fetch(\"/api/assets/upload\",{method:\"POST\",body:fd});const json=await res.json();output.textContent=JSON.stringify(json,null,2);if(res.ok&&json&&json.data&&json.data.assetId){window.location.href=\"/ui/assets?assetId=\"+encodeURIComponent(json.data.assetId);} }catch(error){output.textContent=String(error);}finally{submit.disabled=false;}});}</script>`;
+    const body = `<style>.asset-shell{display:grid;gap:12px;grid-template-columns:minmax(360px,1fr) minmax(460px,1.35fr)}.asset-table-wrap{max-height:420px;overflow:auto;border:1px solid #dce5f3;border-radius:10px}.asset-table-wrap table{margin:0}.asset-head{display:flex;justify-content:space-between;gap:8px;align-items:center}@media (max-width:1100px){.asset-shell{grid-template-columns:1fr}}</style><section class="card"><h1>\uC5D0\uC14B (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">\uBE60\uB978 \uC791\uC5C5\uC740 <a href="/ui/studio">\uD1B5\uD569 \uC2A4\uD29C\uB514\uC624</a>\uC5D0\uC11C \uD55C \uD654\uBA74\uC73C\uB85C \uC9C4\uD589\uD558\uACE0, \uC774 \uD398\uC774\uC9C0\uB294 \uC5D0\uC14B \uAC80\uC218/\uC138\uBD80 \uC810\uAC80\uC5D0 \uC0AC\uC6A9\uD558\uC138\uC694.</div></section><section class="asset-shell"><section class="card"><h2>\uC5C5\uB85C\uB4DC</h2><form id="asset-upload-form" enctype="multipart/form-data" class="grid"><div class="grid two"><label>\uC5D0\uC14B \uC720\uD615<select name="assetType"><option value="character_reference">character_reference (레퍼런스)</option><option value="character_view">character_view (뷰 변형)</option><option value="background">background (배경)</option><option value="chart_source">chart_source (차트 소스)</option></select></label><label>\uD30C\uC77C<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label></div><button id="asset-upload-submit" type="submit">\uC5C5\uB85C\uB4DC + \uC5D0\uC14B \uCC98\uB9AC \uC2DC\uC791</button></form><pre id="asset-upload-result">\uB300\uAE30 \uC911</pre></section><section class="card"><div class="asset-head"><h2 style="margin:0">\uCD5C\uADFC \uC5D0\uC14B</h2><input id="asset-filter" placeholder="\uAC80\uC0C9 (ID/\uC720\uD615/\uC0C1\uD0DC)" /></div><div class="asset-table-wrap"><table id="asset-table"><thead><tr><th>ID</th><th>\uC720\uD615</th><th>\uC0C1\uD0DC</th><th>QC</th><th>MIME</th><th>\uC6A9\uB7C9</th><th>\uC0DD\uC131 \uC2DC\uAC01</th></tr></thead><tbody>${rows || '<tr><td colspan="7">\uC5D0\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4</td></tr>'}</tbody></table></div></section></section>${selectedDetails}<script>const form=document.getElementById(\"asset-upload-form\");const output=document.getElementById(\"asset-upload-result\");const submit=document.getElementById(\"asset-upload-submit\");const filter=document.getElementById(\"asset-filter\");const assetTable=document.getElementById(\"asset-table\");const applyFilter=()=>{if(!(filter instanceof HTMLInputElement)||!(assetTable instanceof HTMLTableElement))return;const q=filter.value.trim().toLowerCase();assetTable.querySelectorAll(\"tbody tr\").forEach((row)=>{if(!(row instanceof HTMLElement))return;const text=String(row.textContent||\"\").toLowerCase();row.style.display=!q||text.includes(q)?\"\":\"none\";});};if(filter){filter.addEventListener(\"input\",applyFilter);}if(form&&output&&submit){form.addEventListener(\"submit\",async(event)=>{event.preventDefault();submit.disabled=true;output.textContent=\"\uC5C5\uB85C\uB4DC \uC911...\";const fd=new FormData(form);try{const res=await fetch(\"/api/assets/upload\",{method:\"POST\",body:fd});const json=await res.json();output.textContent=JSON.stringify(json,null,2);if(res.ok&&json&&json.data&&json.data.assetId){window.location.href=\"/ui/assets?assetId=\"+encodeURIComponent(json.data.assetId);} }catch(error){output.textContent=String(error);}finally{submit.disabled=false;}});}</script>`;
 
     return reply.type("text/html; charset=utf-8").send(uiPage("\uC5D0\uC14B", body));
   });

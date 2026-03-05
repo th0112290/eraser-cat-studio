@@ -428,8 +428,8 @@ function uiPage(title: string, body: string): string {
   const url = new URL(window.location.href);
   const message = url.searchParams.get('message');
   const error = url.searchParams.get('error');
-  if (message) toast('Success', message, 'ok');
-  if (error) toast('Error', error, 'bad', 7000);
+  if (message) toast('성공', message, 'ok');
+  if (error) toast('오류', error, 'bad', 7000);
 
   document.querySelectorAll('form').forEach((form) => {
     form.addEventListener('submit', (event) => {
@@ -458,7 +458,7 @@ function uiPage(title: string, body: string): string {
     if (editing) return;
     if (e.key === '?') {
       e.preventDefault();
-      toast('Shortcuts', 'g + c: Character Generator, g + a: Assets, r: 주요 액션');
+      toast("단축키", "g + c: 캐릭터 생성기, g + a: 에셋, r: 주요 액션");
       return;
     }
     if (pendingGo) {
@@ -2351,7 +2351,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     });
 
     if (!pack) {
-      throw createHttpError(404, "Character pack not found");
+      throw createHttpError(404, "character pack not found");
     }
 
     return {
@@ -2562,6 +2562,27 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
   <h1>통합 스튜디오</h1>
   <p class="studio-hint">에셋 업로드, 캐릭터 생성, 캐릭터 팩 확인, 렌더/퍼블리시 진입을 한 화면에서 처리합니다.</p>
   <div id="studio-status" class="notice" aria-live="polite">준비 완료: 좌측에서 생성하고 우측에서 내역을 선택하세요.</div>
+  <details class="card" style="margin:0">
+    <summary><strong>빠른 시작 가이드</strong> (클릭해서 펼치기)</summary>
+    <ol style="margin:10px 0 0;padding-left:18px">
+      <li>에셋 업로드 또는 기존 에셋 확인</li>
+      <li>캐릭터 생성 시작 또는 기존 캐릭터 팩 선택</li>
+      <li>원클릭 제작(생성→프리뷰) 실행 또는 에피소드 수동 생성</li>
+      <li>최근 작업 패널에서 진행 상태 확인</li>
+      <li>필요 시 편집기/퍼블리시로 이동</li>
+    </ol>
+    <p class="studio-hint" style="margin-top:8px">팁: 자동 새로고침을 켜면 우측 목록이 주기적으로 갱신됩니다.</p>
+  </details>
+  <div class="studio-actions">
+    <label><input id="studio-auto-refresh" type="checkbox" checked/> 자동 새로고침</label>
+    <label>주기
+      <select id="studio-refresh-interval">
+        <option value="3000">3초</option>
+        <option value="5000" selected>5초</option>
+        <option value="10000">10초</option>
+      </select>
+    </label>
+  </div>
 </section>
 <section class="card studio-grid">
   <div class="studio-col">
@@ -2612,12 +2633,26 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
   <div class="studio-col">
     <section class="candidate studio-section">
       <div class="studio-head"><h2 style="margin:0">최근 에셋</h2><button type="button" id="studio-refresh-assets" class="secondary">새로고침</button></div>
+      <input id="studio-filter-assets" placeholder="에셋 검색 (id/유형/상태)" />
       <div class="studio-table-wrap"><table id="studio-assets-table"><thead><tr><th>ID</th><th>유형</th><th>상태</th><th>생성시각</th></tr></thead><tbody><tr><td colspan="4">로딩 중...</td></tr></tbody></table></div>
     </section>
     <section class="candidate studio-section">
       <div class="studio-head"><h2 style="margin:0">생성된 캐릭터 팩</h2><button type="button" id="studio-refresh-packs" class="secondary">새로고침</button></div>
+      <input id="studio-filter-packs" placeholder="캐릭터 팩 검색 (id/상태/에피소드)" />
       <div class="studio-table-wrap"><table id="studio-packs-table"><thead><tr><th>ID</th><th>버전</th><th>상태</th><th>에피소드</th></tr></thead><tbody><tr><td colspan="4">로딩 중...</td></tr></tbody></table></div>
       <p class="studio-hint">행을 클릭하면 선택 캐릭터 팩/episodeId가 자동으로 채워집니다.</p>
+    </section>
+    <section class="candidate studio-section">
+      <div class="studio-head"><h2 style="margin:0">최근 에피소드</h2><button type="button" id="studio-refresh-episodes" class="secondary">새로고침</button></div>
+      <input id="studio-filter-episodes" placeholder="에피소드 검색 (id/주제/상태)" />
+      <div class="studio-table-wrap"><table id="studio-episodes-table"><thead><tr><th>ID</th><th>주제</th><th>상태</th><th>최근 작업</th></tr></thead><tbody><tr><td colspan="4">로딩 중...</td></tr></tbody></table></div>
+      <p class="studio-hint">행 클릭 시 episodeId/주제가 입력칸에 자동 반영됩니다.</p>
+    </section>
+    <section class="candidate studio-section">
+      <div class="studio-head"><h2 style="margin:0">최근 작업</h2><button type="button" id="studio-refresh-jobs" class="secondary">새로고침</button></div>
+      <input id="studio-filter-jobs" placeholder="작업 검색 (id/유형/상태/에피소드)" />
+      <div class="studio-table-wrap"><table id="studio-jobs-table"><thead><tr><th>작업</th><th>유형</th><th>상태</th><th>진행률</th><th>에피소드</th></tr></thead><tbody><tr><td colspan="5">로딩 중...</td></tr></tbody></table></div>
+      <p class="studio-hint">행 클릭 시 작업 상세로 이동하고, episodeId가 있으면 자동 반영됩니다.</p>
     </section>
   </div>
 </section>
@@ -2629,20 +2664,44 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
   const q = (id) => document.getElementById(id);
   const assetsBody = q("studio-assets-table")?.querySelector("tbody");
   const packsBody = q("studio-packs-table")?.querySelector("tbody");
+  const episodesBody = q("studio-episodes-table")?.querySelector("tbody");
+  const jobsBody = q("studio-jobs-table")?.querySelector("tbody");
+  const filterAssets = q("studio-filter-assets");
+  const filterPacks = q("studio-filter-packs");
+  const filterEpisodes = q("studio-filter-episodes");
+  const filterJobs = q("studio-filter-jobs");
   const statusBox = q("studio-status");
   const selectedPack = q("studio-selected-pack");
   const episodeInput = q("studio-episode-id");
   const topicInput = q("studio-topic");
+  const autoRefreshInput = q("studio-auto-refresh");
+  const refreshIntervalInput = q("studio-refresh-interval");
   let pollTimer = null;
+  let refreshTimer = null;
 
   const safe = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
   const setStatus = (text) => {
     if (statusBox instanceof HTMLElement) statusBox.textContent = text;
   };
+  const applyFilter = (inputEl, tbodyEl) => {
+    if (!(inputEl instanceof HTMLInputElement) || !(tbodyEl instanceof HTMLElement)) return;
+    const qText = inputEl.value.trim().toLowerCase();
+    tbodyEl.querySelectorAll("tr").forEach((row) => {
+      if (!(row instanceof HTMLElement)) return;
+      const text = String(row.textContent || "").toLowerCase();
+      row.style.display = !qText || text.includes(qText) ? "" : "none";
+    });
+  };
   const clearPoll = () => {
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
+    }
+  };
+  const clearRefresh = () => {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
     }
   };
   const readError = async (res, fallback) => {
@@ -2659,7 +2718,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const run = async () => {
       try {
         const res = await fetch("/api/episodes/" + encodeURIComponent(episodeId), { headers: { accept: "application/json" } });
-        if (!res.ok) throw new Error("poll failed: " + res.status);
+        if (!res.ok) throw new Error("상태 조회 실패: " + res.status);
         const json = await res.json();
         const episode = json?.data?.episode || {};
         const jobs = Array.isArray(json?.data?.jobs) ? json.data.jobs : [];
@@ -2676,6 +2735,20 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     void run();
     pollTimer = setInterval(() => { void run(); }, 2500);
   };
+  const startAutoRefresh = () => {
+    clearRefresh();
+    const enabled = autoRefreshInput instanceof HTMLInputElement ? autoRefreshInput.checked : false;
+    if (!enabled) return;
+    const intervalMs = refreshIntervalInput instanceof HTMLSelectElement
+      ? Number.parseInt(refreshIntervalInput.value, 10) || 5000
+      : 5000;
+    refreshTimer = setInterval(() => {
+      void loadAssets();
+      void loadPacks();
+      void loadEpisodes();
+      void loadJobs();
+    }, intervalMs);
+  };
 
   const loadAssets = async () => {
     if (!(assetsBody instanceof HTMLElement)) return;
@@ -2683,7 +2756,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     assetsBody.innerHTML = "<tr><td colspan='4'>불러오는 중...</td></tr>";
     try {
       const res = await fetch("/api/assets?limit=30");
-      if (!res.ok) throw new Error("assets " + res.status);
+      if (!res.ok) throw new Error("에셋 조회 실패: " + res.status);
       const json = await res.json();
       const list = Array.isArray(json?.data) ? json.data : [];
       if (!list.length) {
@@ -2692,6 +2765,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         return;
       }
       assetsBody.innerHTML = list.map((asset) => "<tr><td><a href=\"/ui/assets?assetId=" + encodeURIComponent(String(asset.id || "")) + "\">" + safe(asset.id) + "</a></td><td>" + safe(asset.assetType) + "</td><td>" + safe(asset.status) + "</td><td>" + safe(asset.createdAt) + "</td></tr>").join("");
+      applyFilter(filterAssets, assetsBody);
       setStatus("에셋 목록 로드 완료");
     } catch (e) {
       assetsBody.innerHTML = "<tr><td colspan='4'>실패: " + safe(String(e)) + "</td></tr>";
@@ -2706,7 +2780,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     packsBody.innerHTML = "<tr><td colspan='4'>불러오는 중...</td></tr>";
     try {
       const res = await fetch("/api/character-packs?limit=30");
-      if (!res.ok) throw new Error("packs " + res.status);
+      if (!res.ok) throw new Error("캐릭터 팩 조회 실패: " + res.status);
       const json = await res.json();
       const list = Array.isArray(json?.data) ? json.data : [];
       if (!list.length) {
@@ -2734,11 +2808,98 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           setStatus("캐릭터 팩 선택됨: " + packId);
         });
       });
+      applyFilter(filterPacks, packsBody);
       setStatus("캐릭터 팩 목록 로드 완료");
     } catch (e) {
       packsBody.innerHTML = "<tr><td colspan='4'>실패: " + safe(String(e)) + "</td></tr>";
       setStatus("캐릭터 팩 목록 로드 실패");
       toast("캐릭터 팩", String(e), "warn");
+    }
+  };
+
+  const loadEpisodes = async () => {
+    if (!(episodesBody instanceof HTMLElement)) return;
+    setStatus("에피소드 목록을 불러오는 중...");
+    episodesBody.innerHTML = "<tr><td colspan='4'>불러오는 중...</td></tr>";
+    try {
+      const res = await fetch("/api/episodes?limit=20", { headers: { accept: "application/json" } });
+      if (!res.ok) throw new Error("에피소드 조회 실패: " + res.status);
+      const json = await res.json();
+      const list = Array.isArray(json?.data) ? json.data : [];
+      if (!list.length) {
+        episodesBody.innerHTML = "<tr><td colspan='4'>에피소드가 없습니다.</td></tr>";
+        setStatus("에피소드 목록 로드 완료: 데이터 없음");
+        return;
+      }
+      episodesBody.innerHTML = list.map((ep) => {
+        const id = String(ep?.id || "");
+        const topic = String(ep?.topic || "");
+        const status = String(ep?.status || "");
+        const latest = Array.isArray(ep?.jobs) && ep.jobs.length > 0 ? ep.jobs[0] : null;
+        const latestText = latest ? (String(latest.type || "-") + " / " + String(latest.status || "-")) : "-";
+        return "<tr data-episode-id=\"" + safe(id) + "\" data-episode-topic=\"" + safe(topic) + "\"><td><a href=\"/ui/episodes/" + encodeURIComponent(id) + "\">" + safe(id) + "</a></td><td>" + safe(topic) + "</td><td>" + safe(status) + "</td><td>" + safe(latestText) + "</td></tr>";
+      }).join("");
+      episodesBody.querySelectorAll("tr[data-episode-id]").forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        row.style.cursor = "pointer";
+        row.addEventListener("click", () => {
+          const id = row.dataset.episodeId || "";
+          const topic = row.dataset.episodeTopic || "";
+          if (episodeInput instanceof HTMLInputElement) episodeInput.value = id;
+          if (topicInput instanceof HTMLInputElement && !topicInput.value.trim()) topicInput.value = topic;
+          setStatus("에피소드 선택됨: " + id);
+        });
+      });
+      applyFilter(filterEpisodes, episodesBody);
+      setStatus("에피소드 목록 로드 완료");
+    } catch (e) {
+      episodesBody.innerHTML = "<tr><td colspan='4'>실패: " + safe(String(e)) + "</td></tr>";
+      setStatus("에피소드 목록 로드 실패");
+      toast("에피소드", String(e), "warn");
+    }
+  };
+
+  const loadJobs = async () => {
+    if (!(jobsBody instanceof HTMLElement)) return;
+    setStatus("작업 목록을 불러오는 중...");
+    jobsBody.innerHTML = "<tr><td colspan='5'>불러오는 중...</td></tr>";
+    try {
+      const res = await fetch("/api/jobs?limit=20", { headers: { accept: "application/json" } });
+      if (!res.ok) throw new Error("작업 조회 실패: " + res.status);
+      const json = await res.json();
+      const list = Array.isArray(json?.data) ? json.data : [];
+      if (!list.length) {
+        jobsBody.innerHTML = "<tr><td colspan='5'>작업이 없습니다.</td></tr>";
+        setStatus("작업 목록 로드 완료: 데이터 없음");
+        return;
+      }
+      jobsBody.innerHTML = list.map((job) => {
+        const id = String(job?.id || "");
+        const episodeId = String(job?.episodeId || "");
+        const type = String(job?.type || "");
+        const status = String(job?.status || "");
+        const progress = String(job?.progress ?? 0) + "%";
+        return "<tr data-job-id=\"" + safe(id) + "\" data-episode-id=\"" + safe(episodeId) + "\"><td><a href=\"/ui/jobs/" + encodeURIComponent(id) + "\">" + safe(id) + "</a></td><td>" + safe(type) + "</td><td>" + safe(status) + "</td><td>" + safe(progress) + "</td><td>" + (episodeId ? ("<a href=\"/ui/episodes/" + encodeURIComponent(episodeId) + "\">" + safe(episodeId) + "</a>") : "-") + "</td></tr>";
+      }).join("");
+      jobsBody.querySelectorAll("tr[data-job-id]").forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        row.style.cursor = "pointer";
+        row.addEventListener("click", () => {
+          const episodeId = row.dataset.episodeId || "";
+          if (episodeId && episodeInput instanceof HTMLInputElement) {
+            episodeInput.value = episodeId;
+          }
+          const jobId = row.dataset.jobId || "";
+          setStatus("작업 선택됨: " + jobId);
+          window.location.href = "/ui/jobs/" + encodeURIComponent(jobId);
+        });
+      });
+      applyFilter(filterJobs, jobsBody);
+      setStatus("작업 목록 로드 완료");
+    } catch (e) {
+      jobsBody.innerHTML = "<tr><td colspan='5'>실패: " + safe(String(e)) + "</td></tr>";
+      setStatus("작업 목록 로드 실패");
+      toast("작업", String(e), "warn");
     }
   };
 
@@ -2756,7 +2917,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         const res = await fetch("/api/assets/upload", { method: "POST", body: fd });
         const json = await res.json();
         uploadResult.textContent = JSON.stringify(json, null, 2);
-        if (!res.ok) throw new Error(json?.error || ("upload failed " + res.status));
+        if (!res.ok) throw new Error(json?.error || ("업로드 실패: " + res.status));
         toast("에셋 업로드", "완료되었습니다.", "ok");
         setStatus("에셋 업로드 완료");
         await loadAssets();
@@ -2772,6 +2933,21 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
   q("studio-refresh-assets")?.addEventListener("click", () => { void loadAssets(); });
   q("studio-refresh-packs")?.addEventListener("click", () => { void loadPacks(); });
+  q("studio-refresh-episodes")?.addEventListener("click", () => { void loadEpisodes(); });
+  q("studio-refresh-jobs")?.addEventListener("click", () => { void loadJobs(); });
+  filterAssets?.addEventListener("input", () => applyFilter(filterAssets, assetsBody));
+  filterPacks?.addEventListener("input", () => applyFilter(filterPacks, packsBody));
+  filterEpisodes?.addEventListener("input", () => applyFilter(filterEpisodes, episodesBody));
+  filterJobs?.addEventListener("input", () => applyFilter(filterJobs, jobsBody));
+  autoRefreshInput?.addEventListener("change", () => {
+    startAutoRefresh();
+    setStatus(autoRefreshInput instanceof HTMLInputElement && autoRefreshInput.checked ? "자동 새로고침 켜짐" : "자동 새로고침 꺼짐");
+  });
+  refreshIntervalInput?.addEventListener("change", () => {
+    startAutoRefresh();
+    const ms = refreshIntervalInput instanceof HTMLSelectElement ? refreshIntervalInput.value : "5000";
+    setStatus("자동 새로고침 주기 변경: " + ms + "ms");
+  });
 
   q("studio-create-episode")?.addEventListener("click", async () => {
     const topic = topicInput instanceof HTMLInputElement ? topicInput.value.trim() : "";
@@ -2794,7 +2970,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         body: JSON.stringify(payload)
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(String(json?.error || ("create episode failed: " + res.status)));
+      if (!res.ok) throw new Error(String(json?.error || ("에피소드 생성 실패: " + res.status)));
+
       const episodeId = String(json?.data?.episode?.id || "").trim();
       if (episodeInput instanceof HTMLInputElement && episodeId) episodeInput.value = episodeId;
       toast("에피소드 생성", episodeId ? ("생성 완료: " + episodeId) : "생성 완료", "ok");
@@ -2829,12 +3006,12 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         })
       });
       if (!createRes.ok) {
-        const msg = await readError(createRes, "create episode failed: " + createRes.status);
+        const msg = await readError(createRes, "에피소드 생성 실패: " + createRes.status);
         throw new Error(msg);
       }
       const created = await createRes.json();
       const episodeId = String(created?.data?.episode?.id || "").trim();
-      if (!episodeId) throw new Error("episode id not returned");
+      if (!episodeId) throw new Error("에피소드 ID가 반환되지 않았습니다.");
       if (episodeInput instanceof HTMLInputElement) episodeInput.value = episodeId;
       setStatus("원클릭 실행: 프리뷰 파이프라인 시작 중...");
       const runRes = await fetch("/api/episodes/" + encodeURIComponent(episodeId) + "/run-profile", {
@@ -2843,7 +3020,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         body: JSON.stringify({ profile: "preview", stylePresetId: "AUTO", hookBoost: 0.55 })
       });
       if (!runRes.ok) {
-        const msg = await readError(runRes, "run-profile failed: " + runRes.status);
+        const msg = await readError(runRes, "원클릭 실행 실패: " + runRes.status);
         throw new Error(msg);
       }
       toast("원클릭 제작", "에피소드 생성 + 프리뷰 파이프라인 시작 완료", "ok");
@@ -2888,7 +3065,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobType: "RENDER_PREVIEW" })
       });
-      if (!res.ok) throw new Error("enqueue failed: " + res.status);
+      if (!res.ok) throw new Error("큐 등록 실패: " + res.status);
       toast("렌더 미리보기", "큐 등록 완료", "ok");
       setStatus("렌더 미리보기 큐 등록 완료");
       window.location.href = "/ui/episodes/" + encodeURIComponent(episodeId);
@@ -2900,7 +3077,11 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
   void loadAssets();
   void loadPacks();
+  void loadEpisodes();
+  void loadJobs();
+  startAutoRefresh();
   window.addEventListener("beforeunload", clearPoll);
+  window.addEventListener("beforeunload", clearRefresh);
 })();
 </script>`;
     return reply.type("text/html; charset=utf-8").send(uiPage("통합 스튜디오", html));
@@ -3096,7 +3277,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const regenerateSection =
       selectedJob && selectedManifest
-        ? `<section class="card"><h2>Step 4.5) 뷰별 재생성</h2><div class="notice">front/threeQuarter/profile 중 마음에 안 드는 뷰만 재생성할 수 있습니다. 동일 seed 재시도 또는 seed 변경 재시도를 선택하세요.</div><div class="grid two">${(
+        ? `<section class="card"><h2>5) 뷰별 후보 재생성</h2><div class="notice">front/threeQuarter/profile 중 마음에 안 드는 뷰만 재생성할 수 있습니다. 동일 seed 재시도 또는 seed 변경 재시도를 선택하세요.</div><div class="grid two">${(
             ["front", "threeQuarter", "profile"] as const
           )
             .map((view) => {
@@ -3121,7 +3302,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const pickSection =
       selectedJob && selectedManifest && selectedManifest.status === "PENDING_HITL"
-        ? `<section class="card"><h2>Step 5) 후보 선택 + Pick</h2><form method="post" action="/ui/character-generator/pick" class="grid"><input type="hidden" name="generateJobId" value="${escHtml(
+        ? `<section class="card"><h2>6) 후보 선택 + 적용(Pick)</h2><form method="post" action="/ui/character-generator/pick" class="grid"><input type="hidden" name="generateJobId" value="${escHtml(
             selectedJob.id
           )}"/><div><h3>front</h3><div class="grid two">${groupedCandidates.front
             .sort((a, b) => b.score - a.score)
@@ -3132,7 +3313,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             .join("")}</div></div><div><h3>profile</h3><div class="grid two">${groupedCandidates.profile
             .sort((a, b) => b.score - a.score)
             .map((candidate, index) => candidateCard("profile", candidate, index === 0))
-            .join("")}</div></div><button type="submit">Pick 선택 완료 -> Pack Build + Preview 실행</button></form></section>`
+            .join("")}</div></div><button type="submit">후보 선택 완료 -> 팩 빌드 + 프리뷰 실행</button></form></section>`
         : "";
 
     const rows = jobs
@@ -3149,7 +3330,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           job.progress
         )}%</td><td>${
           manifestExists
-            ? `<a href="/artifacts/characters/generations/${encodeURIComponent(job.id)}/generation_manifest.json">manifest</a>`
+            ? `<a href="/artifacts/characters/generations/${encodeURIComponent(job.id)}/generation_manifest.json">매니페스트</a>`
             : "-"
         }${
           providerWarning ? `<div class="badge warn" style="margin-left:6px">${escHtml(providerWarning)}</div>` : ""
@@ -3159,33 +3340,33 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const selectedFailureSummary = pickFirstLine(selectedJob?.lastError ?? null);
     const selectedSection = selectedJob
-      ? `<section class="card"><h2>Selected Generation Job</h2><p>jobId: <strong>${escHtml(
+      ? `<section class="card"><h2>선택된 생성 작업</h2><p>작업 ID: <strong>${escHtml(
           selectedJob.id
-        )}</strong></p><p>status: <span class="badge ${uiBadge(selectedJob.status)}">${escHtml(
+        )}</strong></p><p>상태: <span class="badge ${uiBadge(selectedJob.status)}">${escHtml(
           selectedJob.status
-        )}</span></p><p>episode: <a href="/ui/episodes/${escHtml(selectedJob.episodeId)}">${escHtml(
+        )}</span></p><p>에피소드: <a href="/ui/episodes/${escHtml(selectedJob.episodeId)}">${escHtml(
           selectedJob.episodeId
-        )}</a></p><p>session: ${
+        )}</a></p><p>세션: ${
           selectedSession
             ? `<strong>${escHtml(selectedSession.id)}</strong> <span class="badge ${uiBadge(selectedSession.status)}">${escHtml(
                 selectedSession.status
               )}</span>`
-            : `<span class="badge muted">N/A</span>`
-        }</p><p>manifest path: <code>${escHtml(selectedManifestPath ?? "not generated yet")}</code></p><p>generator status: <span class="badge ${uiBadge(
+            : `<span class="badge muted">없음</span>`
+        }</p><p>매니페스트 경로: <code>${escHtml(selectedManifestPath ?? "아직 생성되지 않음")}</code></p><p>생성기 상태: <span class="badge ${uiBadge(
           selectedManifest?.status ?? selectedJob.status
-        )}">${escHtml(selectedManifest?.status ?? "N/A")}</span></p>${
+        )}">${escHtml(selectedManifest?.status ?? "없음")}</span></p>${
           selectedManifest?.providerWarning
-            ? `<div class="notice">provider warning: ${escHtml(selectedManifest.providerWarning)}</div>`
+            ? `<div class="notice">프로바이더 경고: ${escHtml(selectedManifest.providerWarning)}</div>`
             : ""
         }${
           selectedManifest
-            ? `<div class="card" style="margin:10px 0"><h3>Consistency QC Summary</h3><p>avg consistency: <span class="badge ${uiBadge(
+            ? `<div class="card" style="margin:10px 0"><h3>일관성 QC 요약</h3><p>평균 일관성: <span class="badge ${uiBadge(
                 consistencySummaryTone
-              )}">${escHtml(consistencyAverage === null ? "-" : consistencyAverage.toFixed(3))}</span></p><p>low (&lt;0.48): <strong>${escHtml(
+              )}">${escHtml(consistencyAverage === null ? "-" : consistencyAverage.toFixed(3))}</span></p><p>낮음 (&lt;0.48): <strong>${escHtml(
                 consistencyLowCount
-              )}</strong> / critical (&lt;0.34): <strong>${escHtml(
+              )}</strong> / 위험 (&lt;0.34): <strong>${escHtml(
                 consistencyCriticalCount
-              )}</strong> / measured: <strong>${escHtml(consistencyValues.length)}</strong></p></div>`
+              )}</strong> / 측정 수: <strong>${escHtml(consistencyValues.length)}</strong></p></div>`
             : ""
         }${
           selectedFailureSummary
@@ -3193,14 +3374,14 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                 selectedJob.lastError ?? ""
               )}</pre></details></div>`
             : ""
-        }<div id="generation-status" data-job-id="${escHtml(selectedJob.id)}" class="notice" aria-live="polite">상태 폴링 중...</div><div class="actions"><button id="generation-retry" type="button" class="secondary" style="display:none">폴링 재시도</button></div><details><summary>manifest 상세</summary><pre>${escHtml(
+        }<div id="generation-status" data-job-id="${escHtml(selectedJob.id)}" class="notice" aria-live="polite">상태 폴링 중...</div><div class="actions"><button id="generation-retry" type="button" class="secondary" style="display:none">폴링 재시도</button></div><details><summary>매니페스트 상세</summary><pre>${escHtml(
           JSON.stringify(selectedManifest ?? null, null, 2)
         )}</pre></details></section>`
       : "";
 
     const previewSection =
       selectedPackId && selectedPreviewUrl
-        ? `<section class="card"><h2>Step 6) Preview + 활성화</h2><p>characterPackId: <code>${escHtml(
+        ? `<section class="card"><h2>7) 프리뷰 + 활성화</h2><p>characterPackId: <code>${escHtml(
             selectedPackId
           )}</code></p>${
             selectedPreviewExists
@@ -3218,7 +3399,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
               : ""
           }</div><form method="post" action="/ui/character-generator/set-active" style="margin-top:10px"><input type="hidden" name="characterPackId" value="${escHtml(
             selectedPackId
-          )}"/><button type="submit">Set Active (APPROVED)</button></form></section>`
+          )}"/><button type="submit">활성 팩으로 지정 (APPROVED)</button></form></section>`
         : "";
     const approvedPack = recentPacks.find((pack) => pack.status === "APPROVED") ?? null;
     const rollbackOptions = recentPacks
@@ -3234,24 +3415,24 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
       )
       .join("");
-    const rollbackSection = `<section class="card"><h2>Step 7) Active Pack Rollback</h2><p>current approved: <strong>${escHtml(
+    const rollbackSection = `<section class="card"><h2>8) 활성 팩 롤백</h2><p>현재 활성(approved): <strong>${escHtml(
       approvedPack?.id ?? "(none)"
-    )}</strong></p><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>rollback target<select name="targetCharacterPackId">${
-      rollbackOptions || '<option value="">No rollback target</option>'
-    }</select></label><button type="submit"${rollbackOptions ? "" : " disabled"}>Rollback Active Pack</button></form></section>`;
-    const compareSection = `<section class="card"><h2>Step 8) A/B Compare</h2><form method="get" action="/ui/character-generator/compare" class="grid two"><label>A pack<select name="leftPackId">${
-      compareOptions || '<option value="">No packs</option>'
-    }</select></label><label>B pack<select name="rightPackId">${
-      compareOptions || '<option value="">No packs</option>'
-    }</select></label><button type="submit"${compareOptions ? "" : " disabled"}>Open Compare</button></form></section>`;
+    )}</strong></p><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>롤백 대상 팩<select name="targetCharacterPackId">${
+      rollbackOptions || '<option value="">롤백 가능한 대상 없음</option>'
+    }</select></label><button type="submit"${rollbackOptions ? "" : " disabled"}>활성 팩 롤백 실행</button></form></section>`;
+    const compareSection = `<section class="card"><h2>9) A/B 비교</h2><form method="get" action="/ui/character-generator/compare" class="grid two"><label>A 팩<select name="leftPackId">${
+      compareOptions || '<option value="">팩 없음</option>'
+    }</select></label><label>B 팩<select name="rightPackId">${
+      compareOptions || '<option value="">팩 없음</option>'
+    }</select></label><button type="submit"${compareOptions ? "" : " disabled"}>비교 화면 열기</button></form></section>`;
 
     const html = `<section class="card"><h1>\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30 (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">\uC77C\uBC18 \uC0AC\uC6A9\uC740 <a href="/ui/studio">\uD1B5\uD569 \uC2A4\uD29C\uB514\uC624</a>\uB97C \uAD8C\uC7A5\uD569\uB2C8\uB2E4. \uC774 \uD398\uC774\uC9C0\uB294 \uACE0\uAE09/\uC138\uBD80 \uC870\uC815\uC6A9\uC785\uB2C8\uB2E4.</div>${
       message ? `<div class="notice">${escHtml(message)}</div>` : ""
-    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/character-generator/create" class="grid"><h2>Step 1) 모드 선택</h2><div class="grid two"><label>mode<select name="mode"><option value="new">new (prompt)</option><option value="reference">reference (내 이미지 기반)</option></select></label><label>provider <span class="hint" data-tooltip="외부 provider 실패 시 mock 폴백됩니다">?</span><select name="provider"><option value="mock">mock (기본 무료)</option><option value="comfyui">comfyui (옵션)</option><option value="remoteApi">remoteApi (옵션)</option></select></label></div><h2>Step 2) 스타일 프리셋</h2><div class="grid two"><label>promptPreset<select name="promptPreset">${styleOptions}</select></label><label>topic(optional)<input name="topic" placeholder="Character Generator Demo"/></label><label>positivePrompt(optional)<textarea name="positivePrompt" rows="2" placeholder="orange cat mascot, friendly style"></textarea></label><label>negativePrompt(optional)<textarea name="negativePrompt" rows="2" placeholder="text, watermark, extra fingers, watermark"></textarea></label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> negative prompt 강화(손/텍스트/워터마크 억제)</label></div><div class="notice">채널 바이블 룰 자동 반영: forbidden=${escHtml(
+    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/character-generator/create" class="grid"><h2>1) 생성 모드</h2><div class="grid two"><label>모드<select name="mode"><option value="new">new (prompt)</option><option value="reference">reference (내 이미지 기반)</option></select></label><label>프로바이더 <span class="hint" data-tooltip="외부 provider 실패 시 mock 폴백됩니다">?</span><select name="provider"><option value="mock">mock (기본 무료)</option><option value="comfyui">comfyui (옵션)</option><option value="remoteApi">remoteApi (옵션)</option></select></label></div><h2>2) 스타일/프롬프트</h2><div class="grid two"><label>프롬프트 프리셋<select name="promptPreset">${styleOptions}</select></label><label>주제(선택)<input name="topic" placeholder="캐릭터 생성 데모"/></label><label>긍정 프롬프트(선택)<textarea name="positivePrompt" rows="2" placeholder="friendly orange cat mascot, clean silhouette"></textarea></label><label>부정 프롬프트(선택)<textarea name="negativePrompt" rows="2" placeholder="text, watermark, extra fingers, noisy background"></textarea></label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> 부정 프롬프트 강화(손/텍스트/워터마크 억제)</label></div><div class="notice">채널 바이블 룰 자동 반영: forbidden=${escHtml(
       promptRules.forbiddenTerms.join(", ") || "(none)"
-    )} / negative=${escHtml(promptRules.negativePromptTerms.join(", ") || "(none)")}</div><h2>Step 3) 후보 수/시드/HITL 설정</h2><div class="grid two"><label>referenceAssetId(reference mode)<select name="referenceAssetId"><option value=\"\">(none)</option>${referenceOptions}</select></label><label>candidateCount <span class="hint" data-tooltip="너무 높으면 비용/시간 증가">?</span><input name="candidateCount" value="4"/></label><label>seed <span class="hint" data-tooltip="같은 입력+seed면 재현성 유지">?</span><input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label>autoPick<select name="autoPick"><option value="false">false (직접 선택)</option><option value="true">true (자동 선택)</option></select></label><label>requireHitlPick<select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select></label></div><h2>Step 4) Generate + 진행 상태</h2><div class="notice">Generate를 누르면 아래 Selected Job 영역에서 상태를 자동 폴링합니다. ComfyUI 설정/오프라인이면 자동 mock 폴백됩니다.</div><button type="submit" data-primary-action="1">Generate Character Assets</button></form></section>${selectedSection}${regenerateSection}${pickSection}${previewSection}${rollbackSection}${compareSection}<section class=\"card\"><h2>Recent Generation Jobs</h2><table><thead><tr><th>Job</th><th>Episode</th><th>Topic</th><th>Status</th><th>Progress</th><th>Manifest</th><th>Created</th></tr></thead><tbody>${
-      rows || '<tr><td colspan="7"><div class="notice">생성 작업이 없습니다. 위에서 Generate를 실행하세요.</div></td></tr>'
-    }</tbody></table></section><script>(function(){const el=document.getElementById("generation-status");if(!el){return;}const retryBtn=document.getElementById("generation-retry");const jobId=el.dataset.jobId;if(!jobId){return;}let timer=null;let failCount=0;const stageLabel=(status)=>{switch(String(status||"").toUpperCase()){case"QUEUED":return"대기중";case"RUNNING":return"생성중";case"SUCCEEDED":return"완료";case"FAILED":return"실패";case"CANCELLED":return"취소";default:return String(status||"unknown");}};const schedule=(ms)=>{if(timer){clearTimeout(timer);}timer=setTimeout(()=>{void tick();},ms);};const toast=(title,msg,tone)=>{if(typeof window.__ecsToast==="function"){window.__ecsToast(title,msg,tone||"warn");}};const speak=(msg)=>{if(typeof window.__ecsSpeak==="function"){window.__ecsSpeak(msg);}};const tick=async()=>{try{const res=await fetch("/api/character-generator/jobs/"+encodeURIComponent(jobId));if(!res.ok){throw new Error("poll failed: "+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error("poll: no data");}failCount=0;if(retryBtn){retryBtn.style.display="none";}const manifestStatus=data.manifest&&data.manifest.status?" / manifest="+data.manifest.status:"";const text="status="+stageLabel(data.status)+" progress="+data.progress+"%"+manifestStatus;el.textContent=text;speak(text);if(data.status==="SUCCEEDED"||data.status==="FAILED"||data.status==="CANCELLED"){if(data.manifestExists){toast("Generator", "작업이 종료되어 결과 화면으로 이동합니다.", data.status==="SUCCEEDED"?"ok":"warn");setTimeout(()=>{window.location.href="/ui/character-generator?jobId="+encodeURIComponent(jobId);},500);}return;}schedule(2000);}catch(error){failCount+=1;const wait=Math.min(15000,2000*Math.pow(2,failCount));el.textContent="폴링 실패. "+wait+"ms 후 재시도합니다.";if(retryBtn){retryBtn.style.display="inline-block";}toast("Polling", String(error), "warn");schedule(wait);}};if(retryBtn){retryBtn.addEventListener("click",()=>{failCount=0;void tick();});}void tick();})();</script>`;
+    )} / negative=${escHtml(promptRules.negativePromptTerms.join(", ") || "(none)")}</div><h2>3) 후보 수/시드/HITL 설정</h2><div class="grid two"><label>레퍼런스 에셋(reference 모드)<select name="referenceAssetId"><option value=\"\">(없음)</option>${referenceOptions}</select></label><label>후보 수 <span class="hint" data-tooltip="너무 높으면 비용/시간 증가">?</span><input name="candidateCount" value="4"/></label><label>시드(seed) <span class="hint" data-tooltip="같은 입력+seed면 재현성 유지">?</span><input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label>자동 선택(autoPick)<select name="autoPick"><option value="false">false (직접 선택)</option><option value="true">true (자동 선택)</option></select></label><label>HITL 선택 강제(requireHitlPick)<select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select></label></div><h2>4) 생성 실행 + 진행 상태</h2><div class="notice">생성 실행 버튼을 누르면 아래 선택된 작업 영역에서 상태를 자동 조회합니다. ComfyUI 설정/오프라인이면 자동으로 mock 폴백됩니다.</div><button type="submit" data-primary-action="1">캐릭터 후보 생성 실행</button></form></section>${selectedSection}${regenerateSection}${pickSection}${previewSection}${rollbackSection}${compareSection}<section class=\"card\"><h2>최근 생성 작업</h2><table><thead><tr><th>작업</th><th>에피소드</th><th>주제</th><th>상태</th><th>진행률</th><th>매니페스트</th><th>생성 시각</th></tr></thead><tbody>${
+      rows || '<tr><td colspan="7"><div class="notice">생성 작업이 없습니다. 위에서 생성 실행을 눌러주세요.</div></td></tr>'
+    }</tbody></table></section><script>(function(){const el=document.getElementById("generation-status");if(!el){return;}const retryBtn=document.getElementById("generation-retry");const jobId=el.dataset.jobId;if(!jobId){return;}let timer=null;let failCount=0;const stageLabel=(status)=>{switch(String(status||"").toUpperCase()){case"QUEUED":return"대기중";case"RUNNING":return"생성중";case"SUCCEEDED":return"완료";case"FAILED":return"실패";case"CANCELLED":return"취소";default:return String(status||"unknown");}};const schedule=(ms)=>{if(timer){clearTimeout(timer);}timer=setTimeout(()=>{void tick();},ms);};const toast=(title,msg,tone)=>{if(typeof window.__ecsToast==="function"){window.__ecsToast(title,msg,tone||"warn");}};const speak=(msg)=>{if(typeof window.__ecsSpeak==="function"){window.__ecsSpeak(msg);}};const tick=async()=>{try{const res=await fetch("/api/character-generator/jobs/"+encodeURIComponent(jobId));if(!res.ok){throw new Error("상태 조회 실패: "+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error("상태 조회 응답에 데이터가 없습니다.");}failCount=0;if(retryBtn){retryBtn.style.display="none";}const manifestStatus=data.manifest&&data.manifest.status?" / 매니페스트="+data.manifest.status:"";const text="상태="+stageLabel(data.status)+" 진행률="+data.progress+"%"+manifestStatus;el.textContent=text;speak(text);if(data.status==="SUCCEEDED"||data.status==="FAILED"||data.status==="CANCELLED"){if(data.manifestExists){toast("생성기", "작업이 종료되어 결과 화면으로 이동합니다.", data.status==="SUCCEEDED"?"ok":"warn");setTimeout(()=>{window.location.href="/ui/character-generator?jobId="+encodeURIComponent(jobId);},500);}return;}schedule(2000);}catch(error){failCount+=1;const wait=Math.min(15000,2000*Math.pow(2,failCount));el.textContent="폴링 실패. "+wait+"ms 후 재시도합니다.";if(retryBtn){retryBtn.style.display="inline-block";}toast("상태조회", String(error), "warn");schedule(wait);}};if(retryBtn){retryBtn.addEventListener("click",()=>{failCount=0;void tick();});}void tick();})();</script>`;
 
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30", html));
   });
@@ -3270,8 +3451,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
           created.reusedExisting
-            ? `Reused in-flight generation job ${created.generateJobId} (episode ${created.episodeId})`
-            : `Enqueued ${GENERATE_CHARACTER_ASSETS_JOB_NAME} for episode ${created.episodeId}`
+            ? `이미 진행 중인 생성 작업 재사용: ${created.generateJobId} (episode ${created.episodeId})`
+            : `${GENERATE_CHARACTER_ASSETS_JOB_NAME} 작업 등록 완료 (episode ${created.episodeId})`
         )}`
       );
     } catch (error) {
@@ -3304,7 +3485,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          "HITL pick accepted. BUILD_CHARACTER_PACK queued."
+          "HITL 선택이 반영되어 BUILD_CHARACTER_PACK가 큐에 등록되었습니다."
         )}`
       );
     } catch (routeError) {
@@ -3337,7 +3518,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          `Regenerate enqueued for ${created.view} (${regenerateSameSeed ? "same seed" : "new seed"})`
+          `재생성 작업 등록: ${created.view} (${regenerateSameSeed ? "동일 시드" : "새 시드"})`
         )}`
       );
     } catch (routeError) {
@@ -3385,7 +3566,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`Character pack ${characterPackId} is now APPROVED.`)}`
+        `/ui/character-generator?message=${encodeURIComponent(`캐릭터 팩 ${characterPackId} 이(가) APPROVED 상태로 활성화되었습니다.`)}`
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
@@ -3431,7 +3612,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`Rolled back active pack to ${targetCharacterPackId}.`)}`
+        `/ui/character-generator?message=${encodeURIComponent(`활성 팩 롤백 완료: ${targetCharacterPackId}`)}`
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
@@ -3496,7 +3677,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       pack.id
     )}/qc_report.json">qc_report.json</a> ${qcExists ? "(exists)" : "(missing)"}</p></section>`;
 
-    const html = `<section class="card"><h1>Character Pack A/B Compare</h1><p><a href="/ui/character-generator">\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30\uB85C \uB3CC\uC544\uAC00\uAE30</a></p><div class="grid two">${panel(
+    const html = `<section class="card"><h1>캐릭터 팩 A/B 비교</h1><p><a href="/ui/character-generator">\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30\uB85C \uB3CC\uC544\uAC00\uAE30</a></p><div class="grid two">${panel(
       "A",
       leftPack,
       leftPreviewExists,
@@ -3634,7 +3815,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .join("");
 
     const selectedSection = selectedPack
-      ? `<section class="card"><h2>Selected Pack</h2><p>id: <strong>${escHtml(selectedPack.id)}</strong></p><p>version: <strong>${escHtml(
+      ? `<section class="card"><h2>선택된 팩</h2><p>id: <strong>${escHtml(selectedPack.id)}</strong></p><p>version: <strong>${escHtml(
           selectedPack.version
         )}</strong></p><p>status: <span class="badge ${uiBadge(selectedPack.status)}">${escHtml(
           selectedPack.status
@@ -3656,37 +3837,37 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             : "-"
         }</p></div></div>${
           selectedPreviewExists && selectedPreviewUrl
-            ? `<section class="card"><h3>Preview Player</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
+            ? `<section class="card"><h3>프리뷰 재생기</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
                 selectedPreviewUrl
-              )}"></video><p><a href="${escHtml(selectedPreviewUrl)}">Open preview.mp4</a></p></section>`
-            : `<section class="card"><h3>Preview Player</h3><div class="error">preview.mp4가 아직 생성되지 않았습니다.</div></section>`
+              )}"></video><p><a href="${escHtml(selectedPreviewUrl)}">preview.mp4 열기</a></p></section>`
+            : `<section class="card"><h3>프리뷰 재생기</h3><div class="error">preview.mp4가 아직 생성되지 않았습니다.</div></section>`
         }${
           selectedQcExists
             ? selectedQcIssues.length > 0
-              ? `<section class="card"><h3>QC Issues</h3><table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${selectedQcIssueRows}</tbody></table><p><a href="${escHtml(
+              ? `<section class="card"><h3>QC 이슈</h3><table><thead><tr><th>#</th><th>검사 항목</th><th>심각도</th><th>메시지</th><th>상세</th></tr></thead><tbody>${selectedQcIssueRows}</tbody></table><p><a href="${escHtml(
                   selectedQcUrl ?? ""
-                )}">Open qc_report.json</a></p></section>`
-              : `<section class="card"><h3>QC Report</h3><div class="notice">이슈 없음</div><pre>${escHtml(
+                )}">qc_report.json 열기</a></p></section>`
+              : `<section class="card"><h3>QC 리포트</h3><div class="notice">이슈 없음</div><pre>${escHtml(
                   JSON.stringify(selectedQcReport, null, 2)
                 )}</pre></section>`
-            : `<section class="card"><h3>QC Report</h3><div class="error">qc_report.json이 아직 생성되지 않았습니다.</div></section>`
+            : `<section class="card"><h3>QC 리포트</h3><div class="error">qc_report.json이 아직 생성되지 않았습니다.</div></section>`
         }<details><summary>pack.json 보기</summary><pre>${escHtml(
           JSON.stringify(selectedPack.json, null, 2)
-        )}</pre></details></section><section class="card"><h2>Selected Pack Jobs</h2><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created</th></tr></thead><tbody>${
-          selectedJobs || '<tr><td colspan="5">No jobs</td></tr>'
+        )}</pre></details></section><section class="card"><h2>선택된 팩 작업</h2><table><thead><tr><th>작업</th><th>유형</th><th>상태</th><th>진행률</th><th>생성 시각</th></tr></thead><tbody>${
+          selectedJobs || '<tr><td colspan="5">작업 없음</td></tr>'
         }</tbody></table></section>`
       : "";
 
     const html = `<section class="card"><h1>\uCE90\uB9AD\uD130 \uD329 (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">\uBE60\uB978 \uD750\uB984\uC740 <a href="/ui/studio">\uD1B5\uD569 \uC2A4\uD29C\uB514\uC624</a>\uB97C \uC0AC\uC6A9\uD558\uC138\uC694. \uC774 \uD398\uC774\uC9C0\uB294 \uD329 \uC218\uB3D9 \uC810\uAC80/\uC0DD\uC131\uC6A9\uC785\uB2C8\uB2E4.</div>${
       message ? `<div class="notice">${escHtml(message)}</div>` : ""
-    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/characters/create" class="grid"><div class="grid two"><label>front asset<select name="front" required>${
-      assetOptions || '<option value="">No READY assets</option>'
-    }</select></label><label>threeQuarter asset<select name="threeQuarter" required>${
-      assetOptions || '<option value="">No READY assets</option>'
-    }</select></label><label>profile asset<select name="profile" required>${
-      assetOptions || '<option value="">No READY assets</option>'
-    }</select></label><label>topic(optional)<input name="topic" placeholder="Character Preview"/></label></div><button type="submit">Create Character Pack + Enqueue Preview</button></form></section>${selectedSection}<section class="card"><h2>\uCD5C\uADFC \uCE90\uB9AD\uD130 \uD329</h2><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created</th></tr></thead><tbody>${
-      packRows || '<tr><td colspan="6">No character packs</td></tr>'
+    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/characters/create" class="grid"><div class="grid two"><label>정면(front) 에셋<select name="front" required>${
+      assetOptions || '<option value="">사용 가능한 READY 에셋 없음</option>'
+    }</select></label><label>3/4(threeQuarter) 에셋<select name="threeQuarter" required>${
+      assetOptions || '<option value="">사용 가능한 READY 에셋 없음</option>'
+    }</select></label><label>측면(profile) 에셋<select name="profile" required>${
+      assetOptions || '<option value="">사용 가능한 READY 에셋 없음</option>'
+    }</select></label><label>주제(선택)<input name="topic" placeholder="캐릭터 프리뷰"/></label></div><button type="submit">캐릭터 팩 생성 + 프리뷰 작업 등록</button></form></section>${selectedSection}<section class="card"><h2>\uCD5C\uADFC \uCE90\uB9AD\uD130 \uD329</h2><table><thead><tr><th>ID</th><th>버전</th><th>상태</th><th>에피소드</th><th>프리뷰</th><th>생성 시각</th></tr></thead><tbody>${
+      packRows || '<tr><td colspan="6">캐릭터 팩이 없습니다</td></tr>'
     }</tbody></table></section>`;
 
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329", html));
@@ -3710,7 +3891,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/characters?characterPackId=${encodeURIComponent(created.characterPackId)}&message=${encodeURIComponent(
-          `Created pack ${created.characterPackId} and enqueued ${BUILD_CHARACTER_PACK_JOB_NAME}`
+          `캐릭터 팩 생성 완료: ${created.characterPackId} / ${BUILD_CHARACTER_PACK_JOB_NAME} 큐 등록`
         )}`
       );
     } catch (error) {
