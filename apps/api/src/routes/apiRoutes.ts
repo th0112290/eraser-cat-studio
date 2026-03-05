@@ -41,6 +41,7 @@ type RegisterApiRoutesInput = {
   app: FastifyInstance;
   prisma: PrismaClient;
   queue: Queue;
+  assetQueue?: Queue;
   queueName: string;
 };
 
@@ -730,6 +731,7 @@ function fmtUiDate(value: Date): string {
 
 export function registerApiRoutes(input: RegisterApiRoutesInput): void {
   const { app, prisma, queue, queueName } = input;
+  const assetQueue = input.assetQueue ?? queue;
 
   app.register(multipart, {
     limits: {
@@ -1338,10 +1340,11 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
   });
 
   app.post("/api/assets/upload", async (request, reply) => {
-    const file = await request.file();
-    if (!file) {
-      throw createHttpError(400, "multipart file field 'file' is required");
-    }
+    try {
+      const file = await request.file();
+      if (!file) {
+        throw createHttpError(400, "multipart file field 'file' is required");
+      }
 
     const fields = file.fields as Record<string, { value?: unknown }>;
     const assetType = requireAssetType(fields.assetType?.value);
@@ -1407,7 +1410,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
     });
 
     if (existing) {
-      if (existing.status !== "FAILED") {
+      if (existing.status === "READY") {
         return reply.code(200).send({
           data: {
             assetId: existing.id,
@@ -1419,9 +1422,61 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
         });
       }
 
+      if (existing.status !== "FAILED") {
+        let retryBullmqJobId: string | null = null;
+        try {
+          const queued = await assetQueue.add(
+            ASSET_INGEST_JOB_NAME,
+            {
+              assetId: existing.id,
+              assetType,
+              originalKey: existing.originalKey ?? existing.storageKey ?? "",
+              mime: existing.mime ?? "application/octet-stream"
+            },
+            {
+              jobId: `asset-ingest-${existing.id}`,
+              attempts: DEFAULT_MAX_ATTEMPTS,
+              backoff: {
+                type: "exponential",
+                delay: DEFAULT_RETRY_BACKOFF_MS
+              },
+              removeOnComplete: false,
+              removeOnFail: false
+            }
+          );
+          retryBullmqJobId = String(queued.id);
+        } catch (error) {
+          if (isRedisUnavailableError(error)) {
+            throw createHttpError(503, "Redis unavailable", {
+              error_code: "redis_unavailable",
+              dependency: "redis",
+              hint: "Start Redis and retry."
+            });
+          }
+          throw error;
+        }
+
+        await prisma.asset.update({
+          where: { id: existing.id },
+          data: {
+            status: "QUEUED"
+          }
+        });
+
+        return reply.code(200).send({
+          data: {
+            assetId: existing.id,
+            status: "QUEUED",
+            reused: true,
+            qcSummary: existing.qcJson,
+            bullmqJobId: retryBullmqJobId
+          }
+        });
+      }
+
       let retryBullmqJobId: string | null = null;
       try {
-        const queued = await queue.add(
+        const queued = await assetQueue.add(
           ASSET_INGEST_JOB_NAME,
           {
             assetId: existing.id,
@@ -1430,7 +1485,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
             mime: existing.mime ?? "application/octet-stream"
           },
           {
-            jobId: `asset-ingest:${existing.id}`,
+              jobId: `asset-ingest-${existing.id}`,
             attempts: DEFAULT_MAX_ATTEMPTS,
             backoff: {
               type: "exponential",
@@ -1502,7 +1557,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
 
     let bullmqJobId: string | null = null;
     try {
-      const queued = await queue.add(
+      const queued = await assetQueue.add(
         ASSET_INGEST_JOB_NAME,
         {
           assetId: created.id,
@@ -1511,7 +1566,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
           mime
         },
         {
-          jobId: `asset-ingest:${created.id}`,
+          jobId: `asset-ingest-${created.id}`,
           attempts: DEFAULT_MAX_ATTEMPTS,
           backoff: {
             type: "exponential",
@@ -1558,18 +1613,35 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
       }
     });
 
-    return reply.code(201).send({
-      data: {
-        assetId: created.id,
-        status: "QUEUED",
-        qcSummary: {
-          ...qcSummary,
-          minioWarning: stored.minioError ?? null,
-          minioHint: stored.minioError ? "MinIO unavailable. Local artifact path will be used." : null
-        },
-        bullmqJobId
+      return reply.code(201).send({
+        data: {
+          assetId: created.id,
+          status: "QUEUED",
+          qcSummary: {
+            ...qcSummary,
+            minioWarning: stored.minioError ?? null,
+            minioHint: stored.minioError ? "MinIO unavailable. Local artifact path will be used." : null
+          },
+          bullmqJobId
+        }
+      });
+    } catch (error) {
+      if (isDbUnavailableError(error)) {
+        throw createHttpError(503, "Database unavailable", {
+          error_code: "database_unavailable",
+          dependency: "postgresql",
+          hint: "Start PostgreSQL and retry."
+        });
       }
-    });
+      if (isRedisUnavailableError(error)) {
+        throw createHttpError(503, "Redis unavailable", {
+          error_code: "redis_unavailable",
+          dependency: "redis",
+          hint: "Start Redis and retry."
+        });
+      }
+      throw error;
+    }
   });
 
   app.get("/api/assets/:id", async (request) => {
