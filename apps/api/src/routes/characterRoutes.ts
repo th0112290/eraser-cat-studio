@@ -2487,6 +2487,39 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           "UI fallback: database unavailable"
         );
         const body = renderDbUnavailableCard({
+          title: "Studio (DB Fallback)",
+          route: "/ui/studio",
+          requestId: request.id
+        });
+        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("Studio", body));
+      }
+      throw routeError;
+    }
+    return reply
+      .type("text/html; charset=utf-8")
+      .send(uiPage("Studio", buildStudioBody({ message, error })));
+  });
+
+  app.get("/ui/character-generator", async (request, reply) => {
+    const query = isRecord(request.query) ? request.query : {};
+    const message = optionalString(query, "message");
+    const error = optionalString(query, "error");
+    const selectedJobId = optionalString(query, "jobId");
+
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (routeError) {
+      if (isDbUnavailableError(routeError)) {
+        request.log.warn(
+          {
+            error_code: "database_unavailable",
+            dependency: "postgresql",
+            hint: "Start PostgreSQL and retry.",
+            route: "/ui/character-generator"
+          },
+          "UI fallback: database unavailable"
+        );
+        const body = renderDbUnavailableCard({
           title: "Character Generator (DB Fallback)",
           route: "/ui/character-generator",
           requestId: request.id
@@ -2495,6 +2528,144 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       }
       throw routeError;
     }
+
+    const [readyAssets, recentJobs, activeChannelBible] = await Promise.all([
+      prisma.asset.findMany({
+        where: {
+          status: "READY",
+          assetType: { in: ["CHARACTER_REFERENCE", "CHARACTER_VIEW"] }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          assetType: true,
+          channelId: true
+        }
+      }),
+      prisma.job.findMany({
+        where: { type: GENERATE_CHARACTER_ASSETS_JOB_NAME },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        include: {
+          episode: {
+            select: {
+              id: true,
+              topic: true
+            }
+          }
+        }
+      }),
+      prisma.channelBible.findFirst({
+        where: { isActive: true },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        select: { json: true }
+      })
+    ]);
+
+    const stylePresetMap = new Map<string, { id: string; label: string }>();
+    for (const preset of CHARACTER_STYLE_PRESETS) {
+      stylePresetMap.set(preset.id, { id: preset.id, label: preset.label });
+    }
+    for (const preset of extractChannelStylePresets(activeChannelBible?.json)) {
+      stylePresetMap.set(preset.id, { id: preset.id, label: preset.label });
+    }
+    const styleOptions = Array.from(stylePresetMap.values())
+      .map((preset) => `<option value="${escHtml(preset.id)}">${escHtml(preset.label)}</option>`)
+      .join("");
+    const referenceOptions = readyAssets
+      .map(
+        (asset) =>
+          `<option value="${escHtml(asset.id)}">${escHtml(asset.id)} (${escHtml(asset.assetType)}, channel=${escHtml(
+            asset.channelId
+          )})</option>`
+      )
+      .join("");
+
+    const promptRules = extractChannelPromptRules(activeChannelBible?.json);
+    const topSection = buildCharacterGeneratorTopSection({
+      message,
+      error,
+      styleOptions,
+      referenceOptions,
+      defaultSeed: DEFAULT_GENERATION_SEED,
+      forbiddenTermsSummary: promptRules.forbiddenTerms.length > 0 ? promptRules.forbiddenTerms.join(", ") : "(none)",
+      negativeTermsSummary:
+        promptRules.negativePromptTerms.length > 0 ? promptRules.negativePromptTerms.join(", ") : "(none)"
+    });
+
+    const selectedJob = selectedJobId ? recentJobs.find((job) => job.id === selectedJobId) ?? null : null;
+    const selectedManifest = selectedJob ? readGenerationManifest(getGenerationManifestPath(selectedJob.id)) : null;
+
+    const selectedSection = selectedJob
+      ? `<section class="card"><h2>Selected Generation Job</h2><p>jobId: <strong>${escHtml(selectedJob.id)}</strong></p><p>status: <span class="badge ${uiBadge(
+          selectedJob.status
+        )}">${escHtml(selectedJob.status)}</span> / progress: ${escHtml(selectedJob.progress)}%</p><p>episode: ${
+          selectedJob.episode
+            ? `<a href="/ui/episodes/${escHtml(selectedJob.episode.id)}">${escHtml(selectedJob.episode.id)}</a> (${escHtml(
+                selectedJob.episode.topic ?? "-"
+              )})`
+            : "-"
+        }</p><div id="generation-status" class="notice" data-job-id="${escHtml(selectedJob.id)}">Polling latest status...</div><div class="actions"><button id="generation-retry" type="button" class="secondary" style="display:none">Retry now</button></div></section>`
+      : `<section class="card"><h2>Selected Generation Job</h2><div class="notice">Select a job from the list below.</div></section>`;
+
+    const regenerateSection = selectedJob
+      ? `<section class="card"><h2>Regenerate View</h2><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+          selectedJob.id
+        )}"/><label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Regenerate with same seed</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Strengthen negative prompt</label><div class="actions" style="grid-column:1/-1"><button type="submit">Run View Regeneration</button></div></form></section>`
+      : "";
+
+    const candidateOptions = (view: CharacterGenerationView): string => {
+      if (!selectedManifest) return "";
+      return selectedManifest.candidates
+        .filter((candidate) => candidate.view === view)
+        .map(
+          (candidate) =>
+            `<option value="${escHtml(candidate.id)}">${escHtml(candidate.id)} (score=${escHtml(
+              candidate.score.toFixed(3)
+            )})</option>`
+        )
+        .join("");
+    };
+    const pickSection =
+      selectedJob && selectedManifest
+        ? `<section class="card"><h2>Pick Candidates (HITL)</h2><form method="post" action="/ui/character-generator/pick" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+            selectedJob.id
+          )}"/><label>Front Candidate<select name="frontCandidateId">${candidateOptions("front")}</select></label><label>ThreeQuarter Candidate<select name="threeQuarterCandidateId">${candidateOptions(
+            "threeQuarter"
+          )}</select></label><label>Profile Candidate<select name="profileCandidateId">${candidateOptions(
+            "profile"
+          )}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit">Apply HITL Selection + Build Pack</button></div></form></section>`
+        : `<section class="card"><h2>Pick Candidates (HITL)</h2><div class="notice">A selected generation job is required.</div></section>`;
+
+    const rows = recentJobs
+      .map((job) => {
+        const manifest = readGenerationManifest(getGenerationManifestPath(job.id));
+        return `<tr><td><a href="/ui/character-generator?jobId=${encodeURIComponent(job.id)}">${escHtml(
+          job.id
+        )}</a></td><td>${job.episode ? `<a href="/ui/episodes/${escHtml(job.episode.id)}">${escHtml(job.episode.id)}</a>` : "-"}</td><td>${escHtml(
+          job.episode?.topic ?? "-"
+        )}</td><td><span class="badge ${uiBadge(job.status)}">${escHtml(job.status)}</span></td><td>${escHtml(
+          job.progress
+        )}%</td><td>${manifest ? escHtml(manifest.status) : '<span class="badge bad">missing</span>'}</td><td>${escHtml(
+          job.createdAt.toLocaleString("en-US", { hour12: false })
+        )}</td></tr>`;
+      })
+      .join("");
+
+    const body = buildCharacterGeneratorPageBody({
+      topSection,
+      selectedSection,
+      regenerateSection,
+      pickSection,
+      previewSection: "",
+      rollbackSection: "",
+      compareSection: "",
+      rows,
+      statusScript: selectedJob ? buildCharacterGeneratorStatusScript() : ""
+    });
+
+    return reply.type("text/html; charset=utf-8").send(uiPage("Character Generator", body));
   });
 
   app.post("/ui/character-generator/create", async (request, reply) => {
@@ -2511,8 +2682,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
           created.reusedExisting
-            ? `이미 진행 중인 생성 작업 재사용: ${created.generateJobId} (episode ${created.episodeId})`
-            : `${GENERATE_CHARACTER_ASSETS_JOB_NAME} 작업 등록 완료 (episode ${created.episodeId})`
+            ? `Reused active generation job: ${created.generateJobId} (episode ${created.episodeId})`
+            : `${GENERATE_CHARACTER_ASSETS_JOB_NAME} queued successfully (episode ${created.episodeId})`
         )}`
       );
     } catch (error) {
@@ -2545,7 +2716,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          "HITL 선택이 반영되어 BUILD_CHARACTER_PACK가 큐에 등록되었습니다."
+          "HITL selection applied. BUILD_CHARACTER_PACK has been queued."
         )}`
       );
     } catch (routeError) {
@@ -2578,7 +2749,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          `재생성 작업 등록: ${created.view} (${regenerateSameSeed ? "동일 시드" : "새 시드"})`
+          `View regeneration queued: ${created.view} (${regenerateSameSeed ? "same seed" : "new seed"})`
         )}`
       );
     } catch (routeError) {
@@ -2626,7 +2797,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`캐릭터 팩 ${characterPackId} 이(가) APPROVED 상태로 활성화되었습니다.`)}`
+        `/ui/character-generator?message=${encodeURIComponent(`Character pack ${characterPackId} is now active with APPROVED status.`)}`
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
@@ -2672,7 +2843,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`활성 팩 롤백 완료: ${targetCharacterPackId}`)}`
+        `/ui/character-generator?message=${encodeURIComponent(`Active pack rollback complete: ${targetCharacterPackId}`)}`
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
