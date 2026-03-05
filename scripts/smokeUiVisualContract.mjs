@@ -5,7 +5,12 @@ const pages = [
   "/ui/assets",
   "/ui/studio",
   "/ui/character-generator",
-  "/ui/episodes"
+  "/ui/episodes",
+  "/ui/jobs",
+  "/ui/hitl",
+  "/ui/publish",
+  "/ui/health",
+  "/ui/artifacts"
 ];
 
 const requiredPageHeadings = new Map([
@@ -13,7 +18,20 @@ const requiredPageHeadings = new Map([
   ["/ui/assets", ["에셋", "Assets"]],
   ["/ui/studio", ["통합 스튜디오", "Studio"]],
   ["/ui/character-generator", ["캐릭터 생성기", "Character Generator"]],
-  ["/ui/episodes", ["에피소드", "Episodes"]]
+  ["/ui/episodes", ["에피소드", "Episodes"]],
+  ["/ui/jobs", ["작업", "Jobs"]],
+  ["/ui/hitl", ["검수", "HITL"]],
+  ["/ui/publish", ["퍼블리시", "Publish"]],
+  ["/ui/health", ["헬스", "Health"]],
+  ["/ui/artifacts", ["아티팩트", "Artifacts"]]
+]);
+
+const requiredPageKeywords = new Map([
+  ["/ui/jobs", ["최근 100개 작업", "Latest 100 jobs"]],
+  ["/ui/hitl", ["검수 재렌더", "HITL Rerender"]],
+  ["/ui/publish", ["episodeId", "퍼블리시 실행"]],
+  ["/ui/health", ["서비스 상태", "Service Status"]],
+  ["/ui/artifacts", ["out/ 인덱스", "out/ index"]]
 ]);
 
 const requiredNavLabels = [
@@ -70,6 +88,14 @@ async function checkPage(path) {
     const matched = headingCandidates.some((heading) => html.includes(heading));
     if (!matched) {
       throw new Error(`${path} missing page heading: ${headingCandidates.join(" | ")}`);
+    }
+  }
+
+  const keywordCandidates = requiredPageKeywords.get(path);
+  if (keywordCandidates) {
+    const matched = keywordCandidates.some((keyword) => html.includes(keyword));
+    if (!matched) {
+      throw new Error(`${path} missing expected keyword: ${keywordCandidates.join(" | ")}`);
     }
   }
 

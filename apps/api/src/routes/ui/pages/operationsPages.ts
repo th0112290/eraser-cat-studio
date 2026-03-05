@@ -71,12 +71,18 @@ export function buildJobDetailPageBody(input: JobDetailPageBodyInput): string {
 <section class="card dashboard-shell">
   <h1>작업 상세</h1>
   ${input.flash}
-  <p>jobId: <strong>${input.jobId}</strong></p>
-  <p>episodeId: <a href="/ui/episodes/${input.episodeId}">${input.episodeId}</a></p>
-  <p>type: ${input.type}</p>
-  <p>status: ${input.statusBadge}</p>
-  <p>progress: ${input.progress}%</p>
-  <p>attempts: ${input.attempts}</p>
+  <div class="grid two">
+    <div class="form-card">
+      <div class="field"><label>jobId</label><div><strong>${input.jobId}</strong></div></div>
+      <div class="field"><label>episodeId</label><div><a href="/ui/episodes/${input.episodeId}">${input.episodeId}</a></div></div>
+      <div class="field"><label>type</label><div>${input.type}</div></div>
+    </div>
+    <div class="form-card">
+      <div class="field"><label>status</label><div>${input.statusBadge}</div></div>
+      <div class="field"><label>progress</label><div>${input.progress}%</div></div>
+      <div class="field"><label>attempts</label><div>${input.attempts}</div></div>
+    </div>
+  </div>
   ${input.errorStack}
   <div class="actions">
     ${input.retryAction}

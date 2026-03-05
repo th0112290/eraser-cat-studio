@@ -905,7 +905,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
           ? healthz.body.error
           : `healthz unavailable (${healthz.statusCode})`;
 
-      return reply.type("text/html; charset=utf-8").send(page("Health", `<section class="card"><h1>Health</h1><div class="error">${esc(fallbackMessage)}</div><p><a href="/health">Open /health JSON</a></p></section>`));
+      return reply.type("text/html; charset=utf-8").send(page("Health", `<section class="card"><h1>헬스 리포트</h1><div class="error">${esc(fallbackMessage)}</div><p><a href="/health">/health JSON 열기</a></p></section>`));
     }
 
     const data = healthz.body.data;
@@ -946,7 +946,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     return reply.type("text/html; charset=utf-8").send(
       page(
         "Health",
-        `<section class="card"><h1>Health Report</h1><p>overall: <span class="badge ${overallOk ? "ok" : "bad"}">${overallOk ? "up" : "down"}</span></p><p>checkedAt: ${esc(checkedAt)}</p><p>queue: ${esc(baseHealthData.queue ?? "-")} / redis=${esc(baseHealthData.redis ?? "-")} / queueReady=${esc(baseHealthData.queueReady ?? "-")}</p>${overallOk ? '<div class="notice">All core services are healthy.</div>' : '<div class="error">One or more services are down. Run the fix commands below.</div>'}</section><section class="card"><h2>Run Profile Dedup</h2><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">Reset Dedup Cache/Stats</button></form></div><table><thead><tr><th>Dedup Key</th><th>Job</th><th>Age</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">No recent dedup entries.</div></td></tr>'}</tbody></table></section><section class="card"><h2>Service Status</h2><table><thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>Fix Commands (PowerShell)</h2><table><thead><tr><th>Name</th><th>Command</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
+        `<section class="card"><h1>헬스 리포트</h1><p>overall: <span class="badge ${overallOk ? "ok" : "bad"}">${overallOk ? "up" : "down"}</span></p><p>checkedAt: ${esc(checkedAt)}</p><p>queue: ${esc(baseHealthData.queue ?? "-")} / redis=${esc(baseHealthData.redis ?? "-")} / queueReady=${esc(baseHealthData.queueReady ?? "-")}</p>${overallOk ? '<div class="notice">핵심 서비스가 정상입니다.</div>' : '<div class="error">하나 이상의 서비스가 비정상입니다. 아래 복구 명령을 실행하세요.</div>'}</section><section class="card"><h2>Run Profile 중복 실행 보호</h2><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">중복 실행 캐시/통계 초기화</button></form></div><table><thead><tr><th>Dedup Key</th><th>Job</th><th>Age</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">최근 dedup 기록이 없습니다.</div></td></tr>'}</tbody></table></section><section class="card"><h2>서비스 상태</h2><table><thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>복구 명령 (PowerShell)</h2><table><thead><tr><th>Name</th><th>Command</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
       )
     );
   });
@@ -955,7 +955,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     runProfileDedupCache.clear();
     runProfileDedupStats.hits = 0;
     runProfileDedupStats.enqueues = 0;
-    return reply.redirect(`/ui/health?message=${encodeURIComponent("Run profile dedup cache/stats reset")}`);
+    return reply.redirect(`/ui/health?message=${encodeURIComponent("Run profile dedup 캐시/통계를 초기화했습니다.")}`);
   });
 
   app.post("/ui/actions/demo-extreme", async (_request, reply) => {
@@ -1382,7 +1382,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 
     const episodeBody = `
 <section class="card">
-  <h1>Episode Detail</h1>
+  <h1>에피소드 상세</h1>
   ${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
   ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}
   <p>episodeId: <strong>${esc(episode.id ?? id)}</strong></p>
@@ -1392,19 +1392,19 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   <p>outDir: <code>${esc(artifacts.outDir ?? localOut.outDir)}</code></p>
   <div class="grid two">
     <div class="card">
-      <h3>Documents</h3>
-      <p>beats.json: <span class="badge ${artifacts.beatsFileExists ? "ok" : "bad"}">${artifacts.beatsFileExists ? "exists" : "missing"}</span></p>
-      <p>shots.json: <span class="badge ${artifacts.shotsFileExists ? "ok" : "bad"}">${artifacts.shotsFileExists ? "exists" : "missing"}</span></p>
-      <p>qc_report.json: <span class="badge ${qcExists ? "ok" : "bad"}">${qcExists ? "exists" : "missing"}</span></p>
+      <h3>문서</h3>
+      <p>beats.json: <span class="badge ${artifacts.beatsFileExists ? "ok" : "bad"}">${artifacts.beatsFileExists ? "존재" : "없음"}</span></p>
+      <p>shots.json: <span class="badge ${artifacts.shotsFileExists ? "ok" : "bad"}">${artifacts.shotsFileExists ? "존재" : "없음"}</span></p>
+      <p>qc_report.json: <span class="badge ${qcExists ? "ok" : "bad"}">${qcExists ? "존재" : "없음"}</span></p>
       <p>STYLE_QC(main): fail=${styleQcMain.failCount} warn=${styleQcMain.warnCount} forced=${esc(styleQcMain.forcedStyle)}</p>
     </div>
     <div class="card">
-      <h3>Renders</h3>
-      <p>preview.mp4: <span class="badge ${previewExists ? "ok" : "bad"}">${previewExists ? "exists" : "missing"}</span></p>
-      <p>preview_A.mp4: <span class="badge ${previewAExists ? "ok" : "bad"}">${previewAExists ? "exists" : "missing"}</span></p>
-      <p>preview_B.mp4: <span class="badge ${previewBExists ? "ok" : "bad"}">${previewBExists ? "exists" : "missing"}</span></p>
-      <p>final.mp4: <span class="badge ${finalExists ? "ok" : "bad"}">${finalExists ? "exists" : "missing"}</span></p>
-      <p>upload_manifest.json: <span class="badge ${uploadManifestExists ? "ok" : "bad"}">${uploadManifestExists ? "exists" : "missing"}</span></p>
+      <h3>렌더 산출물</h3>
+      <p>preview.mp4: <span class="badge ${previewExists ? "ok" : "bad"}">${previewExists ? "존재" : "없음"}</span></p>
+      <p>preview_A.mp4: <span class="badge ${previewAExists ? "ok" : "bad"}">${previewAExists ? "존재" : "없음"}</span></p>
+      <p>preview_B.mp4: <span class="badge ${previewBExists ? "ok" : "bad"}">${previewBExists ? "존재" : "없음"}</span></p>
+      <p>final.mp4: <span class="badge ${finalExists ? "ok" : "bad"}">${finalExists ? "존재" : "없음"}</span></p>
+      <p>upload_manifest.json: <span class="badge ${uploadManifestExists ? "ok" : "bad"}">${uploadManifestExists ? "존재" : "없음"}</span></p>
     </div>
   </div>
   <div class="card">
@@ -1424,23 +1424,23 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       <input type="hidden" name="returnTo" value="episode"/>
       <div class="actions" style="grid-column:1/-1">
         <button type="submit" data-primary-action="1">Run Profile (원클릭)</button>
-        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Jobs Monitor</a>
+        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">작업 모니터</a>
       </div>
     </form>
     <p class="notice">프로필 설명: preview=빠른 미리보기, full=최종 렌더+패키징, render_only=현재 shots 기준 preview 렌더만 실행</p>
     <div id="run-profile-live" data-episode-id="${esc(id)}" class="notice">최근 실행 상태를 불러오는 중...</div>
-    <table><thead><tr><th>Latest Job Type</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">작업 이력이 없습니다. 위 Run Profile로 시작하세요.</div></td></tr>'}</tbody></table>
+    <table><thead><tr><th>최근 작업 유형</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">작업 이력이 없습니다. 위 Run Profile로 시작하세요.</div></td></tr>'}</tbody></table>
   </div>
   <div class="card">
-    <h3>Style Controls</h3>
+    <h3>스타일 컨트롤</h3>
     <form method="post" action="/ui/episodes/${esc(id)}/style-preview" class="grid two">
       <label>stylePreset<select name="stylePresetId">${styleOptions}</select></label>
       <label>hookBoost(0~1)<input type="range" name="hookBoost" min="0" max="1" step="0.05" value="${esc(style.hookBoost.toFixed(2))}" oninput="this.nextElementSibling.value=this.value"/><output>${esc(style.hookBoost.toFixed(2))}</output></label>
-      <div class="actions" style="grid-column:1/-1"><button type="submit">Style Preview (약 10초)</button></div>
+      <div class="actions" style="grid-column:1/-1"><button type="submit">Style Preview 실행 (약 10초)</button></div>
     </form>
     <form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="grid two">
-      <label>Variant A Style<select name="styleA">${concreteStyleOptionsA}</select></label>
-      <label>Variant B Style<select name="styleB">${concreteStyleOptionsB}</select></label>
+      <label>Variant A 스타일<select name="styleA">${concreteStyleOptionsA}</select></label>
+      <label>Variant B 스타일<select name="styleB">${concreteStyleOptionsB}</select></label>
       <div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">A/B 미리보기 비교 생성</button><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교 페이지</a></div>
     </form>
     <p>A STYLE_QC: fail=${styleQcA.failCount} warn=${styleQcA.warnCount} forced=${esc(styleQcA.forcedStyle)} | B STYLE_QC: fail=${styleQcB.failCount} warn=${styleQcB.warnCount} forced=${esc(styleQcB.forcedStyle)}</p>
@@ -1449,15 +1449,15 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">원클릭 Preview Render 시작</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="full"/>${styleHidden}<button type="submit" class="secondary">Run Final + Package</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit">Enqueue COMPILE_SHOTS</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">Render Preview</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">Force Enqueue</button></form>
-    <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Shot Editor (timeline)</a>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">Preview 렌더 실행</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">강제 Enqueue</button></form>
+    <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">샷 에디터(타임라인)</a>
   </div>
 </section>
 <section class="card">
-  <h2>Preview Player</h2>
-  ${previewExists ? `<video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${previewUrl}"></video><p><a href="${previewUrl}">Open preview.mp4 directly</a></p>` : '<div class="error">preview.mp4가 아직 생성되지 않았습니다. 위 버튼으로 Preview Render를 시작하세요.</div>'}
-  ${(previewAExists || previewBExists) ? `<p>${previewAExists ? `<a href="${previewAUrl}">Open preview_A.mp4</a>` : "preview_A missing"} | ${previewBExists ? `<a href="${previewBUrl}">Open preview_B.mp4</a>` : "preview_B missing"}</p>` : ""}
+  <h2>Preview 플레이어</h2>
+  ${previewExists ? `<video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${previewUrl}"></video><p><a href="${previewUrl}">preview.mp4 바로 열기</a></p>` : '<div class="error">preview.mp4가 아직 생성되지 않았습니다. 위 버튼으로 Preview 렌더를 시작하세요.</div>'}
+  ${(previewAExists || previewBExists) ? `<p>${previewAExists ? `<a href="${previewAUrl}">preview_A.mp4 열기</a>` : "preview_A 없음"} | ${previewBExists ? `<a href="${previewBUrl}">preview_B.mp4 열기</a>` : "preview_B 없음"}</p>` : ""}
 </section>
 <section class="card">
   <h2>QC Report</h2>
@@ -1528,10 +1528,10 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const shots = shotRows.join("");
     const stageObjects = stageShotObjects.length > 0
       ? stageShotObjects.join("")
-      : `<div class="muted-text">No shots yet. Run COMPILE_SHOTS to fill the stage.</div>`;
+      : `<div class="muted-text">샷이 없습니다. COMPILE_SHOTS를 먼저 실행해 주세요.</div>`;
     const templateItems = templateShotItems.length > 0
       ? templateShotItems.join("")
-      : `<li data-editor-search-item>No shot templates yet.</li>`;
+      : `<li data-editor-search-item>샷 템플릿이 아직 없습니다.</li>`;
 
     const snapshotsPath = editorSnapshotsDir(id);
     const snapshots = fs.existsSync(snapshotsPath)
@@ -1539,7 +1539,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       : [];
     const snapshotItems = snapshots.length > 0
       ? snapshots.map((name) => `<a class="editor-chip" href="/artifacts/${encodeURIComponent(id)}/editor_snapshots/${encodeURIComponent(name)}">${esc(name)}</a>`).join("")
-      : `<span class="muted-text">No snapshots yet.</span>`;
+      : `<span class="muted-text">스냅샷이 아직 없습니다.</span>`;
 
     const body = `<section class="card editor-shell" id="editor-shell">
 <style>
@@ -1586,15 +1586,15 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 </style>
 <div class="editor-topbar">
   <div>
-    <h1>Shot Timeline Editor</h1>
+    <h1>샷 타임라인 에디터</h1>
     <p>episodeId: <a href="/ui/episodes/${esc(id)}">${esc(id)}</a> | history: ${history.pointer + 1} / ${history.states.length}</p>
   </div>
   <div class="editor-top-actions">
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="undo"/><button type="submit" ${history.pointer <= 0 ? "disabled" : ""}>Undo</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="redo"/><button type="submit" ${history.pointer >= history.states.length - 1 ? "disabled" : ""}>Redo</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1">Save Snapshot</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Render Preview</button></form>
-    <button type="button" class="secondary" id="editor-left-toggle" aria-expanded="true">Collapse Left Panel</button>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Preview 렌더</button></form>
+    <button type="button" class="secondary" id="editor-left-toggle" aria-expanded="true">왼쪽 패널 접기</button>
   </div>
 </div>
 ${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
@@ -1608,7 +1608,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       <button id="editor-tab-btn-elements" type="button" role="tab" aria-selected="false" aria-controls="editor-tab-panel-elements" tabindex="-1" class="secondary" data-editor-tab-btn="elements">Elements</button>
       <button id="editor-tab-btn-uploads" type="button" role="tab" aria-selected="false" aria-controls="editor-tab-panel-uploads" tabindex="-1" class="secondary" data-editor-tab-btn="uploads">Uploads</button>
     </div>
-    <input id="editor-left-search" class="editor-search" type="search" placeholder="Search library" aria-label="Search left panel library"/>
+    <input id="editor-left-search" class="editor-search" type="search" placeholder="라이브러리 검색" aria-label="왼쪽 패널 라이브러리 검색"/>
     <div id="editor-tab-panel-templates" role="tabpanel" aria-labelledby="editor-tab-btn-templates" class="editor-tab-panel active" data-editor-tab="templates"><ul>${templateItems}<li data-editor-search-item>Intro lower-third</li><li data-editor-search-item>CTA end card</li></ul></div>
     <div id="editor-tab-panel-elements" role="tabpanel" aria-labelledby="editor-tab-btn-elements" class="editor-tab-panel" data-editor-tab="elements" hidden><ul><li data-editor-search-item>Shape: rounded rect</li><li data-editor-search-item>Arrow line</li><li data-editor-search-item>Subtitle block</li><li data-editor-search-item>Brand-safe icon</li></ul></div>
     <div id="editor-tab-panel-uploads" role="tabpanel" aria-labelledby="editor-tab-btn-uploads" class="editor-tab-panel" data-editor-tab="uploads" hidden><ul><li data-editor-search-item>voiceover_wave.png</li><li data-editor-search-item>chart_overlay.svg</li><li data-editor-search-item>product_cutout.webp</li></ul></div>
@@ -1617,21 +1617,21 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     <h2>편집 캔버스</h2>
     <div class="editor-stage">
       <div id="editor-context-toolbar" class="editor-context-toolbar" hidden>
-        <span id="editor-context-label" class="editor-context-label">No selection</span>
-        <button type="button" class="secondary" data-editor-placeholder-action="Crop">Crop</button>
-        <button type="button" class="secondary" data-editor-placeholder-action="Animate">Animate</button>
-        <button type="button" class="secondary" data-editor-placeholder-action="Style">Style</button>
+        <span id="editor-context-label" class="editor-context-label">선택 없음</span>
+        <button type="button" class="secondary" data-editor-placeholder-action="크롭">크롭</button>
+        <button type="button" class="secondary" data-editor-placeholder-action="애니메이션">애니메이션</button>
+        <button type="button" class="secondary" data-editor-placeholder-action="스타일">스타일</button>
       </div>
       <div class="editor-stage-grid">
         ${stageObjects}
-        <button type="button" class="editor-object" data-editor-object="placeholder:title" data-editor-label="템플릿: 타이틀 카드"><span>템플릿</span><small>Title Card</small></button>
-        <button type="button" class="editor-object" data-editor-object="placeholder:sticker" data-editor-label="템플릿: 스티커 팩"><span>템플릿</span><small>Sticker Pack</small></button>
+        <button type="button" class="editor-object" data-editor-object="placeholder:title" data-editor-label="템플릿: 타이틀 카드"><span>템플릿</span><small>타이틀 카드</small></button>
+        <button type="button" class="editor-object" data-editor-object="placeholder:sticker" data-editor-label="템플릿: 스티커 팩"><span>템플릿</span><small>스티커 팩</small></button>
       </div>
     </div>
     <div class="editor-table-wrap">
       <table>
         <thead><tr><th>#</th><th>shot_id</th><th>start</th><th>duration</th><th>transition</th><th>camera keys</th><th>order</th><th>override</th></tr></thead>
-        <tbody>${shots || '<tr><td colspan="8"><div class="notice">No timeline rows yet.</div></td></tr>'}</tbody>
+        <tbody>${shots || '<tr><td colspan="8"><div class="notice">타임라인 행이 아직 없습니다.</div></td></tr>'}</tbody>
       </table>
     </div>
   </section>
@@ -1688,7 +1688,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     });
     if (toolbar instanceof HTMLElement) toolbar.hidden = false;
     if (toolbarLabel instanceof HTMLElement) toolbarLabel.textContent = label;
-    if (inspector instanceof HTMLElement) inspector.textContent = 'Selected: ' + label;
+    if (inspector instanceof HTMLElement) inspector.textContent = '선택됨: ' + label;
   };
   shell.querySelectorAll('[data-editor-object]').forEach((node) => {
     if (!(node instanceof HTMLElement)) return;
@@ -1718,7 +1718,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     leftToggle.addEventListener('click', () => {
       const collapsed = shell.classList.toggle('editor-left-collapsed');
       leftToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      leftToggle.textContent = collapsed ? 'Expand Left Panel' : 'Collapse Left Panel';
+      leftToggle.textContent = collapsed ? '왼쪽 패널 펼치기' : '왼쪽 패널 접기';
     });
   }
   const setActiveTab = (tab, focus = false) => {
@@ -1773,8 +1773,8 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   shell.querySelectorAll('[data-editor-placeholder-action]').forEach((node) => {
     if (!(node instanceof HTMLButtonElement)) return;
     node.addEventListener('click', () => {
-      const action = String(node.dataset.editorPlaceholderAction || 'Action');
-      toast('Editor', action + ' is a placeholder for TICKET-UI-201', 'warn');
+      const action = String(node.dataset.editorPlaceholderAction || '동작');
+      toast('에디터', action + ' 기능은 다음 티켓(TICKET-UI-201)에서 확장됩니다.', 'warn');
     });
   });
   if (searchInput instanceof HTMLInputElement) {

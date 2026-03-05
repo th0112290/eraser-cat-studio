@@ -43,7 +43,7 @@ main{max-width:1240px;margin:20px auto;padding:0 18px 28px;display:grid;gap:14px
 .section-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
 .muted-text{color:#55657a;font-size:12px}
 .table-wrap{overflow:auto;border:1px solid #dbe6f1;border-radius:12px;background:#fff}
-.table-wrap table{border:none;border-radius:0;min-width:760px}
+.table-wrap table{border:none;border-radius:0;min-width:720px}
 .table-wrap th{position:sticky;top:0;z-index:1}
 tbody tr:nth-child(even){background:#fbfdff}
 tbody tr:hover{background:#f1f8ff}
@@ -78,7 +78,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
 .shortcut-card{width:min(620px,90vw);background:#ffffff;border-radius:14px;border:1px solid var(--line);padding:14px;box-shadow:0 20px 44px #00000026}
 .shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
 .sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
-@media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px}.status-row{padding:7px 9px}.quick-grid{grid-template-columns:1fr}}
+@media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px;font-size:12px}.status-row{padding:7px 9px}.quick-grid{grid-template-columns:1fr}.table-wrap table{min-width:620px}.actions{gap:6px}.field small{font-size:11px}}
 </style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">대시보드</a><a href="/ui/studio">통합 스튜디오</a><a href="/ui/jobs">작업</a><a href="/ui/assets">에셋</a><a href="/ui/characters">캐릭터</a><a href="/ui/character-generator">캐릭터 생성기</a><a href="/ui/hitl">검수(HITL)</a><a href="/ui/episodes">에피소드</a><a href="/ui/publish">퍼블리시</a><a href="/ui/health">헬스</a><a href="/ui/artifacts">아티팩트</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말(?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>단축키</h2><table><thead><tr><th>키</th><th>동작</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g → e</td><td>에피소드 이동</td></tr><tr><td>g → j</td><td>작업 이동</td></tr><tr><td>g → h</td><td>헬스 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
 (() => {
   const toastWrap = document.getElementById('toast-wrap');
