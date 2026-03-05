@@ -2254,7 +2254,7 @@ async function persistSelectedCandidates(input: {
 
     await handleAssetIngestJob({
       prisma,
-      ingestPayload,
+      payload: ingestPayload,
       bullmqJobId: `inline-asset-ingest-${asset.id}`
     });
     const ingestJobId = `inline-asset-ingest-${asset.id}`;
