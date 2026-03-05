@@ -8,6 +8,8 @@ function assert(condition: unknown, message: string): void {
 
 const unavailable = new Error("PrismaClientInitializationError: Can't reach database server at `localhost:5432`");
 assert(isDbUnavailableError(unavailable), "Expected db unavailable detector to match Prisma init error");
+const knownRequest = { code: "P2021", message: "The table `public.Asset` does not exist in the current database." };
+assert(isDbUnavailableError(knownRequest), "Expected db unavailable detector to match Prisma known request code");
 
 const card = renderDbUnavailableCard({
   title: "Test Screen",

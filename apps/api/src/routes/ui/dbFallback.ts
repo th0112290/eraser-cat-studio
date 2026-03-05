@@ -1,17 +1,38 @@
-﻿export function dbErrorMessage(error: unknown): string {
+export function dbErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function prismaCode(error: unknown): string | null {
+  if (!isRecord(error)) {
+    return null;
+  }
+  const value = error.code;
+  return typeof value === "string" ? value : null;
 }
 
 export function isDbUnavailableError(error: unknown): boolean {
   const msg = dbErrorMessage(error).toLowerCase();
+  const code = prismaCode(error);
+  const codeLooksDbUnavailable =
+    code !== null &&
+    (/^P10\d{2}$/.test(code) ||
+      code === "P2021" ||
+      code === "P2024" ||
+      code === "P2037");
+
   return (
+    codeLooksDbUnavailable ||
     msg.includes("can't reach database server") ||
     msg.includes("prismaclientinitializationerror") ||
     msg.includes("prismaclientknownrequesterror") ||
     msg.includes("connect econnrefused") ||
     msg.includes("database unavailable") ||
     msg.includes("does not exist in the current database") ||
-    msg.includes("relation") && msg.includes("does not exist") ||
+    (msg.includes("relation") && msg.includes("does not exist")) ||
     msg.includes("terminating connection due to administrator command") ||
     msg.includes("server closed the connection unexpectedly") ||
     msg.includes("the database system is shutting down")
