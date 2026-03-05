@@ -82,6 +82,84 @@ async function pollJob(jobId, label) {
   throw new Error(`Timeout while waiting for ${label} job ${jobId}`);
 }
 
+async function fetchJobData(jobId) {
+  const json = await fetchJson(`${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}`);
+  const data = json?.data ?? null;
+  if (!data || typeof data.status !== "string") {
+    throw new Error(`Invalid /api/jobs/${jobId} response`);
+  }
+  return data;
+}
+
+function summarizeJob(data) {
+  const status = String(data?.status ?? "UNKNOWN").toUpperCase();
+  const progress = typeof data?.progress === "number" ? data.progress : 0;
+  const lastError = firstLine(data?.lastError ?? "");
+  const logs = Array.isArray(data?.logs) ? data.logs : [];
+  const latestLog = logs.length > 0 ? logs[logs.length - 1] : null;
+  const latestMessage =
+    latestLog && typeof latestLog.message === "string" ? firstLine(latestLog.message) : "";
+
+  return {
+    status,
+    progress,
+    lastError,
+    latestMessage
+  };
+}
+
+async function pollPreviewWithDependency(previewJobId, dependencyJobId) {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const [previewData, dependencyData] = await Promise.all([
+      fetchJobData(previewJobId),
+      fetchJobData(dependencyJobId)
+    ]);
+
+    const preview = summarizeJob(previewData);
+    const dependency = summarizeJob(dependencyData);
+
+    process.stdout.write(
+      `\r[smoke:character] preview job=${previewJobId} status=${preview.status} progress=${preview.progress}% (pick=${dependency.status})   `
+    );
+
+    if (dependency.status === "FAILED" || dependency.status === "CANCELLED") {
+      process.stdout.write("\n");
+      throw new Error(
+        `preview blocked: pick generate job ${dependencyJobId} ended with ${dependency.status}` +
+          (dependency.lastError ? `: ${dependency.lastError}` : "")
+      );
+    }
+
+    if (preview.status === "SUCCEEDED") {
+      process.stdout.write("\n");
+      return previewData;
+    }
+    if (preview.status === "FAILED" || preview.status === "CANCELLED") {
+      process.stdout.write("\n");
+      throw new Error(
+        `preview job ${previewJobId} ended with ${preview.status}` +
+          (preview.lastError ? `: ${preview.lastError}` : "")
+      );
+    }
+
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  const [previewData, dependencyData] = await Promise.all([
+    fetchJobData(previewJobId),
+    fetchJobData(dependencyJobId)
+  ]);
+  const preview = summarizeJob(previewData);
+  const dependency = summarizeJob(dependencyData);
+  throw new Error(
+    `Timeout while waiting for preview job ${previewJobId} (preview=${preview.status}/${preview.progress}%, pick=${dependency.status}/${dependency.progress}%)` +
+      (dependency.latestMessage ? `; pick.log=${dependency.latestMessage}` : "") +
+      (preview.latestMessage ? `; preview.log=${preview.latestMessage}` : "")
+  );
+}
+
 function pickBestCandidate(manifest, view) {
   const list = Array.isArray(manifest?.candidates)
     ? manifest.candidates.filter((candidate) => candidate?.view === view)
@@ -285,7 +363,7 @@ async function main() {
   console.log(`[smoke:character] pickGenerateJobId=${pickGenerateJobId}`);
   console.log(`[smoke:character] previewJobId=${previewJobId}`);
 
-  await pollJob(previewJobId, "preview");
+  await pollPreviewWithDependency(previewJobId, pickGenerateJobId);
 
   const previewPath = path.resolve("out", "characters", characterPackId, "preview.mp4");
   if (!fs.existsSync(previewPath)) {
