@@ -654,6 +654,10 @@ main().catch((error) => {
   console.error("SMOKE E2E: FAIL");
   const reason = error instanceof Error ? error.message : String(error);
   console.error(`  reason=${reason}`);
+  writeLastRunMetadata({
+    status: "FAIL",
+    reason
+  });
   printFixHints(reason.includes("Infrastructure not ready") ? "DB/Redis health is down" : undefined);
   process.exit(1);
 });

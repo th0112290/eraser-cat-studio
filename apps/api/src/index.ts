@@ -2,7 +2,7 @@ import { bootstrapEnv } from "./bootstrapEnv";
 
 bootstrapEnv();
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import { Queue, type JobsOptions } from "bullmq";
 import { createValidator } from "@ec/shared";
@@ -10,6 +10,8 @@ import { autoScheduleSeason } from "./services/scheduleService";
 import type { EpisodeJobPayload } from "./services/scheduleService";
 import { buildWeeklyReport, startOfUtcWeek, weeklyReportToCsv } from "./services/reportService";
 import { registerPublishRoutes } from "./services/publishService";
+import { isDbUnavailableError } from "./routes/ui/dbFallback";
+import { createServiceUnavailablePayload } from "./errors/errorPayload";
 import type {
   BacklogStatus as PrismaBacklogStatus,
   ExperimentStatus as PrismaExperimentStatus,
@@ -507,9 +509,15 @@ function isRedisUnavailableError(error: unknown): boolean {
   );
 }
 
-function isDbUnavailableError(error: unknown): boolean {
-  const message = errorMessage(error).toLowerCase();
-  return message.includes("can't reach database server") || message.includes("prismaclientinitializationerror");
+function readRequestId(request: { id: string; headers: Record<string, unknown> }): string {
+  const raw = request.headers["x-request-id"];
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw.trim();
+  }
+  if (Array.isArray(raw) && typeof raw[0] === "string" && raw[0].trim().length > 0) {
+    return raw[0].trim();
+  }
+  return request.id || randomUUID();
 }
 
 function setRedisDown(reason: unknown): void {
@@ -683,6 +691,11 @@ app.addHook("preHandler", async (request) => {
   }
 });
 
+app.addHook("onRequest", async (request, reply) => {
+  const requestId = readRequestId(request);
+  reply.header("x-request-id", requestId);
+});
+
 app.addHook("preHandler", async (request) => {
   if (!isQueueDependentRequest(request.method, request.url)) {
     return;
@@ -694,63 +707,68 @@ app.addHook("preHandler", async (request) => {
 });
 
 app.setNotFoundHandler((request, reply) => {
+  const requestId = readRequestId(request);
+  reply.header("x-request-id", requestId);
   reply.code(404).send({
     error: "Not Found",
-    message: `Route ${request.method} ${request.url} not found`
+    message: `Route ${request.method} ${request.url} not found`,
+    requestId
   });
 });
 
 app.setErrorHandler((error, request, reply) => {
+  const requestId = readRequestId(request);
+  reply.header("x-request-id", requestId);
   let statusCode = 500;
   let body: Record<string, unknown> = {
-    error: "Internal Server Error"
+    error: "Internal Server Error",
+    requestId
   };
 
   if (error instanceof ApiError) {
     statusCode = error.statusCode;
     body = {
       error: error.message,
+      requestId,
       ...(error.details !== undefined ? { details: error.details } : {})
     };
   } else if (error instanceof PrismaRuntime.PrismaClientKnownRequestError) {
     if (error.code === "P2025") {
       statusCode = 404;
-      body = { error: "Resource not found" };
+      body = { error: "Resource not found", requestId };
     } else if (error.code === "P2002") {
       statusCode = 409;
-      body = { error: "Unique constraint violated" };
+      body = { error: "Unique constraint violated", requestId };
     } else if (error.code === "P2003") {
       statusCode = 400;
-      body = { error: "Invalid relation reference" };
+      body = { error: "Invalid relation reference", requestId };
     } else {
       statusCode = 400;
-      body = { error: "Database request failed" };
+      body = { error: "Database request failed", requestId };
     }
   } else if (isRecord(error) && typeof error.statusCode === "number") {
     statusCode = error.statusCode;
     body = {
-      error: typeof error.message === "string" ? error.message : "Request failed"
+      error: typeof error.message === "string" ? error.message : "Request failed",
+      requestId,
+      ...(error.details !== undefined ? { details: error.details } : {})
     };
   }
 
   if (typeof body.error === "string" && body.error.includes("Redis unavailable")) {
     statusCode = 503;
-    body = {
-      error: "Redis unavailable",
-      error_code: "redis_unavailable",
+    body = createServiceUnavailablePayload({
       dependency: "redis",
-      hint: "Start Redis and retry."
-    };
+      requestId
+    });
   }
 
   if (isDbUnavailableError(error)) {
     statusCode = 503;
-    body = {
-      error: "Database unavailable",
-      error_code: "database_unavailable",
+    body = createServiceUnavailablePayload({
       dependency: "postgresql",
-      hint: "Start PostgreSQL and retry."
-    };
+      requestId
+    });
   }
 
   if (statusCode >= 500) {

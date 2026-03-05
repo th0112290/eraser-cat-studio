@@ -1,14 +1,23 @@
-# Release Notes (API/UI Routes)
+﻿# Release Notes: API/UI Resilience Pack
 
-## Included Commits
-- `6e93c8d` chore(api-ui): unify korean UI copy for asset and character generator routes
-- `9fbb379` fix(api-ui): return 503 fallback pages when database is unavailable
+## Summary
+This pack hardens API/UI behavior when Postgres/Redis/MinIO are unavailable and adds reproducible smoke checks.
 
-## Highlights
-- Korean-first UI labels for `/ui/assets` and `/ui/character-generator`
-- DB outage no longer crashes these pages with 500; now returns explicit 503 fallback UI
-- Redis/DB outage responses include structured hints (`error_code`, `dependency`, `hint`)
+## Included
+- Shared DB outage fallback renderer with machine marker: `data-error-code="database_unavailable"`
+- UI fallback pages include structured payload fragment (`error_code`, `dependency`, `hint`, `requestId`)
+- Global API error payloads now include `requestId`
+- `/404` responses now include `requestId`
+- New root scripts
+  - `pnpm smoke:ui`
+  - `pnpm smoke:ui:down`
+  - `pnpm smoke:ui:up`
+  - `pnpm db:status`
+- Updated UI smoke script with request-id/header checks
+- CI workflow for API/UI resilience smoke
+- Docs expanded for runbook + payload examples
 
-## Operational Note
-- For complete UI smoke (200 path), start dependencies first:
-  - `pnpm docker:up`
+## Operational Impact
+- Easier production triage via `requestId`
+- Better fallback determinism under dependency outage
+- CI catches regressions in DB-down and DB-up UI routes

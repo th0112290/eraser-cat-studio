@@ -16,12 +16,16 @@
     "smoke:character": "node scripts/smokeCharacter.mjs",
     "smoke:character:strict": "node --input-type=module -e \"process.env.SMOKE_REQUIRE_CONTINUITY='1'; await import('./scripts/smokeCharacter.mjs');\"",
     "smoke:character:hitl": "node scripts/smokeCharacter.mjs",
+    "smoke:ui": "node scripts/smokeUiRoutes.mjs",
+    "smoke:ui:down": "node scripts/smokeUiRoutes.mjs",
+    "smoke:ui:up": "node --input-type=module -e \"process.env.SMOKE_DB_MODE='up'; await import('./scripts/smokeUiRoutes.mjs');\"",
     "dev:down": "docker compose -f docker/docker-compose.yml down",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
     "smoke:docker": "node -e \"const {execSync}=require('node:child_process');try{execSync('docker version',{stdio:'inherit'});console.log('[smoke:docker] Docker daemon is reachable.');}catch(error){console.error('[smoke:docker] Docker daemon is unreachable. Start Docker Desktop, wait until it is running, then retry.');console.error('[smoke:docker] Next steps: docker version -> pnpm docker:up');process.exit(1);}\"",
 
     "db:migrate": "pnpm -C packages/db migrate:dev && pnpm -C packages/db generate",
+    "db:status": "pnpm -C packages/db prisma migrate status",
     "db:studio": "pnpm -C packages/db studio",
     "db:generate": "pnpm -C packages/db generate",
 

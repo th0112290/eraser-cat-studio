@@ -1,0 +1,105 @@
+﻿name: API UI Resilience Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/api-ui-resilience-smoke.yml"
+      - "apps/api/**"
+      - "scripts/smokeUiRoutes.mjs"
+      - "docs/ui-smoke-checklist.md"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+jobs:
+  api-ui-resilience:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Typecheck API
+        run: pnpm -C apps/api exec tsc -p tsconfig.json --noEmit
+
+      - name: Typecheck Worker
+        run: pnpm -C apps/worker exec tsc -p tsconfig.json --noEmit
+
+      - name: Typecheck Video
+        run: pnpm -C apps/video exec tsc -p tsconfig.json --noEmit
+
+      - name: Run fallback helper smoke
+        run: pnpm -C apps/api run smoke:ui:fallback
+
+      - name: Run 503 payload contract smoke
+        run: pnpm -C apps/api run smoke:error-payload
+
+      - name: Start infra and migrate DB
+        run: |
+          pnpm docker:up
+          pnpm db:migrate
+
+      - name: Start API
+        shell: bash
+        run: |
+          pnpm -C apps/api run dev > api.log 2>&1 &
+          echo $! > api.pid
+
+      - name: Wait for health
+        shell: bash
+        run: |
+          for i in {1..90}; do
+            if curl -fsS http://127.0.0.1:3000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API health timeout"
+          exit 1
+
+      - name: Smoke UI in DB-up mode
+        run: pnpm smoke:ui:up
+
+      - name: Stop postgres for DB-down mode
+        run: docker compose -f docker/docker-compose.yml stop postgres
+
+      - name: Smoke UI in DB-down mode
+        run: pnpm smoke:ui:down
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-ui-resilience-logs-${{ github.run_id }}-${{ github.sha }}
+          path: |
+            api.log
+            out/smoke_e2e_last.json
+          if-no-files-found: ignore
+
+      - name: Stop API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f api.pid ]; then
+            kill "$(cat api.pid)" || true
+          fi
+
+      - name: Stop infra
+        if: always()
+        run: pnpm docker:down
