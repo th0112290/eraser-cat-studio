@@ -126,9 +126,19 @@ async function pollPreviewWithDependency(previewJobId, dependencyJobId) {
 
     if (dependency.status === "FAILED" || dependency.status === "CANCELLED") {
       process.stdout.write("\n");
+      const logs = Array.isArray(dependencyData?.logs) ? dependencyData.logs : [];
+      const latestLog = logs.length > 0 ? logs[logs.length - 1] : null;
+      const latestLogMessage =
+        latestLog && typeof latestLog.message === "string" ? firstLine(latestLog.message) : "";
+      const fullLastError =
+        typeof dependencyData?.lastError === "string" && dependencyData.lastError.trim().length > 0
+          ? dependencyData.lastError.trim()
+          : "";
       throw new Error(
         `preview blocked: pick generate job ${dependencyJobId} ended with ${dependency.status}` +
-          (dependency.lastError ? `: ${dependency.lastError}` : "")
+          (dependency.lastError ? `: ${dependency.lastError}` : "") +
+          (latestLogMessage ? ` | pick.log=${latestLogMessage}` : "") +
+          (fullLastError ? `\n[pick.lastError]\n${fullLastError}` : "")
       );
     }
 
