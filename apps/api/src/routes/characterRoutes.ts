@@ -222,6 +222,31 @@ const CHARACTER_STYLE_PRESETS = [
   { id: "minimal-rig", label: "Minimal Rig" }
 ] as const;
 
+type CharacterGenerationSessionDelegate = {
+  findFirst: (args: unknown) => Promise<any>;
+  create: (args: unknown) => Promise<any>;
+  update: (args: unknown) => Promise<any>;
+};
+
+function getCharacterGenerationSessionDelegate(client: unknown): CharacterGenerationSessionDelegate | null {
+  if (!client || typeof client !== "object") {
+    return null;
+  }
+  const delegate = (client as Record<string, unknown>).characterGenerationSession;
+  if (!delegate || typeof delegate !== "object") {
+    return null;
+  }
+  const candidate = delegate as CharacterGenerationSessionDelegate;
+  if (
+    typeof candidate.findFirst !== "function" ||
+    typeof candidate.create !== "function" ||
+    typeof candidate.update !== "function"
+  ) {
+    return null;
+  }
+  return candidate;
+}
+
 function isLiveJobStatus(status: string): boolean {
   return status === "QUEUED" || status === "RUNNING";
 }
@@ -1050,41 +1075,44 @@ async function createCharacterGeneration(
     channelId = referenceAsset.channelId;
   }
 
-  const duplicateSession = await prisma.characterGenerationSession.findFirst({
-    where: {
-      mode: toDbGenerationMode(generation.mode),
-      provider: toDbGenerationProvider(generation.provider),
-      promptPresetId: generation.promptPreset,
-      positivePrompt: generation.positivePrompt ?? "",
-      negativePrompt: generation.negativePrompt ?? "",
-      seed: generation.seed,
-      candidateCount: generation.candidateCount,
-      referenceAssetId: generation.referenceAssetId ?? null,
-      createdAt: {
-        gte: new Date(Date.now() - GENERATION_DEDUPE_WINDOW_MS)
-      },
-      episode: {
-        is: {
-          channelId
-        }
-      }
-    },
-    orderBy: {
-      createdAt: "desc"
-    },
-    select: {
-      id: true,
-      episodeId: true,
-      characterPackId: true,
-      manifestPath: true,
-      characterPack: {
+  const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+  const duplicateSession = sessionDelegate
+    ? await sessionDelegate.findFirst({
+        where: {
+          mode: toDbGenerationMode(generation.mode),
+          provider: toDbGenerationProvider(generation.provider),
+          promptPresetId: generation.promptPreset,
+          positivePrompt: generation.positivePrompt ?? "",
+          negativePrompt: generation.negativePrompt ?? "",
+          seed: generation.seed,
+          candidateCount: generation.candidateCount,
+          referenceAssetId: generation.referenceAssetId ?? null,
+          createdAt: {
+            gte: new Date(Date.now() - GENERATION_DEDUPE_WINDOW_MS)
+          },
+          episode: {
+            is: {
+              channelId
+            }
+          }
+        },
+        orderBy: {
+          createdAt: "desc"
+        },
         select: {
           id: true,
-          version: true
+          episodeId: true,
+          characterPackId: true,
+          manifestPath: true,
+          characterPack: {
+            select: {
+              id: true,
+              version: true
+            }
+          }
         }
-      }
-    }
-  });
+      })
+    : null;
 
   if (duplicateSession?.episodeId && duplicateSession.characterPack?.id) {
     const relatedJobs = await prisma.job.findMany({
@@ -1185,22 +1213,25 @@ async function createCharacterGeneration(
       }
     });
 
-    const generationSession = await tx.characterGenerationSession.create({
-      data: {
-        episodeId: episode.id,
-        characterPackId: characterPack.id,
-        mode: toDbGenerationMode(generation.mode),
-        provider: toDbGenerationProvider(generation.provider),
-        promptPresetId: generation.promptPreset,
-        positivePrompt: generation.positivePrompt ?? "",
-        negativePrompt: generation.negativePrompt ?? "",
-        seed: generation.seed,
-        candidateCount: generation.candidateCount,
-        referenceAssetId: generation.referenceAssetId ?? null,
-        status: "DRAFT",
-        statusMessage: "Queued"
-      }
-    });
+    const txSessionDelegate = getCharacterGenerationSessionDelegate(tx);
+    const generationSession = txSessionDelegate
+      ? await txSessionDelegate.create({
+          data: {
+            episodeId: episode.id,
+            characterPackId: characterPack.id,
+            mode: toDbGenerationMode(generation.mode),
+            provider: toDbGenerationProvider(generation.provider),
+            promptPresetId: generation.promptPreset,
+            positivePrompt: generation.positivePrompt ?? "",
+            negativePrompt: generation.negativePrompt ?? "",
+            seed: generation.seed,
+            candidateCount: generation.candidateCount,
+            referenceAssetId: generation.referenceAssetId ?? null,
+            status: "DRAFT",
+            statusMessage: "Queued"
+          }
+        })
+      : null;
 
     const previewJob = await tx.job.create({
       data: {
@@ -1275,7 +1306,7 @@ async function createCharacterGeneration(
     return {
       characterPack,
       episode,
-      generationSession,
+      generationSessionId: generationSession?.id ?? `legacy-${generateJob.id}`,
       buildJob,
       previewJob,
       generateJob,
@@ -1294,7 +1325,7 @@ async function createCharacterGeneration(
       buildJobDbId: txResult.buildJob.id,
       previewJobDbId: txResult.previewJob.id,
       generation: {
-        sessionId: txResult.generationSession.id,
+        sessionId: txResult.generationSessionId,
         mode: generation.mode,
         provider: generation.provider,
         promptPreset: generation.promptPreset,
@@ -1355,7 +1386,7 @@ async function createCharacterGeneration(
   });
 
   return {
-    sessionId: txResult.generationSession.id,
+    sessionId: txResult.generationSessionId,
     characterPackId: txResult.characterPack.id,
     version: txResult.version,
     episodeId: txResult.episode.id,
@@ -1420,14 +1451,17 @@ async function createCharacterGenerationPick(
     throw createHttpError(404, `generation manifest not found: ${manifestPath}`);
   }
 
-  const fallbackSession = await prisma.characterGenerationSession.findFirst({
-    where: {
-      episodeId: episode.id,
-      characterPackId: episode.characterPackId
-    },
-    orderBy: { createdAt: "desc" },
-    select: { id: true }
-  });
+  const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+  const fallbackSession = sessionDelegate
+    ? await sessionDelegate.findFirst({
+        where: {
+          episodeId: episode.id,
+          characterPackId: episode.characterPackId
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true }
+      })
+    : null;
   const sessionId = manifest.sessionId ?? fallbackSession?.id;
   if (!sessionId) {
     throw createHttpError(400, "generation session not found for this job");
@@ -1671,17 +1705,20 @@ async function createCharacterGenerationRegenerateView(
     throw createHttpError(404, `generation manifest not found: ${sourceManifestPath}`);
   }
 
-  const fallbackSession = await prisma.characterGenerationSession.findFirst({
-    where: {
-      episodeId: episode.id,
-      characterPackId: episode.characterPackId
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      referenceAssetId: true
-    }
-  });
+  const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+  const fallbackSession = sessionDelegate
+    ? await sessionDelegate.findFirst({
+        where: {
+          episodeId: episode.id,
+          characterPackId: episode.characterPackId
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          referenceAssetId: true
+        }
+      })
+    : null;
   const sessionId = manifest.sessionId ?? fallbackSession?.id;
   if (!sessionId) {
     throw createHttpError(400, "generation session not found for this job");
@@ -1776,19 +1813,22 @@ async function createCharacterGenerationRegenerateView(
       }
     });
 
-    await trx.characterGenerationSession.update({
-      where: { id: sessionId },
-      data: {
-        status: "GENERATING",
-        viewToGenerate:
-          input.viewToGenerate === "front"
-            ? "FRONT"
-            : input.viewToGenerate === "threeQuarter"
-              ? "THREE_QUARTER"
-              : "PROFILE",
-        statusMessage: `Regenerating ${input.viewToGenerate} candidates`
-      }
-    });
+    const txSessionDelegate = getCharacterGenerationSessionDelegate(trx);
+    if (txSessionDelegate) {
+      await txSessionDelegate.update({
+        where: { id: sessionId },
+        data: {
+          status: "GENERATING",
+          viewToGenerate:
+            input.viewToGenerate === "front"
+              ? "FRONT"
+              : input.viewToGenerate === "threeQuarter"
+                ? "THREE_QUARTER"
+                : "PROFILE",
+          statusMessage: `Regenerating ${input.viewToGenerate} candidates`
+        }
+      });
+    }
   });
 
   return {
@@ -1847,17 +1887,20 @@ async function createCharacterGenerationRecreate(
     throw createHttpError(400, "manifest hash fields are missing");
   }
 
-  const fallbackSession = await prisma.characterGenerationSession.findFirst({
-    where: {
-      episodeId: episode.id,
-      characterPackId: episode.characterPackId
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      referenceAssetId: true
-    }
-  });
+  const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+  const fallbackSession = sessionDelegate
+    ? await sessionDelegate.findFirst({
+        where: {
+          episodeId: episode.id,
+          characterPackId: episode.characterPackId
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          referenceAssetId: true
+        }
+      })
+    : null;
   const sessionId = manifest.sessionId ?? fallbackSession?.id;
   if (!sessionId) {
     throw createHttpError(400, "generation session not found for this job");
