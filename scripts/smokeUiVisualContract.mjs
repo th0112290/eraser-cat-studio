@@ -8,6 +8,14 @@ const pages = [
   "/ui/episodes"
 ];
 
+const requiredPageHeadings = new Map([
+  ["/ui", ["대시보드", "Dashboard"]],
+  ["/ui/assets", ["에셋", "Assets"]],
+  ["/ui/studio", ["통합 스튜디오", "Studio"]],
+  ["/ui/character-generator", ["캐릭터 생성기", "Character Generator"]],
+  ["/ui/episodes", ["에피소드", "Episodes"]]
+]);
+
 const requiredNavLabels = [
   "대시보드",
   "통합 스튜디오",
@@ -54,6 +62,14 @@ async function checkPage(path) {
   for (const label of requiredNavLabels) {
     if (!html.includes(label)) {
       throw new Error(`${path} missing nav label: ${label}`);
+    }
+  }
+
+  const headingCandidates = requiredPageHeadings.get(path);
+  if (headingCandidates) {
+    const matched = headingCandidates.some((heading) => html.includes(heading));
+    if (!matched) {
+      throw new Error(`${path} missing page heading: ${headingCandidates.join(" | ")}`);
     }
   }
 

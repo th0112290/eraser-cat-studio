@@ -29,7 +29,7 @@ ${input.flash}
 </section>
 <div class="grid two">
   <div class="card">
-    <h2>시스템 상태</h2>
+    <h2>서비스 상태</h2>
     <div class="status-list">
       <div class="status-row"><span class="label">health</span>${input.overall}</div>
       <div class="status-row"><span class="label">database</span>${input.dbStatus}</div>
@@ -49,13 +49,13 @@ ${input.flash}
       </form>
       <form method="post" action="/ui/actions/generate-preview" class="form-card">
         <h3>Preview Render</h3>
-        <div class="field"><label for="preview-topic">Preview topic</label><input id="preview-topic" name="topic" value="UI Preview Demo"/><small>스크립트/샷 생성 주제로 사용됩니다.</small></div>
+        <div class="field"><label for="preview-topic">미리보기 주제</label><input id="preview-topic" name="topic" value="UI Preview Demo"/><small>스크립트/샷 생성 주제로 사용됩니다.</small></div>
         <div class="field"><label for="preview-duration">targetDurationSec</label><input id="preview-duration" name="targetDurationSec" value="600"/><small>권장 범위: 120 ~ 900초</small></div>
         <div class="actions"><button type="submit">Preview Render 시작</button></div>
       </form>
       <form method="post" action="/ui/actions/generate-full" class="form-card">
         <h3>Final + Package</h3>
-        <div class="field"><label for="full-topic">Full pipeline topic</label><input id="full-topic" name="topic" value="UI Full Pipeline Demo"/><small>최종 렌더 + 패키징용 주제입니다.</small></div>
+        <div class="field"><label for="full-topic">최종 파이프라인 주제</label><input id="full-topic" name="topic" value="UI Full Pipeline Demo"/><small>최종 렌더 + 패키징용 주제입니다.</small></div>
         <div class="field"><label for="full-duration">targetDurationSec</label><input id="full-duration" name="targetDurationSec" value="600"/><small>최종 출력 목표 길이입니다.</small></div>
         <div class="actions"><button type="submit" class="secondary">Final + Package 실행</button></div>
       </form>
@@ -78,12 +78,12 @@ ${input.flash}
 </div>
 </section>
 
-<section class="card"><h2>Quick Dev Guide</h2>
+<section class="card"><h2>빠른 개발 가이드</h2>
 <ol>
-<li>Start infra: <code>pnpm docker:up</code></li>
-<li>Run DB migration: <code>pnpm db:migrate</code></li>
-<li>Run API: <code>pnpm -C apps/api run dev</code></li>
-<li>Run Worker: <code>pnpm -C apps/worker run dev</code></li>
+<li>인프라 실행: <code>pnpm docker:up</code></li>
+<li>DB 마이그레이션: <code>pnpm db:migrate</code></li>
+<li>API 실행: <code>pnpm -C apps/api run dev</code></li>
+<li>Worker 실행: <code>pnpm -C apps/worker run dev</code></li>
 </ol>
 <div class="guide-grid">
 <button type="button" data-copy="pnpm docker:up">Copy docker:up</button>
@@ -97,18 +97,18 @@ ${input.flash}
 export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
   return `
 <section class="card dashboard-shell">
-  <h1>Episodes</h1>
+  <h1>에피소드</h1>
   ${input.flash}
   <form method="post" action="/ui/episodes" class="quick-grid">
     <div class="form-card">
-      <h3>Basic Info</h3>
+      <h3>기본 정보</h3>
       <div class="field">
         <label for="episode-topic">topic</label>
-        <input id="episode-topic" name="topic" required data-tooltip="Example: Q4 growth analysis"/>
-        <small>Main topic for generated episode.</small>
+        <input id="episode-topic" name="topic" required data-tooltip="예: Q4 growth analysis"/>
+        <small>에피소드 생성 주제입니다.</small>
       </div>
       <div class="field">
-        <label for="episode-channel">channelId(optional)</label>
+        <label for="episode-channel">channelId (선택)</label>
         <input id="episode-channel" name="channelId"/>
       </div>
       <div class="field">
@@ -117,7 +117,7 @@ export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
       </div>
     </div>
     <div class="form-card">
-      <h3>Pipeline Options</h3>
+      <h3>파이프라인 옵션</h3>
       <div class="field">
         <label for="episode-jobType">jobType</label>
         <select id="episode-jobType" name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option></select>
@@ -127,7 +127,7 @@ export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
         <select id="episode-pipelineMode" name="pipelineMode"><option value="preview">preview-only</option><option value="full">full(final+package)</option><option value="manual">manual</option></select>
       </div>
       <div class="field">
-        <label for="episode-stylePreset">stylePreset <span class="hint" data-tooltip="AUTO selects style from snapshot tone/speed/KPI">?</span></label>
+        <label for="episode-stylePreset">stylePreset <span class="hint" data-tooltip="AUTO는 snapshot tone/speed/KPI 기반으로 스타일을 선택합니다">?</span></label>
         <select id="episode-stylePreset" name="stylePresetId">${input.styleOptions}</select>
       </div>
       <div class="field">
@@ -135,20 +135,20 @@ export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
         <input id="episode-hookBoost" type="range" name="hookBoost" min="0" max="1" step="0.05" value="${input.defaultHookBoost}" oninput="this.nextElementSibling.value=this.value"/>
         <output>${input.defaultHookBoost}</output>
       </div>
-      <div class="actions"><button type="submit" data-primary-action="1">Create Episode + Enqueue</button></div>
+      <div class="actions"><button type="submit" data-primary-action="1">에피소드 생성 + Enqueue</button></div>
     </div>
   </form>
 </section>
 <section class="card">
   <div class="section-head">
-    <h2>Latest Episodes</h2>
-    <div class="quick-links"><a href="/ui/jobs">Open Jobs</a><a href="/ui/artifacts">Open Artifacts</a></div>
+    <h2>최근 에피소드</h2>
+    <div class="quick-links"><a href="/ui/jobs">작업 열기</a><a href="/ui/artifacts">아티팩트 열기</a></div>
   </div>
-  <p class="notice">List auto-refreshes every 7 seconds. Press <span class="kbd">/</span> to focus search.</p>
+  <p class="notice">목록은 7초마다 자동 갱신됩니다. <span class="kbd">/</span> 키로 검색창 포커스 이동.</p>
   <div class="table-tools">
-    <input type="search" data-table-filter="episodes-table" placeholder="Search by id/topic/status"/>
-    <span class="muted-text">Filtering only hides rows on current page.</span>
+    <input type="search" data-table-filter="episodes-table" placeholder="id/topic/status 검색"/>
+    <span class="muted-text">현재 페이지에서만 행을 필터링합니다.</span>
   </div>
-  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>ID</th><th>Topic</th><th>Status</th><th>Channel</th><th>Style</th><th>Latest Job</th><th>Duration</th><th>Created</th><th>Quick Run</th></tr></thead><tbody>${input.rows || '<tr><td colspan="9"><div class="notice">No episodes yet. Create one above.</div></td></tr>'}</tbody></table></div>
+  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>ID</th><th>Topic</th><th>Status</th><th>Channel</th><th>Style</th><th>Latest Job</th><th>Duration</th><th>Created</th><th>Quick Run</th></tr></thead><tbody>${input.rows || '<tr><td colspan="9"><div class="notice">생성된 에피소드가 없습니다.</div></td></tr>'}</tbody></table></div>
 </section>${input.autoRefreshScript}`;
 }

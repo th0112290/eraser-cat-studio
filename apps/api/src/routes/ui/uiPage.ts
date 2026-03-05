@@ -18,6 +18,7 @@ nav{max-width:1240px;margin:0 auto;padding:12px 18px;display:flex;gap:10px;align
 nav strong{margin-right:auto;font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:#0b3d39}
 nav a{color:#174e4a;text-decoration:none;padding:7px 10px;border-radius:999px;border:1px solid transparent;transition:.2s ease}
 nav a:hover{background:#e7f3f1;border-color:#bfd9d5}
+nav a.active{background:#dff2ee;border-color:#9dcfc8;color:#0a3f3a}
 main{max-width:1240px;margin:20px auto;padding:0 18px 28px;display:grid;gap:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 10px 28px #18354a14}
 .card h1,.card h2,.card h3{margin-top:0}
@@ -78,7 +79,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
 .shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
 .sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
 @media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px}.status-row{padding:7px 9px}.quick-grid{grid-template-columns:1fr}}
-</style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">대시보드</a><a href="/ui/studio">통합 스튜디오</a><a href="/ui/jobs">작업</a><a href="/ui/assets">에셋</a><a href="/ui/characters">캐릭터</a><a href="/ui/character-generator">캐릭터 생성기</a><a href="/ui/hitl">검수(HITL)</a><a href="/ui/episodes">에피소드</a><a href="/ui/publish">퍼블리시</a><a href="/ui/health">헬스</a><a href="/ui/artifacts">아티팩트</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말(?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>단축키</h2><table><thead><tr><th>키</th><th>동작</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g then e</td><td>에피소드 이동</td></tr><tr><td>g then j</td><td>작업 이동</td></tr><tr><td>g then h</td><td>헬스 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
+</style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">대시보드</a><a href="/ui/studio">통합 스튜디오</a><a href="/ui/jobs">작업</a><a href="/ui/assets">에셋</a><a href="/ui/characters">캐릭터</a><a href="/ui/character-generator">캐릭터 생성기</a><a href="/ui/hitl">검수(HITL)</a><a href="/ui/episodes">에피소드</a><a href="/ui/publish">퍼블리시</a><a href="/ui/health">헬스</a><a href="/ui/artifacts">아티팩트</a><button id="shortcut-open" type="button" class="secondary" title="단축키 도움말(?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>단축키</h2><table><thead><tr><th>키</th><th>동작</th></tr></thead><tbody><tr><td>?</td><td>도움말 열기/닫기</td></tr><tr><td>g → e</td><td>에피소드 이동</td></tr><tr><td>g → j</td><td>작업 이동</td></tr><tr><td>g → h</td><td>헬스 이동</td></tr><tr><td>r</td><td>현재 페이지 주요 액션 실행</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div></div></div><script>
 (() => {
   const toastWrap = document.getElementById('toast-wrap');
   const live = document.getElementById('global-live');
@@ -91,10 +92,10 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
   const speak = (text) => { if (live) live.textContent = text; };
   const classifyError = (msg) => {
     const text = (msg || '').toLowerCase();
-    if (text.includes('503') || text.includes('unavailable') || text.includes('redis')) return { label: 'ServiceUnavailable', tone: 'bad' };
-    if (text.includes('404') || text.includes('not found')) return { label: 'NotFound', tone: 'warn' };
-    if (text.includes('400') || text.includes('required') || text.includes('validation')) return { label: 'Validation', tone: 'warn' };
-    return { label: 'UnknownError', tone: 'bad' };
+    if (text.includes('503') || text.includes('unavailable') || text.includes('redis')) return { label: '서비스 일시 중단', tone: 'bad' };
+    if (text.includes('404') || text.includes('not found')) return { label: '대상 없음', tone: 'warn' };
+    if (text.includes('400') || text.includes('required') || text.includes('validation')) return { label: '입력 오류', tone: 'warn' };
+    return { label: '알 수 없는 오류', tone: 'bad' };
   };
   const toast = (title, message, tone = 'ok', timeoutMs = 5000) => {
     if (!toastWrap) return;
@@ -107,10 +108,21 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
   };
 
   const url = new URL(window.location.href);
+  const pathname = url.pathname;
+  document.querySelectorAll('header nav a[href]').forEach((node) => {
+    if (!(node instanceof HTMLAnchorElement)) return;
+    const href = node.getAttribute('href');
+    if (!href) return;
+    const isActive = href === '/ui'
+      ? pathname === '/ui'
+      : pathname === href || pathname.startsWith(href + '/');
+    if (isActive) node.classList.add('active');
+  });
+
   const message = url.searchParams.get('message');
   const error = url.searchParams.get('error');
   if (message) {
-    toast('Success', message, 'ok');
+    toast('성공', message, 'ok');
     document.querySelectorAll('.notice').forEach((el, idx) => { if (idx === 0) el.remove(); });
   }
   if (error) {
@@ -126,9 +138,9 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
-        toast('Copied', text, 'ok', 2000);
+        toast('복사됨', text, 'ok', 2000);
       } catch (e) {
-        toast('CopyFailed', String(e), 'bad', 5000);
+        toast('복사 실패', String(e), 'bad', 5000);
       }
     });
   });
