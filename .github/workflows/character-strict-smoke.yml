@@ -25,6 +25,13 @@ jobs:
   smoke-character-strict:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      DATABASE_URL: postgresql://app:app@127.0.0.1:5432/eraser?schema=public
+      REDIS_URL: redis://127.0.0.1:6379
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio_password
+      S3_BUCKET: artifacts
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +54,9 @@ jobs:
         run: pnpm docker:up
 
       - name: Run DB migrations
-        run: pnpm db:migrate
+        run: |
+          pnpm -C packages/db migrate:deploy
+          pnpm -C packages/db generate
 
       - name: Start API and Worker
         shell: bash
