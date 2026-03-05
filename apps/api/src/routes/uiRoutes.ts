@@ -838,15 +838,15 @@ function bibleHtml(state: ChannelBibleState): string {
 function classifyErrorType(message: string): { label: string; badge: string; hint: string } {
   const text = message.toLowerCase();
   if (text.includes("503") || text.includes("unavailable") || text.includes("redis")) {
-    return { label: "ServiceUnavailable", badge: "bad", hint: "Health 페이지에서 Redis/Queue 상태를 확인하세요." };
+    return { label: "ServiceUnavailable", badge: "bad", hint: "Check Redis/Queue status on the Health page." };
   }
   if (text.includes("404") || text.includes("not found")) {
-    return { label: "NotFound", badge: "warn", hint: "ID를 다시 확인하고 목록 페이지에서 존재 여부를 점검하세요." };
+    return { label: "NotFound", badge: "warn", hint: "Verify the ID and check existence from list pages." };
   }
   if (text.includes("400") || text.includes("required") || text.includes("validation")) {
-    return { label: "Validation", badge: "warn", hint: "입력 형식을 확인한 뒤 다시 시도하세요." };
+    return { label: "Validation", badge: "warn", hint: "Check input format and try again." };
   }
-  return { label: "UnknownError", badge: "bad", hint: "Jobs/Health 로그를 확인하고 필요하면 Retry 하세요." };
+  return { label: "UnknownError", badge: "bad", hint: "Check Jobs/Health logs and retry if needed." };
 }
 
 function simpleErrorHtml(message: string): string {
@@ -1315,10 +1315,10 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       .map((profileId) => {
         const label =
           profileId === "preview"
-            ? "preview (추천)"
+            ? "preview (recommended)"
             : profileId === "full"
-              ? "full (최종/패키징)"
-              : "render_only (빠른 렌더)";
+              ? "full (final/package)"
+              : "render_only (quick render)";
         return `<option value="${profileId}" ${profileId === selectedRunProfile ? "selected" : ""}>${label}</option>`;
       })
       .join("");
@@ -1409,7 +1409,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   </div>
   <div class="card">
     <h3>Studio Control Panel</h3>
-    <div class="notice"><strong>${esc(recommendAction.title)}</strong><br/>${esc(recommendAction.detail)}<br/>추천 프로필: <strong>${esc(recommendAction.profile)}</strong></div>
+    <div class="notice"><strong>${esc(recommendAction.title)}</strong><br/>${esc(recommendAction.detail)}<br/>Recommended profile: <strong>${esc(recommendAction.profile)}</strong></div>
     <form method="post" action="/ui/episodes/${esc(id)}/run-profile" class="grid two">
       <label>runProfile
         <select name="profile">${runProfileOptions}</select>

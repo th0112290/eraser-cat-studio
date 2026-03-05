@@ -31,7 +31,7 @@ export function renderDbUnavailableCard(input: {
     requestId: input.requestId ?? null
   };
 
-  return `<section class="card" data-error-code="database_unavailable"><h1>${input.title}</h1><div class="error">DB 연결이 없어 화면 데이터를 불러오지 못했습니다.</div><p>조치: <code>${command}</code> 또는 DB 실행 상태를 확인 후 새로고침하세요.</p><pre>${JSON.stringify(
+  return `<section class="card" data-error-code="database_unavailable"><h1>${input.title}</h1><div class="error">Database is unavailable, so this page cannot load data.</div><p>Action: run <code>${command}</code> or verify DB status, then refresh.</p><pre>${JSON.stringify(
     payload,
     null,
     2

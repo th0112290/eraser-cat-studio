@@ -227,7 +227,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
       const type = String(item.type || '-');
       const progress = Number.isFinite(Number(item.progress)) ? Number(item.progress) : 0;
       const jobId = String(item.id || '');
-      const base = '최근 작업: ' + type + ' / ' + status + ' / ' + progress + '%';
+      const base = 'Recent job: ' + type + ' / ' + status + ' / ' + progress + '%';
       if (status === 'FAILED') {
         const err = String(item.lastError || '(none)');
         runLive.textContent = base + ' | ' + err + ' | ' + hintForError(err);

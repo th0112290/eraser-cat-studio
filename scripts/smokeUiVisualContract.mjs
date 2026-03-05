@@ -16,43 +16,43 @@ const pages = [
 
 const requiredPageHeadings = new Map([
   ["/ui", ["Dashboard", "대시보드"]],
-  ["/ui/assets", ["Assets", "에셋"]],
-  ["/ui/studio", ["통합 스튜디오", "Studio"]],
-  ["/ui/character-generator", ["캐릭터 생성기", "Character Generator"]],
-  ["/ui/characters", ["캐릭터 팩", "Character Pack"]],
-  ["/ui/episodes", ["Episodes", "에피소드"]],
-  ["/ui/jobs", ["Jobs", "작업"]],
-  ["/ui/hitl", ["HITL", "검수"]],
-  ["/ui/publish", ["Publish", "퍼블리시"]],
-  ["/ui/health", ["Health", "헬스"]],
-  ["/ui/artifacts", ["Artifacts", "아티팩트"]]
+  ["/ui/assets", ["Assets", "에셋 (상세 모드)"]],
+  ["/ui/studio", ["Studio", "통합 스튜디오"]],
+  ["/ui/character-generator", ["Character Generator", "캐릭터 생성기 (상세 모드)"]],
+  ["/ui/characters", ["Character Pack", "캐릭터 팩 (상세 모드)"]],
+  ["/ui/episodes", ["Episodes"]],
+  ["/ui/jobs", ["Jobs"]],
+  ["/ui/hitl", ["HITL"]],
+  ["/ui/publish", ["Publish"]],
+  ["/ui/health", ["Health", "Health Report"]],
+  ["/ui/artifacts", ["Artifacts"]]
 ]);
 
 const requiredPageKeywords = new Map([
-  ["/ui/assets", ["Selected Asset", "Recent Assets", "선택한 에셋", "최근 에셋"]],
-  ["/ui/studio", ["빠른 시작 가이드", "원클릭 시작"]],
-  ["/ui/character-generator", ["생성 모드", "스타일/프롬프트", "생성 실행"]],
-  ["/ui/characters", ["pack.json", "preview.mp4"]],
-  ["/ui/episodes", ["Recent Episodes", "Create episode + enqueue", "Quick Run", "targetDurationSec"]],
-  ["/ui/jobs", ["Latest 100 jobs", "Jobs", "최근 100개 작업", "작업"]],
-  ["/ui/hitl", ["HITL Rerender", "Failed Jobs", "검수 재렌더", "실패 작업"]],
-  ["/ui/publish", ["episodeId", "Run publish", "퍼블리시 실행"]],
-  ["/ui/health", ["Service Status", "서비스 상태"]],
-  ["/ui/artifacts", ["out/ index", "out/ 인덱스"]]
+  ["/ui/assets", ["Selected Asset", "Recent Assets", "선택된 에셋", "최근 에셋"]],
+  ["/ui/studio", ["Quick Start Guide", "Start One-click", "최근 에셋", "최근 에피소드"]],
+  ["/ui/character-generator", ["Generation Mode", "Style/Prompt", "Run Character Candidate Generation", "생성 모드", "생성 실행"]],
+  ["/ui/characters", ["pack.json", "preview.mp4", "선택된 팩", "최근 캐릭터 팩"]],
+  ["/ui/episodes", ["Recent Episodes", "Create episode + enqueue", "Quick Run", "targetDurationSec", "Latest Episodes"]],
+  ["/ui/jobs", ["Latest 100 jobs", "Jobs", "최근 작업"]],
+  ["/ui/hitl", ["HITL Rerender", "Failed Jobs"]],
+  ["/ui/publish", ["episodeId", "Run publish"]],
+  ["/ui/health", ["Service Status"]],
+  ["/ui/artifacts", ["out/ index"]]
 ]);
 
 const requiredNavLabelCandidates = [
   ["Dashboard", "대시보드"],
-  ["Studio", "통합 스튜디오"],
+  ["Studio", "스튜디오", "통합 스튜디오"],
   ["Jobs", "작업"],
   ["Assets", "에셋"],
   ["Characters", "캐릭터"],
   ["Character Generator", "캐릭터 생성기"],
   ["HITL", "검수(HITL)"],
   ["Episodes", "에피소드"],
-  ["Publish", "퍼블리시"],
-  ["Health", "헬스"],
-  ["Artifacts", "아티팩트"]
+  ["Publish", "발행", "퍼블리시"],
+  ["Health", "상태", "헬스", "헬스 리포트"],
+  ["Artifacts", "산출물", "아티팩트"]
 ];
 
 const mojibakeTokens = [
@@ -92,14 +92,14 @@ async function checkPage(path) {
   }
 
   if (path.startsWith("/ui/episodes/") && !requiredPageHeadings.has(path)) {
-    const dynamicHeadings = ["Episode Detail", "에피소드 상세"];
+    const dynamicHeadings = ["Episode Detail"];
     const matched = dynamicHeadings.some((heading) => html.includes(heading));
     if (!matched) {
       throw new Error(`${path} missing page heading: ${dynamicHeadings.join(" | ")}`);
     }
   }
   if (path.startsWith("/ui/jobs/") && !requiredPageHeadings.has(path)) {
-    const dynamicHeadings = ["Job Detail", "작업 상세"];
+    const dynamicHeadings = ["Job Detail"];
     const matched = dynamicHeadings.some((heading) => html.includes(heading));
     if (!matched) {
       throw new Error(`${path} missing page heading: ${dynamicHeadings.join(" | ")}`);

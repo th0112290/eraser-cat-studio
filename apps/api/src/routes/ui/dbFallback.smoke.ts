@@ -10,7 +10,7 @@ const unavailable = new Error("PrismaClientInitializationError: Can't reach data
 assert(isDbUnavailableError(unavailable), "Expected db unavailable detector to match Prisma init error");
 
 const card = renderDbUnavailableCard({
-  title: "테스트 화면",
+  title: "Test Screen",
   route: "/ui/test",
   requestId: "req_smoke_1"
 });

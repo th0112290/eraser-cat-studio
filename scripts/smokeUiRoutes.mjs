@@ -2,7 +2,7 @@
 
 function expectedMarker(path) {
   if (path === "/ui/assets") return "asset-upload-form";
-  if (path === "/ui/studio") return "통합 스튜디오";
+  if (path === "/ui/studio") return "Studio";
   if (path === "/ui/character-generator") return "character-generator";
   return "";
 }
