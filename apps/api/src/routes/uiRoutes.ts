@@ -1423,11 +1423,12 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       </label>
       <input type="hidden" name="returnTo" value="episode"/>
       <div class="actions" style="grid-column:1/-1">
-        <button type="submit" data-primary-action="1">Run Profile (One-click)</button>
-        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Job Monitor</a>
+        <button type="submit" data-primary-action="1">Run Profile (Recommended)</button>
+        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Open Job Monitor</a>
+        <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Open Shot Editor</a>
       </div>
     </form>
-    <p class="notice">Profile notes: preview=fast preview, full=final render+package, render_only=preview render from current shots.</p>
+    <p class="notice">Profile notes: preview = fast preview, full = final render + package, render_only = preview render from current shots.</p>
     <div id="run-profile-live" data-episode-id="${esc(id)}" class="notice">Loading latest run status...</div>
     <table><thead><tr><th>Recent Job Type</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">No job history. Start from Run Profile above.</div></td></tr>'}</tbody></table>
   </div>
@@ -1445,13 +1446,16 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     </form>
     <p>A STYLE_QC: fail=${styleQcA.failCount} warn=${styleQcA.warnCount} forced=${esc(styleQcA.forcedStyle)} | B STYLE_QC: fail=${styleQcB.failCount} warn=${styleQcB.warnCount} forced=${esc(styleQcB.forcedStyle)}</p>
   </div>
+  <div class="card">
+    <h3>Quick Enqueue (Advanced)</h3>
+    <p class="notice">Use the recommended Run Profile above for normal flow. These controls are for manual pipeline steps.</p>
   <div class="actions">
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">Start One-click Preview Render</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="full"/>${styleHidden}<button type="submit" class="secondary">Run Final + Package</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit">Enqueue COMPILE_SHOTS</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">Run Preview Render</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">Force Enqueue</button></form>
-    <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Shot Editor (Timeline)</a>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit" class="secondary">Run COMPILE_SHOTS</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit" class="secondary">Run Preview Render</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">Run Selected Step</button></form>
+  </div>
   </div>
 </section>
 <section class="card">
@@ -1517,7 +1521,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       const keyframes = isRecord(raw.camera) && Array.isArray(raw.camera.keyframes) ? raw.camera.keyframes.length : 0;
       const objectKey = `shot:${shotId}`;
       const objectLabel = `Shot ${index + 1}: ${shotId}`;
-      shotRows.push(`<tr class="editor-shot-row" data-editor-object="${esc(objectKey)}" data-editor-label="${esc(objectLabel)}" tabindex="0" role="button" aria-label="Select shot ${index + 1}: ${esc(shotId)}"><td>${index + 1}</td><td><code>${esc(shotId)}</code></td><td>${startFrame}</td><td>${durationFrames}</td><td>${esc(transition)}</td><td>${keyframes}</td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="-1"/><button type="submit">Up</button></form><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="1"/><button type="submit">Down</button></form></td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="tweak"/><input type="hidden" name="shotId" value="${esc(shotId)}"/><label>zoom<input name="zoomMult" value="1.00" style="width:64px"/></label><label>panX<input name="panXDelta" value="0.00" style="width:64px"/></label><label>transition<input name="transitionStrength" value="0.50" style="width:64px"/></label><button type="submit">Apply</button></form></td></tr>`);
+      shotRows.push(`<tr class="editor-shot-row" data-editor-object="${esc(objectKey)}" data-editor-label="${esc(objectLabel)}" tabindex="0" role="button" aria-label="Select shot ${index + 1}: ${esc(shotId)}"><td>${index + 1}</td><td><code>${esc(shotId)}</code></td><td>${startFrame}</td><td>${durationFrames}</td><td>${esc(transition)}</td><td>${keyframes}</td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="-1"/><button type="submit" class="secondary">Move up</button></form><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="move"/><input type="hidden" name="index" value="${index}"/><input type="hidden" name="delta" value="1"/><button type="submit" class="secondary">Move down</button></form></td><td><form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="tweak"/><input type="hidden" name="shotId" value="${esc(shotId)}"/><label>zoom<input name="zoomMult" value="1.00" style="width:64px"/></label><label>panX<input name="panXDelta" value="0.00" style="width:64px"/></label><label>transition<input name="transitionStrength" value="0.50" style="width:64px"/></label><button type="submit">Apply tweak</button></form></td></tr>`);
       if (stageShotObjects.length < 8) {
         stageShotObjects.push(`<button type="button" class="editor-object editor-object-shot" data-editor-object="${esc(objectKey)}" data-editor-label="${esc(objectLabel)}"><span>Shot ${index + 1}</span><small>${esc(shotId)}</small></button>`);
       }
@@ -1592,14 +1596,14 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   <div class="editor-top-actions">
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="undo"/><button type="submit" ${history.pointer <= 0 ? "disabled" : ""}>Undo</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="redo"/><button type="submit" ${history.pointer >= history.states.length - 1 ? "disabled" : ""}>Redo</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1">Save Snapshot</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Preview Render</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1">Save snapshot</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Run preview render</button></form>
     <button type="button" class="secondary" id="editor-left-toggle" aria-expanded="true">Collapse Left Panel</button>
   </div>
 </div>
 ${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
 ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}
-<div class="notice">Shortcut: <strong>r</strong> runs the primary action. Reorder rows with Up/Down.</div>
+<div class="notice">Shortcut: <strong>r</strong> runs the primary action. Reorder timeline rows with Move up/Move down.</div>
 <div class="editor-layout">
   <aside class="editor-left">
     <h2>Library</h2>
@@ -1614,7 +1618,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     <div id="editor-tab-panel-uploads" role="tabpanel" aria-labelledby="editor-tab-btn-uploads" class="editor-tab-panel" data-editor-tab="uploads" hidden><ul><li data-editor-search-item>voiceover_wave.png</li><li data-editor-search-item>chart_overlay.svg</li><li data-editor-search-item>product_cutout.webp</li></ul></div>
   </aside>
   <section class="editor-center">
-    <h2>Edit Canvas</h2>
+    <h2>Canvas</h2>
     <div class="editor-stage">
       <div id="editor-context-toolbar" class="editor-context-toolbar" hidden>
         <span id="editor-context-label" class="editor-context-label">No selection</span>
@@ -1637,7 +1641,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   </section>
   <aside class="editor-right">
     <h2>Inspector</h2>
-    <p id="editor-inspector-target" class="muted-text">Select an object in CenterStage or the timeline table.</p>
+    <p id="editor-inspector-target" class="muted-text">Select an object on the canvas or in the timeline table.</p>
     <div class="field"><label>Opacity</label><input value="100%" disabled/></div>
     <div class="field"><label>Blend Mode</label><select disabled><option>Normal</option></select></div>
     <div class="field"><label>Transform</label><input value="x:0 y:0 scale:1.0" disabled/></div>
@@ -1646,7 +1650,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
 </div>
 <section class="editor-bottom">
   <div>
-    <h2>Bottom Snapshots</h2>
+    <h2>Snapshots</h2>
     <p>Recent snapshots stay linked for quick rollback and comparison.</p>
   </div>
   <div class="editor-strip">${snapshotItems}</div>
@@ -1826,7 +1830,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
         history.pointer -= 1;
       }
       writeEditorHistory(id, history);
-      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent("Undo applied")}`);
+      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent("Undo complete")}`);
     }
 
     if (op === "redo") {
@@ -1834,7 +1838,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
         history.pointer += 1;
       }
       writeEditorHistory(id, history);
-      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent("Redo applied")}`);
+      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent("Redo complete")}`);
     }
 
     if (op === "snapshot") {
@@ -1856,7 +1860,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       history = pushHistory(history, shotsDoc, `move:${index}:${delta}`);
       writeEditorHistory(id, history);
       writeJsonFile(out.shots, shotsDoc);
-      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent("Timeline reordered")}`);
+      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent("Timeline reordered successfully")}`);
     }
 
     if (op === "tweak") {
@@ -1875,7 +1879,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
       history = pushHistory(history, shotsDoc, `tweak:${shotId}`);
       writeEditorHistory(id, history);
       writeJsonFile(out.shots, shotsDoc);
-      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent(`Shot updated: ${shotId}`)}`);
+      return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?message=${encodeURIComponent(`Tweak applied: ${shotId}`)}`);
     }
 
     return reply.redirect(`/ui/episodes/${encodeURIComponent(id)}/editor?error=${encodeURIComponent("Unknown op")}`);
