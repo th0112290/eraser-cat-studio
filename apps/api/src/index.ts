@@ -507,6 +507,11 @@ function isRedisUnavailableError(error: unknown): boolean {
   );
 }
 
+function isDbUnavailableError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return message.includes("can't reach database server") || message.includes("prismaclientinitializationerror");
+}
+
 function setRedisDown(reason: unknown): void {
   redisHealth = "down";
   lastRedisError = errorMessage(reason);
@@ -730,7 +735,22 @@ app.setErrorHandler((error, request, reply) => {
 
   if (typeof body.error === "string" && body.error.includes("Redis unavailable")) {
     statusCode = 503;
-    body = { error: "Redis unavailable" };
+    body = {
+      error: "Redis unavailable",
+      error_code: "redis_unavailable",
+      dependency: "redis",
+      hint: "Start Redis and retry."
+    };
+  }
+
+  if (isDbUnavailableError(error)) {
+    statusCode = 503;
+    body = {
+      error: "Database unavailable",
+      error_code: "database_unavailable",
+      dependency: "postgresql",
+      hint: "Start PostgreSQL and retry."
+    };
   }
 
   if (statusCode >= 500) {

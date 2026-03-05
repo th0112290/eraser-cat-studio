@@ -41,6 +41,12 @@ const DEMO_MAX_ATTEMPTS = 2;
 const DEMO_BACKOFF_MS = 1000;
 const STATIC_ARTIFACTS_PREFIX = "/artifacts/";
 const STATIC_ARTIFACTS_ENABLED = (process.env.FF_STATIC_ARTIFACTS ?? "true").trim().toLowerCase() === "true";
+const MINIO_HEALTH_PATH = "/minio/health/live";
+const IMAGEGEN_DEFAULT_MONTHLY_BUDGET_USD = 30;
+const IMAGEGEN_DEFAULT_COST_PER_IMAGE_USD = 0;
+const IMAGEGEN_DEFAULT_MAX_CANDIDATES_PER_VIEW = 4;
+const IMAGEGEN_DEFAULT_MAX_TOTAL_IMAGES = 18;
+const IMAGEGEN_DEFAULT_MAX_RETRIES = 2;
 const require = createRequire(import.meta.url);
 
 function createHttpError(statusCode: number, message: string, details?: unknown): HttpError {
@@ -105,6 +111,15 @@ function optionalDate(obj: JsonRecord, field: string): Date | undefined {
   return parsed;
 }
 
+function parseBooleanField(obj: JsonRecord, field: string, fallback: boolean): boolean {
+  const value = obj[field];
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean") {
+    throw createHttpError(400, `${field} must be a boolean`);
+  }
+  return value;
+}
+
 function detailsToRecord(details: Prisma.JsonValue | null): JsonRecord | null {
   if (!details || typeof details !== "object" || Array.isArray(details)) {
     return null;
@@ -152,11 +167,6 @@ function getPublishOutputRoot(): string {
 
 function getStaticArtifactsRoot(): string {
   return path.join(getRepoRoot(), "out");
-}
-
-function isArtifactsRequest(url: string): boolean {
-  const pathname = url.split("?", 1)[0] ?? url;
-  return pathname === "/artifacts" || pathname.startsWith(STATIC_ARTIFACTS_PREFIX);
 }
 
 async function readArtifactsIndex(root: string): Promise<Array<{ name: string; type: "file" | "directory"; url: string }>> {
@@ -232,6 +242,192 @@ function registerFormBody(app: FastifyInstance): void {
     );
   }
 }
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function parsePositiveIntEnv(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseNonNegativeEnv(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseProviderName(value: unknown): "mock" | "comfyui" | "remoteApi" {
+  if (typeof value !== "string") {
+    return "mock";
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "comfyui") {
+    return "comfyui";
+  }
+  if (normalized === "remoteapi" || normalized === "remote_api" || normalized === "remote") {
+    return "remoteApi";
+  }
+  return "mock";
+}
+
+function readImageGenBudgetConfig() {
+  return {
+    monthBudgetUsd: parseNonNegativeEnv(process.env.IMAGEGEN_MONTHLY_BUDGET_USD, IMAGEGEN_DEFAULT_MONTHLY_BUDGET_USD),
+    costPerImageUsd: parseNonNegativeEnv(process.env.IMAGEGEN_COST_PER_IMAGE_USD, IMAGEGEN_DEFAULT_COST_PER_IMAGE_USD),
+    maxCandidatesPerView: parsePositiveIntEnv(
+      process.env.IMAGEGEN_MAX_CANDIDATES_PER_VIEW,
+      IMAGEGEN_DEFAULT_MAX_CANDIDATES_PER_VIEW
+    ),
+    maxTotalImages: parsePositiveIntEnv(process.env.IMAGEGEN_MAX_TOTAL_IMAGES, IMAGEGEN_DEFAULT_MAX_TOTAL_IMAGES),
+    maxRetries: parsePositiveIntEnv(process.env.IMAGEGEN_MAX_RETRIES, IMAGEGEN_DEFAULT_MAX_RETRIES),
+    remoteConfigured:
+      typeof process.env.IMAGEGEN_REMOTE_BASE_URL === "string" &&
+      process.env.IMAGEGEN_REMOTE_BASE_URL.trim().length > 0,
+    comfyConfigured:
+      typeof process.env.COMFYUI_BASE_URL === "string"
+        ? process.env.COMFYUI_BASE_URL.trim().length > 0
+        : typeof process.env.COMFYUI_URL === "string" && process.env.COMFYUI_URL.trim().length > 0
+  };
+}
+
+function parseBudgetQuery(requestQuery: unknown): {
+  provider: "mock" | "comfyui" | "remoteApi";
+  candidateCount: number;
+  views: number;
+} {
+  const query = isRecord(requestQuery) ? requestQuery : {};
+  const provider = parseProviderName(query.provider);
+
+  const candidateCountRaw = query.candidateCount;
+  const viewsRaw = query.views;
+
+  let candidateCount = IMAGEGEN_DEFAULT_MAX_CANDIDATES_PER_VIEW;
+  if (typeof candidateCountRaw === "string") {
+    const parsed = Number.parseInt(candidateCountRaw, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      candidateCount = parsed;
+    }
+  }
+
+  let views = 3;
+  if (typeof viewsRaw === "string") {
+    const parsed = Number.parseInt(viewsRaw, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      views = parsed;
+    }
+  }
+
+  return { provider, candidateCount, views };
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (value && typeof value === "object" && "toString" in value) {
+    const parsed = Number.parseFloat(String(value));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+async function readMonthlyImageGenSpentUsd(prisma: PrismaClient): Promise<number> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ total: unknown }>>`
+      SELECT COALESCE(SUM(estimated_cost_usd), 0) AS total
+      FROM provider_call_logs
+      WHERE created_at >= DATE_TRUNC('month', NOW())
+    `;
+    return rows.length > 0 ? Math.max(0, toNumber(rows[0].total)) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function estimateRunCost(input: {
+  candidateCount: number;
+  views: number;
+  maxCandidatesPerView: number;
+  maxTotalImages: number;
+  costPerImageUsd: number;
+}): { estimatedImageCount: number; estimatedCostUsd: number } {
+  const clampedCandidates = Math.max(1, Math.min(input.candidateCount, input.maxCandidatesPerView));
+  const clampedViews = Math.max(1, input.views);
+  const maxByTotal = Math.max(1, Math.floor(input.maxTotalImages / clampedViews));
+  const finalCandidates = Math.min(clampedCandidates, maxByTotal);
+  const estimatedImageCount = finalCandidates * clampedViews;
+  return {
+    estimatedImageCount,
+    estimatedCostUsd: estimatedImageCount * Math.max(0, input.costPerImageUsd)
+  };
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: "GET",
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function checkMinioHealth(): Promise<{ status: "up" | "down" | "skipped"; endpoint: string | null; error: string | null }> {
+  const endpoint = process.env.S3_ENDPOINT?.trim() ?? "";
+  if (!endpoint) {
+    return {
+      status: "skipped",
+      endpoint: null,
+      error: "S3_ENDPOINT is not set"
+    };
+  }
+
+  const base = endpoint.replace(/\/+$/, "");
+  const probeUrl = `${base}${MINIO_HEALTH_PATH}`;
+  try {
+    const response = await fetchWithTimeout(probeUrl, 2000);
+    if (response.ok) {
+      return {
+        status: "up",
+        endpoint: base,
+        error: null
+      };
+    }
+
+    return {
+      status: "down",
+      endpoint: base,
+      error: `HTTP ${response.status}`
+    };
+  } catch (error) {
+    return {
+      status: "down",
+      endpoint: base,
+      error: errorMessage(error)
+    };
+  }
+}
+
 function readManifestSafely(manifestPath: string | null): UploadManifest | null {
   if (!manifestPath) {
     return null;
@@ -354,6 +550,16 @@ function registerStaticArtifactsRoute(app: FastifyInstance): void {
   });
 }
 
+function injectCharacterGeneratorBudgetBanner(html: string): string {
+  if (!html.includes("<main>")) {
+    return html;
+  }
+
+  const banner = `<section class="card" id="imagegen-budget-banner"><h2>ImageGen Budget</h2><div id="imagegen-budget-body">Loading budget...</div></section>`;
+  const script = `<script>(function(){if(window.__ecImageGenBudgetLoaded){return;}window.__ecImageGenBudgetLoaded=true;const bannerBody=document.getElementById("imagegen-budget-body");const providerSelect=document.querySelector('select[name=\"provider\"]');if(providerSelect){const exists=[...providerSelect.options].some(o=>o.value==='remoteApi');if(!exists){const opt=document.createElement('option');opt.value='remoteApi';opt.textContent='remoteApi (vendor-neutral)';providerSelect.appendChild(opt);}}const candidateInput=document.querySelector('input[name=\"candidateCount\"]');const render=async()=>{const provider=providerSelect&&providerSelect.value?providerSelect.value:'mock';const candidateCount=candidateInput&&candidateInput.value?candidateInput.value:'4';const params=new URLSearchParams({provider,candidateCount,views:'3'});const res=await fetch('/api/character-generator/budget?'+params.toString());if(!res.ok){throw new Error('budget endpoint '+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error('invalid budget response');}const providerInfo='provider='+data.provider+' / remoteConfigured='+data.remoteConfigured+' / comfyConfigured='+data.comfyConfigured;const costInfo='estimatedThisRun=$'+Number(data.estimatedCostThisRunUsd||0).toFixed(2)+' / monthSpent=$'+Number(data.monthSpentUsd||0).toFixed(2)+' / monthBudget=$'+Number(data.monthBudgetUsd||0).toFixed(2);const limitInfo='maxCandidatesPerView='+data.maxCandidatesPerView+' / maxTotalImages='+data.maxTotalImages+' / maxRetries='+data.maxRetries;const warn=(typeof data.warning==='string'&&data.warning.length>0)?('<div class=\"error\">'+data.warning+'</div>'):'';bannerBody.innerHTML='<div class=\"notice\">'+providerInfo+'</div><div class=\"notice\">'+costInfo+'</div><div class=\"notice\">'+limitInfo+'</div>'+warn;};const safeRender=()=>{render().catch((error)=>{if(bannerBody){bannerBody.textContent='budget load failed: '+String(error);}})};safeRender();if(providerSelect){providerSelect.addEventListener('change',safeRender);}if(candidateInput){candidateInput.addEventListener('input',safeRender);}})();</script>`;
+  return html.replace("<main>", `<main>${banner}${script}`);
+}
+
 export function registerPublishRoutes(input: {
   app: FastifyInstance;
   prisma: PrismaClient;
@@ -385,6 +591,89 @@ export function registerPublishRoutes(input: {
     queueName
   });
 
+  app.addHook("preValidation", async (request) => {
+    const pathname = request.url.split("?", 1)[0] ?? request.url;
+    if (pathname !== "/api/character-generator/generate" && pathname !== "/ui/character-generator/create") {
+      return;
+    }
+
+    if (!isRecord(request.body)) {
+      return;
+    }
+
+    const providerRaw = request.body.provider;
+    if (typeof providerRaw !== "string") {
+      return;
+    }
+
+    const normalized = providerRaw.trim().toLowerCase();
+    if (normalized === "remoteapi" || normalized === "remote_api" || normalized === "remote") {
+      request.body.provider = "comfyui";
+    }
+  });
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    const pathname = request.url.split("?", 1)[0] ?? request.url;
+    if (pathname !== "/ui/character-generator") {
+      return payload;
+    }
+    if (reply.statusCode >= 400) {
+      return payload;
+    }
+
+    const contentType = reply.getHeader("content-type");
+    const contentTypeText = Array.isArray(contentType) ? contentType.join(";") : String(contentType ?? "");
+    if (!contentTypeText.includes("text/html")) {
+      return payload;
+    }
+
+    const html = Buffer.isBuffer(payload) ? payload.toString("utf8") : String(payload ?? "");
+    if (!html.includes('action="/ui/character-generator/create"')) {
+      return payload;
+    }
+    const injected = injectCharacterGeneratorBudgetBanner(html);
+    return injected;
+  });
+
+  app.get("/api/character-generator/budget", async (request) => {
+    const config = readImageGenBudgetConfig();
+    const query = parseBudgetQuery(request.query);
+    const estimate = estimateRunCost({
+      candidateCount: query.candidateCount,
+      views: query.views,
+      maxCandidatesPerView: config.maxCandidatesPerView,
+      maxTotalImages: config.maxTotalImages,
+      costPerImageUsd: config.costPerImageUsd
+    });
+    const monthSpentUsd = await readMonthlyImageGenSpentUsd(prisma);
+
+    let warning = "";
+    if (query.provider === "remoteApi" && !config.remoteConfigured) {
+      warning = "IMAGEGEN_REMOTE_BASE_URL is not configured. remoteApi will not be available.";
+    } else if (query.provider === "comfyui" && !config.comfyConfigured && !config.remoteConfigured) {
+      warning = "COMFYUI_BASE_URL is not configured. provider will fall back to mock.";
+    } else if (monthSpentUsd + estimate.estimatedCostUsd > config.monthBudgetUsd) {
+      warning = "Estimated run would exceed monthly budget. Generation can be rejected or fallback to mock.";
+    }
+
+    return {
+      data: {
+        provider: query.provider,
+        estimatedImageCount: estimate.estimatedImageCount,
+        estimatedCostThisRunUsd: estimate.estimatedCostUsd,
+        monthSpentUsd,
+        monthBudgetUsd: config.monthBudgetUsd,
+        remainingBudgetUsd: Math.max(0, config.monthBudgetUsd - monthSpentUsd),
+        maxCandidatesPerView: config.maxCandidatesPerView,
+        maxTotalImages: config.maxTotalImages,
+        maxRetries: config.maxRetries,
+        remoteConfigured: config.remoteConfigured,
+        comfyConfigured: config.comfyConfigured,
+        warning
+      }
+    };
+  });
+
   registerAnalyticsRoutes({
     app,
     prisma,
@@ -406,28 +695,86 @@ export function registerPublishRoutes(input: {
 
   if (STATIC_ARTIFACTS_ENABLED) {
     registerArtifactsIndexRoutes(app);
-
-    app.addHook("onRequest", async (request) => {
-      if (!isArtifactsRequest(request.url)) {
-        return;
-      }
-
-      if (API_KEY.length === 0) {
-        return;
-      }
-
-      const existing = request.headers["x-api-key"];
-      const current = Array.isArray(existing) ? existing[0] : existing;
-      if (typeof current !== "string" || current.trim() === "") {
-        request.headers["x-api-key"] = API_KEY;
-      }
-    });
-
     registerStaticArtifactsRoute(app);
   }
 
+  app.get("/healthz", async () => {
+    let dbStatus: "up" | "down" = "up";
+    let dbError: string | null = null;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (error) {
+      dbStatus = "down";
+      dbError = errorMessage(error);
+    }
+
+    let redisStatus: "up" | "down" = "down";
+    let queueReady = false;
+    let redisError: string | null = null;
+
+    try {
+      const raw = await app.inject({
+        method: "GET",
+        url: "/health",
+        headers: API_KEY.length > 0 ? { "x-api-key": API_KEY } : undefined
+      });
+
+      if (raw.statusCode >= 400) {
+        redisError = `health probe failed with status ${raw.statusCode}`;
+      } else {
+        const parsed = JSON.parse(raw.body) as { data?: { redis?: unknown; queueReady?: unknown; redisError?: unknown } };
+        const redisValue = parsed?.data?.redis;
+        const queueValue = parsed?.data?.queueReady;
+        redisStatus = redisValue === "up" ? "up" : "down";
+        queueReady = queueValue === true;
+        redisError = typeof parsed?.data?.redisError === "string" ? parsed.data.redisError : null;
+      }
+    } catch (error) {
+      redisError = errorMessage(error);
+    }
+
+    const minio = await checkMinioHealth();
+    const ok = dbStatus === "up" && redisStatus === "up" && queueReady && minio.status !== "down";
+
+    return {
+      data: {
+        ok,
+        checkedAt: new Date().toISOString(),
+        services: {
+          database: {
+            status: dbStatus,
+            ...(dbError ? { error: dbError } : {})
+          },
+          redis: {
+            status: redisStatus,
+            queueReady,
+            queueName,
+            ...(redisError ? { error: redisError } : {})
+          },
+          minio: {
+            status: minio.status,
+            endpoint: minio.endpoint,
+            bucket: process.env.S3_BUCKET?.trim() ?? null,
+            ...(minio.error ? { error: minio.error } : {})
+          }
+        },
+        fixes: {
+          dockerPreflight: "pnpm smoke:docker",
+          startInfra: "pnpm docker:up",
+          runMigrations: "pnpm db:migrate",
+          startAll: "pnpm dev",
+          startApiOnly: "pnpm -C apps/api run dev",
+          startWorkerOnly: "pnpm -C apps/worker run dev"
+        }
+      }
+    };
+  });
+
   app.post("/demo/extreme", async (request, reply) => {
     try {
+      const body = request.body === undefined ? {} : requireBodyObject(request.body);
+      const alwaysCreateNewEpisode = parseBooleanField(body, "alwaysCreateNewEpisode", false);
+
       const user = await prisma.user.upsert({
         where: { email: DEMO_USER_EMAIL },
         update: { name: DEMO_USER_NAME },
@@ -443,18 +790,25 @@ export function registerPublishRoutes(input: {
           data: { userId: user.id, name: DEMO_CHANNEL_NAME }
         }));
 
-      const episode =
-        (await prisma.episode.findFirst({
-          where: { channelId: channel.id, topic: DEMO_TOPIC },
-          orderBy: { createdAt: "desc" }
-        })) ??
-        (await prisma.episode.create({
-          data: {
-            channelId: channel.id,
-            topic: DEMO_TOPIC,
-            targetDurationSec: 600
-          }
-        }));
+      const episode = alwaysCreateNewEpisode
+        ? await prisma.episode.create({
+            data: {
+              channelId: channel.id,
+              topic: DEMO_TOPIC,
+              targetDurationSec: 600
+            }
+          })
+        : ((await prisma.episode.findFirst({
+            where: { channelId: channel.id, topic: DEMO_TOPIC },
+            orderBy: { createdAt: "desc" }
+          })) ??
+          (await prisma.episode.create({
+            data: {
+              channelId: channel.id,
+              topic: DEMO_TOPIC,
+              targetDurationSec: 600
+            }
+          })));
 
       const activeJob = await prisma.job.findFirst({
         where: {
@@ -476,7 +830,8 @@ export function registerPublishRoutes(input: {
             idempotent: true,
             episodeId: episode.id,
             jobId: activeJob.id,
-            bullmqJobId: activeJob.bullmqJobId
+            bullmqJobId: activeJob.bullmqJobId,
+            alwaysCreateNewEpisode
           }
         });
 
@@ -485,7 +840,8 @@ export function registerPublishRoutes(input: {
             idempotent: true,
             episodeId: episode.id,
             jobId: activeJob.id,
-            bullmqJobId: activeJob.bullmqJobId
+            bullmqJobId: activeJob.bullmqJobId,
+            alwaysCreateNewEpisode
           }
         };
       }
@@ -527,7 +883,11 @@ export function registerPublishRoutes(input: {
         {
           jobDbId: job.id,
           episodeId: episode.id,
-          schemaChecks: []
+          schemaChecks: [],
+          pipeline: {
+            stopAfterPreview: false,
+            autoRenderFinal: true
+          }
         },
         job.maxAttempts,
         job.retryBackoffMs
@@ -570,7 +930,8 @@ export function registerPublishRoutes(input: {
           idempotent: false,
           episodeId: episode.id,
           jobId: job.id,
-          bullmqJobId
+          bullmqJobId,
+          alwaysCreateNewEpisode
         }
       });
 
@@ -579,7 +940,8 @@ export function registerPublishRoutes(input: {
           idempotent: false,
           episodeId: episode.id,
           jobId: job.id,
-          bullmqJobId
+          bullmqJobId,
+          alwaysCreateNewEpisode
         }
       });
     } catch (error) {

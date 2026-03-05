@@ -10,6 +10,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { EpisodeJobPayload } from "../services/scheduleService";
 import { makeStorageKey, putAssetObject } from "../services/assetStorage";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
+import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -673,11 +674,6 @@ function storageKeyExistsLocally(storageKey: string | null | undefined): boolean
 
   const localPath = path.join(getRepoRoot(), "out", "storage", normalized);
   return fs.existsSync(localPath);
-}
-
-function isDbUnavailableError(error: unknown): boolean {
-  const msg = errorMessage(error).toLowerCase();
-  return msg.includes("can't reach database server") || msg.includes("prismaclientinitializationerror");
 }
 
 function internalHeaders(): Record<string, string> {
@@ -1450,7 +1446,11 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
         retryBullmqJobId = String(queued.id);
       } catch (error) {
         if (isRedisUnavailableError(error)) {
-          throw createHttpError(503, "Redis unavailable");
+          throw createHttpError(503, "Redis unavailable", {
+            error_code: "redis_unavailable",
+            dependency: "redis",
+            hint: "Start Redis and retry."
+          });
         }
         throw error;
       }
@@ -1497,7 +1497,8 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
         qcJson: toPrismaJson({
           stage: "uploaded",
           ...qcSummary,
-          minioWarning: stored.minioError ?? null
+          minioWarning: stored.minioError ?? null,
+          minioHint: stored.minioError ? "MinIO unavailable. Local artifact path will be used." : null
         })
       }
     });
@@ -1537,7 +1538,11 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
             })
           }
         });
-        throw createHttpError(503, "Redis unavailable");
+        throw createHttpError(503, "Redis unavailable", {
+          error_code: "redis_unavailable",
+          dependency: "redis",
+          hint: "Start Redis and retry."
+        });
       }
       throw error;
     }
@@ -1550,6 +1555,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
           stage: "queued",
           ...qcSummary,
           minioWarning: stored.minioError ?? null,
+          minioHint: stored.minioError ? "MinIO unavailable. Local artifact path will be used." : null,
           bullmqJobId
         })
       }
@@ -1561,7 +1567,8 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
         status: "QUEUED",
         qcSummary: {
           ...qcSummary,
-          minioWarning: stored.minioError ?? null
+          minioWarning: stored.minioError ?? null,
+          minioHint: stored.minioError ? "MinIO unavailable. Local artifact path will be used." : null
         },
         bullmqJobId
       }
@@ -1681,17 +1688,19 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
       return reply.type("text/html; charset=utf-8").send(uiPage("\uC5D0\uC14B", body));
     } catch (error) {
       if (isDbUnavailableError(error)) {
-        const body = `<section class="card"><h1>에셋 (상세 모드)</h1><div class="error">DB 연결이 없어 에셋 목록을 불러오지 못했습니다.</div><p>조치: <code>pnpm docker:up</code> 또는 DB 실행 상태를 확인한 뒤 새로고침하세요.</p><pre>${escHtml(
-          JSON.stringify(
-            {
-              error: "database_unavailable",
-              hint: "Start PostgreSQL and retry.",
-              route: "/ui/assets"
-            },
-            null,
-            2
-          )
-        )}</pre></section>`;
+        request.log.warn(
+          {
+            error_code: "database_unavailable",
+            dependency: "postgresql",
+            hint: "Start PostgreSQL and retry.",
+            route: "/ui/assets"
+          },
+          "UI fallback: database unavailable"
+        );
+        const body = renderDbUnavailableCard({
+          title: "에셋 (상세 모드)",
+          route: "/ui/assets"
+        });
         return reply.code(503).type("text/html; charset=utf-8").send(uiPage("에셋", body));
       }
       throw error;

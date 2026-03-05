@@ -7,6 +7,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { sha256Hex, stableStringify } from "@ec/shared";
 import type { EpisodeJobPayload } from "../services/scheduleService";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
+import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -223,15 +224,6 @@ function createHttpError(statusCode: number, message: string, details?: unknown)
   error.statusCode = statusCode;
   error.details = details;
   return error;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isDbUnavailableError(error: unknown): boolean {
-  const msg = errorMessage(error).toLowerCase();
-  return msg.includes("can't reach database server") || msg.includes("prismaclientinitializationerror");
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -2552,6 +2544,27 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const query = isRecord(request.query) ? request.query : {};
     const message = optionalString(query, "message");
     const error = optionalString(query, "error");
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (routeError) {
+      if (isDbUnavailableError(routeError)) {
+        request.log.warn(
+          {
+            error_code: "database_unavailable",
+            dependency: "postgresql",
+            hint: "Start PostgreSQL and retry.",
+            route: "/ui/studio"
+          },
+          "UI fallback: database unavailable"
+        );
+        const body = renderDbUnavailableCard({
+          title: "통합 스튜디오",
+          route: "/ui/studio"
+        });
+        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("통합 스튜디오", body));
+      }
+      throw routeError;
+    }
     const html = `${message ? `<div class="notice">${escHtml(message)}</div>` : ""}${error ? `<div class="error">${escHtml(error)}</div>` : ""}
 <section class="card studio-shell">
   <style>
@@ -3447,17 +3460,19 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uC0DD\uC131\uAE30", html));
     } catch (routeError) {
       if (isDbUnavailableError(routeError)) {
-        const body = `<section class="card"><h1>캐릭터 생성기 (상세 모드)</h1><div class="error">DB 연결이 없어 생성기 데이터를 불러오지 못했습니다.</div><p>조치: <code>pnpm docker:up</code> 또는 DB 실행 상태를 확인한 뒤 새로고침하세요.</p><pre>${escHtml(
-          JSON.stringify(
-            {
-              error: "database_unavailable",
-              hint: "Start PostgreSQL and retry.",
-              route: "/ui/character-generator"
-            },
-            null,
-            2
-          )
-        )}</pre></section>`;
+        request.log.warn(
+          {
+            error_code: "database_unavailable",
+            dependency: "postgresql",
+            hint: "Start PostgreSQL and retry.",
+            route: "/ui/character-generator"
+          },
+          "UI fallback: database unavailable"
+        );
+        const body = renderDbUnavailableCard({
+          title: "캐릭터 생성기 (상세 모드)",
+          route: "/ui/character-generator"
+        });
         return reply.code(503).type("text/html; charset=utf-8").send(uiPage("캐릭터 생성기", body));
       }
       throw routeError;
