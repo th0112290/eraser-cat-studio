@@ -20,6 +20,7 @@
     "smoke:ui:down": "node scripts/smokeUiRoutes.mjs",
     "smoke:ui:up": "node --input-type=module -e \"process.env.SMOKE_DB_MODE='up'; await import('./scripts/smokeUiRoutes.mjs');\"",
     "smoke:ui:visual": "node scripts/smokeUiVisualContract.mjs",
+    "comfy:adapter": "node scripts/comfyAdapter.mjs",
     "dev:down": "docker compose -f docker/docker-compose.yml down",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
