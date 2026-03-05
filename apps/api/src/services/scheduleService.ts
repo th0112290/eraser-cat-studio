@@ -16,6 +16,23 @@ export type EpisodeJobPayload = {
   jobDbId: string;
   episodeId: string;
   schemaChecks?: Array<{ schemaId: string; data: Prisma.InputJsonValue }>;
+  render?: {
+    shotsPath?: string;
+    outputPath?: string;
+    srtPath?: string;
+    qcReportPath?: string;
+    renderLogPath?: string;
+    narrationAlignmentPath?: string;
+    compositionId?: string;
+    dryRun?: boolean;
+    rerenderFailedShotsOnly?: boolean;
+    failedShotIds?: string[];
+  };
+  pipeline?: {
+    stopAfterPreview?: boolean;
+    autoRenderFinal?: boolean;
+  };
+  character?: Prisma.InputJsonValue;
 };
 
 export type BuildScheduleDatesInput = {

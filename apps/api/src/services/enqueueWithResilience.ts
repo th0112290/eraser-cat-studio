@@ -1,9 +1,11 @@
 import type { JobsOptions, Queue } from "bullmq";
 
-type EnqueueWithResilienceInput<T> = {
-  queue: Queue<T>;
+type PayloadWithJobId = { jobDbId: string };
+
+type EnqueueWithResilienceInput<T extends PayloadWithJobId> = {
+  queue: Queue;
   name: string;
-  payload: T & { jobDbId: string };
+  payload: T;
   maxAttempts: number;
   backoffMs: number;
   maxEnqueueRetries?: number;
@@ -11,8 +13,8 @@ type EnqueueWithResilienceInput<T> = {
   redisUnavailableAsHttp503?: boolean;
 };
 
-type EnqueueWithResilienceResult<T> = {
-  job: Awaited<ReturnType<Queue<T>["add"]>>;
+type EnqueueWithResilienceResult = {
+  job: Awaited<ReturnType<Queue["add"]>>;
   mode: "added" | "reused";
   attemptCount: number;
   errorSummary: string[];
@@ -44,12 +46,13 @@ async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function enqueueWithResilience<T>(
+export async function enqueueWithResilience<T extends PayloadWithJobId>(
   input: EnqueueWithResilienceInput<T>
-): Promise<EnqueueWithResilienceResult<T>> {
+): Promise<EnqueueWithResilienceResult> {
   const maxEnqueueRetries = Math.max(0, input.maxEnqueueRetries ?? 0);
   const retryDelayMs = Math.max(0, input.retryDelayMs ?? 0);
   const errors: string[] = [];
+  const queueAny = input.queue as Queue<any, any, string>;
 
   const options: JobsOptions = {
     jobId: input.payload.jobDbId,
@@ -64,7 +67,7 @@ export async function enqueueWithResilience<T>(
 
   for (let attempt = 0; attempt <= maxEnqueueRetries; attempt += 1) {
     try {
-      const job = await input.queue.add(input.name, input.payload, options);
+      const job = await queueAny.add(String(input.name), input.payload as any, options);
       return {
         job,
         mode: "added",
@@ -72,7 +75,7 @@ export async function enqueueWithResilience<T>(
         errorSummary: errors
       };
     } catch (error) {
-      const existingJob = await input.queue.getJob(input.payload.jobDbId);
+      const existingJob = await queueAny.getJob(input.payload.jobDbId);
       if (existingJob) {
         return {
           job: existingJob,
