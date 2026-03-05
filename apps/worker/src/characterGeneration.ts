@@ -1452,6 +1452,9 @@ async function markSessionCandidatesPicked(input: {
   });
 
   for (const selected of Object.values(input.selectedByView)) {
+    if (!selected || typeof selected.candidateId !== "string" || typeof selected.assetId !== "string") {
+      throw new Error("Invalid selectedByView payload for markSessionCandidatesPicked");
+    }
     await candidateDelegate.updateMany({
       where: {
         sessionId: input.sessionId,
@@ -2401,15 +2404,15 @@ async function persistSelectedCandidates(input: {
       sessionId,
       selectedByView: {
         front: {
-          candidateId: selectedByView.front.candidate.id,
+          candidateId: resolvedSelectedCandidateIds.front!,
           assetId: assetIds.front
         },
         threeQuarter: {
-          candidateId: selectedByView.threeQuarter.candidate.id,
+          candidateId: resolvedSelectedCandidateIds.threeQuarter!,
           assetId: assetIds.threeQuarter
         },
         profile: {
-          candidateId: selectedByView.profile.candidate.id,
+          candidateId: resolvedSelectedCandidateIds.profile!,
           assetId: assetIds.profile
         }
       }
