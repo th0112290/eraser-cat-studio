@@ -68,7 +68,6 @@ export function buildJobsPageBody(input: JobsPageBodyInput): string {
   }</tbody></table></div>
 </section>`;
 }
-
 export function buildPublishPageBody(input: PublishPageBodyInput): string {
   const t = UI_TEXT.publish;
   return `

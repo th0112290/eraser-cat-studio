@@ -2123,14 +2123,15 @@ function buildEpisodeOpsView(episodeId: string, preferredDoc: unknown): EpisodeO
     });
   }
 
-  const fallbackSteps = uniqueStrings([
-    ...(Array.isArray(isRecord(qcReport) ? qcReport.fallback_steps_applied : undefined)
-      ? (qcReport.fallback_steps_applied as unknown[]).map((value) => str(value))
-      : []),
-    ...(Array.isArray(isRecord(renderLog) ? renderLog.fallback_steps_applied : undefined)
-      ? (renderLog.fallback_steps_applied as unknown[]).map((value) => str(value))
-      : [])
-  ]);
+  const qcFallbackSteps =
+    isRecord(qcReport) && Array.isArray(qcReport.fallback_steps_applied)
+      ? qcReport.fallback_steps_applied.map((value) => str(value))
+      : [];
+  const renderFallbackSteps =
+    isRecord(renderLog) && Array.isArray(renderLog.fallback_steps_applied)
+      ? renderLog.fallback_steps_applied.map((value) => str(value))
+      : [];
+  const fallbackSteps = uniqueStrings([...qcFallbackSteps, ...renderFallbackSteps]);
   const fallbackStage =
     str(isRecord(qcReport) ? qcReport.final_stage : undefined) ??
     str(isRecord(renderLog) ? renderLog.final_stage : undefined) ??
@@ -2217,7 +2218,8 @@ function page(title: string, body: string): string {
 function internalHeaders(withJson: boolean): Record<string, string> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (withJson) headers["content-type"] = "application/json";
-  const key = process.env.API_KEY?.trim();
+  const runtimeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  const key = typeof runtimeProcess?.env?.API_KEY === "string" ? runtimeProcess.env.API_KEY.trim() : "";
   if (key) headers["x-api-key"] = key;
   return headers;
 }
@@ -4613,14 +4615,15 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
           ...(Array.isArray(raw.reasoning_tags) ? raw.reasoning_tags : []).map((item) => str(item))
         ]);
         const breakdown = isRecord(raw.score_breakdown) ? raw.score_breakdown : {};
-        row.scoreBreakdown = [
+        const scoreBreakdownEntries: Array<[string, unknown]> = [
           ["face", breakdown.face_stability],
           ["motion", breakdown.motion_coherence],
           ["silhouette", breakdown.silhouette_readability],
           ["identity", breakdown.mascot_identity_preservation],
           ["safe", breakdown.safe_zone_readiness],
           ["total", breakdown.total]
-        ]
+        ];
+        row.scoreBreakdown = scoreBreakdownEntries
           .map(([label, value]) => ({ label, value: formatNumber(value) }))
           .filter((item) => item.value !== "-");
       }
