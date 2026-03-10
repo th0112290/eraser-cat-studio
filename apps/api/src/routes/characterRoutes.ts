@@ -116,6 +116,66 @@ type GenerationManifest = {
   selectedByView: Partial<Record<"front" | "threeQuarter" | "profile", { candidateId: string; assetId?: string; assetIngestJobId?: string }>>;
 };
 
+type CharacterArtifactSource = {
+  label: string;
+  root: string;
+};
+
+type CharacterLineageTask = {
+  code: string;
+  severity: string;
+  status: string;
+  action: string;
+  reason: string;
+  assetPaths: string[];
+};
+
+type CharacterViewLineage = {
+  view: CharacterGenerationView;
+  assetId: string | null;
+  approved: boolean | null;
+  workflow: string | null;
+  workflowVersion: string | null;
+  createdAt: string | null;
+  filePath: string | null;
+  fileUrl: string | null;
+  metadataPath: string | null;
+  metadataUrl: string | null;
+  parentAssetId: string | null;
+  parentAssetPath: string | null;
+  parentAssetUrl: string | null;
+  repairHistory: string[];
+};
+
+type CharacterPackLineage = {
+  sourceLabel: string;
+  characterRoot: string;
+  manifestPath: string;
+  manifestUrl: string | null;
+  packMetaPath: string | null;
+  packMetaUrl: string | null;
+  packJsonPath: string | null;
+  packJsonUrl: string | null;
+  proposalPath: string | null;
+  proposalUrl: string | null;
+  qcReportPath: string | null;
+  qcReportUrl: string | null;
+  repairTasksPath: string | null;
+  repairTasksUrl: string | null;
+  builtAt: string | null;
+  sourceManifestPath: string | null;
+  sourceManifestUrl: string | null;
+  sourceImageRef: string | null;
+  sourceImageUrl: string | null;
+  acceptanceStatus: string | null;
+  approvedFrontMasterPresent: boolean | null;
+  qcFailedCount: number;
+  qcTotalCount: number;
+  repairOpenCount: number;
+  repairTasks: CharacterLineageTask[];
+  viewEntries: CharacterViewLineage[];
+};
+
 function computeManifestHashes(input: {
   episodeId: string;
   characterPackId: string;
@@ -365,6 +425,94 @@ function getRepoRoot(): string {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   return path.resolve(__dirname, "../../../../");
+}
+
+function pathInside(parentPath: string, childPath: string): boolean {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(childPath));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function readJsonFileSafe(filePath: string): unknown | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function getGeneratedCharacterArtifactSources(): CharacterArtifactSource[] {
+  const repoRoot = getRepoRoot();
+  const candidates: CharacterArtifactSource[] = [
+    { label: "local worktree", root: path.join(repoRoot, "assets", "generated", "characters") },
+    { label: "main repo", root: path.resolve(repoRoot, "../eraser-cat-studio/assets/generated/characters") }
+  ];
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = path.resolve(candidate.root).toLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function resolveGeneratedCharacterRoot(
+  characterPackId: string
+): { source: CharacterArtifactSource; characterRoot: string } | null {
+  for (const source of getGeneratedCharacterArtifactSources()) {
+    const characterRoot = path.join(source.root, characterPackId);
+    if (fs.existsSync(characterRoot) && fs.statSync(characterRoot).isDirectory()) {
+      return { source, characterRoot };
+    }
+  }
+  return null;
+}
+
+function resolveGeneratedCharacterFile(
+  requestedPath: string,
+  allowedExtensions = [".json", ".png", ".jpg", ".jpeg", ".webp", ".mp4"]
+): { resolvedPath: string; source: CharacterArtifactSource } | null {
+  const resolvedPath = path.resolve(requestedPath);
+  const source = getGeneratedCharacterArtifactSources().find((candidate) => pathInside(candidate.root, resolvedPath));
+  if (!source) {
+    return null;
+  }
+  if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
+    return null;
+  }
+  const ext = path.extname(resolvedPath).toLowerCase();
+  if (!allowedExtensions.includes(ext)) {
+    return null;
+  }
+  return {
+    resolvedPath,
+    source
+  };
+}
+
+function mimeTypeForGeneratedCharacterFile(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".mp4") return "video/mp4";
+  return "application/octet-stream";
+}
+
+function toGeneratedCharacterFileUrl(filePath: string | null | undefined): string | null {
+  if (!filePath) {
+    return null;
+  }
+  const resolved = resolveGeneratedCharacterFile(filePath);
+  if (!resolved) {
+    return null;
+  }
+  return `/ui/characters/generated-file?path=${encodeURIComponent(resolved.resolvedPath)}`;
 }
 
 function getCharacterArtifacts(characterPackId: string): {
@@ -699,6 +847,132 @@ function toArtifactUrlFromAbsolutePath(filePath: string): string | null {
   return `/artifacts/${encoded}`;
 }
 
+function readLineageTasks(repairTasksRaw: unknown): CharacterLineageTask[] {
+  if (!isRecord(repairTasksRaw) || !Array.isArray(repairTasksRaw.tasks)) {
+    return [];
+  }
+
+  return repairTasksRaw.tasks
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+      return {
+        code: typeof entry.code === "string" ? entry.code : "UNKNOWN",
+        severity: typeof entry.severity === "string" ? entry.severity : "WARN",
+        status: typeof entry.status === "string" ? entry.status : "open",
+        action: typeof entry.action === "string" ? entry.action : "-",
+        reason: typeof entry.reason === "string" ? entry.reason : "-",
+        assetPaths: parseStringArray(entry.asset_paths)
+      };
+    })
+    .filter((entry): entry is CharacterLineageTask => Boolean(entry));
+}
+
+function readCharacterPackLineage(characterPackId: string): CharacterPackLineage | null {
+  const resolvedRoot = resolveGeneratedCharacterRoot(characterPackId);
+  if (!resolvedRoot) {
+    return null;
+  }
+
+  const manifestPath = path.join(resolvedRoot.characterRoot, "manifest.json");
+  const packMetaPath = path.join(resolvedRoot.characterRoot, "pack", "character.pack.meta.json");
+  const packJsonPath = path.join(resolvedRoot.characterRoot, "pack", "character.pack.json");
+  const proposalPath = path.join(resolvedRoot.characterRoot, "pack", "proposal.json");
+  const qcReportPath = path.join(resolvedRoot.characterRoot, "qc", "qc_report.json");
+  const repairTasksPath = path.join(resolvedRoot.characterRoot, "qc", "repair_tasks.json");
+
+  const manifestRaw = readJsonFileSafe(manifestPath);
+  const packMetaRaw = readJsonFileSafe(packMetaPath);
+  const packJsonRaw = readJsonFileSafe(packJsonPath);
+  const qcReportRaw = readJsonFileSafe(qcReportPath);
+  const repairTasksRaw = readJsonFileSafe(repairTasksPath);
+  const manifest = isRecord(manifestRaw) ? manifestRaw : {};
+  const packMeta = isRecord(packMetaRaw) ? packMetaRaw : {};
+  const packJson = isRecord(packJsonRaw) ? packJsonRaw : {};
+  const qcReport = isRecord(qcReportRaw) ? qcReportRaw : {};
+  const repairTasks = readLineageTasks(repairTasksRaw);
+  const viewRoot = isRecord(manifest.views) ? manifest.views : {};
+  const viewEntries = (["front", "threeQuarter", "profile"] as CharacterGenerationView[]).map((view) => {
+    const item = isRecord(viewRoot[view]) ? viewRoot[view] : {};
+    const filePath = typeof item.file_path === "string" ? item.file_path : null;
+    const metadataPath = typeof item.metadata_path === "string" ? item.metadata_path : null;
+    const parentAssetPath = typeof item.parent_asset_path === "string" ? item.parent_asset_path : null;
+    return {
+      view,
+      assetId: typeof item.asset_id === "string" ? item.asset_id : null,
+      approved: typeof item.approved === "boolean" ? item.approved : null,
+      workflow: typeof item.workflow === "string" ? item.workflow : null,
+      workflowVersion: typeof item.workflow_version === "string" ? item.workflow_version : null,
+      createdAt: typeof item.created_at === "string" ? item.created_at : null,
+      filePath,
+      fileUrl: toGeneratedCharacterFileUrl(filePath),
+      metadataPath,
+      metadataUrl: toGeneratedCharacterFileUrl(metadataPath),
+      parentAssetId: typeof item.parent_asset_id === "string" ? item.parent_asset_id : null,
+      parentAssetPath,
+      parentAssetUrl: toGeneratedCharacterFileUrl(parentAssetPath),
+      repairHistory: parseStringArray(item.repair_history)
+    };
+  });
+
+  const qcChecks = Array.isArray(qcReport.checks) ? qcReport.checks.filter((entry) => isRecord(entry)) : [];
+  const qcFailedCount = qcChecks.filter((entry) => entry.passed !== true).length;
+  const approvalStatus =
+    typeof (repairTasksRaw as { acceptance_status?: unknown } | null)?.acceptance_status === "string"
+      ? ((repairTasksRaw as { acceptance_status: string }).acceptance_status ?? null)
+      : typeof qcReport.acceptance_status === "string"
+        ? qcReport.acceptance_status
+        : typeof manifest.acceptance_status === "string"
+          ? manifest.acceptance_status
+          : readStringAtPath(manifest, ["acceptance", "status"]);
+
+  return {
+    sourceLabel: resolvedRoot.source.label,
+    characterRoot: resolvedRoot.characterRoot,
+    manifestPath,
+    manifestUrl: toGeneratedCharacterFileUrl(manifestPath),
+    packMetaPath: fs.existsSync(packMetaPath) ? packMetaPath : null,
+    packMetaUrl: toGeneratedCharacterFileUrl(packMetaPath),
+    packJsonPath: fs.existsSync(packJsonPath) ? packJsonPath : null,
+    packJsonUrl: toGeneratedCharacterFileUrl(packJsonPath),
+    proposalPath: fs.existsSync(proposalPath) ? proposalPath : null,
+    proposalUrl: toGeneratedCharacterFileUrl(proposalPath),
+    qcReportPath: fs.existsSync(qcReportPath) ? qcReportPath : null,
+    qcReportUrl: toGeneratedCharacterFileUrl(qcReportPath),
+    repairTasksPath: fs.existsSync(repairTasksPath) ? repairTasksPath : null,
+    repairTasksUrl: toGeneratedCharacterFileUrl(repairTasksPath),
+    builtAt:
+      typeof packMeta.built_at === "string"
+        ? packMeta.built_at
+        : typeof manifest.updated_at === "string"
+          ? manifest.updated_at
+          : typeof manifest.created_at === "string"
+            ? manifest.created_at
+            : null,
+    sourceManifestPath:
+      typeof packMeta.source_manifest_path === "string" ? packMeta.source_manifest_path : fs.existsSync(manifestPath) ? manifestPath : null,
+    sourceManifestUrl: toGeneratedCharacterFileUrl(
+      typeof packMeta.source_manifest_path === "string" ? packMeta.source_manifest_path : manifestPath
+    ),
+    sourceImageRef:
+      readStringAtPath(packJson, ["meta", "source_image_ref"]) ??
+      readStringAtPath(manifest, ["views", "front", "parent_asset_path"]),
+    sourceImageUrl: toGeneratedCharacterFileUrl(
+      readStringAtPath(packJson, ["meta", "source_image_ref"]) ??
+        readStringAtPath(manifest, ["views", "front", "parent_asset_path"])
+    ),
+    acceptanceStatus: approvalStatus,
+    approvedFrontMasterPresent:
+      typeof qcReport.approved_front_master_present === "boolean" ? qcReport.approved_front_master_present : null,
+    qcFailedCount,
+    qcTotalCount: qcChecks.length,
+    repairOpenCount: repairTasks.filter((task) => task.status.toLowerCase() === "open").length,
+    repairTasks,
+    viewEntries
+  };
+}
+
 function parseManifestCandidate(entry: unknown): GenerationManifestCandidate | null {
   if (!isRecord(entry)) {
     return null;
@@ -949,6 +1223,19 @@ function extractChannelPromptRules(channelBibleJson: unknown): {
   };
 }
 
+function readStringAtPath(root: unknown, keys: string[]): string | null {
+  let current: unknown = root;
+  for (const key of keys) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return typeof current === "string" && current.trim().length > 0 ? current.trim() : null;
+}
+
+function formatStudioDateTime(value: Date | null | undefined): string {
+  return value ? value.toLocaleString("ko-KR", { hour12: false }) : "-";
+}
+
 function readQcIssues(qcReportRaw: unknown): Array<{ severity: string; check: string; message: string; details: unknown }> {
   if (!isRecord(qcReportRaw)) {
     return [];
@@ -1001,6 +1288,126 @@ function readQcIssues(qcReportRaw: unknown): Array<{ severity: string; check: st
   }
 
   return out;
+}
+
+function basenameOrDash(filePath: string | null | undefined): string {
+  return filePath ? path.basename(filePath) : "-";
+}
+
+function formatLineageTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const time = new Date(value);
+  if (!Number.isNaN(time.getTime())) {
+    return time.toLocaleString("ko-KR", { hour12: false });
+  }
+  return value;
+}
+
+function renderLineageLinks(links: Array<{ label: string; href: string | null }>): string {
+  const items = links
+    .filter((link) => link.href)
+    .map((link) => `<a href="${escHtml(link.href)}">${escHtml(link.label)}</a>`)
+    .join("");
+  return items ? `<div class="quick-links">${items}</div>` : "";
+}
+
+function buildCharacterPackLineageSection(input: {
+  lineage: CharacterPackLineage | null;
+  selectedPackId: string;
+  activePackId: string | null;
+  compareHref: string | null;
+}): string {
+  if (!input.lineage) {
+    return `<section class="card"><h3>Generated Pack Lineage</h3><div class="error">No generated character artifact root was found for <strong>${escHtml(
+      input.selectedPackId
+    )}</strong>. This page only reads existing generated pack artifacts; it does not rerun generation.</div>${renderLineageLinks([
+      input.compareHref ? { label: "Compare vs active pack", href: input.compareHref } : null
+    ].filter((item): item is { label: string; href: string | null } => Boolean(item)))}</section>`;
+  }
+
+  const lineage = input.lineage;
+  const acceptanceTone = uiBadge(lineage.acceptanceStatus ?? "UNKNOWN");
+  const qcTone = lineage.qcFailedCount > 0 ? "bad" : lineage.qcTotalCount > 0 ? "ok" : "muted";
+  const repairTone = lineage.repairOpenCount > 0 ? "warn" : "ok";
+  const actionLinks = renderLineageLinks(
+    [
+      { label: "Manifest", href: lineage.manifestUrl },
+      { label: "Pack Meta", href: lineage.packMetaUrl },
+      { label: "Pack JSON", href: lineage.packJsonUrl },
+      { label: "Proposal", href: lineage.proposalUrl },
+      { label: "Pack QC", href: lineage.qcReportUrl },
+      { label: "Repair Tasks", href: lineage.repairTasksUrl },
+      input.compareHref ? { label: "Compare vs active pack", href: input.compareHref } : null
+    ].filter((item): item is { label: string; href: string | null } => Boolean(item))
+  );
+
+  const summaryCards = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px"><div style="padding:14px;border:1px solid #d8e1ec;border-radius:12px;background:#f8fbff"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#5f7288">Pack Build</div><p style="margin:8px 0 0"><strong>${escHtml(
+    formatLineageTimestamp(lineage.builtAt)
+  )}</strong></p><p style="margin:6px 0 0;color:#516175">source: ${escHtml(lineage.sourceLabel)}</p><p style="margin:6px 0 0;color:#516175">manifest: ${escHtml(
+    basenameOrDash(lineage.sourceManifestPath)
+  )}</p></div><div style="padding:14px;border:1px solid #d8e1ec;border-radius:12px;background:#f8fbff"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#5f7288">Acceptance Gate</div><p style="margin:8px 0 0"><span class="badge ${acceptanceTone}">${escHtml(
+    lineage.acceptanceStatus ?? "unknown"
+  )}</span></p><p style="margin:6px 0 0;color:#516175">QC: <span class="badge ${qcTone}">${escHtml(
+    lineage.qcFailedCount > 0 ? `${lineage.qcFailedCount} flagged` : lineage.qcTotalCount > 0 ? "clear" : "missing"
+  )}</span></p><p style="margin:6px 0 0;color:#516175">front master: ${escHtml(
+    lineage.approvedFrontMasterPresent === null ? "-" : lineage.approvedFrontMasterPresent ? "approved" : "missing"
+  )}</p></div><div style="padding:14px;border:1px solid #d8e1ec;border-radius:12px;background:#f8fbff"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#5f7288">Repair Queue</div><p style="margin:8px 0 0"><span class="badge ${repairTone}">${escHtml(
+    lineage.repairOpenCount > 0 ? `${lineage.repairOpenCount} open` : "clear"
+  )}</span></p><p style="margin:6px 0 0;color:#516175">active pack: ${escHtml(input.activePackId ?? "-")}</p><p style="margin:6px 0 0;color:#516175">source image: ${escHtml(
+    basenameOrDash(lineage.sourceImageRef)
+  )}</p></div></div>`;
+
+  const viewCards = lineage.viewEntries
+    .map((entry) => {
+      const tone = entry.approved === true ? "ok" : entry.approved === false ? "warn" : "muted";
+      const preview = entry.fileUrl
+        ? `<div style="border:1px solid #d8e1ec;border-radius:10px;background:#eef3f8;padding:8px;margin-bottom:10px"><img src="${escHtml(
+            entry.fileUrl
+          )}" alt="${escHtml(entry.view)} lineage asset" loading="lazy" style="display:block;width:100%;max-height:200px;object-fit:contain;border-radius:8px"/></div>`
+        : "";
+      const history =
+        entry.repairHistory.length > 0
+          ? `<ul style="margin:8px 0 0 18px;padding:0">${entry.repairHistory
+              .slice(0, 3)
+              .map((item) => `<li>${escHtml(item)}</li>`)
+              .join("")}${entry.repairHistory.length > 3 ? `<li>+${entry.repairHistory.length - 3} more</li>` : ""}</ul>`
+          : `<p style="margin:8px 0 0;color:#516175">repair history: none</p>`;
+      return `<article style="padding:14px;border:1px solid #d8e1ec;border-radius:12px;background:#fff"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h4 style="margin:0">${escHtml(
+        entry.view
+      )}</h4><p style="margin:6px 0 0;color:#516175">workflow: ${escHtml(entry.workflow ?? "-")}</p><p style="margin:6px 0 0;color:#516175">created: ${escHtml(
+        formatLineageTimestamp(entry.createdAt)
+      )}</p></div><span class="badge ${tone}">${escHtml(
+        entry.approved === null ? "unknown" : entry.approved ? "approved" : "review"
+      )}</span></div>${preview}<p style="margin:0;color:#516175">asset: ${escHtml(entry.assetId ?? "-")}</p><p style="margin:6px 0 0;color:#516175">parent: ${escHtml(
+        basenameOrDash(entry.parentAssetPath))
+      }</p><p style="margin:6px 0 0;color:#516175">version: ${escHtml(entry.workflowVersion ?? "-")}</p>${renderLineageLinks(
+        [
+          { label: "View Image", href: entry.fileUrl },
+          { label: "Metadata", href: entry.metadataUrl },
+          { label: "Parent Asset", href: entry.parentAssetUrl }
+        ].filter((item) => item.href)
+      )}${history}</article>`;
+    })
+    .join("");
+
+  const repairRows = lineage.repairTasks
+    .map(
+      (task, index) =>
+        `<tr><td>${index + 1}</td><td>${escHtml(task.code)}</td><td><span class="badge ${uiBadge(task.severity)}">${escHtml(
+          task.severity
+        )}</span></td><td>${escHtml(task.action)}</td><td>${escHtml(task.reason)}</td><td>${escHtml(
+          task.assetPaths.map((assetPath) => path.basename(assetPath)).join(", ") || "-"
+        )}</td></tr>`
+    )
+    .join("");
+
+  return `<section class="card"><h3>Generated Pack Lineage</h3><p>Reads the generated character artifact tree directly so operators can inspect source image lineage, pack build inputs, and open repair tasks without rerunning generation.</p>${actionLinks}${summaryCards}<section class="card" style="margin-top:16px"><h4>View Lineage</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">${viewCards || '<div class="notice">No view lineage entries.</div>'}</div></section><section class="card" style="margin-top:16px"><h4>Repair Tasks</h4>${
+    repairRows
+      ? `<table><thead><tr><th>#</th><th>Code</th><th>Severity</th><th>Action</th><th>Reason</th><th>Assets</th></tr></thead><tbody>${repairRows}</tbody></table>`
+      : `<div class="notice">No open repair tasks were recorded for this pack.</div>`
+  }</section></section>`;
 }
 
 function parseCharacterGenerationInput(body: JsonRecord): CharacterGenerationInput {
@@ -2538,9 +2945,67 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       }
       throw routeError;
     }
+    const [activeChannelBible, recentPacks] = await Promise.all([
+      prisma.channelBible.findFirst({
+        where: { isActive: true },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        select: {
+          channelId: true,
+          version: true,
+          updatedAt: true,
+          json: true
+        }
+      }),
+      prisma.characterPack.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          version: true,
+          status: true,
+          createdAt: true
+        }
+      })
+    ]);
+    const promptRules = extractChannelPromptRules(activeChannelBible?.json);
+    const stylePresets = extractChannelStylePresets(activeChannelBible?.json);
+    const activePack = recentPacks.find((pack) => pack.status === "APPROVED") ?? null;
+    const latestPack = recentPacks[0] ?? null;
+    const approvedPacks = recentPacks.filter((pack) => pack.status === "APPROVED");
+    const archivedCount = recentPacks.filter((pack) => pack.status === "ARCHIVED").length;
+    const pendingCount = recentPacks.filter((pack) => !["APPROVED", "ARCHIVED"].includes(pack.status)).length;
+    const channelProfile = {
+      source: activeChannelBible ? `DB v${activeChannelBible.version}` : "Snapshot",
+      channelName: readStringAtPath(activeChannelBible?.json, ["channel", "name"]) ?? "Eraser Cat",
+      channelId: activeChannelBible?.channelId ?? "",
+      language: readStringAtPath(activeChannelBible?.json, ["channel", "language"]) ?? "ko-KR",
+      tone: readStringAtPath(activeChannelBible?.json, ["style", "tone"]) ?? "default",
+      pacing: readStringAtPath(activeChannelBible?.json, ["style", "pacing"]) ?? "default",
+      stylePresetCount: stylePresets.length,
+      forbiddenTermsSummary: promptRules.forbiddenTerms.length > 0 ? promptRules.forbiddenTerms.slice(0, 3).join(", ") : "(none)",
+      negativeTermsSummary: promptRules.negativePromptTerms.length > 0 ? promptRules.negativePromptTerms.slice(0, 3).join(", ") : "(none)",
+      updatedAt: formatStudioDateTime(activeChannelBible?.updatedAt),
+      editorHref: "/ui/channel-bible"
+    };
+    const compareHref = approvedPacks.length >= 2
+      ? `/ui/character-generator/compare?leftPackId=${encodeURIComponent(approvedPacks[0].id)}&rightPackId=${encodeURIComponent(approvedPacks[1].id)}`
+      : "";
+    const packState = {
+      activePackId: activePack?.id ?? "",
+      activePackVersion: activePack ? String(activePack.version) : "-",
+      activePackStatus: activePack?.status ?? "inactive",
+      latestPackId: latestPack?.id ?? "",
+      latestPackCreatedAt: formatStudioDateTime(latestPack?.createdAt),
+      approvedCount: approvedPacks.length,
+      archivedCount,
+      pendingCount,
+      compareHref,
+      charactersHref: "/ui/characters",
+      generatorHref: "/ui/character-generator"
+    };
     return reply
       .type("text/html; charset=utf-8")
-      .send(uiPage("Studio", buildStudioBody({ message, error })));
+      .send(uiPage("Studio", buildStudioBody({ message, error, channelProfile, packState })));
   });
 
   app.get("/ui/character-generator", async (request, reply) => {
@@ -3015,6 +3480,21 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329 \uBE44\uAD50", html));
   });
 
+  app.get("/ui/characters/generated-file", async (request, reply) => {
+    const query = isRecord(request.query) ? request.query : {};
+    const requestedPath = optionalString(query, "path");
+    if (!requestedPath) {
+      throw createHttpError(400, "path is required");
+    }
+
+    const resolved = resolveGeneratedCharacterFile(requestedPath);
+    if (!resolved) {
+      return reply.code(404).type("text/plain; charset=utf-8").send("generated character artifact not found");
+    }
+
+    return reply.type(mimeTypeForGeneratedCharacterFile(resolved.resolvedPath)).send(fs.createReadStream(resolved.resolvedPath));
+  });
+
   app.get("/ui/characters", async (request, reply) => {
     const query = isRecord(request.query) ? request.query : {};
     const selectedPackId = optionalString(query, "characterPackId");
@@ -3142,6 +3622,25 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           )}</pre></td></tr>`
       )
       .join("");
+    const selectedGeneratedLineage = selectedPack ? readCharacterPackLineage(selectedPack.id) : null;
+    const activePack =
+      selectedPack && selectedPack.channelId
+        ? packs.find((pack) => pack.channelId === selectedPack.channelId && pack.status === "APPROVED") ?? null
+        : null;
+    const compareHref =
+      selectedPack && activePack && activePack.id !== selectedPack.id
+        ? `/ui/character-generator/compare?leftPackId=${encodeURIComponent(selectedPack.id)}&rightPackId=${encodeURIComponent(
+            activePack.id
+          )}`
+        : null;
+    const selectedLineageSection = selectedPack
+      ? buildCharacterPackLineageSection({
+          lineage: selectedGeneratedLineage,
+          selectedPackId: selectedPack.id,
+          activePackId: activePack?.id ?? null,
+          compareHref
+        })
+      : "";
 
     const selectedSection = selectedPack
       ? `<section class="card"><h2>Selected Pack</h2><p>id: <strong>${escHtml(selectedPack.id)}</strong></p><p>version: <strong>${escHtml(
@@ -3180,7 +3679,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   JSON.stringify(selectedQcReport, null, 2)
                 )}</pre></section>`
             : `<section class="card"><h3>QC Report</h3><div class="error">qc_report.json is not generated yet.</div></section>`
-        }<details><summary>View pack.json</summary><pre>${escHtml(
+        }${selectedLineageSection}<details><summary>View pack.json</summary><pre>${escHtml(
           JSON.stringify(selectedPack.json, null, 2)
         )}</pre></details></section><section class="card"><h2>Selected Pack Jobs</h2><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
           selectedJobs || '<tr><td colspan="5">No jobs</td></tr>'

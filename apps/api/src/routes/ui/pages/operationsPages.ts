@@ -37,6 +37,21 @@ type ArtifactsPageBodyInput = {
   rows: string;
 };
 
+type RolloutsPageBodyInput = {
+  flash: string;
+  summaryCards: string;
+  sourceRows: string;
+  rows: string;
+};
+
+type BenchmarksPageBodyInput = {
+  flash: string;
+  summaryCards: string;
+  sourceRows: string;
+  backendRows: string;
+  regressionRows: string;
+};
+
 export function buildJobsPageBody(input: JobsPageBodyInput): string {
   const t = UI_TEXT.jobs;
   return `
@@ -141,9 +156,73 @@ export function buildArtifactsPageBody(input: ArtifactsPageBodyInput): string {
   ${input.episodeLinks}
 </section>
 <section class="card">
-  <div class="section-head"><h2>${t.indexTitle}</h2><input type="search" data-table-filter="artifact-index-table" placeholder="${t.indexFilterPlaceholder}"/></div>
+  <div class="section-head"><h2>${t.indexTitle}</h2><input type="search" data-table-filter="artifact-index-table" aria-label="Filter artifact index" placeholder="${t.indexFilterPlaceholder}"/></div>
   <div class="table-wrap"><table id="artifact-index-table"><thead><tr><th>Type</th><th>Name</th><th>URL</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(3, t.noArtifacts)
+  }</tbody></table></div>
+</section>`;
+}
+
+export function buildRolloutsPageBody(input: RolloutsPageBodyInput): string {
+  const t = UI_TEXT.rollouts;
+  return `
+<section class="card dashboard-shell">
+  <div class="section-head">
+    <div>
+      <h1>${t.title}</h1>
+      <p class="section-intro">${t.subtitle}</p>
+    </div>
+    <div class="quick-links"><a href="/ui/health">${t.openHealth}</a><a href="/ui/profiles">Profiles</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+  </div>
+  ${input.flash}
+  <div class="summary-grid">${input.summaryCards}</div>
+</section>
+<section class="card dashboard-shell">
+  <div class="section-head">
+    <h2>${t.sourcesTitle}</h2>
+    <span class="muted-text">${t.sourcesHint}</span>
+  </div>
+  <div class="status-list">${input.sourceRows}</div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>${t.tableTitle}</h2><input type="search" data-table-filter="rollouts-table" aria-label="Filter rollout signals" placeholder="${t.filterPlaceholder}"/></div>
+  <div class="table-wrap"><table id="rollouts-table"><thead><tr><th>Signal</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th><th>Generated</th><th>Source</th></tr></thead><tbody>${
+    input.rows || renderTableEmptyRow(7, t.noSignals)
+  }</tbody></table></div>
+</section>`;
+}
+
+export function buildBenchmarksPageBody(input: BenchmarksPageBodyInput): string {
+  const t = UI_TEXT.benchmarks;
+  return `
+<section class="card dashboard-shell">
+  <div class="section-head">
+    <div>
+      <h1>${t.title}</h1>
+      <p class="section-intro">${t.subtitle}</p>
+    </div>
+    <div class="quick-links"><a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/profiles">Profiles</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+  </div>
+  ${input.flash}
+  <div class="summary-grid">${input.summaryCards}</div>
+</section>
+<section class="card dashboard-shell">
+  <div class="section-head">
+    <h2>${t.sourcesTitle}</h2>
+    <span class="muted-text">${t.sourcesHint}</span>
+  </div>
+  <div class="status-list">${input.sourceRows}</div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>${t.backendTitle}</h2><input type="search" data-table-filter="benchmark-backend-table" aria-label="Filter backend benchmark matrix" placeholder="${t.backendFilterPlaceholder}"/></div>
+  <div class="table-wrap"><table id="benchmark-backend-table"><thead><tr><th>Scenario</th><th>Status</th><th>Latency</th><th>Acceptance</th><th>Failure Rate</th><th>Notes</th><th>Source</th></tr></thead><tbody>${
+    input.backendRows || renderTableEmptyRow(7, t.noBackendRows)
+  }</tbody></table></div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>${t.regressionTitle}</h2><input type="search" data-table-filter="benchmark-regression-table" aria-label="Filter episode regression reports" placeholder="${t.regressionFilterPlaceholder}"/></div>
+  <div class="table-wrap"><table id="benchmark-regression-table"><thead><tr><th>Bundle</th><th>Status</th><th>Warnings / Errors</th><th>Profiles</th><th>Render Drift</th><th>Issues</th><th>Source</th></tr></thead><tbody>${
+    input.regressionRows || renderTableEmptyRow(7, t.noRegressionRows)
   }</tbody></table></div>
 </section>`;
 }

@@ -4,6 +4,9 @@ function expectedMarker(path) {
   if (path === "/ui/assets") return "asset-upload-form";
   if (path === "/ui/studio") return "Studio";
   if (path === "/ui/character-generator") return "character-generator";
+  if (path === "/ui/rollouts") return "Rollouts";
+  if (path === "/ui/benchmarks") return "Benchmarks";
+  if (path === "/ui/profiles") return "Profile Browser";
   return "";
 }
 
@@ -33,6 +36,9 @@ async function check(path, expectedStatus, expectedText) {
 
 async function main() {
   const mode = (process.env.SMOKE_DB_MODE ?? "down").toLowerCase();
+  await check("/ui/rollouts", 200, expectedMarker("/ui/rollouts"));
+  await check("/ui/benchmarks", 200, expectedMarker("/ui/benchmarks"));
+  await check("/ui/profiles", 200, expectedMarker("/ui/profiles"));
 
   if (mode === "down") {
     await check("/ui/assets", 503, "database_unavailable");
