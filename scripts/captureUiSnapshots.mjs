@@ -111,6 +111,7 @@ function discoverRoutes(captures) {
   if (jobHref) discovered.push(jobHref);
   if (compareHref) {
     discovered.push(compareHref.replaceAll("&amp;", "&").replaceAll("&#39;", "'").replaceAll("&quot;", "\""));
+    discovered.push(compareHref.replaceAll("&amp;", "&").replaceAll("&#39;", "'").replaceAll("&quot;", "\""));
   }
 
   return discovered;
