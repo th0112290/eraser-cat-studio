@@ -10,15 +10,18 @@ import type { EpisodeJobPayload } from "@ec/shared";
 import { apiQueueRetentionOptions } from "../services/jobRetention";
 import { renderUiPage } from "./ui/uiPage";
 import {
+  buildBenchmarksPageBody,
   buildArtifactsPageBody,
   buildHitlPageBody,
   buildJobDetailPageBody,
   buildJobsPageBody,
-  buildPublishPageBody
+  buildPublishPageBody,
+  buildRolloutsPageBody
 } from "./ui/pages/operationsPages";
 import { buildDashboardPageBody, buildEpisodesPageBody } from "./ui/pages/dashboardEpisodesPages";
 
 type JsonRecord = Record<string, unknown>;
+type UiBadgeTone = "ok" | "warn" | "bad" | "muted";
 type RegisterUiRoutesInput = {
   app: FastifyInstance;
   prisma: PrismaClient;
@@ -36,6 +39,123 @@ type ChannelBibleState = {
   message?: string;
   error?: string;
   validationErrors?: string[];
+};
+
+type RolloutArtifactSource = {
+  label: string;
+  outRoot: string;
+};
+
+type RolloutSourceStatus = {
+  label: string;
+  outRoot: string;
+  exists: boolean;
+  recordCount: number;
+  latestGeneratedAt: string | null;
+};
+
+type RolloutSignal = {
+  sortGroup: number;
+  kind: string;
+  scope: string;
+  target: string;
+  status: string;
+  tone: UiBadgeTone;
+  score: string;
+  verdict: string;
+  reason: string;
+  generatedAt: string;
+  sourceLabel: string;
+  sourcePath: string;
+  artifactPath: string;
+  artifactRelativePath: string;
+};
+
+type BenchmarkScenarioView = {
+  benchmarkName: string;
+  benchmarkKind: string;
+  backend: string;
+  renderer: string;
+  status: string;
+  tone: UiBadgeTone;
+  latencyMs: string;
+  acceptanceRate: string;
+  failureRate: string;
+  generatedAt: string;
+  notes: string;
+  sourceLabel: string;
+  sourcePath: string;
+  matrixArtifactPath: string;
+  detailArtifactPath: string;
+  smokeArtifactPath: string | null;
+  planArtifactPath: string | null;
+  candidateCompareItems: Array<{ label: string; path: string }>;
+  artifactRelativePath: string;
+};
+
+type RegressionReportView = {
+  benchmarkName: string;
+  bundlePath: string;
+  episodeId: string;
+  status: string;
+  tone: UiBadgeTone;
+  warningCount: number;
+  errorCount: number;
+  generatedAt: string;
+  issueSummary: string;
+  profileSummary: string;
+  renderModeSummary: string;
+  mismatchCount: number;
+  sourceLabel: string;
+  sourcePath: string;
+  artifactPath: string;
+  smokeArtifactPath: string | null;
+  renderModeArtifactPath: string | null;
+  candidateCompareItems: Array<{ label: string; path: string }>;
+  artifactRelativePath: string;
+};
+
+type ProfileBrowserBundleCard = {
+  bundle: string;
+  channelDomain: string;
+  studioProfileId: string;
+  channelProfileId: string;
+  mascotProfileId: string;
+  studioLabel: string;
+  channelLabel: string;
+  mascotLabel: string;
+  tone: string;
+  pacing: string;
+  infoPriority: string;
+  finishProfileId: string;
+  impactPreset: string;
+  qcPreset: string;
+  insertSummary: string;
+  gestureSummary: string;
+  generatedAt: string;
+  sourceLabel: string;
+  sourcePath: string;
+  smokeArtifactPath: string;
+  smokeArtifactRelativePath: string;
+  renderLogPath: string | null;
+};
+
+type ProfileBrowserEvidenceRow = {
+  scenario: string;
+  bundle: string;
+  status: string;
+  tone: UiBadgeTone;
+  studioProfileId: string;
+  channelProfileId: string;
+  mascotProfileId: string;
+  profileSummary: string;
+  runtimeSummary: string;
+  generatedAt: string;
+  sourceLabel: string;
+  sourcePath: string;
+  smokeArtifactPath: string;
+  renderLogPath: string | null;
+  artifactRelativePath: string;
 };
 
 const validator = createValidator();
@@ -293,9 +413,13 @@ function getEpisodeOutPaths(episodeId: string) {
     outDir,
     beats: path.join(outDir, "beats.json"),
     shots: path.join(outDir, "shots.json"),
+    runtimeShots: path.join(outDir, "runtime_shots.json"),
     preview: path.join(outDir, "preview.mp4"),
     final: path.join(outDir, "final.mp4"),
-    qc: path.join(outDir, "qc_report.json")
+    qc: path.join(outDir, "qc_report.json"),
+    renderLog: path.join(outDir, "render_log.json"),
+    sidecarPlan: path.join(outDir, "shot_sidecar_plan.json"),
+    shotRenderModeReport: path.join(outDir, "shot_render_mode_report.json")
   };
 }
 
@@ -313,6 +437,1099 @@ function readJsonFileSafe(filePath: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function readTextFileSafe(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function str(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function num(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function compact(parts: Array<string | null | undefined>, separator = " | "): string {
+  return parts
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0)
+    .join(separator);
+}
+
+function formatNumber(value: unknown, digits = 2): string {
+  const parsed = num(value);
+  if (parsed === null) return "-";
+  return parsed.toFixed(digits).replace(/\.?0+$/, "");
+}
+
+function formatPercent(value: unknown, digits = 0): string {
+  const parsed = num(value);
+  if (parsed === null) return "-";
+  const normalized = Math.abs(parsed) <= 1 ? parsed * 100 : parsed;
+  return `${normalized.toFixed(digits).replace(/\.?0+$/, "")}%`;
+}
+
+function firstMeaningfulLine(value: unknown): string | null {
+  const text = str(value);
+  if (!text) return null;
+  const line = text
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .find((entry) => entry.length > 0);
+  return line ?? null;
+}
+
+function previewStrings(value: unknown, limit = 3): string | null {
+  if (!Array.isArray(value)) return null;
+  const items = value
+    .map((entry) => str(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  if (items.length === 0) return null;
+  const preview = items.slice(0, limit).map((entry) => humanizeRolloutReason(entry)).join(", ");
+  return items.length > limit ? `${preview} (+${items.length - limit})` : preview;
+}
+
+function humanizeRolloutReason(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith("score_below_min:")) {
+    return trimmed.replace("score_below_min:", "score below min ");
+  }
+  if (trimmed.startsWith("below_min_score:")) {
+    return trimmed.replace("below_min_score:", "below min score ");
+  }
+  if (trimmed.startsWith("verdict_blocked:")) {
+    return trimmed.replace("verdict_blocked:", "verdict blocked ");
+  }
+  return trimmed.replaceAll("_", " ");
+}
+
+function findFilesByName(rootDir: string, targetName: string, maxDepth = 6): string[] {
+  const results: string[] = [];
+  const visit = (dirPath: string, depth: number): void => {
+    if (depth < 0) return;
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath, depth - 1);
+        continue;
+      }
+      if (entry.isFile() && entry.name === targetName) {
+        results.push(fullPath);
+      }
+    }
+  };
+  if (fs.existsSync(rootDir)) {
+    visit(rootDir, maxDepth);
+  }
+  return results.sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeRolloutStatus(value: string | null, ready?: boolean): string {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (ready === true && ["", "ready", "ok", "passed", "no_change", "completed", "recommended"].includes(normalized)) {
+    return "ready";
+  }
+  if (normalized === "diverged" || normalized === "divergence") return "divergence";
+  if (normalized.includes("below_min_score") || normalized.includes("score_below_min")) return "below_min_score";
+  if (["ready", "ok", "passed", "no_change", "completed", "up"].includes(normalized)) return "ready";
+  if (["blocked", "failed", "reject", "rejected", "error", "down"].includes(normalized)) return "blocked";
+  if (["warn", "warning", "stale", "missing"].includes(normalized)) return "warn";
+  if (!normalized && ready === false) return "blocked";
+  return normalized || "unknown";
+}
+
+function rolloutTone(status: string): UiBadgeTone {
+  const normalized = normalizeRolloutStatus(status);
+  if (normalized === "ready") return "ok";
+  if (normalized === "divergence" || normalized === "warn") return "warn";
+  if (normalized === "below_min_score" || normalized === "blocked") return "bad";
+  return "muted";
+}
+
+function rolloutStatusLabel(status: string): string {
+  return normalizeRolloutStatus(status).replaceAll("_", " ");
+}
+
+function pathInside(parentPath: string, childPath: string): boolean {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(childPath));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function artifactRelativePath(outRoot: string, filePath: string): string {
+  if (!pathInside(outRoot, filePath)) {
+    return path.basename(filePath);
+  }
+  const relative = path.relative(outRoot, filePath).replaceAll("\\", "/");
+  return relative || path.basename(filePath);
+}
+
+function listDirectories(dirPath: string): string[] {
+  try {
+    return fs.readdirSync(dirPath, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+function selectGeneratedAt(values: string[]): string | null {
+  const sorted = values
+    .map((value) => ({ value, time: new Date(value).getTime() }))
+    .filter((entry) => Number.isFinite(entry.time))
+    .sort((a, b) => b.time - a.time);
+  return sorted.length > 0 ? sorted[0].value : null;
+}
+
+function getRolloutArtifactSources(): RolloutArtifactSource[] {
+  const repoRoot = getRepoRoot();
+  const candidates: RolloutArtifactSource[] = [
+    { label: "local worktree", outRoot: getOutRoot() },
+    { label: "sidecar worktree", outRoot: path.resolve(repoRoot, "../ecs-sidecar-rollout/out") },
+    { label: "main repo", outRoot: path.resolve(repoRoot, "../eraser-cat-studio/out") }
+  ];
+  const seen = new Set<string>();
+  return candidates.filter((source) => {
+    const key = path.resolve(source.outRoot).toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function createRolloutSignal(input: Omit<RolloutSignal, "tone" | "artifactRelativePath">): RolloutSignal {
+  return {
+    ...input,
+    tone: rolloutTone(input.status),
+    artifactRelativePath: artifactRelativePath(input.sourcePath, input.artifactPath)
+  };
+}
+
+function buildMotionBenchmarkSignal(source: RolloutArtifactSource): RolloutSignal[] {
+  const filePath = path.join(source.outRoot, "motion_preset_benchmark.validation_report.json");
+  const doc = readJsonFileSafe(filePath);
+  if (!isRecord(doc)) {
+    return [];
+  }
+
+  return [
+    createRolloutSignal({
+      sortGroup: 10,
+      kind: "Motion benchmark",
+      scope: "motion presets",
+      target: "validation",
+      status: normalizeRolloutStatus(str(doc.status), doc.ready === true),
+      score: "-",
+      verdict: "-",
+      reason: compact([str(doc.reason), previewStrings(doc.issues)]),
+      generatedAt: str(doc.benchmark_generated_at) ?? str(doc.generated_at) ?? "-",
+      sourceLabel: source.label,
+      sourcePath: source.outRoot,
+      artifactPath: filePath
+    })
+  ];
+}
+
+function buildPresetInspectionSignal(source: RolloutArtifactSource, benchmarkName: string): RolloutSignal[] {
+  const filePath = path.join(source.outRoot, "preset_benchmarks", benchmarkName, "runtime_sidecar_preset_rollout.validation_report.json");
+  const doc = readJsonFileSafe(filePath);
+  if (!isRecord(doc)) {
+    return [];
+  }
+
+  const inspection = isRecord(doc.inspection) ? doc.inspection : {};
+  const candidate = isRecord(inspection.candidate) ? inspection.candidate : {};
+  return [
+    createRolloutSignal({
+      sortGroup: 20,
+      kind: "Preset inspection",
+      scope: benchmarkName,
+      target: str(inspection.resolvedTarget) ?? str(doc.default_target) ?? "overall",
+      status: normalizeRolloutStatus(str(inspection.status) ?? str(doc.status), doc.ready === true),
+      score: formatNumber(candidate.score),
+      verdict: str(candidate.verdict) ?? "-",
+      reason: compact([str(inspection.reason) ?? str(doc.reason), previewStrings(doc.issues)]),
+      generatedAt: str(doc.generated_at) ?? "-",
+      sourceLabel: source.label,
+      sourcePath: source.outRoot,
+      artifactPath: filePath
+    })
+  ];
+}
+
+function buildPresetTargetSignals(source: RolloutArtifactSource, benchmarkName: string): RolloutSignal[] {
+  const filePath = path.join(source.outRoot, "preset_benchmarks", benchmarkName, "runtime_sidecar_preset_rollout.pipeline_validation.json");
+  const doc = readJsonFileSafe(filePath);
+  if (!isRecord(doc) || !Array.isArray(doc.target_results)) {
+    return [];
+  }
+
+  const generatedAt = str(doc.generated_at) ?? "-";
+  return doc.target_results.flatMap((rawRow, index) => {
+    if (!isRecord(rawRow)) return [];
+    const candidate = isRecord(rawRow.candidate) ? rawRow.candidate : {};
+    const reason = str(rawRow.reason);
+    const passed = rawRow.passed === true;
+    return [
+      createRolloutSignal({
+        sortGroup: 30,
+        kind: "Preset rollout",
+        scope: benchmarkName,
+        target: str(rawRow.target) ?? `target-${index + 1}`,
+        status: passed ? "ready" : normalizeRolloutStatus(reason, false),
+        score: formatNumber(candidate.score),
+        verdict: str(candidate.verdict) ?? "-",
+        reason: compact([str(candidate.scenario), reason ? humanizeRolloutReason(reason) : null]),
+        generatedAt,
+        sourceLabel: source.label,
+        sourcePath: source.outRoot,
+        artifactPath: filePath
+      })
+    ];
+  });
+}
+
+function buildMultiChannelBundleSignals(source: RolloutArtifactSource, benchmarkName: string): { signals: RolloutSignal[]; validationDoc: JsonRecord | null } {
+  const filePath = path.join(source.outRoot, "multi_channel_benchmarks", benchmarkName, "multi_channel_benchmark_validation.json");
+  const doc = readJsonFileSafe(filePath);
+  if (!isRecord(doc) || !Array.isArray(doc.bundles)) {
+    return { signals: [], validationDoc: null };
+  }
+
+  const generatedAt = str(doc.generated_at) ?? "-";
+  const benchmarkKind = str(doc.benchmark_kind) ?? benchmarkName;
+  const signals = doc.bundles.flatMap((rawBundle, index) => {
+    if (!isRecord(rawBundle)) return [];
+    const summary = isRecord(rawBundle.summary) ? rawBundle.summary : {};
+    const issues = previewStrings(rawBundle.issues);
+    const status = rawBundle.ready === true
+      ? "ready"
+      : normalizeRolloutStatus(issues ?? str(rawBundle.status), false);
+    return [
+      createRolloutSignal({
+        sortGroup: 40,
+        kind: "Multi-channel bundle",
+        scope: benchmarkKind,
+        target: str(rawBundle.bundle) ?? str(rawBundle.channel_domain) ?? `bundle-${index + 1}`,
+        status,
+        score: formatNumber(summary.score),
+        verdict: str(summary.verdict) ?? "-",
+        reason: compact([str(summary.scenario), issues ?? str(rawBundle.status)]),
+        generatedAt,
+        sourceLabel: source.label,
+        sourcePath: source.outRoot,
+        artifactPath: filePath
+      })
+    ];
+  });
+
+  return { signals, validationDoc: doc };
+}
+
+function buildCrossChannelSignal(source: RolloutArtifactSource, benchmarkName: string, validationDoc: JsonRecord | null): RolloutSignal[] {
+  const filePath = path.join(source.outRoot, "multi_channel_benchmarks", benchmarkName, "multi_channel_benchmark_alert.json");
+  const alertDoc = readJsonFileSafe(filePath);
+  if (isRecord(alertDoc)) {
+    return [
+      createRolloutSignal({
+        sortGroup: 50,
+        kind: "Cross-channel",
+        scope: str(alertDoc.benchmark_kind) ?? benchmarkName,
+        target: str(alertDoc.divergence_level) ? `cross-channel (${str(alertDoc.divergence_level)})` : "cross-channel",
+        status: normalizeRolloutStatus(str(alertDoc.status), alertDoc.ready === true),
+        score: formatNumber(alertDoc.score_gap),
+        verdict: str(alertDoc.severity) ?? "-",
+        reason: compact([str(alertDoc.recommendation), str(alertDoc.message)]),
+        generatedAt: str(alertDoc.generated_at) ?? "-",
+        sourceLabel: source.label,
+        sourcePath: source.outRoot,
+        artifactPath: filePath
+      })
+    ];
+  }
+
+  const crossChannel = validationDoc && isRecord(validationDoc.cross_channel) ? validationDoc.cross_channel : null;
+  if (!crossChannel) {
+    return [];
+  }
+
+  return [
+    createRolloutSignal({
+      sortGroup: 50,
+      kind: "Cross-channel",
+      scope: str(validationDoc?.benchmark_kind) ?? benchmarkName,
+      target: str(crossChannel.divergence_level) ? `cross-channel (${str(crossChannel.divergence_level)})` : "cross-channel",
+      status: normalizeRolloutStatus(str(crossChannel.status), validationDoc?.ready === true),
+      score: formatNumber(crossChannel.score_gap),
+      verdict: "-",
+      reason: compact([previewStrings(crossChannel.differing_axes), str(crossChannel.recommendation)]),
+      generatedAt: str(validationDoc?.generated_at) ?? "-",
+      sourceLabel: source.label,
+      sourcePath: source.outRoot,
+      artifactPath: path.join(source.outRoot, "multi_channel_benchmarks", benchmarkName, "multi_channel_benchmark_validation.json")
+    })
+  ];
+}
+
+function scanRolloutSource(source: RolloutArtifactSource): { sourceStatus: RolloutSourceStatus; signals: RolloutSignal[] } {
+  const signals: RolloutSignal[] = [];
+  const exists = fs.existsSync(source.outRoot);
+  if (exists) {
+    signals.push(...buildMotionBenchmarkSignal(source));
+    for (const benchmarkName of listDirectories(path.join(source.outRoot, "preset_benchmarks"))) {
+      signals.push(...buildPresetInspectionSignal(source, benchmarkName));
+      signals.push(...buildPresetTargetSignals(source, benchmarkName));
+    }
+    for (const benchmarkName of listDirectories(path.join(source.outRoot, "multi_channel_benchmarks"))) {
+      const { signals: bundleSignals, validationDoc } = buildMultiChannelBundleSignals(source, benchmarkName);
+      signals.push(...bundleSignals);
+      signals.push(...buildCrossChannelSignal(source, benchmarkName, validationDoc));
+    }
+  }
+
+  const latestGeneratedAt = selectGeneratedAt(
+    signals.map((signal) => signal.generatedAt).filter((value) => value !== "-")
+  );
+  return {
+    sourceStatus: {
+      label: source.label,
+      outRoot: source.outRoot,
+      exists,
+      recordCount: signals.length,
+      latestGeneratedAt
+    },
+    signals
+  };
+}
+
+function collectRolloutSignals(): { sources: RolloutSourceStatus[]; signals: RolloutSignal[] } {
+  const sources: RolloutSourceStatus[] = [];
+  const signals: RolloutSignal[] = [];
+  for (const source of getRolloutArtifactSources()) {
+    const result = scanRolloutSource(source);
+    sources.push(result.sourceStatus);
+    signals.push(...result.signals);
+  }
+
+  const priority = new Map<string, number>([
+    ["blocked", 0],
+    ["below_min_score", 1],
+    ["divergence", 2],
+    ["warn", 3],
+    ["ready", 4],
+    ["unknown", 5]
+  ]);
+  signals.sort((left, right) => {
+    const leftPriority = priority.get(normalizeRolloutStatus(left.status)) ?? 9;
+    const rightPriority = priority.get(normalizeRolloutStatus(right.status)) ?? 9;
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    if (left.sortGroup !== right.sortGroup) return left.sortGroup - right.sortGroup;
+    return left.kind.localeCompare(right.kind);
+  });
+
+  return { sources, signals };
+}
+
+function resolveRolloutFile(
+  requestedPath: string,
+  allowedExtensions?: string[]
+): { resolvedPath: string; source: RolloutArtifactSource } | null {
+  const resolvedPath = path.resolve(requestedPath);
+  const source = getRolloutArtifactSources().find((candidate) => pathInside(candidate.outRoot, resolvedPath));
+  if (!source) {
+    return null;
+  }
+  if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
+    return null;
+  }
+  if (allowedExtensions && allowedExtensions.length > 0) {
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      return null;
+    }
+  }
+  return { resolvedPath, source };
+}
+
+function safeJsonArtifactPath(source: RolloutArtifactSource, candidatePath: unknown): string | null {
+  const filePath = str(candidatePath);
+  if (!filePath) {
+    return null;
+  }
+  return resolveRolloutFile(filePath, [".json"])?.resolvedPath ?? null;
+}
+
+function safeRolloutTextPath(source: RolloutArtifactSource, candidatePath: unknown): string | null {
+  const filePath = str(candidatePath);
+  if (!filePath) {
+    return null;
+  }
+  return resolveRolloutFile(filePath, [".txt"])?.resolvedPath ?? null;
+}
+
+function safeRolloutVideoPath(source: RolloutArtifactSource, candidatePath: unknown): string | null {
+  const filePath = str(candidatePath);
+  if (!filePath) {
+    return null;
+  }
+  return resolveRolloutFile(filePath, [".mp4", ".webm"])?.resolvedPath ?? null;
+}
+
+function mimeTypeForRolloutFile(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".mp4") return "video/mp4";
+  if (ext === ".webm") return "video/webm";
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".txt") return "text/plain; charset=utf-8";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  return "application/octet-stream";
+}
+
+function findCandidateCompareItems(source: RolloutArtifactSource, baseDir: string): Array<{ label: string; path: string }> {
+  const candidateDir = path.basename(baseDir).toLowerCase() === "shot_sidecar" ? baseDir : path.join(baseDir, "shot_sidecar");
+  if (!fs.existsSync(candidateDir)) {
+    return [];
+  }
+
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(candidateDir)
+      .filter((name) => name.endsWith(".plan.json"))
+      .map((name) => path.join(candidateDir, name));
+  } catch {
+    return [];
+  }
+
+  return entries
+    .map((filePath) => {
+      const doc = readJsonFileSafe(filePath);
+      if (!isRecord(doc)) return null;
+      const hasCandidateJudge = safeJsonArtifactPath(source, doc.premium_candidate_judge_path);
+      const hasActualJudge = safeJsonArtifactPath(source, doc.premium_actual_judge_path);
+      if (!hasCandidateJudge && !hasActualJudge) return null;
+      const shotId = str(doc.shot_id) ?? path.basename(filePath, ".plan.json");
+      const objective =
+        str(doc.premium_actual_selected_candidate_objective) ??
+        str(doc.premium_selected_candidate_objective);
+      return {
+        label: objective ? `${shotId} (${humanizeOpsLabel(objective)})` : shotId,
+        path: filePath
+      };
+    })
+    .filter((item): item is { label: string; path: string } => Boolean(item))
+    .slice(0, 4);
+}
+
+function buildBackendBenchmarkViews(source: RolloutArtifactSource): BenchmarkScenarioView[] {
+  const benchmarkRoot = path.join(source.outRoot, "backend_benchmarks");
+  if (!fs.existsSync(benchmarkRoot)) {
+    return [];
+  }
+
+  const rows: BenchmarkScenarioView[] = [];
+  for (const benchmarkName of listDirectories(benchmarkRoot)) {
+    const matrixPath = path.join(benchmarkRoot, benchmarkName, "benchmark_matrix.json");
+    const doc = readJsonFileSafe(matrixPath);
+    if (!isRecord(doc) || !Array.isArray(doc.scenarios)) {
+      continue;
+    }
+
+    const generatedAt = str(doc.generated_at) ?? "-";
+    const benchmarkKind = str(doc.benchmark_kind) ?? benchmarkName;
+    for (const rawScenario of doc.scenarios) {
+      if (!isRecord(rawScenario)) continue;
+      const success = rawScenario.success === true;
+      const status = success
+        ? "ready"
+        : normalizeRolloutStatus(str(rawScenario.sidecar_status) ?? str(rawScenario.status) ?? "blocked", false);
+      const smokeArtifactPath = safeJsonArtifactPath(source, rawScenario.smoke_report_path);
+      const planArtifactPath = safeJsonArtifactPath(source, rawScenario.shot_sidecar_plan_path);
+      const detailArtifactPath = smokeArtifactPath ?? planArtifactPath ?? matrixPath;
+      const candidateCompareItems = planArtifactPath
+        ? findCandidateCompareItems(source, path.dirname(planArtifactPath))
+        : [];
+      const note = compact([
+        str(rawScenario.sidecar_status),
+        firstMeaningfulLine(rawScenario.stderr_tail) ?? firstMeaningfulLine(rawScenario.stdout_tail)
+      ]);
+      rows.push({
+        benchmarkName,
+        benchmarkKind,
+        backend: str(rawScenario.backend) ?? "-",
+        renderer: str(rawScenario.renderer) ?? "-",
+        status,
+        tone: rolloutTone(status),
+        latencyMs: num(rawScenario.latency_ms) === null ? "-" : `${Math.round(num(rawScenario.latency_ms) ?? 0).toString()} ms`,
+        acceptanceRate: formatPercent(rawScenario.acceptance_rate),
+        failureRate: formatPercent(rawScenario.render_failure_rate),
+        generatedAt,
+        notes: note || "-",
+        sourceLabel: source.label,
+        sourcePath: source.outRoot,
+        matrixArtifactPath: matrixPath,
+        detailArtifactPath,
+        smokeArtifactPath,
+        planArtifactPath,
+        candidateCompareItems,
+        artifactRelativePath: artifactRelativePath(source.outRoot, detailArtifactPath)
+      });
+    }
+  }
+
+  const priority = new Map<string, number>([
+    ["blocked", 0],
+    ["below_min_score", 1],
+    ["divergence", 2],
+    ["warn", 3],
+    ["ready", 4],
+    ["unknown", 5]
+  ]);
+  rows.sort((left, right) => {
+    const leftPriority = priority.get(normalizeRolloutStatus(left.status)) ?? 9;
+    const rightPriority = priority.get(normalizeRolloutStatus(right.status)) ?? 9;
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    if (left.benchmarkKind !== right.benchmarkKind) return left.benchmarkKind.localeCompare(right.benchmarkKind);
+    return left.backend.localeCompare(right.backend);
+  });
+  return rows;
+}
+
+function buildRegressionReportViews(source: RolloutArtifactSource): RegressionReportView[] {
+  const benchmarkRoot = path.join(source.outRoot, "multi_channel_benchmarks");
+  if (!fs.existsSync(benchmarkRoot)) {
+    return [];
+  }
+
+  const files = findFilesByName(benchmarkRoot, "episode_regression_report.json", 6);
+  const rows: RegressionReportView[] = [];
+  for (const filePath of files) {
+    const doc = readJsonFileSafe(filePath);
+    if (!isRecord(doc)) {
+      continue;
+    }
+
+    const dirPath = path.dirname(filePath);
+    const smokePath = path.join(dirPath, "smoke_report.json");
+    const renderModePath = path.join(dirPath, "shot_render_mode_report.json");
+    const smokeArtifactPath = safeJsonArtifactPath(source, smokePath);
+    const renderModeArtifactPath = safeJsonArtifactPath(source, renderModePath);
+    const candidateCompareItems = findCandidateCompareItems(source, dirPath);
+    const smokeDoc = smokeArtifactPath ? readJsonFileSafe(smokeArtifactPath) : null;
+    const renderModeDoc = renderModeArtifactPath ? readJsonFileSafe(renderModeArtifactPath) : null;
+    const relativeDir = artifactRelativePath(benchmarkRoot, dirPath);
+    const warningCount = Math.max(0, Math.round(num(doc.warning_count) ?? 0));
+    const errorCount = Math.max(0, Math.round(num(doc.error_count) ?? 0));
+    const finalPassed = doc.final_passed === true;
+    const status = !finalPassed || errorCount > 0 ? "blocked" : warningCount > 0 ? "warn" : "ready";
+    const profileSelection = isRecord(smokeDoc) && isRecord(smokeDoc.profile_selection) ? smokeDoc.profile_selection : {};
+    const profileSummary = compact([
+      str(isRecord(smokeDoc) ? smokeDoc.profile_bundle : undefined),
+      str(profileSelection.channel_profile_id) ? `channel ${str(profileSelection.channel_profile_id)}` : null,
+      str(profileSelection.mascot_profile_id) ? `mascot ${str(profileSelection.mascot_profile_id)}` : null,
+      str(profileSelection.studio_profile_id) ? `studio ${str(profileSelection.studio_profile_id)}` : null
+    ]);
+    const issues = recordList(doc.issues);
+    const issueSummary = issues.length > 0
+      ? summarizeValues(
+        issues.map((issue) => compact([str(issue.code), str(issue.message)], " - ")),
+        2
+      )
+      : "no regression issues";
+    const renderModeSummaryDoc = isRecord(renderModeDoc) && isRecord(renderModeDoc.summary) ? renderModeDoc.summary : {};
+    const mismatchCount = Math.max(0, Math.round(num(renderModeSummaryDoc.mismatched_stored_vs_recommended) ?? 0));
+    const totalShots = Math.max(0, Math.round(num(renderModeSummaryDoc.total_shots) ?? 0));
+    const renderModeSummary =
+      mismatchCount > 0
+        ? `${mismatchCount}/${totalShots || "-"} mismatched stored vs recommended`
+        : totalShots > 0
+          ? `0/${totalShots} mismatched`
+          : "-";
+
+    rows.push({
+      benchmarkName: relativeDir.split("/")[0] ?? "benchmark",
+      bundlePath: relativeDir,
+      episodeId: str(doc.episode_id) ?? "-",
+      status,
+      tone: rolloutTone(status),
+      warningCount,
+      errorCount,
+      generatedAt: str(doc.generated_at) ?? "-",
+      issueSummary,
+      profileSummary: profileSummary || "-",
+      renderModeSummary,
+      mismatchCount,
+      sourceLabel: source.label,
+      sourcePath: source.outRoot,
+      artifactPath: filePath,
+      smokeArtifactPath,
+      renderModeArtifactPath,
+      candidateCompareItems,
+      artifactRelativePath: artifactRelativePath(source.outRoot, filePath)
+    });
+  }
+
+  const priority = new Map<string, number>([
+    ["blocked", 0],
+    ["warn", 1],
+    ["ready", 2],
+    ["unknown", 3]
+  ]);
+  rows.sort((left, right) => {
+    const leftPriority = priority.get(normalizeRolloutStatus(left.status)) ?? 9;
+    const rightPriority = priority.get(normalizeRolloutStatus(right.status)) ?? 9;
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    return left.bundlePath.localeCompare(right.bundlePath);
+  });
+  return rows;
+}
+
+function collectBenchmarkViewerData(): {
+  sources: RolloutSourceStatus[];
+  backendScenarios: BenchmarkScenarioView[];
+  regressions: RegressionReportView[];
+} {
+  const sources: RolloutSourceStatus[] = [];
+  const backendScenarios: BenchmarkScenarioView[] = [];
+  const regressions: RegressionReportView[] = [];
+  for (const source of getRolloutArtifactSources()) {
+    const exists = fs.existsSync(source.outRoot);
+    const sourceBackend = exists ? buildBackendBenchmarkViews(source) : [];
+    const sourceRegressions = exists ? buildRegressionReportViews(source) : [];
+    const latestGeneratedAt = selectGeneratedAt(
+      [...sourceBackend.map((row) => row.generatedAt), ...sourceRegressions.map((row) => row.generatedAt)].filter((value) => value !== "-")
+    );
+    sources.push({
+      label: source.label,
+      outRoot: source.outRoot,
+      exists,
+      recordCount: sourceBackend.length + sourceRegressions.length,
+      latestGeneratedAt
+    });
+    backendScenarios.push(...sourceBackend);
+    regressions.push(...sourceRegressions);
+  }
+  return { sources, backendScenarios, regressions };
+}
+
+function readStringAtPath(root: unknown, keys: string[]): string | null {
+  let current: unknown = root;
+  for (const key of keys) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return str(current);
+}
+
+function readStringArrayAtPath(root: unknown, keys: string[]): string[] {
+  let current: unknown = root;
+  for (const key of keys) {
+    if (!isRecord(current)) return [];
+    current = current[key];
+  }
+  return Array.isArray(current)
+    ? current
+        .map((item) => str(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
+}
+
+function countBibleStylePresets(doc: unknown): number {
+  const keys = [
+    ["character_generator_style_presets"],
+    ["character_generator", "style_presets"],
+    ["character", "style_presets"]
+  ];
+  const ids = new Set<string>();
+  for (const keyPath of keys) {
+    let current: unknown = doc;
+    for (const key of keyPath) {
+      if (!isRecord(current)) {
+        current = null;
+        break;
+      }
+      current = current[key];
+    }
+    if (!Array.isArray(current)) continue;
+    for (const entry of current) {
+      if (!isRecord(entry)) continue;
+      const id = str(entry.id) ?? str(entry.label);
+      if (id) ids.add(id);
+    }
+  }
+  return ids.size;
+}
+
+function countBiblePolicyTerms(doc: unknown): number {
+  return new Set([
+    ...readStringArrayAtPath(doc, ["policy", "forbidden_words"]),
+    ...readStringArrayAtPath(doc, ["policy", "banned_phrases"]),
+    ...readStringArrayAtPath(doc, ["character_generator", "forbidden_terms"]),
+    ...readStringArrayAtPath(doc, ["policy", "negative_prompt_terms"]),
+    ...readStringArrayAtPath(doc, ["character_generator", "negative_prompt_terms"])
+  ]).size;
+}
+
+function parseProfileBrowserSmokeReport(
+  source: RolloutArtifactSource,
+  filePath: string
+): { bundleCard: ProfileBrowserBundleCard; evidence: ProfileBrowserEvidenceRow } | null {
+  const doc = readJsonFileSafe(filePath);
+  if (!isRecord(doc)) {
+    return null;
+  }
+
+  const profileSelection = isRecord(doc.profile_selection) ? doc.profile_selection : {};
+  const studioProfileId = str(profileSelection.studio_profile_id) ?? str(doc.studio_profile_id) ?? "-";
+  const channelProfileId = str(profileSelection.channel_profile_id) ?? str(doc.channel_profile_id) ?? "-";
+  const mascotProfileId = str(profileSelection.mascot_profile_id) ?? str(doc.mascot_profile_id) ?? "-";
+  if (studioProfileId === "-" && channelProfileId === "-" && mascotProfileId === "-") {
+    return null;
+  }
+
+  const resolvedProfiles = isRecord(doc.resolved_profiles) ? doc.resolved_profiles : {};
+  const studio = isRecord(resolvedProfiles.studio) ? resolvedProfiles.studio : {};
+  const channel = isRecord(resolvedProfiles.channel) ? resolvedProfiles.channel : {};
+  const mascot = isRecord(resolvedProfiles.mascot) ? resolvedProfiles.mascot : {};
+  const mascotActing = isRecord(resolvedProfiles.mascot_acting) ? resolvedProfiles.mascot_acting : {};
+  const bundle = str(doc.profile_bundle) ?? str(doc.channel_domain) ?? readStringAtPath(channel, ["domain"]) ?? "unknown";
+  const generatedAt = str(doc.generated_at) ?? "-";
+  const scenario = str(doc.smoke_label) ?? path.basename(path.dirname(filePath));
+  const renderLogPath = safeJsonArtifactPath(source, doc.render_log_path);
+  const finishProfileId =
+    readStringAtPath(channel, ["finish_profile_id"]) ??
+    readStringAtPath(studio, ["finish_profile_id"]) ??
+    str(doc.finish_profile_id) ??
+    "-";
+  const impactPreset =
+    readStringAtPath(channel, ["sidecar_impact_preset_premium"]) ??
+    readStringAtPath(channel, ["sidecar_impact_preset"]) ??
+    str(doc.impact_preset) ??
+    "-";
+  const qcPreset =
+    readStringAtPath(studio, ["sidecar_qc_preset_strict"]) ??
+    readStringAtPath(studio, ["sidecar_qc_preset"]) ??
+    str(doc.qc_preset) ??
+    "-";
+  const qcReasons = Array.isArray(doc.qc_reasons)
+    ? doc.qc_reasons.map((item) => str(item)).filter((item): item is string => Boolean(item))
+    : [];
+  const qcWarnings = Array.isArray(doc.qc_warnings)
+    ? doc.qc_warnings.map((item) => str(item)).filter((item): item is string => Boolean(item))
+    : [];
+  const status = doc.qc_passed === true ? (qcWarnings.length > 0 ? "warn" : "ready") : qcReasons.length > 0 ? "blocked" : "unknown";
+  const tone: UiBadgeTone = status === "blocked" ? "bad" : status === "warn" ? "warn" : status === "ready" ? "ok" : "muted";
+
+  const bundleCard: ProfileBrowserBundleCard = {
+    bundle,
+    channelDomain: readStringAtPath(channel, ["domain"]) ?? str(doc.channel_domain) ?? "-",
+    studioProfileId,
+    channelProfileId,
+    mascotProfileId,
+    studioLabel: readStringAtPath(studio, ["label"]) ?? studioProfileId,
+    channelLabel: readStringAtPath(channel, ["label"]) ?? channelProfileId,
+    mascotLabel: readStringAtPath(mascot, ["label"]) ?? mascotProfileId,
+    tone: readStringAtPath(studio, ["tone"]) ?? readStringAtPath(resolvedProfiles, ["mascot_brand", "channel_tone"]) ?? "-",
+    pacing: readStringAtPath(channel, ["pacing"]) ?? "-",
+    infoPriority: readStringAtPath(channel, ["information_priority"]) ?? "-",
+    finishProfileId,
+    impactPreset,
+    qcPreset,
+    insertSummary: summarizeValues(readStringArrayAtPath(channel, ["preferred_insert_types"]), 4),
+    gestureSummary: summarizeValues(readStringArrayAtPath(mascotActing, ["gesture_vocabulary"]), 4),
+    generatedAt,
+    sourceLabel: source.label,
+    sourcePath: source.outRoot,
+    smokeArtifactPath: filePath,
+    smokeArtifactRelativePath: artifactRelativePath(source.outRoot, filePath),
+    renderLogPath
+  };
+
+  const evidence: ProfileBrowserEvidenceRow = {
+    scenario,
+    bundle,
+    status,
+    tone,
+    studioProfileId,
+    channelProfileId,
+    mascotProfileId,
+    profileSummary: compact(
+      [
+        bundle !== "unknown" ? `bundle ${bundle}` : null,
+        readStringAtPath(channel, ["label"]),
+        readStringAtPath(mascot, ["label"])
+      ],
+      " | "
+    ),
+    runtimeSummary: compact(
+      [
+        readStringAtPath(channel, ["information_priority"]) ? `priority ${readStringAtPath(channel, ["information_priority"])}` : null,
+        finishProfileId !== "-" ? `finish ${finishProfileId}` : null,
+        impactPreset !== "-" ? `impact ${impactPreset}` : null,
+        qcPreset !== "-" ? `qc ${qcPreset}` : null,
+        str(doc.primary_render_mode)
+      ],
+      " | "
+    ),
+    generatedAt,
+    sourceLabel: source.label,
+    sourcePath: source.outRoot,
+    smokeArtifactPath: filePath,
+    renderLogPath,
+    artifactRelativePath: artifactRelativePath(source.outRoot, filePath)
+  };
+
+  return { bundleCard, evidence };
+}
+
+function collectProfileBrowserData(): {
+  sources: RolloutSourceStatus[];
+  bundleCards: ProfileBrowserBundleCard[];
+  evidenceRows: ProfileBrowserEvidenceRow[];
+} {
+  const sources: RolloutSourceStatus[] = [];
+  const bundleMap = new Map<string, ProfileBrowserBundleCard>();
+  const evidenceRows: ProfileBrowserEvidenceRow[] = [];
+
+  for (const source of getRolloutArtifactSources()) {
+    const exists = fs.existsSync(source.outRoot);
+    const smokeFiles: string[] = [];
+    if (exists) {
+      const presetRoot = path.join(source.outRoot, "preset_benchmarks");
+      for (const benchmarkName of listDirectories(presetRoot)) {
+        smokeFiles.push(...findFilesByName(path.join(presetRoot, benchmarkName), "smoke_report.json", 4));
+      }
+      const multiRoot = path.join(source.outRoot, "multi_channel_benchmarks");
+      for (const benchmarkName of listDirectories(multiRoot)) {
+        smokeFiles.push(...findFilesByName(path.join(multiRoot, benchmarkName), "smoke_report.json", 6));
+      }
+    }
+
+    const latestCandidates: string[] = [];
+    let recordCount = 0;
+    for (const filePath of Array.from(new Set(smokeFiles))) {
+      const parsed = parseProfileBrowserSmokeReport(source, filePath);
+      if (!parsed) continue;
+      recordCount += 1;
+      evidenceRows.push(parsed.evidence);
+      if (parsed.evidence.generatedAt !== "-") {
+        latestCandidates.push(parsed.evidence.generatedAt);
+      }
+      const key = [
+        parsed.bundleCard.bundle,
+        parsed.bundleCard.studioProfileId,
+        parsed.bundleCard.channelProfileId,
+        parsed.bundleCard.mascotProfileId
+      ].join("|");
+      const existing = bundleMap.get(key);
+      const nextTime = new Date(parsed.bundleCard.generatedAt).getTime();
+      const existingTime = existing ? new Date(existing.generatedAt).getTime() : Number.NEGATIVE_INFINITY;
+      if (!existing || (Number.isFinite(nextTime) && nextTime >= existingTime)) {
+        bundleMap.set(key, parsed.bundleCard);
+      }
+    }
+
+    sources.push({
+      label: source.label,
+      outRoot: source.outRoot,
+      exists,
+      recordCount,
+      latestGeneratedAt: selectGeneratedAt(latestCandidates)
+    });
+  }
+
+  const bundleCards = Array.from(bundleMap.values()).sort((left, right) => {
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    if (left.bundle !== right.bundle) return left.bundle.localeCompare(right.bundle);
+    return left.channelProfileId.localeCompare(right.channelProfileId);
+  });
+
+  evidenceRows.sort((left, right) => {
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    if (left.bundle !== right.bundle) return left.bundle.localeCompare(right.bundle);
+    return left.scenario.localeCompare(right.scenario);
+  });
+
+  return { sources, bundleCards, evidenceRows };
+}
+
+function candidateCompareStem(filePath: string): string {
+  const name = path.basename(filePath);
+  const suffixes = [
+    ".premium_candidate_judge.json",
+    ".premium_actual_judge.json",
+    ".plan.json",
+    ".request.json",
+    ".prompt.txt"
+  ];
+  for (const suffix of suffixes) {
+    if (name.endsWith(suffix)) {
+      return name.slice(0, -suffix.length);
+    }
+  }
+  return path.basename(filePath, path.extname(filePath));
+}
+
+function resolveCandidateCompareBundle(requestedPath: string): {
+  source: RolloutArtifactSource;
+  rootDir: string;
+  stem: string;
+  requestedPath: string;
+  planPath: string | null;
+  requestPath: string | null;
+  promptPath: string | null;
+  candidateJudgePath: string | null;
+  actualJudgePath: string | null;
+} | null {
+  const resolved = resolveRolloutFile(requestedPath, [".json", ".txt"]);
+  if (!resolved) {
+    return null;
+  }
+
+  const rootDir = path.dirname(resolved.resolvedPath);
+  const stem = candidateCompareStem(resolved.resolvedPath);
+  const sibling = (suffix: string): string | null =>
+    resolveRolloutFile(path.join(rootDir, `${stem}${suffix}`), [path.extname(suffix).toLowerCase()])?.resolvedPath ?? null;
+
+  let planPath = sibling(".plan.json");
+  let requestPath = sibling(".request.json");
+  let promptPath = sibling(".prompt.txt");
+  let candidateJudgePath = sibling(".premium_candidate_judge.json");
+  let actualJudgePath = sibling(".premium_actual_judge.json");
+  const planDoc = planPath ? readJsonFileSafe(planPath) : null;
+  if (isRecord(planDoc)) {
+    planPath = safeJsonArtifactPath(resolved.source, planPath) ?? planPath;
+    requestPath = safeJsonArtifactPath(resolved.source, planDoc.request_path) ?? requestPath;
+    promptPath = safeRolloutTextPath(resolved.source, planDoc.prompt_path) ?? promptPath;
+    candidateJudgePath = safeJsonArtifactPath(resolved.source, planDoc.premium_candidate_judge_path) ?? candidateJudgePath;
+    actualJudgePath = safeJsonArtifactPath(resolved.source, planDoc.premium_actual_judge_path) ?? actualJudgePath;
+  }
+
+  if (!candidateJudgePath && !actualJudgePath) {
+    return null;
+  }
+
+  return {
+    source: resolved.source,
+    rootDir,
+    stem,
+    requestedPath: resolved.resolvedPath,
+    planPath,
+    requestPath,
+    promptPath,
+    candidateJudgePath,
+    actualJudgePath
+  };
+}
+
+function resolveRolloutArtifact(requestedPath: string): { resolvedPath: string; source: RolloutArtifactSource } | null {
+  return resolveRolloutFile(requestedPath, [".json"]);
+}
+
+function rolloutDetailPairs(doc: unknown): Array<{ label: string; value: string }> {
+  if (!isRecord(doc)) return [];
+  const pairs: Array<{ label: string; value: string }> = [];
+  const push = (label: string, value: unknown) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === "string" && value.trim().length === 0) return;
+    if (typeof value === "boolean") {
+      pairs.push({ label, value: value ? "true" : "false" });
+      return;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      pairs.push({ label, value: formatNumber(value, 3) });
+      return;
+    }
+    if (typeof value === "string") {
+      pairs.push({ label, value });
+    }
+  };
+  push("status", doc.status);
+  push("ready", doc.ready);
+  push("generated_at", doc.generated_at);
+  push("benchmark_kind", doc.benchmark_kind);
+  push("default_target", doc.default_target);
+  push("resolved_target", isRecord(doc.inspection) ? doc.inspection.resolvedTarget : undefined);
+  push("min_score", doc.min_score);
+  push("score_gap", doc.score_gap);
+  push("divergence_level", doc.divergence_level);
+  push("recommendation", doc.recommendation);
+  push("reason", doc.reason);
+  return pairs;
+}
+
+function rolloutDetailItems(value: unknown, limit = 10): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => {
+        if (typeof entry === "string") return [entry];
+        if (isRecord(entry)) {
+          const check = str(entry.check);
+          const severity = str(entry.severity);
+          const message = str(entry.message) ?? str(entry.reason) ?? str(entry.issue);
+          return [compact([severity, check, message], " / ")];
+        }
+        return [];
+      })
+      .filter((entry) => entry.length > 0)
+      .slice(0, limit);
+  }
+  if (isRecord(value)) {
+    return Object.entries(value)
+      .flatMap(([key, entry]) => {
+        if (typeof entry === "string") return [`${key}: ${entry}`];
+        if (typeof entry === "number" && Number.isFinite(entry)) return [`${key}: ${formatNumber(entry, 3)}`];
+        if (typeof entry === "boolean") return [`${key}: ${entry ? "true" : "false"}`];
+        return [];
+      })
+      .slice(0, limit);
+  }
+  return [];
 }
 
 function pickStylePreviewShotIds(shotsDoc: unknown, maxFrames: number = 300): string[] {
@@ -581,6 +1798,67 @@ type QcIssueView = {
   details: unknown;
 };
 
+type EpisodeArtifactLink = {
+  label: string;
+  filename: string;
+  exists: boolean;
+};
+
+type EpisodeShotOpsView = {
+  shotId: string;
+  shotType: string;
+  renderMode: string;
+  renderModeSummary: string;
+  recommendedRenderMode: string | null;
+  backend: string | null;
+  acceptanceStatus: string | null;
+  sidecarStatus: string | null;
+  routeReason: string | null;
+  routeReasonLabel: string;
+  visualKinds: string[];
+  visualSummary: string;
+  fallbackPolicies: string[];
+  fallbackSummary: string;
+  qcReasons: string[];
+  qcSummary: string;
+  repairSignals: string[];
+  repairSummary: string;
+  blockers: string[];
+};
+
+type EpisodeOpsView = {
+  studioProfileId: string | null;
+  channelProfileId: string | null;
+  mascotProfileId: string | null;
+  fallbackStage: string | null;
+  fallbackSteps: string[];
+  backendSummary: string;
+  acceptanceSummary: string;
+  routeSummary: string;
+  visualSummary: string;
+  repairSummary: string;
+  qcSummary: string;
+  renderModeSummary: string;
+  artifactLinks: EpisodeArtifactLink[];
+  shotItems: EpisodeShotOpsView[];
+  inspectorSeed: Record<
+    string,
+    {
+      label: string;
+      shotType: string;
+      renderModeSummary: string;
+      backend: string;
+      acceptanceStatus: string;
+      sidecarStatus: string;
+      routeReason: string;
+      visualSummary: string;
+      fallbackSummary: string;
+      qcSummary: string;
+      repairSummary: string;
+    }
+  >;
+};
+
 function toQcIssues(report: unknown): QcIssueView[] {
   const pushIssue = (target: QcIssueView[], raw: unknown): void => {
     if (!isRecord(raw)) {
@@ -644,6 +1922,272 @@ function toQcIssues(report: unknown): QcIssueView[] {
   return out;
 }
 
+function recordList(value: unknown): JsonRecord[] {
+  return Array.isArray(value) ? value.filter((row): row is JsonRecord => isRecord(row)) : [];
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function humanizeOpsLabel(value: string): string {
+  return value.replaceAll("_", " ").replace(/\s+/g, " ").trim();
+}
+
+function summarizeValues(values: Array<string | null | undefined>, limit = 3): string {
+  const items = uniqueStrings(values).map((value) => humanizeOpsLabel(value));
+  if (items.length === 0) return "-";
+  const preview = items.slice(0, limit).join(", ");
+  return items.length > limit ? `${preview} (+${items.length - limit})` : preview;
+}
+
+function summarizeCounts(values: Array<string | null | undefined>, limit = 4): string {
+  const counts = new Map<string, number>();
+  for (const raw of values) {
+    const key = typeof raw === "string" ? raw.trim() : "";
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  if (counts.size === 0) return "-";
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([value, count]) => {
+      const label = humanizeOpsLabel(value);
+      return count > 1 ? `${label} x${count}` : label;
+    })
+    .join(", ");
+}
+
+function serializeScriptData(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll("&", "\\u0026")
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e");
+}
+
+function collectShotIssueMap(report: unknown): Map<string, string[]> {
+  const issuesByShot = new Map<string, string[]>();
+  const pushIssue = (raw: unknown): void => {
+    if (!isRecord(raw)) return;
+    const shotId = str(raw.shotId) ?? str(raw.shot_id);
+    if (!shotId) return;
+    const label = compact(
+      [
+        str(raw.code) ?? str(raw.check) ?? str(raw.rule) ?? str(raw.name),
+        str(raw.message)
+      ],
+      " - "
+    );
+    if (!label) return;
+    const items = issuesByShot.get(shotId) ?? [];
+    if (!items.includes(label)) {
+      items.push(label);
+      issuesByShot.set(shotId, items);
+    }
+  };
+
+  if (!isRecord(report)) return issuesByShot;
+  for (const issue of recordList(report.issues)) {
+    pushIssue(issue);
+  }
+  for (const run of recordList(report.runs)) {
+    for (const issue of recordList(run.issues)) {
+      pushIssue(issue);
+    }
+  }
+  return issuesByShot;
+}
+
+function buildEpisodeOpsView(episodeId: string, preferredDoc: unknown): EpisodeOpsView {
+  const out = getEpisodeOutPaths(episodeId);
+  const runtimeDoc = readJsonFileSafe(out.runtimeShots);
+  const primaryDoc = isShotsDocLike(runtimeDoc)
+    ? runtimeDoc
+    : isShotsDocLike(preferredDoc)
+      ? preferredDoc
+      : null;
+  const renderLog = readJsonFileSafe(out.renderLog);
+  const qcReport = readJsonFileSafe(out.qc);
+  const sidecarPlan = readJsonFileSafe(out.sidecarPlan);
+  const renderModeReport = readJsonFileSafe(out.shotRenderModeReport);
+
+  const episodeInfo = primaryDoc && isRecord(primaryDoc.episode) ? primaryDoc.episode : {};
+  const profiles = isRecord(episodeInfo.profiles) ? episodeInfo.profiles : {};
+  const shotIssueMap = collectShotIssueMap(qcReport);
+
+  const renderModeByShot = new Map<
+    string,
+    {
+      recommendedRenderMode: string | null;
+      blockers: string[];
+    }
+  >();
+  if (isRecord(renderModeReport)) {
+    for (const shot of recordList(renderModeReport.shots)) {
+      const shotId = str(shot.shot_id);
+      if (!shotId) continue;
+      renderModeByShot.set(shotId, {
+        recommendedRenderMode: str(shot.recommended_render_mode),
+        blockers: uniqueStrings((Array.isArray(shot.blockers) ? shot.blockers : []).map((value) => str(value)))
+      });
+    }
+  }
+
+  const sidecarPlanByShot = new Map<
+    string,
+    {
+      renderer: string | null;
+      acceptanceStatus: string | null;
+      status: string | null;
+    }
+  >();
+  if (isRecord(sidecarPlan)) {
+    for (const plan of recordList(sidecarPlan.plans)) {
+      const shotId = str(plan.shotId);
+      if (!shotId) continue;
+      const metadata = isRecord(plan.metadata) ? plan.metadata : {};
+      sidecarPlanByShot.set(shotId, {
+        renderer: str(plan.renderer) ?? str(metadata.modelName),
+        acceptanceStatus: str(metadata.acceptanceStatus),
+        status: str(plan.status)
+      });
+    }
+  }
+
+  const shotItems: EpisodeShotOpsView[] = [];
+  for (const rawShot of primaryDoc?.shots ?? []) {
+    if (!isRecord(rawShot)) continue;
+    const shotId = str(rawShot.shot_id) ?? `shot_${shotItems.length + 1}`;
+    const shotType = str(rawShot.shot_type) ?? "-";
+    const renderMode = str(rawShot.render_mode) ?? "-";
+    const renderModeMeta = renderModeByShot.get(shotId);
+    const shotGrammar = isRecord(rawShot.shot_grammar) ? rawShot.shot_grammar : {};
+    const visualObjects = recordList(rawShot.visual_objects);
+    const sourcePack = isRecord(rawShot.source_pack) ? rawShot.source_pack : {};
+    const sidecarPreset = isRecord(rawShot.sidecar_preset) ? rawShot.sidecar_preset : {};
+    const sidecarMeta = sidecarPlanByShot.get(shotId);
+    const routeReason = str(shotGrammar.route_reason) ?? str(rawShot.route_reason);
+    const visualKinds = uniqueStrings(visualObjects.map((item) => str(item.kind)));
+    const fallbackPolicies = uniqueStrings(visualObjects.map((item) => str(item.fallback_policy)));
+    const qcReasons = shotIssueMap.get(shotId) ?? [];
+    const policyTags = uniqueStrings((Array.isArray(sidecarPreset.policy_tags) ? sidecarPreset.policy_tags : []).map((item) => str(item)));
+    const repairSignals = uniqueStrings([
+      str(sidecarPreset.impact_preset),
+      ...policyTags.filter((value) => value.toLowerCase().includes("repair")),
+      ...qcReasons.filter((value) => value.toLowerCase().includes("repair"))
+    ]);
+    const blockers = renderModeMeta?.blockers ?? [];
+    const backend = sidecarMeta?.renderer ?? str(rawShot.sidecar_renderer);
+    const acceptanceStatus = sidecarMeta?.acceptanceStatus ?? str(sourcePack.acceptance_status) ?? str(rawShot.acceptance_status);
+    const recommendedRenderMode = renderModeMeta?.recommendedRenderMode ?? null;
+    const renderModeSummary =
+      recommendedRenderMode && recommendedRenderMode !== renderMode
+        ? `${renderMode} -> ${recommendedRenderMode}`
+        : renderMode;
+
+    shotItems.push({
+      shotId,
+      shotType,
+      renderMode,
+      renderModeSummary,
+      recommendedRenderMode,
+      backend,
+      acceptanceStatus,
+      sidecarStatus: sidecarMeta?.status ?? null,
+      routeReason,
+      routeReasonLabel: routeReason ? humanizeOpsLabel(routeReason) : "-",
+      visualKinds,
+      visualSummary: summarizeValues(visualKinds, 4),
+      fallbackPolicies,
+      fallbackSummary: summarizeValues(
+        [
+          ...fallbackPolicies,
+          blockers.length > 0 ? `render blockers: ${blockers.map((value) => humanizeOpsLabel(value)).join(", ")}` : null
+        ],
+        4
+      ),
+      qcReasons,
+      qcSummary: summarizeValues(qcReasons, 2),
+      repairSignals,
+      repairSummary: summarizeValues(repairSignals, 3),
+      blockers
+    });
+  }
+
+  const qcFallbackSteps =
+    isRecord(qcReport) && Array.isArray(qcReport.fallback_steps_applied)
+      ? qcReport.fallback_steps_applied.map((value) => str(value))
+      : [];
+  const renderFallbackSteps =
+    isRecord(renderLog) && Array.isArray(renderLog.fallback_steps_applied)
+      ? renderLog.fallback_steps_applied.map((value) => str(value))
+      : [];
+  const fallbackSteps = uniqueStrings([...qcFallbackSteps, ...renderFallbackSteps]);
+  const fallbackStage =
+    str(isRecord(qcReport) ? qcReport.final_stage : undefined) ??
+    str(isRecord(renderLog) ? renderLog.final_stage : undefined) ??
+    null;
+  const mismatchedRenderModes = shotItems.filter(
+    (item) => item.recommendedRenderMode && item.recommendedRenderMode !== item.renderMode
+  ).length;
+  const artifactLinks: EpisodeArtifactLink[] = [
+    { label: "shots", filename: "shots.json", exists: fs.existsSync(out.shots) },
+    { label: "runtime shots", filename: "runtime_shots.json", exists: fs.existsSync(out.runtimeShots) },
+    { label: "qc report", filename: "qc_report.json", exists: fs.existsSync(out.qc) },
+    { label: "render log", filename: "render_log.json", exists: fs.existsSync(out.renderLog) },
+    { label: "sidecar plan", filename: "shot_sidecar_plan.json", exists: fs.existsSync(out.sidecarPlan) },
+    { label: "render mode report", filename: "shot_render_mode_report.json", exists: fs.existsSync(out.shotRenderModeReport) }
+  ];
+  const inspectorSeed = Object.fromEntries(
+    shotItems.map((item) => [
+      `shot:${item.shotId}`,
+      {
+        label: item.shotId,
+        shotType: humanizeOpsLabel(item.shotType),
+        renderModeSummary: humanizeOpsLabel(item.renderModeSummary),
+        backend: item.backend ? humanizeOpsLabel(item.backend) : "-",
+        acceptanceStatus: item.acceptanceStatus ? humanizeOpsLabel(item.acceptanceStatus) : "-",
+        sidecarStatus: item.sidecarStatus ? humanizeOpsLabel(item.sidecarStatus) : "-",
+        routeReason: item.routeReasonLabel,
+        visualSummary: item.visualSummary,
+        fallbackSummary: item.fallbackSummary,
+        qcSummary: item.qcSummary,
+        repairSummary: item.repairSummary
+      }
+    ])
+  );
+
+  return {
+    studioProfileId: str(profiles.studio_profile_id),
+    channelProfileId: str(profiles.channel_profile_id),
+    mascotProfileId: str(profiles.mascot_profile_id),
+    fallbackStage,
+    fallbackSteps,
+    backendSummary: summarizeCounts(shotItems.map((item) => item.backend)),
+    acceptanceSummary: summarizeCounts(shotItems.map((item) => item.acceptanceStatus ?? item.sidecarStatus)),
+    routeSummary: summarizeCounts(shotItems.map((item) => item.routeReason)),
+    visualSummary: summarizeCounts(shotItems.flatMap((item) => item.visualKinds)),
+    repairSummary: summarizeCounts(shotItems.flatMap((item) => item.repairSignals)),
+    qcSummary: summarizeCounts(shotItems.flatMap((item) => item.qcReasons)),
+    renderModeSummary:
+      shotItems.length === 0
+        ? "-"
+        : `${summarizeCounts(shotItems.map((item) => item.renderMode))}${mismatchedRenderModes > 0 ? ` | mismatched ${mismatchedRenderModes}` : ""}`,
+    artifactLinks,
+    shotItems,
+    inspectorSeed
+  };
+}
+
 function fmtDate(value: unknown): string {
   if (typeof value !== "string") return "-";
   const date = new Date(value);
@@ -651,11 +2195,19 @@ function fmtDate(value: unknown): string {
   return date.toLocaleString("ko-KR", { hour12: false });
 }
 
+function profileBrowserHref(values: Array<string | null | undefined>): string {
+  const query = values
+    .map((value) => str(value))
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+  return query ? `/ui/profiles?q=${encodeURIComponent(query)}` : "/ui/profiles";
+}
+
 function badgeClass(status: string): string {
   const s = status.toUpperCase();
-  if (["SUCCEEDED", "COMPLETED", "PREVIEW_READY", "UP", "READY", "OK"].includes(s)) return "ok";
-  if (["FAILED", "DOWN", "ERROR"].includes(s)) return "bad";
-  if (["RUNNING", "GENERATING"].includes(s)) return "warn";
+  if (["SUCCEEDED", "COMPLETED", "PREVIEW_READY", "UP", "READY", "OK", "ACCEPTED", "RESOLVED"].includes(s)) return "ok";
+  if (["FAILED", "DOWN", "ERROR", "REJECTED", "BLOCKED"].includes(s)) return "bad";
+  if (["RUNNING", "GENERATING", "PENDING", "WAITING", "WARN"].includes(s)) return "warn";
   return "muted";
 }
 
@@ -666,7 +2218,8 @@ function page(title: string, body: string): string {
 function internalHeaders(withJson: boolean): Record<string, string> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (withJson) headers["content-type"] = "application/json";
-  const key = process.env.API_KEY?.trim();
+  const runtimeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  const key = typeof runtimeProcess?.env?.API_KEY === "string" ? runtimeProcess.env.API_KEY.trim() : "";
   if (key) headers["x-api-key"] = key;
   return headers;
 }
@@ -1105,6 +2658,220 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     return reply.redirect(`/ui/channel-bible?message=${encodeURIComponent(`Saved: ${created.id}`)}`);
   });
 
+  app.get("/ui/profiles", async (request, reply) => {
+    const profileSearch = q(request.query, "q") ?? "";
+    const profileSearchLower = profileSearch.trim().toLowerCase();
+    const matchesProfileSearch = (...parts: Array<string | null | undefined>): boolean => {
+      if (!profileSearchLower) return true;
+      return parts
+        .map((part) => (typeof part === "string" ? part.toLowerCase() : ""))
+        .some((part) => part.includes(profileSearchLower));
+    };
+
+    const { sources, bundleCards, evidenceRows } = collectProfileBrowserData();
+    let bibleRows = "";
+    let bibleCount = 0;
+    let activeBibleCount = 0;
+    let dbNotice = "";
+
+    try {
+      const bibles = await prisma.channelBible.findMany({
+        orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+        take: 30,
+        include: {
+          channel: {
+            select: {
+              id: true,
+              name: true,
+              language: true
+            }
+          }
+        }
+      });
+
+      bibleCount = bibles.length;
+      activeBibleCount = bibles.filter((item) => item.isActive).length;
+      const filteredBibles = bibles.filter((item) =>
+        matchesProfileSearch(
+          item.channel.name,
+          item.channel.id,
+          item.id,
+          readStringAtPath(item.json, ["style", "tone"]),
+          readStringAtPath(item.json, ["style", "pacing"]),
+          readStringAtPath(item.json, ["channel", "name"]),
+          readStringAtPath(item.json, ["channel", "language"])
+        )
+      );
+      bibleRows = filteredBibles
+        .map((item) => {
+          const tone = readStringAtPath(item.json, ["style", "tone"]) ?? "-";
+          const pacing = readStringAtPath(item.json, ["style", "pacing"]) ?? "-";
+          const stylePresetCount = countBibleStylePresets(item.json);
+          const policyTerms = countBiblePolicyTerms(item.json);
+          const rawHref = `/channel-bible/${encodeURIComponent(item.id)}`;
+          return `<tr><td><div class="table-note"><strong>${esc(item.channel.name)}</strong><span class="muted-text">${esc(
+            item.channel.id
+          )}</span><span class="mono">${esc(item.id)}</span></div></td><td><strong>v${esc(item.version)}</strong></td><td><span class="badge ${item.isActive ? "ok" : "muted"}">${item.isActive ? "active" : "history"}</span></td><td>${esc(
+            item.channel.language ?? "-"
+          )}</td><td>${esc(tone)} / ${esc(pacing)}</td><td>${esc(String(stylePresetCount))} presets / ${esc(
+            String(policyTerms)
+          )} rules</td><td>${fmtDate(item.updatedAt.toISOString())}</td><td><div class="inline-actions"><a href="/ui/channel-bible">Editor</a><a href="${rawHref}">Raw JSON</a></div></td></tr>`;
+        })
+        .join("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      dbNotice = `<div class="error">ChannelBible query unavailable: ${esc(message)}</div>`;
+    }
+
+    const filteredBundleCards = bundleCards.filter((card) =>
+      matchesProfileSearch(
+        card.bundle,
+        card.channelDomain,
+        card.studioProfileId,
+        card.channelProfileId,
+        card.mascotProfileId,
+        card.studioLabel,
+        card.channelLabel,
+        card.mascotLabel,
+        card.tone,
+        card.pacing,
+        card.infoPriority,
+        card.finishProfileId,
+        card.impactPreset,
+        card.qcPreset,
+        card.insertSummary,
+        card.gestureSummary
+      )
+    );
+    const filteredEvidenceRows = evidenceRows.filter((row) =>
+      matchesProfileSearch(
+        row.scenario,
+        row.bundle,
+        row.status,
+        row.studioProfileId,
+        row.channelProfileId,
+        row.mascotProfileId,
+        row.profileSummary,
+        row.runtimeSummary,
+        row.sourceLabel,
+        row.artifactRelativePath
+      )
+    );
+
+    const bundleCount = new Set(filteredBundleCards.map((card) => card.bundle)).size;
+    const summaryCards = [
+      {
+        label: "Runtime Combos",
+        value: String(filteredBundleCards.length),
+        tone: "ok" as UiBadgeTone,
+        hint: `${bundleCount} bundles observed from rollout smoke artifacts`
+      },
+      {
+        label: "Evidence Rows",
+        value: String(filteredEvidenceRows.length),
+        tone: "muted" as UiBadgeTone,
+        hint: `${sources.filter((source) => source.exists).length}/${sources.length} artifact roots available`
+      },
+      {
+        label: "Active Bibles",
+        value: String(activeBibleCount),
+        tone: activeBibleCount > 0 ? ("ok" as UiBadgeTone) : ("warn" as UiBadgeTone),
+        hint: bibleCount > 0 ? `${bibleCount} recent bible versions loaded from DB` : "DB unavailable or no channel bibles yet"
+      },
+      {
+        label: "Blocked Signals",
+        value: String(filteredEvidenceRows.filter((row) => row.status === "blocked").length),
+        tone: "bad" as UiBadgeTone,
+        hint: "runtime profile evidence with QC-reported blockers"
+      }
+    ]
+      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
+      .join("");
+
+    const sourceRows = sources
+      .map((source) => {
+        const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
+        const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} smoke reports` : "empty";
+        const meta = compact([
+          source.exists ? "scan ok" : "root missing",
+          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no profile evidence"
+        ]);
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span><button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+      })
+      .join("");
+
+    const bundleCardsHtml = filteredBundleCards
+      .map((card) => {
+        const rawHref = `/ui/rollouts/artifact?path=${encodeURIComponent(card.smokeArtifactPath)}`;
+        const renderLogHref = card.renderLogPath
+          ? `/ui/rollouts/artifact?path=${encodeURIComponent(card.renderLogPath)}`
+          : null;
+        const deepLinkHref = profileBrowserHref([card.bundle, card.studioProfileId, card.channelProfileId, card.mascotProfileId]);
+        return `<article style="padding:14px;border:1px solid #d8e1ec;border-radius:14px;background:linear-gradient(180deg,#f9fcff,#ffffff);display:grid;gap:10px"><div class="inline-actions"><span class="badge ok">${esc(
+          card.bundle
+        )}</span><span class="badge muted">${esc(card.studioProfileId)}</span><span class="badge muted">${esc(
+          card.channelProfileId
+        )}</span><span class="badge muted">${esc(card.mascotProfileId)}</span></div><div><h3 style="margin:0">${esc(
+          card.channelLabel
+        )} / ${esc(card.mascotLabel)}</h3><p class="muted-text" style="margin:6px 0 0">studio: ${esc(
+          card.studioLabel
+        )} | domain: ${esc(card.channelDomain)} | source: ${esc(card.sourceLabel)}</p></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px"><div class="form-card"><strong>Tone / Pacing</strong><span>${esc(
+          card.tone
+        )} / ${esc(card.pacing)}</span><small>information priority: ${esc(card.infoPriority)}</small></div><div class="form-card"><strong>Finish / Sidecar</strong><span>${esc(
+          card.finishProfileId
+        )}</span><small>impact ${esc(card.impactPreset)} | qc ${esc(card.qcPreset)}</small></div><div class="form-card"><strong>Insert / Gesture Bias</strong><span>${esc(
+          card.insertSummary || "-"
+        )}</span><small>gestures: ${esc(card.gestureSummary || "-")}</small></div></div><div class="quick-links"><a href="${deepLinkHref}">Focus Bundle</a><a href="${rawHref}">Smoke JSON</a>${
+          renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""
+        }<a href="/ui/channel-bible">Open ChannelBible</a><a href="/ui/benchmarks">Open Benchmarks</a></div><p class="mono" style="margin:0">${esc(
+          card.smokeArtifactRelativePath
+        )}</p><p class="muted-text" style="margin:0">generated: ${esc(fmtDate(card.generatedAt))}</p></article>`;
+      })
+      .join("");
+
+    const evidenceTableRows = filteredEvidenceRows
+      .map((row) => {
+        const rawHref = `/ui/rollouts/artifact?path=${encodeURIComponent(row.smokeArtifactPath)}`;
+        const renderLogHref = row.renderLogPath
+          ? `/ui/rollouts/artifact?path=${encodeURIComponent(row.renderLogPath)}`
+          : null;
+        const deepLinkHref = profileBrowserHref([row.bundle, row.studioProfileId, row.channelProfileId, row.mascotProfileId]);
+        return `<tr><td><div class="table-note"><strong>${esc(row.scenario)}</strong><span class="muted-text">${esc(
+          row.bundle
+        )}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${deepLinkHref}">Focus</a><a href="${rawHref}">Smoke JSON</a>${
+          renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""
+        }<a href="/ui/benchmarks">Benchmarks</a></div></div></td><td><span class="badge ${row.tone}">${esc(
+          humanizeOpsLabel(row.status)
+        )}</span></td><td><div class="stack"><strong>${esc(row.channelProfileId)}</strong><span class="muted-text">${esc(
+          `${row.studioProfileId} / ${row.mascotProfileId}`
+        )}</span><span class="muted-text">${esc(row.profileSummary || "-")}</span></div></td><td>${esc(
+          row.runtimeSummary || "-"
+        )}</td><td>${fmtDate(row.generatedAt)}</td><td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(
+          row.sourcePath
+        )}</span></div></td></tr>`;
+      })
+      .join("");
+
+    const flash = `${flashHtml(request.query)}${dbNotice}`;
+    const body = `<section class="card dashboard-shell"><div class="section-head"><div><h1>Profile Browser</h1><p class="section-intro">Multi-channel operator browser for active ChannelBible state and runtime profile evidence captured by benchmark and regression smoke runs.</p></div><div class="quick-links"><a href="/ui/channel-bible">Open ChannelBible</a><a href="/ui/benchmarks">Open Benchmarks</a><a href="/ui/rollouts">Open Rollouts</a></div></div>${flash}<div class="summary-grid">${summaryCards}</div></section><section class="card dashboard-shell"><div class="section-head"><div><h2>Artifact Sources</h2><span class="muted-text">Profile evidence is read from shared out/ roots without rerunning sidecar benchmarks.</span></div>${
+      profileSearch
+        ? `<div class="quick-links"><a href="/ui/profiles">Clear Filter</a><span class="badge warn">filter ${esc(profileSearch)}</span></div>`
+        : ""
+    }</div><div class="form-card"><div class="field"><label for="profiles-search">Deep-link filter</label><input id="profiles-search" type="search" data-table-filter="profiles-evidence-table" aria-label="Filter profiles by bundle or profile id" value="${esc(
+      profileSearch
+    )}" placeholder="Search by bundle / studio_default / economy_channel / med_dog"/></div><small>This filter is also applied server-side for direct links such as <code>/ui/profiles?q=economy_channel</code>.</small></div><div class="status-list">${sourceRows || '<div class="notice">No artifact sources configured.</div>'}</div></section><section class="card"><div class="section-head"><h2>Active Channel Bibles</h2><input type="search" data-table-filter="profiles-bible-table" aria-label="Filter active channel bibles" value="${esc(
+      profileSearch
+    )}" placeholder="Search by channel / tone / pacing / version"/></div><div class="table-wrap"><table id="profiles-bible-table"><thead><tr><th>Channel</th><th>Version</th><th>Status</th><th>Language</th><th>Tone / Pacing</th><th>Presets / Rules</th><th>Updated</th><th>Actions</th></tr></thead><tbody>${
+      bibleRows || `<tr><td colspan="8"><div class="notice">No ChannelBible rows available.</div></td></tr>`
+    }</tbody></table></div></section><section class="card"><div class="section-head"><h2>Runtime Profile Bundles</h2><span class="muted-text">Latest resolved studio/channel/mascot combinations observed in smoke artifacts.</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">${bundleCardsHtml || '<div class="notice">No runtime profile bundles found.</div>'}</div></section><section class="card"><div class="section-head"><h2>Profile Runtime Evidence</h2><input type="search" data-table-filter="profiles-evidence-table" aria-label="Filter profile runtime evidence" value="${esc(
+      profileSearch
+    )}" placeholder="Search by scenario / bundle / profile / source"/></div><div class="table-wrap"><table id="profiles-evidence-table"><thead><tr><th>Scenario</th><th>Status</th><th>Profiles</th><th>Runtime Summary</th><th>Generated</th><th>Source</th></tr></thead><tbody>${
+      evidenceTableRows || `<tr><td colspan="6"><div class="notice">No profile runtime evidence found.</div></td></tr>`
+    }</tbody></table></div></section>`;
+
+    return reply.type("text/html; charset=utf-8").send(page("Profile Browser", body));
+  });
+
   app.get("/ui/episodes", async (request, reply) => {
     const rows = await prisma.episode.findMany({
       orderBy: { createdAt: "desc" },
@@ -1284,12 +3051,41 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const styleQcA = parseStyleQcSummary(qcReportA);
     const styleQcB = parseStyleQcSummary(qcReportB);
     const qcIssues = toQcIssues(qcReport);
+    const opsView = buildEpisodeOpsView(id, readJsonFileSafe(localOut.shots));
     const qcIssueRows = qcIssues
       .map(
         (issue, index) =>
           `<tr><td>${index + 1}</td><td>${esc(issue.check)}</td><td><span class="badge ${badgeClass(issue.severity)}">${esc(issue.severity)}</span></td><td>${esc(issue.message)}</td><td><pre>${esc(JSON.stringify(issue.details, null, 2))}</pre></td></tr>`
       )
       .join("");
+    const opsArtifactLinks = opsView.artifactLinks
+      .map((artifact) =>
+        artifact.exists
+          ? `<a href="${toEpisodeArtifactUrl(id, artifact.filename)}" class="secondary" style="display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #cad8f2">${esc(artifact.label)}</a>`
+          : `<span style="display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #dbe6f1;opacity:.55">${esc(artifact.label)} missing</span>`
+      )
+      .join("");
+    const opsShotRows = opsView.shotItems
+      .map(
+        (item) => `<tr>
+          <td><code>${esc(item.shotId)}</code></td>
+          <td>${esc(humanizeOpsLabel(item.shotType))}</td>
+          <td>${esc(item.routeReasonLabel)}</td>
+          <td>${esc(item.backend ?? "-")}</td>
+          <td><span class="badge ${badgeClass(item.acceptanceStatus ?? item.sidecarStatus ?? "")}">${esc(item.acceptanceStatus ?? item.sidecarStatus ?? "-")}</span></td>
+          <td>${esc(item.visualSummary)}</td>
+          <td>${esc(item.fallbackSummary)}</td>
+          <td>${esc(item.qcSummary === "-" ? item.repairSummary : compact([item.qcSummary, item.repairSummary], " | "))}</td>
+        </tr>`
+      )
+      .join("");
+    const episodeFallbackSummary = compact(
+      [
+        opsView.fallbackStage ? `final stage ${humanizeOpsLabel(opsView.fallbackStage)}` : null,
+        opsView.fallbackSteps.length > 0 ? `steps ${opsView.fallbackSteps.map((step) => humanizeOpsLabel(step)).join(", ")}` : null
+      ],
+      " | "
+    );
 
     const rows = jobs
       .map((job) => `<tr><td><a href="/ui/jobs/${esc(job.id)}">${esc(job.id)}</a></td><td>${esc(job.type)}</td><td><span class="badge ${badgeClass(String(job.status ?? ""))}">${esc(job.status)}</span></td><td>${esc(job.progress)}%</td><td>${esc(job.attemptsMade ?? 0)} / ${esc(job.maxAttempts ?? "-")}</td><td>${esc(job.retryBackoffMs ?? "-")}ms</td><td>${fmtDate(job.createdAt)}</td></tr>`)
@@ -1379,6 +3175,11 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         profile: "full" as RunProfileId
       };
     })();
+    const episodeProfilesHref = profileBrowserHref([
+      opsView.channelProfileId,
+      opsView.mascotProfileId,
+      opsView.studioProfileId
+    ]);
 
     const episodeBody = `
 <section class="card">
@@ -1390,6 +3191,39 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   <p>status: <span class="badge ${badgeClass(String(episode.status ?? ""))}">${esc(episode.status)}</span></p>
   <p>stylePreset: <strong>${esc(style.stylePresetId)}</strong> / hookBoost: <strong>${esc(style.hookBoost.toFixed(2))}</strong></p>
   <p>outDir: <code>${esc(artifacts.outDir ?? localOut.outDir)}</code></p>
+  <div class="grid two">
+    <div class="card">
+      <h3>Profile & Route Inspector</h3>
+      <p>channel profile: <strong>${esc(opsView.channelProfileId ?? "-")}</strong></p>
+      <p>mascot profile: <strong>${esc(opsView.mascotProfileId ?? "-")}</strong></p>
+      <p>studio profile: <strong>${esc(opsView.studioProfileId ?? "-")}</strong></p>
+      <p>route reasons: <strong>${esc(opsView.routeSummary)}</strong></p>
+      <p>visual objects: <strong>${esc(opsView.visualSummary)}</strong></p>
+      <p>render modes: <strong>${esc(opsView.renderModeSummary)}</strong></p>
+      <p><a href="${episodeProfilesHref}">Open matching profile browser view</a></p>
+    </div>
+    <div class="card">
+      <h3>Acceptance / QC Reasons</h3>
+      <p>selected backend: <strong>${esc(opsView.backendSummary)}</strong></p>
+      <p>acceptance status: <strong>${esc(opsView.acceptanceSummary)}</strong></p>
+      <p>repair signals: <strong>${esc(opsView.repairSummary)}</strong></p>
+      <p>qc reasons: <strong>${esc(opsView.qcSummary)}</strong></p>
+      <p>fallback chain: <strong>${esc(episodeFallbackSummary || "-")}</strong></p>
+      <p><a href="/ui/episodes/${esc(id)}/editor">Open Shot Editor Inspector</a></p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Episode Artifact Inspector</h3>
+    <p class="notice">Use these raw artifacts when route/backend/acceptance metadata needs source verification.</p>
+    <div class="actions">${opsArtifactLinks || '<span class="notice">No episode-local ops artifacts yet.</span>'}</div>
+  </div>
+  <div class="card">
+    <h3>Per-shot Ops Signals</h3>
+    <table>
+      <thead><tr><th>shot</th><th>type</th><th>route_reason</th><th>backend</th><th>acceptance</th><th>visual objects</th><th>fallback / blockers</th><th>qc / repair</th></tr></thead>
+      <tbody>${opsShotRows || '<tr><td colspan="8"><div class="notice">shots.json/runtime_shots.json does not expose route or sidecar metadata yet.</div></td></tr>'}</tbody>
+    </table>
+  </div>
   <div class="grid two">
     <div class="card">
       <h3>Documents</h3>
@@ -1508,6 +3342,23 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       doc = activeDoc;
     }
 
+    const opsView = buildEpisodeOpsView(id, doc);
+    const inspectorSeedJson = serializeScriptData(opsView.inspectorSeed);
+    const editorOpsOverview = compact(
+      [
+        opsView.channelProfileId ? `channel ${opsView.channelProfileId}` : null,
+        opsView.mascotProfileId ? `mascot ${opsView.mascotProfileId}` : null,
+        opsView.backendSummary !== "-" ? `backend ${opsView.backendSummary}` : null,
+        opsView.acceptanceSummary !== "-" ? `acceptance ${opsView.acceptanceSummary}` : null,
+        opsView.fallbackSteps.length > 0 ? `fallback ${opsView.fallbackSteps.map((step) => humanizeOpsLabel(step)).join(", ")}` : null
+      ],
+      " | "
+    );
+    const editorProfilesHref = profileBrowserHref([
+      opsView.channelProfileId,
+      opsView.mascotProfileId,
+      opsView.studioProfileId
+    ]);
     const shotsDoc = doc as JsonRecord & { shots: unknown[] };
     const shotRows: string[] = [];
     const stageShotObjects: string[] = [];
@@ -1559,6 +3410,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 .editor-left,.editor-right,.editor-bottom{padding:11px}
 .editor-center{padding:11px;display:grid;gap:10px}
 .editor-left h2,.editor-center h2,.editor-right h2,.editor-bottom h2{margin:0 0 8px;font-size:15px}
+.editor-right h3{margin:12px 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#4b647a}
 .editor-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}
 .editor-tabs button{padding:7px 6px}
 .editor-tabs button.active{background:linear-gradient(180deg,#0f857b,#0f766e);color:#effcf9}
@@ -1582,6 +3434,9 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 .editor-shot-row.is-selected{background:#e8f8f5}
 .editor-shot-row:focus-visible{outline:2px solid #0f766e;outline-offset:-2px}
 .editor-right .field{display:grid;gap:5px;margin-bottom:8px}
+.editor-right .field label{font-size:12px;font-weight:700;color:#4b647a}
+.editor-readout{min-height:38px;padding:8px 10px;border:1px solid #dbe6f1;border-radius:10px;background:#f8fbff;color:#12344d;font-size:12px;line-height:1.45}
+.editor-readout.empty{color:#6b7b8c}
 .editor-bottom{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
 .editor-bottom p{margin:0;font-size:12px;color:#4b647a}
 .editor-strip{display:flex;gap:8px;flex-wrap:wrap}
@@ -1604,6 +3459,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 ${q(request.query, "message") ? `<div class="notice">${esc(q(request.query, "message"))}</div>` : ""}
 ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"))}</div>` : ""}
 <div class="notice">Shortcut: <strong>r</strong> runs the primary action. Reorder timeline rows with Move up/Move down.</div>
+${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)}</div>` : ""}
 <div class="editor-layout">
   <aside class="editor-left">
     <h2>Library</h2>
@@ -1642,10 +3498,16 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   <aside class="editor-right">
     <h2>Inspector</h2>
     <p id="editor-inspector-target" class="muted-text">Select an object on the canvas or in the timeline table.</p>
-    <div class="field"><label>Opacity</label><input value="100%" disabled/></div>
-    <div class="field"><label>Blend Mode</label><select disabled><option>Normal</option></select></div>
-    <div class="field"><label>Transform</label><input value="x:0 y:0 scale:1.0" disabled/></div>
-    <p class="muted-text">Inspector capabilities will be expanded in the next ticket.</p>
+    <h3>Shot Ops Metadata</h3>
+    <div class="field"><label>Shot type</label><div id="editor-meta-shot-type" class="editor-readout empty">-</div></div>
+    <div class="field"><label>Render mode / recommendation</label><div id="editor-meta-render-mode" class="editor-readout empty">-</div></div>
+    <div class="field"><label>Selected backend</label><div id="editor-meta-backend" class="editor-readout empty">-</div></div>
+    <div class="field"><label>Acceptance / sidecar status</label><div id="editor-meta-acceptance" class="editor-readout empty">-</div></div>
+    <div class="field"><label>Route reason</label><div id="editor-meta-route-reason" class="editor-readout empty">-</div></div>
+    <div class="field"><label>Visual object metadata</label><div id="editor-meta-visuals" class="editor-readout empty">-</div></div>
+    <div class="field"><label>Fallback / blockers</label><div id="editor-meta-fallback" class="editor-readout empty">-</div></div>
+    <div class="field"><label>QC / repair reasons</label><div id="editor-meta-qc" class="editor-readout empty">-</div></div>
+    <div class="quick-links"><a href="${editorProfilesHref}">Open matching profile browser view</a><a href="/ui/benchmarks">Benchmarks</a></div>
   </aside>
 </div>
 <section class="editor-bottom">
@@ -1656,6 +3518,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   <div class="editor-strip">${snapshotItems}</div>
 </section>
 </section>
+<script id="editor-inspector-seed" type="application/json">${inspectorSeedJson}</script>
 <script>
 (() => {
   const shell = document.getElementById('editor-shell');
@@ -1663,11 +3526,51 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   const toolbar = document.getElementById('editor-context-toolbar');
   const toolbarLabel = document.getElementById('editor-context-label');
   const inspector = document.getElementById('editor-inspector-target');
+  const inspectorSeedNode = document.getElementById('editor-inspector-seed');
   const leftToggle = document.getElementById('editor-left-toggle');
   const tabButtons = Array.from(shell.querySelectorAll('[data-editor-tab-btn]'));
   const tabPanels = Array.from(shell.querySelectorAll('[data-editor-tab]'));
   const searchInput = document.getElementById('editor-left-search');
   const toastWrap = document.getElementById('toast-wrap');
+  const inspectorSeed = (() => {
+    if (!(inspectorSeedNode instanceof HTMLScriptElement)) return {};
+    try {
+      return JSON.parse(inspectorSeedNode.textContent || '{}');
+    } catch {
+      return {};
+    }
+  })();
+  const setReadout = (id, value) => {
+    const node = document.getElementById(id);
+    if (!(node instanceof HTMLElement)) return;
+    const text = typeof value === 'string' && value.trim() ? value.trim() : '-';
+    node.textContent = text;
+    node.classList.toggle('empty', text === '-');
+  };
+  const updateInspector = (key, label) => {
+    const meta = inspectorSeed && typeof inspectorSeed === 'object' ? inspectorSeed[key] : null;
+    if (!(meta && typeof meta === 'object')) {
+      if (inspector instanceof HTMLElement) inspector.textContent = 'Selected: ' + label;
+      setReadout('editor-meta-shot-type', '-');
+      setReadout('editor-meta-render-mode', '-');
+      setReadout('editor-meta-backend', '-');
+      setReadout('editor-meta-acceptance', '-');
+      setReadout('editor-meta-route-reason', '-');
+      setReadout('editor-meta-visuals', '-');
+      setReadout('editor-meta-fallback', '-');
+      setReadout('editor-meta-qc', '-');
+      return;
+    }
+    if (inspector instanceof HTMLElement) inspector.textContent = 'Selected: ' + label;
+    setReadout('editor-meta-shot-type', meta.shotType);
+    setReadout('editor-meta-render-mode', meta.renderModeSummary);
+    setReadout('editor-meta-backend', meta.backend);
+    setReadout('editor-meta-acceptance', [meta.acceptanceStatus, meta.sidecarStatus].filter(Boolean).join(' | '));
+    setReadout('editor-meta-route-reason', meta.routeReason);
+    setReadout('editor-meta-visuals', meta.visualSummary);
+    setReadout('editor-meta-fallback', meta.fallbackSummary);
+    setReadout('editor-meta-qc', [meta.qcSummary, meta.repairSummary].filter((value) => value && value !== '-').join(' | '));
+  };
   const toast = (title, message, tone = 'ok', timeoutMs = 2600) => {
     if (!(toastWrap instanceof HTMLElement)) return;
     const node = document.createElement('div');
@@ -1692,7 +3595,7 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     });
     if (toolbar instanceof HTMLElement) toolbar.hidden = false;
     if (toolbarLabel instanceof HTMLElement) toolbarLabel.textContent = label;
-    if (inspector instanceof HTMLElement) inspector.textContent = 'Selected: ' + label;
+    updateInspector(key, label);
   };
   shell.querySelectorAll('[data-editor-object]').forEach((node) => {
     if (!(node instanceof HTMLElement)) return;
@@ -1783,6 +3686,13 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
   });
   if (searchInput instanceof HTMLInputElement) {
     searchInput.addEventListener('input', applySearch);
+  }
+  const firstShot = shell.querySelector('.editor-shot-row[data-editor-object]');
+  if (firstShot instanceof HTMLElement) {
+    const key = firstShot.dataset.editorObject || '';
+    if (key) {
+      selectObject(key, firstShot.dataset.editorLabel || key);
+    }
   }
 })();
 </script>`;
@@ -2367,6 +4277,639 @@ ${q(request.query, "error") ? `<div class="error">${esc(q(request.query, "error"
     const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
     if (!jobId) return reply.redirect(`/ui/hitl?message=${encodeURIComponent("Rerender requested")}`);
     return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
+  });
+
+  app.get("/ui/rollouts/detail", async (request, reply) => {
+    const requestedPath = q(request.query, "path");
+    if (!requestedPath) {
+      return reply.code(400).type("text/html; charset=utf-8").send(simpleErrorHtml("artifact path is required"));
+    }
+
+    const resolved = resolveRolloutArtifact(requestedPath);
+    if (!resolved) {
+      return reply.code(404).type("text/html; charset=utf-8").send(simpleErrorHtml("artifact path is outside rollout roots or missing"));
+    }
+
+    const rawJson = fs.readFileSync(resolved.resolvedPath, "utf8");
+    const doc = readJsonFileSafe(resolved.resolvedPath);
+    const detailPairs = rolloutDetailPairs(doc);
+    const issues = [
+      ...rolloutDetailItems(isRecord(doc) ? doc.issues : null, 6),
+      ...rolloutDetailItems(isRecord(doc) ? doc.warnings : null, 4),
+      ...rolloutDetailItems(isRecord(doc) ? doc.hardFails : null, 4),
+      ...rolloutDetailItems(isRecord(doc) && isRecord(doc.cross_channel) ? doc.cross_channel.differing_axes : null, 4)
+    ].slice(0, 10);
+    const targetRows = isRecord(doc) && Array.isArray(doc.target_results)
+      ? doc.target_results
+          .flatMap((entry) => {
+            if (!isRecord(entry)) return [];
+            const candidate = isRecord(entry.candidate) ? entry.candidate : {};
+            return [`<tr><td>${esc(str(entry.target) ?? "-")}</td><td><span class="badge ${rolloutTone(normalizeRolloutStatus(str(entry.reason), entry.passed === true))}">${esc(entry.passed === true ? "ready" : normalizeRolloutStatus(str(entry.reason), false).replaceAll("_", " "))}</span></td><td>${esc(formatNumber(candidate.score))}</td><td>${esc(str(candidate.verdict) ?? "-")}</td><td>${esc(str(entry.reason) ?? "-")}</td></tr>`];
+          })
+          .join("")
+      : "";
+    const bundleRows = isRecord(doc) && Array.isArray(doc.bundles)
+      ? doc.bundles
+          .flatMap((entry) => {
+            if (!isRecord(entry)) return [];
+            const summary = isRecord(entry.summary) ? entry.summary : {};
+            return [`<tr><td>${esc(str(entry.bundle) ?? str(entry.channel_domain) ?? "-")}</td><td><span class="badge ${rolloutTone(normalizeRolloutStatus(str(entry.status), entry.ready === true))}">${esc(normalizeRolloutStatus(str(entry.status), entry.ready === true).replaceAll("_", " "))}</span></td><td>${esc(formatNumber(summary.score))}</td><td>${esc(str(summary.verdict) ?? "-")}</td><td>${esc(previewStrings(entry.issues) ?? "-")}</td></tr>`];
+          })
+          .join("")
+      : "";
+    const metricRows = detailPairs.length > 0
+      ? detailPairs.map((pair) => `<div class="status-row"><span class="label">${esc(pair.label)}</span><strong>${esc(pair.value)}</strong></div>`).join("")
+      : `<div class="notice">No structured rollout fields were detected for this artifact.</div>`;
+    const issueList = issues.length > 0
+      ? `<ul>${issues.map((entry) => `<li>${esc(entry)}</li>`).join("")}</ul>`
+      : `<div class="notice">No warnings, issues, or cross-channel notes were found.</div>`;
+    const body = `
+<section class="card dashboard-shell">
+  <div class="section-head">
+    <div>
+      <h1>Rollout Detail</h1>
+      <p class="section-intro">Inspect one benchmark artifact without leaving the SSR ops console.</p>
+    </div>
+    <div class="quick-links"><a href="/ui/rollouts">Back to Rollouts</a><a href="/ui/rollouts/artifact?path=${encodeURIComponent(resolved.resolvedPath)}">Raw JSON</a></div>
+  </div>
+  <div class="summary-grid">
+    <div class="summary-card"><span class="badge muted">source</span><div class="metric">${esc(resolved.source.label)}</div><div class="caption">${esc(resolved.source.outRoot)}</div></div>
+    <div class="summary-card"><span class="badge muted">file</span><div class="metric">${esc(path.basename(resolved.resolvedPath))}</div><div class="caption">${esc(artifactRelativePath(resolved.source.outRoot, resolved.resolvedPath))}</div></div>
+  </div>
+</section>
+<section class="card dashboard-shell">
+  <div class="section-head"><h2>Key Fields</h2><span class="muted-text">Top-level artifact metadata extracted from the JSON.</span></div>
+  <div class="status-list">${metricRows}</div>
+</section>
+<section class="card dashboard-shell">
+  <div class="section-head"><h2>Issues & Notes</h2><span class="muted-text">Warnings, validation issues, and divergence hints.</span></div>
+  ${issueList}
+</section>
+${targetRows ? `<section class="card"><div class="section-head"><h2>Target Results</h2><span class="muted-text">Per-target rollout validation rows.</span></div><div class="table-wrap"><table><thead><tr><th>Target</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th></tr></thead><tbody>${targetRows}</tbody></table></div></section>` : ""}
+${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Results</h2><span class="muted-text">Per-bundle multi-channel validation rows.</span></div><div class="table-wrap"><table><thead><tr><th>Bundle</th><th>Status</th><th>Score</th><th>Verdict</th><th>Issues</th></tr></thead><tbody>${bundleRows}</tbody></table></div></section>` : ""}
+<section class="card">
+  <div class="section-head"><h2>Raw JSON Preview</h2><button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button></div>
+  <pre>${esc(rawJson)}</pre>
+</section>`;
+    return reply.type("text/html; charset=utf-8").send(page("Rollout Detail", body));
+  });
+
+  app.get("/ui/rollouts/artifact", async (request, reply) => {
+    const requestedPath = q(request.query, "path");
+    if (!requestedPath) {
+      return reply.code(400).type("text/html; charset=utf-8").send(simpleErrorHtml("artifact path is required"));
+    }
+
+    const resolved = resolveRolloutArtifact(requestedPath);
+    if (!resolved) {
+      return reply.code(404).type("text/html; charset=utf-8").send(simpleErrorHtml("artifact path is outside rollout roots or missing"));
+    }
+
+    try {
+      return reply.type("application/json; charset=utf-8").send(fs.readFileSync(resolved.resolvedPath, "utf8"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return reply.code(500).type("text/html; charset=utf-8").send(simpleErrorHtml(`Artifact read failed: ${message}`));
+    }
+  });
+
+  app.get("/ui/rollouts/file", async (request, reply) => {
+    const requestedPath = q(request.query, "path");
+    if (!requestedPath) {
+      return reply.code(400).type("text/html; charset=utf-8").send(simpleErrorHtml("file path is required"));
+    }
+
+    const resolved = resolveRolloutFile(requestedPath, [".mp4", ".webm", ".json", ".txt", ".png", ".jpg", ".jpeg", ".webp"]);
+    if (!resolved) {
+      return reply.code(404).type("text/html; charset=utf-8").send(simpleErrorHtml("file path is outside rollout roots or missing"));
+    }
+
+    try {
+      return reply.type(mimeTypeForRolloutFile(resolved.resolvedPath)).send(fs.createReadStream(resolved.resolvedPath));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return reply.code(500).type("text/html; charset=utf-8").send(simpleErrorHtml(`File read failed: ${message}`));
+    }
+  });
+
+  app.get("/ui/benchmarks", async (request, reply) => {
+    const { sources, backendScenarios, regressions } = collectBenchmarkViewerData();
+    const backendReady = backendScenarios.filter((row) => normalizeRolloutStatus(row.status) === "ready").length;
+    const regressionBlocked = regressions.filter((row) => normalizeRolloutStatus(row.status) === "blocked").length;
+    const regressionWarn = regressions.filter((row) => normalizeRolloutStatus(row.status) === "warn").length;
+    const mismatchTotal = regressions.reduce((sum, row) => sum + row.mismatchCount, 0);
+    const summaryCards = [
+      {
+        label: "Backend Scenarios",
+        value: String(backendScenarios.length),
+        tone: "muted" as UiBadgeTone,
+        hint: `${sources.filter((source) => source.exists).length}/${sources.length} artifact roots available`
+      },
+      {
+        label: "Backend Ready",
+        value: String(backendReady),
+        tone: "ok" as UiBadgeTone,
+        hint: "benchmark scenarios with usable outputs"
+      },
+      {
+        label: "Regression Blocked",
+        value: String(regressionBlocked),
+        tone: "bad" as UiBadgeTone,
+        hint: "episode regression reports with errors or failed final check"
+      },
+      {
+        label: "Regression Warn",
+        value: String(regressionWarn),
+        tone: "warn" as UiBadgeTone,
+        hint: "reports that passed but still need operator review"
+      },
+      {
+        label: "Render Drift",
+        value: String(mismatchTotal),
+        tone: mismatchTotal > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
+        hint: "stored vs recommended render-mode mismatches"
+      }
+    ]
+      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
+      .join("");
+
+    const sourceRows = sources
+      .map((source) => {
+        const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
+        const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} artifacts` : "empty";
+        const meta = compact([
+          source.exists ? "scan ok" : "root missing",
+          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts"
+        ]);
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span><button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+      })
+      .join("");
+
+    const backendRows = backendScenarios
+      .map((row) => {
+        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.detailArtifactPath)}`;
+        const rawHref = `/ui/rollouts/artifact?path=${encodeURIComponent(row.detailArtifactPath)}`;
+        const smokeHref = row.smokeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}` : "";
+        const planHref = row.planArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.planArtifactPath)}` : "";
+        const candidateLinks = row.candidateCompareItems
+          .map((item) => `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(item.path)}">${esc(item.label)}</a>`)
+          .join("");
+        return `<tr>
+          <td><div class="table-note"><strong>${esc(row.backend)}</strong><span class="muted-text">${esc(`${row.benchmarkKind} / ${row.renderer}`)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${rawHref}">Raw JSON</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.detailArtifactPath)}">Copy path</button></div></div></td>
+          <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
+          <td>${esc(row.latencyMs)}</td>
+          <td>${esc(row.acceptanceRate)}</td>
+          <td>${esc(row.failureRate)}</td>
+          <td>${esc(row.notes)}</td>
+          <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
+        </tr>`;
+      })
+      .join("");
+
+    const regressionRows = regressions
+      .map((row) => {
+        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.artifactPath)}`;
+        const rawHref = `/ui/rollouts/artifact?path=${encodeURIComponent(row.artifactPath)}`;
+        const smokeHref = row.smokeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}` : "";
+        const renderModeHref = row.renderModeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.renderModeArtifactPath)}` : "";
+        const candidateLinks = row.candidateCompareItems
+          .map((item) => `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(item.path)}">${esc(item.label)}</a>`)
+          .join("");
+        return `<tr>
+          <td><div class="table-note"><strong>${esc(row.benchmarkName)}</strong><span class="muted-text">${esc(row.bundlePath)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${rawHref}">Raw JSON</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.artifactPath)}">Copy path</button></div></div></td>
+          <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
+          <td>${esc(`${row.warningCount} warn / ${row.errorCount} err`)}</td>
+          <td>${esc(row.profileSummary)}</td>
+          <td>${esc(row.renderModeSummary)}</td>
+          <td>${esc(row.issueSummary)}</td>
+          <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
+        </tr>`;
+      })
+      .join("");
+
+    const benchmarksBody = buildBenchmarksPageBody({
+      flash: flashHtml(request.query),
+      summaryCards,
+      sourceRows: sourceRows || `<div class="notice">No benchmark artifact sources configured.</div>`,
+      backendRows,
+      regressionRows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Benchmarks", benchmarksBody));
+  });
+
+  app.get("/ui/benchmarks/candidates", async (request, reply) => {
+    const requestedPath = q(request.query, "path");
+    if (!requestedPath) {
+      return reply.code(400).type("text/html; charset=utf-8").send(simpleErrorHtml("candidate compare path is required"));
+    }
+
+    const bundle = resolveCandidateCompareBundle(requestedPath);
+    if (!bundle) {
+      return reply.code(404).type("text/html; charset=utf-8").send(simpleErrorHtml("candidate compare artifacts are missing or outside rollout roots"));
+    }
+
+    const planDoc = bundle.planPath ? readJsonFileSafe(bundle.planPath) : null;
+    const requestDoc = bundle.requestPath ? readJsonFileSafe(bundle.requestPath) : null;
+    const promptText = bundle.promptPath ? readTextFileSafe(bundle.promptPath) : null;
+    const candidateJudgeDoc = bundle.candidateJudgePath ? readJsonFileSafe(bundle.candidateJudgePath) : null;
+    const actualJudgeDoc = bundle.actualJudgePath ? readJsonFileSafe(bundle.actualJudgePath) : null;
+    const shotId =
+      str(isRecord(planDoc) ? planDoc.shot_id : undefined) ??
+      str(isRecord(candidateJudgeDoc) ? candidateJudgeDoc.shot_id : undefined) ??
+      str(isRecord(actualJudgeDoc) ? actualJudgeDoc.shot_id : undefined) ??
+      bundle.stem;
+    const episodeId =
+      str(isRecord(planDoc) ? planDoc.episode_id : undefined) ??
+      str(isRecord(candidateJudgeDoc) ? candidateJudgeDoc.episode_id : undefined) ??
+      str(isRecord(actualJudgeDoc) ? actualJudgeDoc.episode_id : undefined) ??
+      "-";
+    const renderer =
+      str(isRecord(planDoc) ? planDoc.renderer : undefined) ??
+      str(isRecord(requestDoc) ? requestDoc.renderer : undefined) ??
+      str(isRecord(actualJudgeDoc) ? actualJudgeDoc.renderer : undefined) ??
+      "-";
+    const backend =
+      str(isRecord(planDoc) ? planDoc.backend : undefined) ??
+      str(isRecord(requestDoc) ? requestDoc.backend : undefined) ??
+      str(isRecord(actualJudgeDoc) ? actualJudgeDoc.backend : undefined) ??
+      "-";
+    const requestReference = isRecord(requestDoc) && isRecord(requestDoc.reference_bundle) ? requestDoc.reference_bundle : {};
+    const selectedView = str(requestReference.selected_view) ?? str(isRecord(requestDoc) ? requestDoc.requested_reference_view : undefined);
+    const selectedImagePath = str(requestReference.selected_image_path);
+    const promptSource = promptText ?? str(isRecord(requestDoc) ? requestDoc.prompt : undefined) ?? "";
+    const plannedSelectionId = str(isRecord(candidateJudgeDoc) ? candidateJudgeDoc.selected_candidate_id : undefined);
+    const actualSelectionId = str(isRecord(actualJudgeDoc) ? actualJudgeDoc.selected_candidate_id : undefined);
+
+    type CandidateRow = {
+      candidateId: string;
+      objective: string;
+      plannedSelected: boolean;
+      actualSelected: boolean;
+      plannedScore: number | null;
+      actualScore: number | null;
+      priorScore: number | null;
+      seedOverride: string;
+      tags: string[];
+      promptAdditions: string[];
+      negativePromptAdditions: string[];
+      latencyMs: number | null;
+      qcPassed: boolean | null;
+      qcReasons: string[];
+      qcWarnings: string[];
+      visualSignalScore: number | null;
+      scoreBreakdown: Array<{ label: string; value: string }>;
+      resultPath: string | null;
+      visualJudgePath: string | null;
+      workflowPath: string | null;
+      preflightPath: string | null;
+      videoPath: string | null;
+      notes: string[];
+    };
+
+    const candidateMap = new Map<string, CandidateRow>();
+    const ensureCandidate = (candidateId: string): CandidateRow => {
+      const existing = candidateMap.get(candidateId);
+      if (existing) return existing;
+      const created: CandidateRow = {
+        candidateId,
+        objective: "-",
+        plannedSelected: false,
+        actualSelected: false,
+        plannedScore: null,
+        actualScore: null,
+        priorScore: null,
+        seedOverride: "-",
+        tags: [],
+        promptAdditions: [],
+        negativePromptAdditions: [],
+        latencyMs: null,
+        qcPassed: null,
+        qcReasons: [],
+        qcWarnings: [],
+        visualSignalScore: null,
+        scoreBreakdown: [],
+        resultPath: null,
+        visualJudgePath: null,
+        workflowPath: null,
+        preflightPath: null,
+        videoPath: null,
+        notes: []
+      };
+      candidateMap.set(candidateId, created);
+      return created;
+    };
+
+    if (isRecord(candidateJudgeDoc)) {
+      for (const raw of recordList(candidateJudgeDoc.candidates)) {
+        const candidateId = str(raw.candidate_id);
+        if (!candidateId) continue;
+        const row = ensureCandidate(candidateId);
+        row.objective = str(raw.objective) ?? row.objective;
+        row.plannedSelected = plannedSelectionId === candidateId;
+        row.plannedScore = num(raw.score);
+        row.seedOverride = str(raw.seed_override) ?? row.seedOverride;
+        row.promptAdditions = uniqueStrings((Array.isArray(raw.prompt_additions) ? raw.prompt_additions : []).map((item) => str(item)));
+        row.negativePromptAdditions = uniqueStrings((Array.isArray(raw.negative_prompt_additions) ? raw.negative_prompt_additions : []).map((item) => str(item)));
+        row.tags = uniqueStrings([
+          ...row.tags,
+          ...(Array.isArray(raw.reasoning_tags) ? raw.reasoning_tags : []).map((item) => str(item))
+        ]);
+        const breakdown = isRecord(raw.score_breakdown) ? raw.score_breakdown : {};
+        const scoreBreakdownEntries: Array<[string, unknown]> = [
+          ["face", breakdown.face_stability],
+          ["motion", breakdown.motion_coherence],
+          ["silhouette", breakdown.silhouette_readability],
+          ["identity", breakdown.mascot_identity_preservation],
+          ["safe", breakdown.safe_zone_readiness],
+          ["total", breakdown.total]
+        ];
+        row.scoreBreakdown = scoreBreakdownEntries
+          .map(([label, value]) => ({ label, value: formatNumber(value) }))
+          .filter((item) => item.value !== "-");
+      }
+    }
+
+    if (isRecord(actualJudgeDoc)) {
+      for (const raw of recordList(actualJudgeDoc.candidates)) {
+        const candidateId = str(raw.candidate_id);
+        if (!candidateId) continue;
+        const row = ensureCandidate(candidateId);
+        row.objective = str(raw.objective) ?? row.objective;
+        row.actualSelected = actualSelectionId === candidateId || raw.selected === true;
+        row.actualScore = num(raw.output_score);
+        row.priorScore = num(raw.prior_score);
+        row.seedOverride = str(raw.seed_override) ?? row.seedOverride;
+        row.latencyMs = num(raw.latency_ms);
+        row.qcPassed = typeof raw.qc_passed === "boolean" ? raw.qc_passed : null;
+        row.qcReasons = uniqueStrings((Array.isArray(raw.qc_reasons) ? raw.qc_reasons : []).map((item) => str(item)));
+        row.qcWarnings = uniqueStrings((Array.isArray(raw.qc_warnings) ? raw.qc_warnings : []).map((item) => str(item)));
+        row.visualSignalScore = num(raw.visual_signal_score);
+        row.resultPath = safeJsonArtifactPath(bundle.source, raw.result_path);
+        row.visualJudgePath = safeJsonArtifactPath(bundle.source, raw.visual_signal_report_path);
+        row.workflowPath = safeJsonArtifactPath(bundle.source, raw.workflow_path);
+        row.preflightPath = safeJsonArtifactPath(bundle.source, raw.preflight_path);
+        row.videoPath = safeRolloutVideoPath(bundle.source, raw.output_video_path);
+        row.tags = uniqueStrings([
+          ...row.tags,
+          ...(Array.isArray(raw.reasoning_tags) ? raw.reasoning_tags : []).map((item) => str(item))
+        ]);
+        row.notes = uniqueStrings([
+          ...(row.notes ?? []),
+          ...(Array.isArray(raw.visual_signal_warnings) ? raw.visual_signal_warnings : []).map((item) => str(item)),
+          str(raw.error)
+        ]);
+      }
+    }
+
+    const candidateRows = Array.from(candidateMap.values()).sort((left, right) => {
+      if (left.actualSelected !== right.actualSelected) return left.actualSelected ? -1 : 1;
+      if (left.plannedSelected !== right.plannedSelected) return left.plannedSelected ? -1 : 1;
+      const rightActual = right.actualScore ?? -1;
+      const leftActual = left.actualScore ?? -1;
+      if (leftActual !== rightActual) return rightActual - leftActual;
+      const rightPlanned = right.plannedScore ?? -1;
+      const leftPlanned = left.plannedScore ?? -1;
+      if (leftPlanned !== rightPlanned) return rightPlanned - leftPlanned;
+      return left.candidateId.localeCompare(right.candidateId);
+    });
+
+    const summaryCards = [
+      {
+        label: "Prompt Winner",
+        value: str(isRecord(candidateJudgeDoc) ? candidateJudgeDoc.selected_objective : undefined) ?? "-",
+        tone: "ok" as UiBadgeTone,
+        hint: str(isRecord(candidateJudgeDoc) ? candidateJudgeDoc.selection_reason : undefined) ?? "prompt candidate judge"
+      },
+      {
+        label: "Actual Winner",
+        value: str(isRecord(actualJudgeDoc) ? actualJudgeDoc.selected_objective : undefined) ?? "-",
+        tone: "ok" as UiBadgeTone,
+        hint: str(isRecord(actualJudgeDoc) ? actualJudgeDoc.selection_reason : undefined) ?? "actual output judge"
+      },
+      {
+        label: "Candidates",
+        value: String(candidateRows.length),
+        tone: "muted" as UiBadgeTone,
+        hint: compact([renderer !== "-" ? renderer : null, backend !== "-" ? backend : null]) || "sidecar compare set"
+      },
+      {
+        label: "Reference View",
+        value: selectedView ?? "-",
+        tone: "warn" as UiBadgeTone,
+        hint: selectedImagePath ? path.basename(selectedImagePath) : "reference bundle"
+      }
+    ]
+      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric" style="font-size:18px">${esc(humanizeOpsLabel(card.value))}</div><div class="caption">${esc(card.hint)}</div></div>`)
+      .join("");
+
+    const requestSummary = compact([
+      str(isRecord(requestDoc) ? requestDoc.controlnet_preset : undefined),
+      str(isRecord(requestDoc) ? requestDoc.impact_preset : undefined),
+      str(isRecord(requestDoc) ? requestDoc.qc_preset : undefined),
+      str(isRecord(requestDoc) ? requestDoc.render_quality : undefined)
+    ]);
+
+    const topLinks = [
+      bundle.planPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(bundle.planPath)}">Plan</a>` : "",
+      bundle.requestPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(bundle.requestPath)}">Request</a>` : "",
+      bundle.candidateJudgePath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(bundle.candidateJudgePath)}">Prompt Judge</a>` : "",
+      bundle.actualJudgePath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(bundle.actualJudgePath)}">Actual Judge</a>` : "",
+      `<button type="button" class="secondary" data-copy="${esc(bundle.requestedPath)}">Copy path</button>`
+    ]
+      .filter((item) => item.length > 0)
+      .join("");
+
+    const compareTableRows = candidateRows
+      .map((row) => {
+        const delta = row.actualScore !== null && row.plannedScore !== null ? row.actualScore - row.plannedScore : null;
+        const detailLinks = [
+          row.resultPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.resultPath)}">Result</a>` : "",
+          row.visualJudgePath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.visualJudgePath)}">Visual Judge</a>` : "",
+          row.preflightPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.preflightPath)}">Preflight</a>` : "",
+          row.videoPath ? `<a href="/ui/rollouts/file?path=${encodeURIComponent(row.videoPath)}">Open Video</a>` : ""
+        ]
+          .filter((item) => item.length > 0)
+          .join("");
+        const qcLabel =
+          row.qcPassed === null
+            ? "-"
+            : row.qcPassed
+              ? `passed${row.qcWarnings.length > 0 ? ` / ${summarizeValues(row.qcWarnings, 2)}` : ""}`
+              : `failed / ${summarizeValues(row.qcReasons, 2)}`;
+        return `<tr>
+          <td><div class="table-note"><strong>${esc(humanizeOpsLabel(row.objective))}</strong><span class="muted-text">${esc(row.candidateId)}</span><span class="muted-text">${esc(summarizeValues(row.tags, 4))}</span><div class="inline-actions">${row.plannedSelected ? '<span class="badge ok">prompt selected</span>' : ''}${row.actualSelected ? '<span class="badge warn">actual selected</span>' : ''}</div></div></td>
+          <td>${esc(row.plannedScore === null ? "-" : formatNumber(row.plannedScore))}</td>
+          <td>${esc(row.actualScore === null ? "-" : formatNumber(row.actualScore))}</td>
+          <td>${esc(delta === null ? "-" : formatNumber(delta, 2))}</td>
+          <td>${esc(qcLabel)}</td>
+          <td>${esc(row.latencyMs === null ? "-" : `${Math.round(row.latencyMs)} ms`)}</td>
+          <td>${esc(row.visualSignalScore === null ? "-" : formatNumber(row.visualSignalScore))}</td>
+          <td><div class="inline-actions">${detailLinks || "-"}</div></td>
+        </tr>`;
+      })
+      .join("");
+
+    const candidateCards = candidateRows
+      .map((row) => {
+        const videoHref = row.videoPath ? `/ui/rollouts/file?path=${encodeURIComponent(row.videoPath)}` : "";
+        const detailLinks = [
+          row.resultPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.resultPath)}">Result JSON</a>` : "",
+          row.visualJudgePath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.visualJudgePath)}">Visual Judge</a>` : "",
+          row.workflowPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.workflowPath)}">Workflow</a>` : "",
+          row.preflightPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.preflightPath)}">Preflight</a>` : ""
+        ]
+          .filter((item) => item.length > 0)
+          .join("");
+        const breakdown = row.scoreBreakdown
+          .map((item) => `<span class="editor-chip">${esc(item.label)} ${esc(item.value)}</span>`)
+          .join("");
+        return `<section class="card">
+          <div class="section-head">
+            <div>
+              <h2>${esc(humanizeOpsLabel(row.objective))}</h2>
+              <p class="section-intro">${esc(row.candidateId)}</p>
+            </div>
+            <div class="inline-actions">${row.plannedSelected ? '<span class="badge ok">prompt selected</span>' : ''}${row.actualSelected ? '<span class="badge warn">actual selected</span>' : ''}</div>
+          </div>
+          ${videoHref ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:10px" src="${videoHref}"></video>` : `<div class="notice">Actual output video is not available for this candidate.</div>`}
+          <div class="grid two" style="margin-top:10px">
+            <div class="form-card">
+              <h3>Prompt Candidate</h3>
+              <p>planned score: <strong>${esc(row.plannedScore === null ? "-" : formatNumber(row.plannedScore))}</strong></p>
+              <p>seed: <strong>${esc(row.seedOverride)}</strong></p>
+              <p>prompt additions: <strong>${esc(summarizeValues(row.promptAdditions, 4))}</strong></p>
+              <p>negative additions: <strong>${esc(summarizeValues(row.negativePromptAdditions, 4))}</strong></p>
+              <div class="inline-actions">${breakdown || '<span class="muted-text">No prompt score breakdown.</span>'}</div>
+            </div>
+            <div class="form-card">
+              <h3>Actual Output</h3>
+              <p>actual score: <strong>${esc(row.actualScore === null ? "-" : formatNumber(row.actualScore))}</strong></p>
+              <p>latency: <strong>${esc(row.latencyMs === null ? "-" : `${Math.round(row.latencyMs)} ms`)}</strong></p>
+              <p>QC: <strong>${esc(row.qcPassed === null ? "-" : row.qcPassed ? "passed" : "failed")}</strong></p>
+              <p>qc warnings: <strong>${esc(summarizeValues(row.qcWarnings, 3))}</strong></p>
+              <p>qc reasons: <strong>${esc(summarizeValues(row.qcReasons, 3))}</strong></p>
+              <p>visual signal: <strong>${esc(row.visualSignalScore === null ? "-" : formatNumber(row.visualSignalScore))}</strong></p>
+            </div>
+          </div>
+          <div class="quick-links" style="margin-top:10px">${detailLinks || '<span class="muted-text">No detailed artifacts for this candidate.</span>'}${videoHref ? `<a href="${videoHref}">Open Video</a>` : ""}</div>
+          ${row.notes.length > 0 ? `<div class="notice" style="margin-top:10px">notes: ${esc(summarizeValues(row.notes, 4))}</div>` : ""}
+        </section>`;
+      })
+      .join("");
+
+    const body = `
+<section class="card dashboard-shell">
+  <div class="section-head">
+    <div>
+      <h1>Sidecar Candidate Compare</h1>
+      <p class="section-intro">Prompt candidate scoring vs actual sidecar output scoring for one shot.</p>
+    </div>
+    <div class="quick-links"><a href="/ui/benchmarks">Back to Benchmarks</a><a href="/ui/rollouts">Open Rollouts</a></div>
+  </div>
+  ${flashHtml(request.query)}
+  <p>episodeId: <strong>${esc(episodeId)}</strong> | shotId: <strong>${esc(shotId)}</strong></p>
+  <p>renderer: <strong>${esc(renderer)}</strong> | backend: <strong>${esc(backend)}</strong></p>
+  <p>preset stack: <strong>${esc(requestSummary || "-")}</strong></p>
+  <p>reference view: <strong>${esc(selectedView ?? "-")}</strong> ${selectedImagePath ? `| <span class="mono">${esc(selectedImagePath)}</span>` : ""}</p>
+  <div class="summary-grid">${summaryCards}</div>
+  <div class="quick-links" style="margin-top:10px">${topLinks}</div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>Candidate Score Matrix</h2><span class="muted-text">Compare prompt selection score against actual rendered output score.</span></div>
+  <div class="table-wrap"><table><thead><tr><th>Candidate</th><th>Prompt Score</th><th>Actual Score</th><th>Delta</th><th>QC</th><th>Latency</th><th>Visual Signal</th><th>Artifacts</th></tr></thead><tbody>${compareTableRows || '<tr><td colspan="8"><div class="notice">No candidate judge rows found.</div></td></tr>'}</tbody></table></div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>Request Context</h2><span class="muted-text">Prompt and reference bundle that produced this candidate set.</span></div>
+  <div class="grid two">
+    <div class="form-card">
+      <h3>Reference Bundle</h3>
+      <p>selected view: <strong>${esc(selectedView ?? "-")}</strong></p>
+      <p>available views: <strong>${esc(summarizeValues(Array.isArray(requestReference.available_views) ? requestReference.available_views.map((item) => str(item)) : [], 4))}</strong></p>
+      <p>selection reasons: <strong>${esc(summarizeValues(Array.isArray(requestReference.selection_reasons) ? requestReference.selection_reasons.map((item) => str(item)) : [], 5))}</strong></p>
+    </div>
+    <div class="form-card">
+      <h3>Prompt Preview</h3>
+      <pre>${esc(promptSource || "prompt.txt not available")}</pre>
+    </div>
+  </div>
+</section>
+<section class="grid two">
+  ${candidateCards || '<div class="notice">No candidate detail cards found.</div>'}
+</section>`;
+    return reply.type("text/html; charset=utf-8").send(page(`Candidate Compare ${shotId}`, body));
+  });
+
+  app.get("/ui/rollouts", async (request, reply) => {
+    const { sources, signals } = collectRolloutSignals();
+    const stats = {
+      total: signals.length,
+      ready: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "ready").length,
+      blocked: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "blocked").length,
+      belowMinScore: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "below_min_score").length,
+      divergence: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "divergence").length
+    };
+    const summaryCards = [
+      {
+        label: "Signals",
+        value: String(stats.total),
+        tone: "muted" as UiBadgeTone,
+        hint: `${sources.filter((source) => source.exists).length}/${sources.length} artifact roots available`
+      },
+      {
+        label: "Ready",
+        value: String(stats.ready),
+        tone: "ok" as UiBadgeTone,
+        hint: "usable or no-change rollout states"
+      },
+      {
+        label: "Blocked",
+        value: String(stats.blocked),
+        tone: "bad" as UiBadgeTone,
+        hint: "failed promotion or inspection states"
+      },
+      {
+        label: "Below Min",
+        value: String(stats.belowMinScore),
+        tone: "bad" as UiBadgeTone,
+        hint: "scores under rollout threshold"
+      },
+      {
+        label: "Divergence",
+        value: String(stats.divergence),
+        tone: "warn" as UiBadgeTone,
+        hint: "cross-channel drift to inspect"
+      }
+    ]
+      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
+      .join("");
+
+    const sourceRows = sources
+      .map((source) => {
+        const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
+        const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} signals` : "empty";
+        const meta = compact([
+          source.exists ? "scan ok" : "root missing",
+          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts"
+        ]);
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span><button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+      })
+      .join("");
+
+    const rows = signals
+      .map((signal) => {
+        const artifactHref = `/ui/rollouts/artifact?path=${encodeURIComponent(signal.artifactPath)}`;
+        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(signal.artifactPath)}`;
+        return `<tr><td><div class="table-note"><strong>${esc(signal.kind)}</strong><span class="muted-text">${esc(`${signal.scope} / ${signal.target}`)}</span><span class="mono">${esc(signal.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${artifactHref}">Raw JSON</a><button type="button" class="secondary" data-copy="${esc(signal.artifactPath)}">Copy path</button></div></div></td><td><span class="badge ${signal.tone}">${esc(rolloutStatusLabel(signal.status))}</span></td><td>${esc(signal.score)}</td><td>${esc(signal.verdict)}</td><td>${esc(signal.reason || "-")}</td><td>${fmtDate(signal.generatedAt)}</td><td><div class="stack"><strong>${esc(signal.sourceLabel)}</strong><span class="mono">${esc(signal.sourcePath)}</span></div></td></tr>`;
+      })
+      .join("");
+
+    const rolloutsBody = buildRolloutsPageBody({
+      flash: flashHtml(request.query),
+      summaryCards,
+      sourceRows: sourceRows || `<div class="notice">No rollout artifact sources configured.</div>`,
+      rows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Rollouts", rolloutsBody));
   });
 
   app.get("/ui/artifacts", async (request, reply) => {

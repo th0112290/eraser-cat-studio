@@ -68,6 +68,31 @@ export const UI_TEXT = {
     indexFilterPlaceholder: "Search by file / path",
     noArtifacts: "No artifacts found."
   },
+  rollouts: {
+    title: "Rollouts",
+    subtitle: "Benchmark and rollout JSON artifacts across local, sidecar, and main-repo out/ roots.",
+    openHealth: "Open Health",
+    openArtifacts: "Open Artifacts",
+    sourcesTitle: "Artifact Sources",
+    sourcesHint: "The board scans candidate out/ roots in priority order and tolerates missing data.",
+    tableTitle: "Rollout Signals",
+    filterPlaceholder: "Search by signal / status / verdict / source",
+    noSignals: "No rollout or benchmark artifacts found."
+  },
+  benchmarks: {
+    title: "Benchmarks",
+    subtitle: "Backend benchmark matrices and episode regression reports across local, sidecar, and main-repo out/ roots.",
+    openRollouts: "Open Rollouts",
+    openArtifacts: "Open Artifacts",
+    sourcesTitle: "Benchmark Sources",
+    sourcesHint: "The viewer scans shared out/ roots and tolerates missing JSON artifacts.",
+    backendTitle: "Backend Benchmark Matrix",
+    backendFilterPlaceholder: "Search by benchmark / backend / renderer / status",
+    noBackendRows: "No backend benchmark matrices found.",
+    regressionTitle: "Episode Regression Reports",
+    regressionFilterPlaceholder: "Search by bundle / profile / issue / source",
+    noRegressionRows: "No episode regression reports found."
+  },
   common: {
     searchPlaceholder: "Search",
     details: "Details",

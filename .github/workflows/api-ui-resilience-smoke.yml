@@ -16,7 +16,10 @@ on:
       - "packages/story/**"
       - "scripts/smokeUiRoutes.mjs"
       - "scripts/smokeUiVisualContract.mjs"
+      - "scripts/captureUiSnapshots.mjs"
       - "docs/ui-smoke-checklist.md"
+      - "docs/gpu-runner-ops.md"
+      - "docs/rollout-failure-runbook.md"
       - "package.json"
       - "pnpm-lock.yaml"
   workflow_dispatch:
@@ -103,13 +106,28 @@ jobs:
         run: pnpm smoke:ui:up
 
       - name: Smoke UI visual contract
+        if: always()
         run: pnpm smoke:ui:visual
 
+      - name: Capture UI snapshots in DB-up mode
+        if: always()
+        env:
+          SMOKE_CAPTURE_LABEL: db-up
+        run: pnpm smoke:ui:capture
+
       - name: Stop postgres for DB-down mode
+        if: always()
         run: docker compose -f docker/docker-compose.yml stop postgres
 
       - name: Smoke UI in DB-down mode
+        if: always()
         run: pnpm smoke:ui:down
+
+      - name: Capture UI snapshots in DB-down mode
+        if: always()
+        env:
+          SMOKE_CAPTURE_LABEL: db-down
+        run: pnpm smoke:ui:capture
 
       - name: Upload logs
         if: always()
@@ -119,6 +137,7 @@ jobs:
           path: |
             api.log
             out/smoke_e2e_last.json
+            out/ui_smoke_snapshots/**
           if-no-files-found: ignore
 
       - name: Stop API
