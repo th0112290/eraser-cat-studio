@@ -13,6 +13,8 @@ export function renderUiPage(title: string, body: string): string {
 :root{--bg:#eef4f3;--bg2:#e2ecea;--ink:#102126;--muted:#405663;--line:#c4d7dc;--card:#ffffffec;--card-strong:#ffffff;--primary:#0e7a74;--primary-ink:#f1fffc;--accent:#d97706;--good:#166534;--warn:#975a16;--bad:#b42318;--soft:#f6fbfb;--ring:#7cc9c3;--shadow:#11354622}
 *{box-sizing:border-box}
 body{margin:0;font-family:"SUIT Variable","Sora","Pretendard Variable","Noto Sans KR",sans-serif;color:var(--ink);background:radial-gradient(980px 420px at 16% -8%,#caebe5 0,#caebe500 72%),radial-gradient(980px 520px at 88% -18%,#ffe4c7 0,#ffe4c700 70%),linear-gradient(180deg,var(--bg),var(--bg2));min-height:100vh}
+.skip-link{position:absolute;left:16px;top:-44px;padding:8px 12px;border-radius:10px;background:#0f172a;color:#f8fbff;font-weight:700;z-index:30;transition:top .15s ease}
+.skip-link:focus{top:12px}
 header{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:#ffffffbf;border-bottom:1px solid #b7ccd2}
 nav{max-width:1240px;margin:0 auto;padding:11px 18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 nav strong{margin-right:auto;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#0c3f3b}
@@ -40,8 +42,18 @@ main{max-width:1240px;margin:20px auto;padding:0 18px 28px;display:grid;gap:14px
 .link-grid a{display:block;padding:10px 12px;border:1px solid #d0dfef;border-radius:10px;background:#f8fbff;color:#114a45;font-weight:700}
 .link-grid a:hover{text-decoration:none;background:#edf7f4;border-color:#bdded8}
 .guide-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.summary-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(148px,1fr))}
+.summary-card{display:grid;gap:6px;padding:12px;border:1px solid #dbe7f3;background:#f8fbff;border-radius:14px}
+.summary-card .metric{font-size:26px;font-weight:800;letter-spacing:-.03em}
+.summary-card .caption{font-size:12px;color:#5b687a;line-height:1.4}
 .section-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.section-intro{margin:0;color:#4b5f69;line-height:1.5}
 .muted-text{color:#55657a;font-size:12px}
+.stack{display:grid;gap:4px}
+.table-note{display:grid;gap:4px}
+.inline-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.inline-actions button{padding:6px 9px}
+.mono{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:12px;word-break:break-all}
 .table-wrap{overflow:auto;border:1px solid #d3e2eb;border-radius:14px;background:#fff}
 .table-wrap table{border:none;border-radius:0;min-width:720px}
 .table-wrap th{position:sticky;top:0;z-index:1}
@@ -79,7 +91,7 @@ pre{margin:0;background:#0f172a;color:#d6e4ff;padding:11px;border-radius:10px;ov
 .shortcut-card h2{margin:0 0 8px}.shortcut-card table{font-size:14px}
 .sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}main>.card{animation:fadeUp .34s ease both}main>.card:nth-child(2){animation-delay:.04s}main>.card:nth-child(3){animation-delay:.08s}main>.card:nth-child(4){animation-delay:.12s}@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-width:720px){nav{gap:8px;padding:10px 12px}main{padding:0 12px 22px}.card{border-radius:13px;padding:12px}th,td{padding:7px;font-size:12px}.status-row{padding:7px 9px}.quick-grid{grid-template-columns:1fr}.table-wrap table{min-width:620px}.actions{gap:6px}.field small{font-size:11px}}
-</style></head><body><header><nav><strong>Eraser Cat Console</strong><a href="/ui">Dashboard</a><a href="/ui/studio">Studio</a><a href="/ui/jobs">Jobs</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/hitl">HITL</a><a href="/ui/episodes">Episodes</a><a href="/ui/publish">Publish</a><a href="/ui/health">Health</a><a href="/ui/artifacts">Artifacts</a><button id="shortcut-open" type="button" class="secondary" title="Keyboard shortcuts (?)">?</button></nav></header><main>${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>Keyboard Shortcuts</h2><table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody><tr><td>?</td><td>Toggle help</td></tr><tr><td>g → e</td><td>Go to episodes</td></tr><tr><td>g → j</td><td>Go to jobs</td></tr><tr><td>g → h</td><td>Go to health</td></tr><tr><td>r</td><td>Run primary action</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">Close</button></div></div></div><script>
+</style></head><body><a class="skip-link" href="#main-content">Skip to main content</a><header><nav><strong>Eraser Cat Console</strong><a href="/ui">Dashboard</a><a href="/ui/studio">Studio</a><a href="/ui/jobs">Jobs</a><a href="/ui/assets">Assets</a><a href="/ui/characters">Characters</a><a href="/ui/character-generator">Character Generator</a><a href="/ui/hitl">HITL</a><a href="/ui/episodes">Episodes</a><a href="/ui/publish">Publish</a><a href="/ui/health">Health</a><a href="/ui/rollouts">Rollouts</a><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/profiles">Profiles</a><a href="/ui/artifacts">Artifacts</a><button id="shortcut-open" type="button" class="secondary" title="Keyboard shortcuts (?)" aria-label="Open keyboard shortcuts">?</button></nav></header><main id="main-content">${body}</main><div id="global-live" class="sr-live" aria-live="polite"></div><div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div><div id="shortcut-help" class="shortcut-help"><div class="shortcut-card"><h2>Keyboard Shortcuts</h2><table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody><tr><td>?</td><td>Toggle help</td></tr><tr><td>g → e</td><td>Go to episodes</td></tr><tr><td>g → j</td><td>Go to jobs</td></tr><tr><td>g → h</td><td>Go to health</td></tr><tr><td>r</td><td>Run primary action</td></tr></tbody></table><div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">Close</button></div></div></div><script>
 (() => {
   const toastWrap = document.getElementById('toast-wrap');
   const live = document.getElementById('global-live');
