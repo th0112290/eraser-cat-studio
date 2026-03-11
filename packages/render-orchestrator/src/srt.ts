@@ -1,33 +1,57 @@
-import type { AlignmentHook, DeterministicSequence, SubtitleCue } from "./types";
+import type { AlignmentHook, DeterministicSequence, SubtitleAlignmentContext, SubtitleCue } from "./types";
 
 const EMPHASIS_MARKER = /[*]{1,2}([^*]+)[*]{1,2}/g;
+const SUBTITLE_BREAK_WORDS = new Set(["and", "but", "so", "because", "while", "then", "with", "when", "if"]);
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
 function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return 1;
-  }
-  return trimmed.split(/\s+/).length;
+  const tokens = text.match(/[A-Za-z0-9']+/g);
+  return tokens && tokens.length > 0 ? tokens.length : 1;
 }
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function splitLongLine(line: string, maxWords: number): string[] {
+function normalizeBreakToken(token: string): string {
+  return token.toLowerCase().replace(/<<|>>/g, "").replace(/[^a-z0-9']/g, "").trim();
+}
+
+function splitPhraseLine(line: string, maxWords: number = 8): string[] {
   const words = line.trim().split(/\s+/).filter((word) => word.length > 0);
   if (words.length <= maxWords) {
     return [line.trim()];
   }
 
   const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += maxWords) {
-    chunks.push(words.slice(i, i + maxWords).join(" "));
+  let cursor = 0;
+  while (cursor < words.length) {
+    const remaining = words.length - cursor;
+    if (remaining <= maxWords) {
+      chunks.push(words.slice(cursor).join(" "));
+      break;
+    }
+
+    const maxEnd = Math.min(words.length, cursor + maxWords);
+    let splitIndex = maxEnd;
+
+    for (let i = maxEnd; i > cursor + 3; i -= 1) {
+      const previous = words[i - 1] ?? "";
+      const next = words[i] ?? "";
+      const nextNormalized = normalizeBreakToken(next);
+      if (/[,:;!?]$/.test(previous) || /^<</.test(next) || SUBTITLE_BREAK_WORDS.has(nextNormalized)) {
+        splitIndex = i;
+        break;
+      }
+    }
+
+    chunks.push(words.slice(cursor, splitIndex).join(" "));
+    cursor = splitIndex;
   }
+
   return chunks;
 }
 
@@ -38,27 +62,16 @@ function splitNarration(text: string): string[] {
   }
 
   const sentenceParts = trimmed
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<=[.!?,;:])\s+/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
 
   const baseParts = sentenceParts.length > 0 ? sentenceParts : [trimmed];
   const lines: string[] = [];
   for (const part of baseParts) {
-    lines.push(...splitLongLine(part, 10));
+    lines.push(...splitPhraseLine(part, 8));
   }
   return lines.filter((line) => line.length > 0);
-}
-
-function collectMarkerWords(text: string): string[] {
-  const words = new Set<string>();
-  for (const match of text.matchAll(EMPHASIS_MARKER)) {
-    const token = match[1]?.trim();
-    if (token) {
-      words.add(token);
-    }
-  }
-  return Array.from(words);
 }
 
 export function applyEmphasis(rawText: string, emphasisWords: string[]): string {
@@ -68,12 +81,11 @@ export function applyEmphasis(rawText: string, emphasisWords: string[]): string 
   });
 
   const uniqueWords = new Set<string>([
-    ...collectMarkerWords(rawText),
     ...emphasisWords.map((word) => word.trim()).filter((word) => word.length > 0)
   ]);
 
   for (const word of uniqueWords) {
-    const matcher = new RegExp(`\\b${escapeRegExp(word)}\\b`, "gi");
+    const matcher = new RegExp(`(?<!<)\\b${escapeRegExp(word)}\\b(?!>)`, "gi");
     text = text.replace(matcher, (token) => `<<${token.toUpperCase()}>>`);
   }
 
@@ -115,6 +127,7 @@ export function buildSubtitleCues(
     const sequenceEnd = sequence.from + sequence.duration;
 
     let localCursor = sequenceStart;
+    let consumedWords = 0;
     for (let i = 0; i < lines.length; i += 1) {
       const words = lineWords[i];
       const ratio = words / totalWords;
@@ -130,7 +143,16 @@ export function buildSubtitleCues(
         text: lines[i]
       };
 
-      const aligned = alignmentHook?.(cue) ?? null;
+      const context: SubtitleAlignmentContext = {
+        sequence,
+        cueIndexInSequence: i,
+        cueCountInSequence: lines.length,
+        wordStartIndex: consumedWords,
+        wordEndIndexExclusive: consumedWords + words,
+        lines
+      };
+
+      const aligned = alignmentHook?.(cue, context) ?? null;
       if (aligned) {
         cue.startFrame = Math.max(0, aligned.startFrame);
         cue.endFrame = Math.max(cue.startFrame, aligned.endFrame);
@@ -138,6 +160,7 @@ export function buildSubtitleCues(
 
       cues.push(cue);
       runningIndex += 1;
+      consumedWords += words;
       localCursor = cue.endFrame + 1;
       if (localCursor >= sequenceEnd) {
         break;

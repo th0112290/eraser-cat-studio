@@ -1,0 +1,211 @@
+{
+  "schema_version": "1.0",
+  "episode": {
+    "episode_id": "ep_video_broll_smoke",
+    "bible_ref": "bible_v1"
+  },
+  "render": {
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "safe_area": {
+      "x": 0.05,
+      "y": 0.05,
+      "w": 0.9,
+      "h": 0.9
+    },
+    "coord_space": "normalized"
+  },
+  "shots": [
+    {
+      "shot_id": "shot_broll_001",
+      "shot_type": "broll",
+      "render_mode": "generative_broll",
+      "beat_ids": ["beat_broll_001"],
+      "start_frame": 0,
+      "duration_frames": 48,
+      "narration": "A short atmospheric insert of the eraser cat mascot looking toward the data scene.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "fade",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "slow_push",
+        "keyframes": [
+          {
+            "f": 0,
+            "x": 0.51,
+            "y": 0.52,
+            "zoom": 1,
+            "rotate_deg": 0
+          },
+          {
+            "f": 47,
+            "x": 0.47,
+            "y": 0.51,
+            "zoom": 1.05,
+            "rotate_deg": -0.2
+          }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            {
+              "f": 0,
+              "x": 0.48,
+              "y": 0.82,
+              "interp": "spring"
+            },
+            {
+              "f": 47,
+              "x": 0.49,
+              "y": 0.81,
+              "interp": "ease"
+            }
+          ],
+          "action_track": [
+            {
+              "f": 0,
+              "clip": "move",
+              "weight": 1
+            }
+          ],
+          "expression_track": [
+            {
+              "f": 0,
+              "expression": "neutral"
+            }
+          ],
+          "look_track": [
+            {
+              "f": 0,
+              "target": "viewer"
+            }
+          ]
+        }
+      },
+      "audio": {
+        "sfx": [
+          {
+            "f": 0,
+            "src": "sfx://transition/fade"
+          }
+        ]
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    },
+    {
+      "shot_id": "shot_talk_002",
+      "shot_type": "talk",
+      "render_mode": "deterministic",
+      "beat_ids": ["beat_talk_002"],
+      "start_frame": 48,
+      "duration_frames": 48,
+      "narration": "Return to the deterministic host shot after the generated insert.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          {
+            "f": 0,
+            "x": 0.48,
+            "y": 0.52,
+            "zoom": 1,
+            "rotate_deg": 0
+          },
+          {
+            "f": 47,
+            "x": 0.48,
+            "y": 0.52,
+            "zoom": 1,
+            "rotate_deg": 0
+          }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            {
+              "f": 0,
+              "x": 0.48,
+              "y": 0.82,
+              "interp": "spring"
+            },
+            {
+              "f": 47,
+              "x": 0.48,
+              "y": 0.82,
+              "interp": "ease"
+            }
+          ],
+          "action_track": [
+            {
+              "f": 0,
+              "clip": "greet",
+              "weight": 1
+            }
+          ],
+          "expression_track": [
+            {
+              "f": 0,
+              "expression": "excited"
+            }
+          ],
+          "look_track": [
+            {
+              "f": 0,
+              "target": "viewer"
+            }
+          ]
+        }
+      },
+      "audio": {
+        "sfx": [
+          {
+            "f": 0,
+            "src": "sfx://transition/cut"
+          }
+        ]
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    }
+  ]
+}

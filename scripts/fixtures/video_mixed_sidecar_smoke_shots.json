@@ -1,0 +1,300 @@
+{
+  "schema_version": "1.0",
+  "episode": {
+    "episode_id": "ep_video_mixed_sidecar_smoke",
+    "bible_ref": "bible_v1"
+  },
+  "render": {
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "safe_area": {
+      "x": 0.05,
+      "y": 0.05,
+      "w": 0.9,
+      "h": 0.9
+    },
+    "coord_space": "normalized"
+  },
+  "shots": [
+    {
+      "shot_id": "shot_talk_intro_001",
+      "shot_type": "talk",
+      "render_mode": "deterministic",
+      "beat_ids": ["beat_talk_intro_001"],
+      "start_frame": 0,
+      "duration_frames": 30,
+      "narration": "Open on the deterministic host shot before we cut into a series of generated inserts.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 },
+          { "f": 29, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "idle_talk", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "neutral" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    },
+    {
+      "shot_id": "shot_broll_002",
+      "shot_type": "broll",
+      "render_mode": "generative_broll",
+      "beat_ids": ["beat_broll_002"],
+      "start_frame": 30,
+      "duration_frames": 24,
+      "narration": "A short three-quarter mascot insert that adds atmospheric motion without replacing the backbone host shot.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "fade",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "slow_push",
+        "keyframes": [
+          { "f": 0, "x": 0.5, "y": 0.51, "zoom": 1, "rotate_deg": 0 },
+          { "f": 23, "x": 0.48, "y": 0.5, "zoom": 1.04, "rotate_deg": -0.2 }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "spring" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "move", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "neutral" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ],
+          "view_track": [
+            { "f": 0, "view": "threeQuarter" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    },
+    {
+      "shot_id": "shot_i2v_003",
+      "shot_type": "reaction",
+      "render_mode": "generative_i2v",
+      "beat_ids": ["beat_i2v_003"],
+      "start_frame": 54,
+      "duration_frames": 24,
+      "narration": "A front-facing reaction insert that turns the still into subtle motion.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.49, "y": 0.5, "zoom": 1, "rotate_deg": 0 },
+          { "f": 23, "x": 0.49, "y": 0.5, "zoom": 1.01, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "idle_talk", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "happy" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ],
+          "view_track": [
+            { "f": 0, "view": "front" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    },
+    {
+      "shot_id": "shot_s2v_004",
+      "shot_type": "transition",
+      "render_mode": "generative_s2v",
+      "beat_ids": ["beat_s2v_004"],
+      "start_frame": 78,
+      "duration_frames": 24,
+      "narration": "A short profile-oriented stylized transition insert driven by the approved generated character view.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "fade",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.5, "y": 0.5, "zoom": 1, "rotate_deg": 0 },
+          { "f": 23, "x": 0.5, "y": 0.5, "zoom": 1.02, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.46,
+          "y": 0.82,
+          "scale": 0.98,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.46, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "move", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "neutral" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ],
+          "view_track": [
+            { "f": 0, "view": "profile" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    },
+    {
+      "shot_id": "shot_talk_outro_005",
+      "shot_type": "talk",
+      "render_mode": "deterministic",
+      "beat_ids": ["beat_talk_outro_005"],
+      "start_frame": 102,
+      "duration_frames": 30,
+      "narration": "Return to the deterministic host shot after the generated insert sequence.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 },
+          { "f": 29, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "greet", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "happy" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import { DepthAndShadowShowcaseComposition } from "./compositions/DepthAndShadow
 import { ExtremeDemoComposition } from "./compositions/ExtremeDemo";
 import { MotionFxShowcaseComposition } from "./compositions/MotionFxShowcase";
 import { Mvp1Composition } from "./compositions/Mvp1";
+import { SidecarStillVideoComposition, type SidecarStillVideoProps } from "./compositions/SidecarStillVideoComposition";
 import { ShotEpisodeComposition, type ShotEpisodeRenderProps } from "./compositions/ShotEpisodeComposition";
 import { SituationSceneDemoComposition } from "./compositions/SituationSceneDemo";
 import { TalkDemoComposition } from "./compositions/TalkDemo";
@@ -26,6 +27,9 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
   sequences: [
     {
       shotId: "shot_001",
+      shotType: "talk",
+      renderMode: "deterministic",
+      characterPackId: "eraser-cat-turning",
       from: 0,
       duration: 180,
       setId: "studio_intro",
@@ -47,8 +51,6 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       unit: "pts",
       hasChart: true,
       chartCallout: "Bars now overshoot and count up.",
-      characterPackId: "eraser-cat-turning",
-      mascotId: "eraser_cat",
       characterX: 0.43,
       characterY: 0.82,
       characterYawFrom: -0.2,
@@ -60,6 +62,9 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
     },
     {
       shotId: "shot_002",
+      shotType: "talk",
+      renderMode: "deterministic",
+      characterPackId: "eraser-cat-turning",
       from: 180,
       duration: 180,
       setId: "studio_data",
@@ -81,8 +86,6 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       unit: "pts",
       hasChart: true,
       chartCallout: "Target bar receives pulse + scribble highlight.",
-      characterPackId: "eraser-cat-turning",
-      mascotId: "eraser_cat",
       characterX: 0.46,
       characterY: 0.82,
       characterYawFrom: 0.25,
@@ -94,6 +97,9 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
     },
     {
       shotId: "shot_003",
+      shotType: "talk",
+      renderMode: "deterministic",
+      characterPackId: "eraser-cat-turning",
       from: 360,
       duration: 180,
       setId: "studio_close",
@@ -115,8 +121,6 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       unit: "pts",
       hasChart: true,
       chartCallout: "Transition defaults remain backward compatible.",
-      characterPackId: "eraser-cat-turning",
-      mascotId: "eraser_cat",
       characterX: 0.48,
       characterY: 0.82,
       characterYawFrom: 0.8,
@@ -146,47 +150,15 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       endFrame: 539,
       text: "Final shot settles with a quick flash and clean value count up."
     }
-  ],
-  debugOverlay: {
-    enabled: true,
-    sourceLabel: "studio defaults",
-    qc: {
-      status: "warn",
-      errorCount: 0,
-      warningCount: 1,
-      fallbackStepsApplied: ["hide_non_critical_overlays"],
-      finalIssues: [
-        {
-          code: "subtitle_safe_area_margin",
-          severity: "WARN",
-          message: "Subtitle baseline is close to the safe area threshold.",
-          shotId: "shot_002"
-        }
-      ]
-    },
-    benchmarks: [
-      {
-        scope: "preset rollout",
-        target: "overall",
-        status: "ready",
-        score: 90.49,
-        verdict: "recommended",
-        reason: "balanced_default | rollout candidate does not change the effective preset triplet.",
-        sourceLabel: "studio sample",
-        generatedAt: "2026-03-09T04:38:07.717Z"
-      },
-      {
-        scope: "multi-channel",
-        target: "cross-channel (major)",
-        status: "divergence",
-        score: 0.92,
-        verdict: "warn",
-        reason: "diverged(major) economy vs medical preset stack drift.",
-        sourceLabel: "studio sample",
-        generatedAt: "2026-03-10T07:35:16.876Z"
-      }
-    ]
-  }
+  ]
+};
+
+const sidecarStillVideoDefaults: SidecarStillVideoProps = {
+  stillSrc: "sidecar_stills/demo/front.png",
+  durationInFrames: 90,
+  motionPreset: "slow_push",
+  backgroundTop: "#f3efe6",
+  backgroundBottom: "#dde9f6"
 };
 
 export const RemotionRoot = () => {
@@ -245,6 +217,16 @@ export const RemotionRoot = () => {
         width={1920}
         height={1080}
         defaultProps={shotEpisodeDefaults}
+      />
+
+      <Composition
+        id="SIDECAR-STILL-VIDEO"
+        component={SidecarStillVideoComposition}
+        durationInFrames={150}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={sidecarStillVideoDefaults}
       />
 
       <Composition

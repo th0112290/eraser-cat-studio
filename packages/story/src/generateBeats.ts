@@ -1,8 +1,12 @@
+import type { ProfileSelection } from "@ec/profiles";
+
 export type EpisodeInput = {
   episode_id: string;
   bible_ref: string;
   topic: string;
   target_duration_sec: number;
+  character_pack_id?: string;
+  profiles?: ProfileSelection;
   data_inputs?: Array<{
     dataset_id: string;
     time_range?: string;
@@ -250,4 +254,3 @@ export function toBeatsDocument(input: StoryInput, beats: Beat[]): BeatsDocument
     beats: schemaBeats
   };
 }
-

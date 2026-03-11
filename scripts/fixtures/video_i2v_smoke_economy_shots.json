@@ -1,0 +1,196 @@
+{
+  "schema_version": "1.0",
+  "episode": {
+    "episode_id": "ep_video_i2v_smoke_economy",
+    "bible_ref": "bible_v1",
+    "profiles": {
+      "studio_profile_id": "studio_default",
+      "channel_profile_id": "economy_channel",
+      "mascot_profile_id": "eraser_cat"
+    }
+  },
+  "render": {
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "safe_area": {
+      "x": 0.05,
+      "y": 0.05,
+      "w": 0.9,
+      "h": 0.9
+    },
+    "coord_space": "normalized"
+  },
+  "shots": [
+    {
+      "shot_id": "shot_i2v_economy_001",
+      "shot_type": "reaction",
+      "render_mode": "generative_i2v",
+      "beat_ids": ["beat_i2v_economy_001"],
+      "start_frame": 0,
+      "duration_frames": 42,
+      "narration": "The presenter reacts beside a revenue chart while highlighting the widening margin spread.",
+      "emphasis_words": ["revenue", "margin", "spread"],
+      "shot_grammar": {
+        "camera_size": "mcu",
+        "camera_motion": "hold",
+        "acting_intent": "explain_chart",
+        "emotion_curve": "accent",
+        "primary_speaking_character": "host",
+        "required_view": "front",
+        "educational_intent": "number_explainer",
+        "insert_need": ["chart", "callout_card"],
+        "route_reason": "chart_explainer_dialogue"
+      },
+      "visual_objects": [
+        {
+          "object_id": "economy_chart_main",
+          "kind": "bar_chart",
+          "source": "planner_v2",
+          "semantic_role": "primary_explainer",
+          "preferred_region": "main_left",
+          "safe_zone_tags": ["subtitle_safe", "chart_safe", "pointer_reachable"],
+          "animation_policy": "presenter_guided",
+          "fallback_policy": "fallback_to_table",
+          "title": "Revenue Mix",
+          "body": "Quarterly growth by segment",
+          "accent_token": "economy",
+          "pointer_target_ids": ["cloud", "ads", "subscription"],
+          "data_ref": {
+            "chart_id": "economy_revenue_chart",
+            "dataset_id": "economy_quarterly_mix",
+            "layout_hint": "main_left"
+          }
+        },
+        {
+          "object_id": "economy_kpi_card",
+          "kind": "kpi_card",
+          "source": "planner_v2",
+          "semantic_role": "supporting_explainer",
+          "preferred_region": "sidebar",
+          "safe_zone_tags": ["subtitle_safe", "negative_space_preserve"],
+          "animation_policy": "hold",
+          "fallback_policy": "fallback_to_summary_card",
+          "title": "Margin",
+          "body": "Operating margin widened to 18.4%",
+          "accent_token": "economy"
+        }
+      ],
+      "chart": {
+        "chart_id": "economy_revenue_chart",
+        "type": "bar",
+        "dataset_id": "economy_quarterly_mix",
+        "time_range": "Q1-Q4",
+        "layout_preset": "main_left",
+        "highlights": [
+          { "f": 8, "target_id": "subscription", "style_token": "gain" }
+        ],
+        "callouts": [
+          { "f": 12, "text": "Margin expansion", "attach_to_target_id": "subscription" }
+        ]
+      },
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 },
+          { "f": 41, "x": 0.48, "y": 0.52, "zoom": 1.01, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "idle_talk", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "focused" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "chart" }
+          ],
+          "view_track": [
+            { "f": 0, "view": "front" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    },
+    {
+      "shot_id": "shot_talk_economy_002",
+      "shot_type": "talk",
+      "render_mode": "deterministic",
+      "beat_ids": ["beat_talk_economy_002"],
+      "start_frame": 42,
+      "duration_frames": 48,
+      "narration": "Return to the deterministic host shot after the chart-led image to video insert.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 },
+          { "f": 47, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "greet", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "neutral" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    }
+  ]
+}

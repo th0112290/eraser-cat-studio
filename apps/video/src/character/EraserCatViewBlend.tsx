@@ -1,4 +1,5 @@
 import { DirectionalBlend } from "../effects/DirectionalBlend";
+import type { MascotProfile } from "@ec/profiles";
 import { EraserCatRig } from "./EraserCatRig";
 import { turningCharacterPack } from "./pack";
 import type { CharacterPack, RigPose, Vec2 } from "./types";
@@ -15,6 +16,13 @@ type ViewBlendProps = {
   animationMode?: AnimationMode;
   seed?: string;
   talkText?: string;
+  mouthOpen?: number;
+  viseme?: string;
+  forceBlink?: boolean;
+  blinkDensity?: MascotProfile["blink_density"];
+  mouthIntensity?: MascotProfile["mouth_intensity"];
+  idleMotionAmount?: MascotProfile["idle_motion_amount"];
+  headBobEnergy?: MascotProfile["head_bob_energy"];
 };
 
 type BlendSelection = {
@@ -89,7 +97,14 @@ export const EraserCatViewBlend = ({
   featherPx = 84,
   animationMode = "static",
   seed,
-  talkText
+  talkText,
+  mouthOpen,
+  viseme,
+  forceBlink,
+  blinkDensity,
+  mouthIntensity,
+  idleMotionAmount,
+  headBobEnergy
 }: ViewBlendProps) => {
   const clampedYaw = clamp(yaw, -1, 1);
 
@@ -105,6 +120,13 @@ export const EraserCatViewBlend = ({
         animationMode={animationMode}
         seed={seed}
         talkText={talkText}
+        mouthOpen={mouthOpen}
+        viseme={viseme}
+        forceBlink={forceBlink}
+        blinkDensity={blinkDensity}
+        mouthIntensity={mouthIntensity}
+        idleMotionAmount={idleMotionAmount}
+        headBobEnergy={headBobEnergy}
       />
     );
   }
@@ -124,6 +146,13 @@ export const EraserCatViewBlend = ({
         animationMode={animationMode}
         seed={seed}
         talkText={talkText}
+        mouthOpen={mouthOpen}
+        viseme={viseme}
+        forceBlink={forceBlink}
+        blinkDensity={blinkDensity}
+        mouthIntensity={mouthIntensity}
+        idleMotionAmount={idleMotionAmount}
+        headBobEnergy={headBobEnergy}
       />
     );
   }
@@ -140,6 +169,13 @@ export const EraserCatViewBlend = ({
         animationMode={animationMode}
         seed={seed}
         talkText={talkText}
+        mouthOpen={mouthOpen}
+        viseme={viseme}
+        forceBlink={forceBlink}
+        blinkDensity={blinkDensity}
+        mouthIntensity={mouthIntensity}
+        idleMotionAmount={idleMotionAmount}
+        headBobEnergy={headBobEnergy}
       />
     );
   }
@@ -162,6 +198,13 @@ export const EraserCatViewBlend = ({
         animationMode={animationMode}
         seed={seed}
         talkText={talkText}
+        mouthOpen={mouthOpen}
+        viseme={viseme}
+        forceBlink={forceBlink}
+        blinkDensity={blinkDensity}
+        mouthIntensity={mouthIntensity}
+        idleMotionAmount={idleMotionAmount}
+        headBobEnergy={headBobEnergy}
       />
     </div>
   );
@@ -178,6 +221,13 @@ export const EraserCatViewBlend = ({
         animationMode={animationMode}
         seed={seed}
         talkText={talkText}
+        mouthOpen={mouthOpen}
+        viseme={viseme}
+        forceBlink={forceBlink}
+        blinkDensity={blinkDensity}
+        mouthIntensity={mouthIntensity}
+        idleMotionAmount={idleMotionAmount}
+        headBobEnergy={headBobEnergy}
       />
     </div>
   );
@@ -208,6 +258,13 @@ export const EraserCatViewBlend = ({
               animationMode={animationMode}
               seed={seed}
               talkText={talkText}
+              mouthOpen={mouthOpen}
+              viseme={viseme}
+              forceBlink={forceBlink}
+              blinkDensity={blinkDensity}
+              mouthIntensity={mouthIntensity}
+              idleMotionAmount={idleMotionAmount}
+              headBobEnergy={headBobEnergy}
             />
           </div>
           <div style={createLayerStyle(toTransform)}>
@@ -221,6 +278,13 @@ export const EraserCatViewBlend = ({
               animationMode={animationMode}
               seed={seed}
               talkText={talkText}
+              mouthOpen={mouthOpen}
+              viseme={viseme}
+              forceBlink={forceBlink}
+              blinkDensity={blinkDensity}
+              mouthIntensity={mouthIntensity}
+              idleMotionAmount={idleMotionAmount}
+              headBobEnergy={headBobEnergy}
             />
           </div>
         </>

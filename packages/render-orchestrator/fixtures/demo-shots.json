@@ -2,7 +2,12 @@
   "schema_version": "1.0",
   "episode": {
     "episode_id": "demo_episode",
-    "bible_ref": "demo_bible"
+    "bible_ref": "demo_bible",
+    "profiles": {
+      "studio_profile_id": "studio_default",
+      "channel_profile_id": "economy_channel",
+      "mascot_profile_id": "eraser_cat"
+    }
   },
   "render": {
     "fps": 30,
@@ -19,6 +24,118 @@
   "shots": [
     {
       "shot_id": "shot_001",
+      "shot_type": "talk",
+      "render_mode": "deterministic",
+      "shot_grammar": {
+        "camera_size": "mcu",
+        "camera_motion": "hold",
+        "acting_intent": "steady_delivery",
+        "emotion_curve": "flat",
+        "primary_speaking_character": "host",
+        "required_view": "front",
+        "educational_intent": "hook_context",
+        "insert_need": ["caption_card"],
+        "route_reason": "character_focused_dialogue"
+      },
+      "insert_asset": {
+        "asset_id": "shot_001_caption_card",
+        "type": "caption_card",
+        "layout": "lower_third",
+        "title": "Render Smoke",
+        "body": "This deterministic shot now carries an InsertAsset contract through the render pipeline.",
+        "accent_token": "economy",
+        "items": ["render", "smoke"]
+      },
+      "visual_plan": {
+        "resolver_id": "visual_pair_planner_v1",
+        "educational_mode": "hook_context",
+        "channel_domain": "economy",
+        "insert_need_candidates": ["caption_card"],
+        "candidate_intents": [
+          {
+            "intent_id": "summary_focus_demo_v1",
+            "intent_family": "summary_focus",
+            "score": 12,
+            "candidate_insert_types": ["caption_card"],
+            "candidate_primary_kinds": ["summary_card"],
+            "candidate_supporting_kinds": ["callout_card", "summary_card"],
+            "selection_reason": "demo_fixture_summary_focus"
+          }
+        ],
+        "selected_intent_id": "summary_focus_demo_v1",
+        "selected_intent_family": "summary_focus",
+        "selected_primary_kind": "summary_card",
+        "selected_supporting_kind": "summary_card",
+        "selected_insert_type": "caption_card",
+        "selection_reason": "demo_fixture_summary_focus"
+      },
+      "acting": {
+        "blink_cues": [
+          {
+            "f": 24,
+            "duration_frames": 3,
+            "intensity": 0.7
+          }
+        ],
+        "gesture_cues": [
+          {
+            "f": 72,
+            "cue": "idle_shift",
+            "intensity": 0.4
+          }
+        ],
+        "look_cues": [
+          {
+            "f": 0,
+            "target": "viewer",
+            "intensity": 0.8
+          }
+        ],
+        "expression_cues": [
+          {
+            "f": 0,
+            "expression": "neutral",
+            "intensity": 0.6
+          },
+          {
+            "f": 24,
+            "expression": "blink",
+            "intensity": 0.7
+          },
+          {
+            "f": 27,
+            "expression": "neutral",
+            "intensity": 0.6
+          }
+        ],
+        "mouth_cues": [
+          {
+            "f": 0,
+            "viseme": "mouth_closed",
+            "intensity": 0
+          },
+          {
+            "f": 16,
+            "viseme": "mouth_open_small",
+            "intensity": 0.5
+          },
+          {
+            "f": 32,
+            "viseme": "mouth_round_o",
+            "intensity": 0.65
+          },
+          {
+            "f": 48,
+            "viseme": "mouth_open_wide",
+            "intensity": 0.8
+          },
+          {
+            "f": 176,
+            "viseme": "mouth_closed",
+            "intensity": 0
+          }
+        ]
+      },
       "beat_ids": ["beat_001"],
       "start_frame": 0,
       "duration_frames": 180,
@@ -73,6 +190,39 @@
             {
               "f": 0,
               "target": "viewer"
+            }
+          ],
+          "view_track": [
+            {
+              "f": 0,
+              "view": "front"
+            }
+          ],
+          "viseme_track": [
+            {
+              "f": 0,
+              "viseme": "mouth_closed",
+              "intensity": 0
+            },
+            {
+              "f": 16,
+              "viseme": "mouth_open_small",
+              "intensity": 0.5
+            },
+            {
+              "f": 32,
+              "viseme": "mouth_round_o",
+              "intensity": 0.65
+            },
+            {
+              "f": 48,
+              "viseme": "mouth_open_wide",
+              "intensity": 0.8
+            },
+            {
+              "f": 176,
+              "viseme": "mouth_closed",
+              "intensity": 0
             }
           ]
         }

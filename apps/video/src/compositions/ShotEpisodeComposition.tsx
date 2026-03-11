@@ -1,16 +1,21 @@
-﻿import { AbsoluteFill, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { lookAt, move, pointAt } from "../character/EraserCatRig";
-import { MascotRenderer } from "../character/MascotRenderer";
+import { AbsoluteFill, OffthreadVideo, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import type { ChannelVisualMotionProfileId, ChannelVisualMotionPresetId, ResolvedProfiles } from "@ec/profiles";
+import type { CSSProperties } from "react";
+import { EraserCatRig, lookAt, move, pointAt } from "../character/EraserCatRig";
+import { EraserCatViewBlend } from "../character/EraserCatViewBlend";
+import { turningCharacterPack } from "../character/pack";
+import type { CharacterPack } from "../character/types";
 import { beatPunch, holdThenSnap } from "../anim/timeRemap";
+import {
+  resolveDefaultMotionPreset,
+  resolveVisualMotionProgress,
+  resolveVisualMotionState
+} from "./visualMotion";
 import { CameraRig, type CameraPreset } from "../effects/CameraRig";
-import { ScreenFx } from "../effects/ScreenFx";
+import { ShotFinishPass } from "../effects/ShotFinishPass";
 import { ShotTransition, type ShotTransitionType } from "../effects/ShotTransition";
 import { ScribbleHighlight } from "../effects/ScribbleHighlight";
 import { FlashCut } from "../effects/Transitions";
-import {
-  resolveDeterministicFinishProfile,
-  resolveDeterministicProfileSeam
-} from "../../../../packages/render-orchestrator/src/profileSeam";
 
 export type ShotChartRow = {
   label: string;
@@ -30,6 +35,200 @@ export type ShotChartHighlight = {
   f: number;
   targetId: string;
   styleToken: string;
+};
+
+export type ShotInsertAsset = {
+  assetId: string;
+  type: "chart" | "board" | "caption_card" | "callout_card" | "diagram" | "icon_explainer" | "caution_card";
+  layout: "lower_third" | "sidebar";
+  title: string;
+  body: string;
+  accentToken: "economy" | "medical" | "neutral";
+  items?: string[];
+  selection?: {
+    resolver_id: "visual_object_resolver_v1" | "visual_object_planner_v2";
+    selected_insert_type: ShotInsertAsset["type"];
+    candidate_insert_types: ShotInsertAsset["type"][];
+    supporting_kind: ShotVisualObject["kind"];
+    educational_mode: string;
+    channel_domain: "economy" | "medical";
+    selection_reason: string;
+  };
+};
+
+export type ShotVisualIntentFamily =
+  | "chart_primary"
+  | "timeline_metric"
+  | "comparison_focus"
+  | "diagram_primary"
+  | "risk_focus"
+  | "summary_focus";
+
+export type ShotVisualPlan = {
+  resolver_id: "visual_pair_planner_v1";
+  educational_mode: string;
+  channel_domain: "economy" | "medical";
+  insert_need_candidates: ShotInsertAsset["type"][];
+  candidate_intents: Array<{
+    intent_id: string;
+    intent_family: ShotVisualIntentFamily;
+    score: number;
+    candidate_insert_types: ShotInsertAsset["type"][];
+    candidate_primary_kinds: ShotVisualObject["kind"][];
+    candidate_supporting_kinds: ShotVisualObject["kind"][];
+    selection_reason: string;
+  }>;
+  selected_intent_id: string;
+  selected_intent_family: ShotVisualIntentFamily;
+  selected_primary_kind?: ShotVisualObject["kind"];
+  selected_supporting_kind?: ShotVisualObject["kind"];
+  selected_insert_type?: ShotInsertAsset["type"];
+  selection_reason: string;
+};
+
+export type ShotVisualObject = {
+  objectId: string;
+  kind:
+    | "bar_chart"
+    | "line_chart"
+    | "area_chart"
+    | "pie_or_donut"
+    | "heatmap"
+    | "scatter"
+    | "boxplot"
+    | "map"
+    | "table"
+    | "kpi_card"
+    | "timeline"
+    | "comparison_board"
+    | "icon_grid"
+    | "callout_card"
+    | "process_flow"
+    | "anatomy_diagram"
+    | "risk_meter"
+    | "summary_card";
+  source: "legacy_chart_v1" | "legacy_insert_v1" | "planner_v2";
+  semanticRole: "primary_explainer" | "supporting_explainer" | "accent";
+  preferredRegion: "main_left" | "main_right" | "center_stage" | "sidebar" | "lower_third";
+  safeZoneTags: Array<
+    "subtitle_safe" | "chart_safe" | "mascot_blocking" | "pointer_reachable" | "negative_space_preserve"
+  >;
+  animationPolicy: "hold" | "emphasis_pulse" | "presenter_guided";
+  motionPreset?: ChannelVisualMotionPresetId;
+  motionProfileId?: ChannelVisualMotionProfileId;
+  fallbackPolicy: "fallback_to_table" | "fallback_to_summary_card" | "hide_optional";
+  title?: string;
+  body?: string;
+  accentToken?: "economy" | "medical" | "neutral";
+  items?: string[];
+  pointerTargetIds?: string[];
+  anchors?: Array<{
+    anchor_id: string;
+    type: "pointer_anchor" | "look_target" | "camera_cutaway_target" | "callout_anchor" | "safe_area_box";
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+    target_id?: string;
+    weight?: number;
+  }>;
+  safeArea?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    subtitle_avoid: boolean;
+    mascot_avoid: boolean;
+    pointer_reachable: boolean;
+  };
+  selection?: {
+    resolver_id: "visual_object_resolver_v1" | "visual_object_planner_v2";
+    data_shape:
+      | "categorical_comparison"
+      | "time_series"
+      | "proportion"
+      | "correlation"
+      | "distribution"
+      | "geo"
+      | "matrix"
+      | "tabular"
+      | "process_steps"
+      | "structure"
+      | "risk_signal"
+      | "metric_snapshot"
+      | "summary"
+      | "generic";
+    educational_mode: string;
+    channel_domain: "economy" | "medical";
+    selected_kind: ShotVisualObject["kind"];
+    candidate_kinds: ShotVisualObject["kind"][];
+    selection_reason: string;
+  };
+  dataRef?: {
+    chartId?: string;
+    datasetId?: string;
+    timeRange?: string;
+    layoutHint?: string;
+  };
+};
+
+export type ShotLayoutRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type ShotLayoutPlan = {
+  subtitleSafeZone: ShotLayoutRect;
+  narrationBox: ShotLayoutRect;
+  primaryVisualBox: ShotLayoutRect;
+  chartSafeZone?: ShotLayoutRect;
+  mascotBlockingZone: ShotLayoutRect;
+  insertBox?: ShotLayoutRect;
+  negativeSpaceBox?: ShotLayoutRect;
+  occluderBox?: ShotLayoutRect;
+  pointerReachability: {
+    reachable: boolean;
+    reason: string;
+    mascotToTargetDistancePx: number | null;
+    targetPoint?: {
+      x: number;
+      y: number;
+    };
+  };
+};
+
+export type ShotFinishProfile = {
+  id: string;
+  grainOpacity: number;
+  scanlineOpacity: number;
+  vignetteOpacity: number;
+  tintOpacity: number;
+  bloomOpacity: number;
+  sharpenOpacity: number;
+  toneOverlayOpacity: number;
+  toneOverlayColor: string;
+  textureMatchOpacity: number;
+  paletteContinuityOpacity: number;
+  linePreserveOpacity: number;
+  renderPathCompensation: "deterministic" | "sidecar_wan" | "sidecar_hunyuan";
+  episodeFinishProfileId?: string;
+};
+
+export type ShotEpisodeFinishProfile = {
+  id: string;
+  targetGrainOpacity: number;
+  targetScanlineOpacity: number;
+  targetVignetteOpacity: number;
+  targetTintOpacity: number;
+  targetBloomOpacity: number;
+  targetSharpenOpacity: number;
+  targetToneOverlayOpacity: number;
+  targetToneOverlayColor: string;
+  textureMatchOpacity: number;
+  paletteContinuityOpacity: number;
+  linePreserveOpacity: number;
 };
 
 export type ShotCharacterTracks = {
@@ -52,6 +251,15 @@ export type ShotCharacterTracks = {
     f: number;
     target: string;
   }>;
+  viewTrack?: Array<{
+    f: number;
+    view: "front" | "threeQuarter" | "profile";
+  }>;
+  visemeTrack?: Array<{
+    f: number;
+    viseme: "mouth_closed" | "mouth_open_small" | "mouth_open_wide" | "mouth_round_o";
+    intensity: number;
+  }>;
   pointTrack?: Array<{
     f: number;
     targetId: string;
@@ -59,146 +267,72 @@ export type ShotCharacterTracks = {
   }>;
 };
 
-export type ShotCanonicalVisualObjectKind =
-  | "bar_chart"
-  | "line_chart"
-  | "table"
-  | "kpi_card"
-  | "summary_card"
-  | "checklist_card"
-  | "process_flow"
-  | "comparison_board"
-  | "timeline"
-  | "labeled_diagram"
-  | "icon_array";
-
-export type ShotVisualObject = {
-  objectId: string;
-  kind: ShotCanonicalVisualObjectKind | "icon_grid" | "anatomy_diagram";
-  semanticRole: "primary_explainer" | "supporting_explainer" | "accent";
-  title?: string;
-  body?: string;
-  items?: string[];
-  dataRef?: {
-    chartId?: string;
-    datasetId?: string;
-    timeRange?: string;
-  };
-  selectionReason?: string;
-};
-
-export type ShotVisualPlan = {
-  resolverId: "legacy_chart_backbone_v1";
-  channelDomain: "economy" | "medical" | "generic";
-  educationalMode: "data_explainer" | "summary_explainer" | "generic";
-  selectedPrimaryKind: ShotCanonicalVisualObjectKind;
-  selectionReason: string;
-};
-
-export type ShotGrammar =
-  | "host_intro"
-  | "metric_focus"
-  | "comparison_explainer"
-  | "process_walkthrough"
-  | "timeline_bridge"
-  | "diagram_explainer"
-  | "checklist_recap"
-  | "summary_recap";
-
-export type ShotRouteReason =
-  | "chart_reference"
-  | "metric_focus"
-  | "comparison_language"
-  | "process_language"
-  | "timeline_language"
-  | "medical_diagram_language"
-  | "checklist_density"
-  | "summary_fallback";
-
-export type ShotEducationalIntent =
-  | "introduce_topic"
-  | "explain_metric"
-  | "compare_tradeoffs"
-  | "walkthrough_steps"
-  | "sequence_events"
-  | "explain_structure"
-  | "summarize_takeaways";
-
-export type ShotInsertNeed =
-  | "none"
-  | "summary_support"
-  | "checklist_support"
-  | "comparison_support"
-  | "process_support"
-  | "timeline_support"
-  | "diagram_support";
-
-export type ShotLayoutBox = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-export type ShotFinishTone = "studio_balanced" | "economy_crisp" | "medical_soft";
-
-export type ShotTextureMatch = "deterministic_clean" | "balanced_soft" | "sidecar_matched";
-
-export type ShotFinishProfile = {
-  tone: ShotFinishTone;
-  textureMatch: ShotTextureMatch;
-  brightness: number;
-  contrast: number;
-  saturation: number;
-  lineSharpenStrength: number;
-  bloomOpacity: number;
-  grainOpacity: number;
-  vignetteOpacity: number;
-  tintOpacity: number;
-  tintGradient: string;
-};
-
-export type ShotLayoutBias = "balanced" | "data_dense" | "guided_soft";
-
-export type ShotActingBias = "analytic_presenter" | "warm_guide" | "neutral_presenter";
-
-export type ShotPointerBias = "chart_precise" | "soft_visual" | "guided_callout";
-
-export type ShotProfileBundle = {
-  resolverId: string;
-  resolverSource: "local_seam" | "injected" | "profiles_package";
-  studioProfileId: string;
-  channelProfileId: string;
-  mascotProfileId: string;
-  layoutBias: ShotLayoutBias;
-  actingBias: ShotActingBias;
-  pointerBias: ShotPointerBias;
-  finishBias: ShotFinishTone;
+export type ShotSequenceAlignment = {
+  shotId: string;
+  provider: string;
+  version?: string;
+  sourceKind: "heuristic" | "provider";
+  words: Array<{
+    text: string;
+    startSec: number;
+    endSec: number;
+    localStartSec: number;
+    localEndSec: number;
+    viseme: "mouth_closed" | "mouth_open_small" | "mouth_open_wide" | "mouth_round_o";
+    intensity: number;
+    emphasis: boolean;
+  }>;
+  visemeCues: Array<{
+    localTimeSec: number;
+    viseme: "mouth_closed" | "mouth_open_small" | "mouth_open_wide" | "mouth_round_o";
+    intensity: number;
+  }>;
+  pauseMap: Array<{
+    startSec: number;
+    endSec: number;
+    localStartSec: number;
+    localEndSec: number;
+    durationSec: number;
+    strength: "micro" | "phrase" | "sentence";
+  }>;
+  emphasisWords: string[];
 };
 
 export type ShotRenderSequence = {
   shotId: string;
+  shotType: "talk" | "reaction" | "broll" | "transition" | "fx";
+  renderMode: "deterministic" | "generative_broll" | "generative_i2v" | "generative_s2v" | "generative_overlay";
+  characterPackId: string;
+  sidecarVideoSrc?: string;
   from: number;
   duration: number;
   setId: string;
   cameraPreset: string;
-  shotGrammar?: ShotGrammar;
-  routeReason?: ShotRouteReason;
-  educationalIntent?: ShotEducationalIntent;
-  insertNeed?: ShotInsertNeed;
   narration: string;
   emphasisWords: string[];
   chartData: ShotChartRow[];
   visualMode: "chart" | "table";
-  primaryVisualKind?: ShotCanonicalVisualObjectKind;
+  primaryVisualKind?:
+    | "bar_chart"
+    | "line_chart"
+    | "area_chart"
+    | "pie_or_donut"
+    | "heatmap"
+    | "scatter"
+    | "boxplot"
+    | "map"
+    | "table"
+    | "kpi_card"
+    | "timeline"
+    | "comparison_board"
+    | "icon_grid"
+    | "callout_card"
+    | "process_flow"
+    | "anatomy_diagram"
+    | "risk_meter"
+    | "summary_card";
   visualObjects?: ShotVisualObject[];
-  visualPlan?: ShotVisualPlan;
-  profileBundle?: ShotProfileBundle;
-  finishProfile?: ShotFinishProfile;
-  visualBox?: ShotLayoutBox;
-  narrationBox?: ShotLayoutBox;
-  mascotBlockingBox?: ShotLayoutBox;
-  pointerReachableZone?: ShotLayoutBox;
+  layoutPlan?: ShotLayoutPlan;
   annotationsEnabled: boolean;
   pointerTargetIndex: number;
   pointerEnabled: boolean;
@@ -211,8 +345,6 @@ export type ShotRenderSequence = {
   unit?: string;
   hasChart: boolean;
   chartCallout?: string;
-  characterPackId: string;
-  mascotId?: string;
   characterX: number;
   characterY: number;
   characterYawFrom?: number;
@@ -221,7 +353,11 @@ export type ShotRenderSequence = {
   cameraKeyframes?: ShotCameraKeyframe[];
   talkText?: string;
   chartHighlights?: ShotChartHighlight[];
+  insertAsset?: ShotInsertAsset;
+  visualPlan?: ShotVisualPlan;
+  finishProfile?: ShotFinishProfile;
   characterTracks?: ShotCharacterTracks;
+  alignment?: ShotSequenceAlignment;
   macroCutaway?: boolean;
   transitionType?: ShotTransitionType;
   transitionHint?: string;
@@ -235,48 +371,6 @@ export type ShotSubtitleCue = {
   text: string;
 };
 
-export type ShotBenchmarkSignal = {
-  scope: string;
-  target?: string;
-  status: string;
-  score?: number;
-  verdict?: string;
-  reason?: string;
-  sourceLabel?: string;
-  generatedAt?: string;
-  artifactPath?: string;
-};
-
-export type ShotQcSummary = {
-  status: "passed" | "warn" | "failed";
-  errorCount: number;
-  warningCount: number;
-  fallbackStepsApplied: string[];
-  finalIssues: Array<{
-    code: string;
-    severity: "INFO" | "WARN" | "ERROR";
-    message: string;
-    shotId?: string;
-  }>;
-};
-
-export type ShotProfileResolverSummary = {
-  resolverIds: string[];
-  resolverSources: Array<ShotProfileBundle["resolverSource"]>;
-  resolverModulePaths: string[];
-  studioProfileIds: string[];
-  channelProfileIds: string[];
-  mascotProfileIds: string[];
-};
-
-export type ShotDebugOverlay = {
-  enabled: boolean;
-  sourceLabel?: string;
-  qc: ShotQcSummary;
-  profileResolver?: ShotProfileResolverSummary;
-  benchmarks: ShotBenchmarkSignal[];
-};
-
 export type ShotEpisodeRenderProps = {
   episodeId: string;
   safeArea: {
@@ -288,7 +382,9 @@ export type ShotEpisodeRenderProps = {
   freezeCharacterPose: boolean;
   sequences: ShotRenderSequence[];
   subtitles: ShotSubtitleCue[];
-  debugOverlay?: ShotDebugOverlay;
+  episodeFinishProfile?: ShotEpisodeFinishProfile;
+  characterPacks?: Record<string, CharacterPack>;
+  profiles?: ResolvedProfiles;
 };
 
 const FRAME_WIDTH = 1920;
@@ -302,10 +398,10 @@ const CHART_BOX = {
 };
 
 const NARRATION_BOX = {
-  x: 104,
-  y: 748,
-  width: 820,
-  height: 176
+  x: 88,
+  y: 760,
+  width: 840,
+  height: 160
 };
 
 const OCCLUDER_BOX = {
@@ -316,6 +412,18 @@ const OCCLUDER_BOX = {
 };
 
 const TRANSITION_OVERLAP_FRAMES = 10;
+
+const SHOT_VIEW_BLEND_PACK: CharacterPack = {
+  ...turningCharacterPack,
+  expressions: {
+    ...turningCharacterPack.expressions,
+    front: turningCharacterPack.expressions.view_front,
+    right_3q: turningCharacterPack.expressions.view_right_3q,
+    right_profile: turningCharacterPack.expressions.view_right_profile,
+    left_3q: turningCharacterPack.expressions.view_left_3q,
+    left_profile: turningCharacterPack.expressions.view_left_profile
+  }
+};
 
 type BarGeometry = ShotChartRow & {
   x: number;
@@ -366,307 +474,6 @@ function cleanMarkers(text: string): string {
   return text.replace(/<<([^>]+)>>/g, "$1").replace(/\s+/g, " ").trim();
 }
 
-function normalizeVisualObjectKindLocal(
-  kind: ShotVisualObject["kind"] | undefined
-): ShotCanonicalVisualObjectKind | undefined {
-  if (!kind) {
-    return undefined;
-  }
-  if (kind === "icon_grid") {
-    return "icon_array";
-  }
-  if (kind === "anatomy_diagram") {
-    return "labeled_diagram";
-  }
-  return kind;
-}
-
-function resolvePrimaryVisualObjectLocal(sequence: ShotRenderSequence): ShotVisualObject | undefined {
-  return sequence.visualObjects?.find((visualObject) => visualObject.semanticRole === "primary_explainer") ?? sequence.visualObjects?.[0];
-}
-
-function resolvePrimaryVisualKindLocal(sequence: ShotRenderSequence): ShotCanonicalVisualObjectKind | undefined {
-  return normalizeVisualObjectKindLocal(resolvePrimaryVisualObjectLocal(sequence)?.kind ?? sequence.primaryVisualKind);
-}
-
-function resolvePrimaryVisualKindLabel(sequence: ShotRenderSequence): string {
-  const normalizedKind = resolvePrimaryVisualKindLocal(sequence);
-  return normalizedKind ? normalizedKind.replaceAll("_", " ") : "legacy";
-}
-
-function resolveVisualBox(sequence: ShotRenderSequence): ShotLayoutBox {
-  return sequence.visualBox ?? CHART_BOX;
-}
-
-function resolveNarrationBox(sequence: ShotRenderSequence): ShotLayoutBox {
-  return sequence.narrationBox ?? NARRATION_BOX;
-}
-
-function humanizeDebugToken(value: string | undefined): string {
-  return value ? value.replaceAll("_", " ") : "-";
-}
-
-function formatResolverModulePath(modulePath: string): string {
-  const normalized = modulePath.replaceAll("\\", "/");
-  const segments = normalized.split("/");
-  return segments[segments.length - 1] || normalized;
-}
-
-function startCaseLabel(value: string): string {
-  return value
-    .split("_")
-    .map((part) => (part.length > 0 ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
-    .join(" ");
-}
-
-function clipText(value: string, maxLength: number): string {
-  const normalized = value.trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
-}
-
-function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
-  return Array.from(
-    new Set(values.map((value) => value?.trim() ?? "").filter((value) => value.length > 0))
-  );
-}
-
-function splitNarrationFragments(text: string): string[] {
-  const normalized = cleanMarkers(text);
-  if (!normalized) {
-    return [];
-  }
-  const fragments = normalized
-    .split(/(?<=[.!?])\s+|[;:]/)
-    .map((fragment) => fragment.trim())
-    .filter((fragment) => fragment.length > 0);
-  return uniqueNonEmptyStrings(fragments);
-}
-
-function resolveSupportingVisualObjectsLocal(sequence: ShotRenderSequence): ShotVisualObject[] {
-  return sequence.visualObjects?.filter((visualObject) => visualObject.semanticRole !== "primary_explainer") ?? [];
-}
-
-function resolveVisualTitleLocal(
-  sequence: ShotRenderSequence,
-  primaryObject: ShotVisualObject | undefined,
-  primaryKind: ShotCanonicalVisualObjectKind | undefined
-): string {
-  if (primaryObject?.title?.trim()) {
-    return clipText(primaryObject.title, 40);
-  }
-
-  if (sequence.visualPlan?.selectionReason?.trim()) {
-    return clipText(sequence.visualPlan.selectionReason.replaceAll("_", " "), 40);
-  }
-
-  return primaryKind ? startCaseLabel(primaryKind) : "Explainer Panel";
-}
-
-function resolveVisualBodyLocal(sequence: ShotRenderSequence, primaryObject: ShotVisualObject | undefined): string {
-  const body = cleanMarkers(primaryObject?.body ?? resolveTalkText(sequence) ?? sequence.narration);
-  return body ? clipText(body, 220) : "Narration details are not available for this shot.";
-}
-
-function resolveVisualItemsLocal(
-  sequence: ShotRenderSequence,
-  primaryObject: ShotVisualObject | undefined
-): string[] {
-  const supportingObjects = resolveSupportingVisualObjectsLocal(sequence);
-  const cueItems = uniqueNonEmptyStrings([
-    ...(primaryObject?.items ?? []),
-    ...supportingObjects.flatMap((visualObject) => visualObject.items ?? []),
-    ...sequence.chartData.map((row) => row.label),
-    ...splitNarrationFragments(primaryObject?.body ?? sequence.narration)
-  ]);
-
-  return cueItems.slice(0, 6);
-}
-
-type ResolvedVisualMetric = {
-  value: string;
-  label: string;
-  detail?: string;
-};
-
-function resolveVisualMetricLocal(
-  sequence: ShotRenderSequence,
-  primaryObject: ShotVisualObject | undefined,
-  items: string[]
-): ResolvedVisualMetric | undefined {
-  const targetRow =
-    sequence.chartData[clamp(sequence.pointerTargetIndex, 0, Math.max(0, sequence.chartData.length - 1))] ??
-    sequence.chartData[0];
-  if (targetRow) {
-    return {
-      value: `${targetRow.value}${sequence.unit ? ` ${sequence.unit}` : ""}`,
-      label: targetRow.label,
-      detail: primaryObject?.selectionReason ? startCaseLabel(primaryObject.selectionReason) : undefined
-    };
-  }
-
-  if (items.length > 0) {
-    return {
-      value: String(items.length),
-      label: "Key points",
-      detail: "explainer beats"
-    };
-  }
-
-  return undefined;
-}
-
-function resolveVisualTheme(kind: ShotCanonicalVisualObjectKind | undefined): {
-  background: string;
-  border: string;
-  accent: string;
-  accentSoft: string;
-  surface: string;
-  chipBackground: string;
-  chipBorder: string;
-  chipText: string;
-} {
-  if (kind === "summary_card" || kind === "kpi_card") {
-    return {
-      background: "linear-gradient(160deg, rgba(10, 18, 34, 0.96) 0%, rgba(13, 41, 66, 0.94) 100%)",
-      border: "rgba(133, 214, 255, 0.30)",
-      accent: "#8AD6FF",
-      accentSoft: "rgba(138, 214, 255, 0.22)",
-      surface: "rgba(255, 255, 255, 0.05)",
-      chipBackground: "rgba(138, 214, 255, 0.14)",
-      chipBorder: "rgba(138, 214, 255, 0.32)",
-      chipText: "#E7F9FF"
-    };
-  }
-
-  if (kind === "checklist_card" || kind === "process_flow" || kind === "icon_array") {
-    return {
-      background: "linear-gradient(160deg, rgba(8, 23, 28, 0.96) 0%, rgba(13, 52, 58, 0.94) 100%)",
-      border: "rgba(126, 231, 200, 0.30)",
-      accent: "#7EE7C8",
-      accentSoft: "rgba(126, 231, 200, 0.22)",
-      surface: "rgba(255, 255, 255, 0.05)",
-      chipBackground: "rgba(126, 231, 200, 0.14)",
-      chipBorder: "rgba(126, 231, 200, 0.30)",
-      chipText: "#E8FFF7"
-    };
-  }
-
-  if (kind === "comparison_board" || kind === "timeline") {
-    return {
-      background: "linear-gradient(160deg, rgba(28, 18, 9, 0.96) 0%, rgba(66, 39, 18, 0.94) 100%)",
-      border: "rgba(255, 205, 124, 0.30)",
-      accent: "#FFCD7C",
-      accentSoft: "rgba(255, 205, 124, 0.22)",
-      surface: "rgba(255, 255, 255, 0.05)",
-      chipBackground: "rgba(255, 205, 124, 0.14)",
-      chipBorder: "rgba(255, 205, 124, 0.30)",
-      chipText: "#FFF4DE"
-    };
-  }
-
-  if (kind === "labeled_diagram") {
-    return {
-      background: "linear-gradient(160deg, rgba(24, 12, 30, 0.96) 0%, rgba(57, 26, 65, 0.94) 100%)",
-      border: "rgba(224, 174, 255, 0.28)",
-      accent: "#E0AEFF",
-      accentSoft: "rgba(224, 174, 255, 0.22)",
-      surface: "rgba(255, 255, 255, 0.05)",
-      chipBackground: "rgba(224, 174, 255, 0.14)",
-      chipBorder: "rgba(224, 174, 255, 0.30)",
-      chipText: "#F8ECFF"
-    };
-  }
-
-  return {
-    background: "linear-gradient(160deg, rgba(12, 19, 34, 0.96) 0%, rgba(20, 28, 46, 0.94) 100%)",
-    border: "rgba(255, 255, 255, 0.22)",
-    accent: "#D7E6FF",
-    accentSoft: "rgba(215, 230, 255, 0.16)",
-    surface: "rgba(255, 255, 255, 0.05)",
-    chipBackground: "rgba(215, 230, 255, 0.10)",
-    chipBorder: "rgba(215, 230, 255, 0.22)",
-    chipText: "#F2F7FF"
-  };
-}
-
-function resolveIconToken(label: string): string {
-  const letters = label
-    .replace(/[^A-Za-z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter((part) => part.length > 0)
-    .slice(0, 2)
-    .map((part) => part.slice(0, 1).toUpperCase())
-    .join("");
-  return letters || "IO";
-}
-
-function normalizeDebugStatus(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "diverged") {
-    return "divergence";
-  }
-  if (!normalized) {
-    return "unknown";
-  }
-  return normalized;
-}
-
-function statusChipColors(status: string): { background: string; border: string; color: string } {
-  const normalized = normalizeDebugStatus(status);
-  if (normalized === "passed" || normalized === "ready") {
-    return {
-      background: "rgba(22, 101, 52, 0.18)",
-      border: "rgba(134, 239, 172, 0.38)",
-      color: "#d9ffe3"
-    };
-  }
-  if (normalized === "warn" || normalized === "divergence") {
-    return {
-      background: "rgba(180, 83, 9, 0.18)",
-      border: "rgba(253, 186, 116, 0.38)",
-      color: "#ffefc7"
-    };
-  }
-  if (normalized === "blocked" || normalized === "failed" || normalized === "below_min_score") {
-    return {
-      background: "rgba(185, 28, 28, 0.18)",
-      border: "rgba(252, 165, 165, 0.38)",
-      color: "#ffe2e2"
-    };
-  }
-  return {
-    background: "rgba(148, 163, 184, 0.16)",
-    border: "rgba(226, 232, 240, 0.28)",
-    color: "#e2e8f0"
-  };
-}
-
-function statusLabel(status: string): string {
-  return normalizeDebugStatus(status).replaceAll("_", " ");
-}
-
-function formatScore(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "-";
-  }
-  return value.toFixed(2).replace(/\.?0+$/, "");
-}
-
-function formatDebugTimestamp(value: string | undefined): string {
-  if (!value) {
-    return "-";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleString("ko-KR", { hour12: false });
-}
-
 function resolveTargetIndex(targetId: string | undefined, rowCount: number, fallbackIndex: number): number {
   if (rowCount <= 0) {
     return 0;
@@ -702,6 +509,150 @@ function findLatestEntry<T extends { f: number }>(entries: T[] | undefined, fram
   }
 
   return candidate;
+}
+
+function isGeneratedPack(pack: CharacterPack | null | undefined): pack is CharacterPack {
+  if (!pack) {
+    return false;
+  }
+  return (
+    typeof pack.expressions.front_neutral === "object" &&
+    typeof pack.expressions.threeQuarter_neutral === "object" &&
+    typeof pack.expressions.profile_neutral === "object"
+  );
+}
+
+function normalizeTrackExpression(expression: string | undefined): string {
+  const lower = (expression ?? "neutral").trim().toLowerCase();
+  if (lower === "blink") {
+    return "blink";
+  }
+  if (lower === "excited") {
+    return "happy";
+  }
+  if (lower === "focused") {
+    return "neutral";
+  }
+  return lower.length > 0 ? lower : "neutral";
+}
+
+function resolvePackForSequence(
+  sequence: ShotRenderSequence,
+  characterPacks?: Record<string, CharacterPack>
+): CharacterPack | null {
+  if (!characterPacks) {
+    return null;
+  }
+  return characterPacks[sequence.characterPackId] ?? null;
+}
+
+function resolveTrackedExpressionState(
+  sequence: ShotRenderSequence,
+  frame: number
+): { normalizedExpression: string; forceBlink: boolean } {
+  const entries = sequence.characterTracks?.expressionTrack ?? [];
+  let latestNonBlink: string | undefined;
+  let latestExpression = "neutral";
+
+  for (const entry of entries) {
+    if (entry.f > frame) {
+      break;
+    }
+    const normalized = normalizeTrackExpression(entry.expression);
+    latestExpression = normalized;
+    if (normalized !== "blink") {
+      latestNonBlink = normalized;
+    }
+  }
+
+  if (latestExpression === "blink") {
+    return {
+      normalizedExpression: latestNonBlink ?? "neutral",
+      forceBlink: true
+    };
+  }
+
+  return {
+    normalizedExpression: latestExpression,
+    forceBlink: false
+  };
+}
+
+function resolveExplicitView(sequence: ShotRenderSequence, frame: number): "front" | "threeQuarter" | "profile" | null {
+  const latest = findLatestEntry(sequence.characterTracks?.viewTrack, frame);
+  return latest?.view ?? null;
+}
+
+function resolveTrackedViseme(
+  sequence: ShotRenderSequence,
+  frame: number
+): { viseme?: "mouth_closed" | "mouth_open_small" | "mouth_open_wide" | "mouth_round_o"; mouthOpen?: number } {
+  const latest = findLatestEntry(sequence.characterTracks?.visemeTrack, frame);
+  if (!latest) {
+    return {};
+  }
+
+  const intensity = clamp(latest.intensity ?? 0, 0, 1);
+  if (latest.viseme === "mouth_open_wide") {
+    return { viseme: latest.viseme, mouthOpen: 0.72 + intensity * 0.22 };
+  }
+  if (latest.viseme === "mouth_round_o") {
+    return { viseme: latest.viseme, mouthOpen: 0.42 + intensity * 0.18 };
+  }
+  if (latest.viseme === "mouth_open_small") {
+    return { viseme: latest.viseme, mouthOpen: 0.22 + intensity * 0.18 };
+  }
+  return { viseme: latest.viseme, mouthOpen: 0 };
+}
+
+function resolveGeneratedExpressionKey(
+  pack: CharacterPack,
+  explicitView: "front" | "threeQuarter" | "profile",
+  normalizedExpression: string
+): string {
+  const candidates = [
+    `${explicitView}_${normalizedExpression}`,
+    explicitView === "front" ? normalizedExpression : "",
+    explicitView === "front" ? "front_neutral" : `${explicitView}_neutral`,
+    explicitView === "front"
+      ? "view_front"
+      : explicitView === "threeQuarter"
+        ? "view_right_3q"
+        : "view_right_profile",
+    "neutral"
+  ].filter((value) => value.length > 0);
+
+  for (const candidate of candidates) {
+    if (pack.expressions[candidate]) {
+      return candidate;
+    }
+  }
+  return "neutral";
+}
+
+function resolveTrackedLookTarget(
+  sequence: ShotRenderSequence,
+  frame: number,
+  pointerTarget: { x: number; y: number }
+): { x: number; y: number } {
+  const latest = findLatestEntry(sequence.characterTracks?.lookTrack, frame);
+  const target = (latest?.target ?? "viewer").toLowerCase();
+  if (target === "chart") {
+    return pointerTarget;
+  }
+  if (target === "left") {
+    return { x: FRAME_WIDTH * 0.34, y: FRAME_HEIGHT * 0.34 };
+  }
+  if (target === "right") {
+    return { x: FRAME_WIDTH * 0.74, y: FRAME_HEIGHT * 0.34 };
+  }
+  if (target === "up") {
+    return { x: FRAME_WIDTH * 0.56, y: FRAME_HEIGHT * 0.18 };
+  }
+  if (target === "down") {
+    return { x: FRAME_WIDTH * 0.54, y: FRAME_HEIGHT * 0.56 };
+  }
+  return { x: FRAME_WIDTH * 0.55, y: FRAME_HEIGHT * 0.34 };
 }
 
 function toEaseInOut(t: number): number {
@@ -871,7 +822,41 @@ function resolveCharacterYaw(sequence: ShotRenderSequence, localFrame: number, f
   return clamp(lerp(plan.from, plan.to, t), -1, 1);
 }
 
-function computeBarGeometry(rows: ShotChartRow[] | undefined, box: ShotLayoutBox): BarGeometry[] {
+function resolvePrimaryVisualBox(sequence: ShotRenderSequence): ShotLayoutRect {
+  return sequence.layoutPlan?.primaryVisualBox ?? CHART_BOX;
+}
+
+function resolveNarrationBox(sequence: ShotRenderSequence): ShotLayoutRect {
+  return sequence.layoutPlan?.narrationBox ?? NARRATION_BOX;
+}
+
+function resolveInsertBox(sequence: ShotRenderSequence): ShotLayoutRect | undefined {
+  if (sequence.layoutPlan?.insertBox) {
+    return sequence.layoutPlan.insertBox;
+  }
+  if (!sequence.insertAsset) {
+    return undefined;
+  }
+  return sequence.insertAsset.layout === "sidebar"
+    ? {
+        x: 1110,
+        y: 168,
+        width: 640,
+        height: 248
+      }
+    : {
+        x: 970,
+        y: 720,
+        width: 800,
+        height: 180
+      };
+}
+
+function resolveOccluderBox(sequence: ShotRenderSequence): ShotLayoutRect {
+  return sequence.layoutPlan?.occluderBox ?? OCCLUDER_BOX;
+}
+
+function computeBarGeometry(rows: ShotChartRow[] | undefined, box: ShotLayoutRect): BarGeometry[] {
   const safeRows = rows ?? [];
   const normalizedRows = safeRows.length > 0 ? safeRows : [{ label: "-", value: 1 }];
   const left = box.x + 56;
@@ -1089,125 +1074,6 @@ function resolveTalkText(sequence: ShotRenderSequence): string | undefined {
   return undefined;
 }
 
-function resolveFinishProfileLocal(sequence: ShotRenderSequence): ShotFinishProfile {
-  if (sequence.finishProfile) {
-    return sequence.finishProfile;
-  }
-
-  const profileInput = {
-    channelDomain: sequence.visualPlan?.channelDomain,
-    mascotId: sequence.mascotId,
-    hasChart: sequence.hasChart || sequence.visualMode === "chart",
-    primaryVisualKind: sequence.primaryVisualKind,
-    insertNeed: sequence.insertNeed ?? "none"
-  } as const;
-
-  if (sequence.profileBundle) {
-    return resolveDeterministicFinishProfile({
-      ...profileInput,
-      profileBundle: sequence.profileBundle
-    });
-  }
-
-  return resolveDeterministicProfileSeam(profileInput).finishProfile;
-}
-
-function buildSceneFinishFilter(profile: ShotFinishProfile): string {
-  const sharpenRadius = 0.24 + profile.lineSharpenStrength * 0.9;
-  const sharpenAlpha = 0.06 + profile.lineSharpenStrength * 0.14;
-  return [
-    `brightness(${profile.brightness.toFixed(3)})`,
-    `contrast(${profile.contrast.toFixed(3)})`,
-    `saturate(${profile.saturation.toFixed(3)})`,
-    `drop-shadow(0 0 ${sharpenRadius.toFixed(2)}px rgba(255,255,255,${sharpenAlpha.toFixed(3)}))`
-  ].join(" ");
-}
-
-function resolveBoxCenter(box: ShotLayoutBox | undefined, fallback: { x: number; y: number }) {
-  if (!box) {
-    return fallback;
-  }
-
-  return {
-    x: box.x + box.width * 0.5,
-    y: box.y + box.height * 0.5
-  };
-}
-
-function resolveLookTarget(
-  lookTargetToken: string | undefined,
-  pointerTarget: { x: number; y: number },
-  visualBox: ShotLayoutBox,
-  narrationBox: ShotLayoutBox,
-  pointerReachableZone: ShotLayoutBox | undefined,
-  profileBundle?: ShotProfileBundle
-): { x: number; y: number } {
-  const pointerBias = profileBundle?.pointerBias ?? "soft_visual";
-  if (lookTargetToken === "chart") {
-    return pointerBias === "guided_callout"
-      ? resolveBoxCenter(pointerReachableZone, pointerTarget)
-      : pointerTarget;
-  }
-  if (lookTargetToken === "visual") {
-    return pointerBias === "chart_precise"
-      ? pointerTarget
-      : resolveBoxCenter(pointerReachableZone, resolveBoxCenter(visualBox, pointerTarget));
-  }
-  if (lookTargetToken === "narration") {
-    return resolveBoxCenter(narrationBox, { x: FRAME_WIDTH * 0.56, y: FRAME_HEIGHT * 0.78 });
-  }
-  if (pointerBias === "guided_callout") {
-    return resolveBoxCenter(pointerReachableZone, resolveBoxCenter(visualBox, pointerTarget));
-  }
-  return { x: FRAME_WIDTH * 0.55, y: FRAME_HEIGHT * 0.34 };
-}
-
-function resolvePerformanceOffset(
-  actionClip: string | undefined,
-  expression: string | undefined,
-  frame: number,
-  profileBundle?: ShotProfileBundle
-): { x: number; y: number } {
-  const wave = Math.sin(frame * 0.11);
-  const drift = Math.cos(frame * 0.07);
-  let x = 0;
-  let y = 0;
-
-  if (actionClip === "greet") {
-    x += wave * 10;
-    y += drift * 4 - 2;
-  } else if (actionClip === "move") {
-    x += wave * 14;
-    y += Math.sin(frame * 0.18) * 3;
-  } else if (actionClip === "conclude") {
-    y -= 6 + drift * 2;
-  } else if (actionClip === "explain") {
-    x += wave * 6;
-    y += drift * 2;
-  }
-
-  if (expression === "focused") {
-    y -= 4;
-  } else if (expression === "excited") {
-    x += wave * 4;
-    y -= 6;
-  }
-
-  if (profileBundle?.actingBias === "analytic_presenter") {
-    x *= 0.78;
-    y *= 0.74;
-  } else if (profileBundle?.actingBias === "warm_guide") {
-    x *= 1.06;
-    y *= 1.04;
-    if (actionClip === "greet" || actionClip === "explain") {
-      x += wave * 2.5;
-      y += Math.sin(frame * 0.09) * 1.8;
-    }
-  }
-
-  return { x, y };
-}
-
 function resolveTransitionType(sequence: ShotRenderSequence): ShotTransitionType {
   if (sequence.transitionType) {
     return sequence.transitionType;
@@ -1297,6 +1163,7 @@ function resolveMacroCutawayWeight(localFrame: number, emphasisAtFrame: number):
 
 type ChartViewProps = {
   sequence: ShotRenderSequence;
+  visualObject?: ShotVisualObject;
   pointerIndex: number;
   highlightIndices: number[];
   localFrame: number;
@@ -1314,13 +1181,23 @@ type AnimatedBarState = {
 
 const ChartView = ({
   sequence,
+  visualObject,
   pointerIndex,
   highlightIndices,
   localFrame,
   fps,
   emphasisAtFrame
 }: ChartViewProps) => {
-  const visualBox = resolveVisualBox(sequence);
+  const visualBox = resolvePrimaryVisualBox(sequence);
+  const motionPreset = resolveVisualMotionPresetLocal(visualObject);
+  const motionState = resolveVisualMotionState({
+    motionPreset,
+    motionProfileId: resolveVisualMotionProfileIdLocal(visualObject),
+    animationPolicy: visualObject?.animationPolicy ?? "presenter_guided",
+    localFrame,
+    fps,
+    emphasisAtFrame
+  });
   const bars = computeBarGeometry(sequence.chartData ?? [], visualBox);
   const highlightSet = new Set(highlightIndices);
 
@@ -1402,7 +1279,11 @@ const ChartView = ({
         borderRadius: 20,
         border: "2px solid rgba(255, 255, 255, 0.28)",
         background: "linear-gradient(180deg, rgba(12, 19, 34, 0.84) 0%, rgba(6, 10, 20, 0.92) 100%)",
-        overflow: "hidden"
+        overflow: "hidden",
+        opacity: motionState.panelOpacity,
+        clipPath: resolveHorizontalRevealClip(motionState.sweepProgress),
+        transform: `translate(${motionState.panelTranslateX.toFixed(1)}px, ${motionState.panelTranslateY.toFixed(1)}px) scale(${motionState.panelScale.toFixed(4)})`,
+        transformOrigin: "50% 50%"
       }}
     >
       <div
@@ -1530,12 +1411,25 @@ const ChartView = ({
 
 type TableViewProps = {
   sequence: ShotRenderSequence;
+  visualObject?: ShotVisualObject;
+  localFrame: number;
+  fps: number;
+  emphasisAtFrame: number;
 };
 
-const TableView = ({ sequence }: TableViewProps) => {
-  const visualBox = resolveVisualBox(sequence);
+const TableView = ({ sequence, visualObject, localFrame, fps, emphasisAtFrame }: TableViewProps) => {
   const sourceRows = sequence.chartData ?? [];
   const rows = sourceRows.length > 0 ? sourceRows : [{ label: "-", value: 0 }];
+  const visualBox = resolvePrimaryVisualBox(sequence);
+  const motionPreset = resolveVisualMotionPresetLocal(visualObject);
+  const motionState = resolveVisualMotionState({
+    motionPreset,
+    motionProfileId: resolveVisualMotionProfileIdLocal(visualObject),
+    animationPolicy: visualObject?.animationPolicy ?? "hold",
+    localFrame,
+    fps,
+    emphasisAtFrame
+  });
   return (
     <div
       style={{
@@ -1547,7 +1441,10 @@ const TableView = ({ sequence }: TableViewProps) => {
         borderRadius: 20,
         border: "2px solid rgba(255, 255, 255, 0.28)",
         background: "linear-gradient(180deg, rgba(12, 19, 34, 0.84) 0%, rgba(6, 10, 20, 0.92) 100%)",
-        overflow: "hidden"
+        overflow: "hidden",
+        opacity: motionState.panelOpacity,
+        transform: `translate(${motionState.panelTranslateX.toFixed(1)}px, ${motionState.panelTranslateY.toFixed(1)}px) scale(${motionState.panelScale.toFixed(4)})`,
+        transformOrigin: "50% 50%"
       }}
     >
       <div
@@ -1575,883 +1472,47 @@ const TableView = ({ sequence }: TableViewProps) => {
           overflow: "hidden"
         }}
       >
-        {rows.map((row, index) => (
-          <div
-            key={`${row.label}:${index}`}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              alignItems: "center",
-              padding: "10px 14px",
-              borderBottom:
-                index === rows.length - 1 ? "none" : "1px solid rgba(255, 255, 255, 0.12)",
-              background: index % 2 === 0 ? "rgba(255, 255, 255, 0.04)" : "rgba(255, 255, 255, 0.02)"
-            }}
-          >
-            <span
-              style={{
-                color: "#dbe6fa",
-                fontSize: 24
-              }}
-            >
-              {row.label}
-            </span>
-            <span
-              style={{
-                color: "#f5f9ff",
-                fontSize: 24,
-                fontWeight: 700
-              }}
-            >
-              {row.value}
-              {sequence.unit ? ` ${sequence.unit}` : ""}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-type ExplainerVisualViewProps = {
-  sequence: ShotRenderSequence;
-  localFrame: number;
-  fps: number;
-  emphasisAtFrame: number;
-};
-
-const ExplainerVisualView = ({
-  sequence,
-  localFrame,
-  fps,
-  emphasisAtFrame
-}: ExplainerVisualViewProps) => {
-  const visualBox = resolveVisualBox(sequence);
-  const primaryKind = resolvePrimaryVisualKindLocal(sequence);
-  const primaryObject = resolvePrimaryVisualObjectLocal(sequence);
-  const supportingObjects = resolveSupportingVisualObjectsLocal(sequence);
-  const items = resolveVisualItemsLocal(sequence, primaryObject);
-  const title = resolveVisualTitleLocal(sequence, primaryObject, primaryKind);
-  const body = resolveVisualBodyLocal(sequence, primaryObject);
-  const metric = resolveVisualMetricLocal(sequence, primaryObject, items);
-  const theme = resolveVisualTheme(primaryKind);
-  const finishProfile = resolveFinishProfileLocal(sequence);
-  const badges = uniqueNonEmptyStrings([
-    sequence.visualPlan?.channelDomain ? startCaseLabel(sequence.visualPlan.channelDomain) : undefined,
-    sequence.visualPlan?.educationalMode ? startCaseLabel(sequence.visualPlan.educationalMode) : undefined,
-    startCaseLabel(finishProfile.tone),
-    startCaseLabel(finishProfile.textureMatch)
-  ]).slice(0, 3);
-
-  const introProgress = clamp(
-    spring({
-      fps,
-      frame: localFrame,
-      config: {
-        damping: 16,
-        stiffness: 118,
-        mass: 0.78
-      }
-    }),
-    0,
-    1
-  );
-  const emphasisEnvelope = clamp(1 - Math.abs(localFrame - emphasisAtFrame) / 20, 0, 1);
-  const scale = 1 + emphasisEnvelope * 0.02;
-  const highlightOpacity = 0.16 + emphasisEnvelope * 0.16;
-
-  const renderChecklistRows = () => {
-    const checklistItems = items.length > 0 ? items : splitNarrationFragments(body).slice(0, 4);
-    return (
-      <div style={{ display: "grid", gap: 12 }}>
-        {checklistItems.slice(0, 4).map((item, index) => {
-          const rowProgress = clamp(
-            spring({
-              fps,
-              frame: localFrame - 3 - index * 2,
-              config: {
-                damping: 14,
-                stiffness: 124,
-                mass: 0.7
-              }
-            }),
-            0,
-            1
-          );
+        {rows.map((row, index) => {
+          const rowProgress = resolveVisualMotionItemProgress(motionState, index, 4);
           return (
             <div
-              key={`${item}:${index}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "56px 1fr",
-                alignItems: "center",
-                gap: 14,
-                padding: "14px 18px",
-                borderRadius: 18,
-                border: `1px solid ${theme.chipBorder}`,
-                background: theme.surface,
-                opacity: rowProgress,
-                transform: `translateX(${interpolate(rowProgress, [0, 1], [18, 0])}px)`
-              }}
-            >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 999,
-                  background: theme.accentSoft,
-                  border: `1px solid ${theme.chipBorder}`,
-                  color: theme.chipText,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 16,
-                  fontWeight: 800
-                }}
-              >
-                {String(index + 1).padStart(2, "0")}
-              </div>
-              <div style={{ color: "#F4F8FF", fontSize: 24, lineHeight: 1.35 }}>{clipText(item, 72)}</div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderStepRail = (mode: "timeline" | "process_flow") => {
-    const stepItems = items.length > 0 ? items : splitNarrationFragments(body).slice(0, 4);
-    const steps = stepItems.slice(0, 4);
-    return (
-      <div style={{ display: "grid", gap: 16 }}>
-        <div
-          style={{
-            position: "relative",
-            height: 8,
-            borderRadius: 999,
-            background: "rgba(255, 255, 255, 0.08)",
-            overflow: "hidden"
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: `${Math.max(18, introProgress * 100)}%`,
-              background: `linear-gradient(90deg, ${theme.accentSoft} 0%, ${theme.accent} 100%)`
-            }}
-          />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, steps.length)}, 1fr)`, gap: 14 }}>
-          {steps.map((step, index) => {
-            const stepProgress = clamp(
-              spring({
-                fps,
-                frame: localFrame - 5 - index * 3,
-                config: {
-                  damping: 14,
-                  stiffness: 120,
-                  mass: 0.72
-                }
-              }),
-              0,
-              1
-            );
-            return (
-              <div
-                key={`${step}:${index}`}
-                style={{
-                  minHeight: 138,
-                  padding: "18px 16px",
-                  borderRadius: 20,
-                  border: `1px solid ${theme.chipBorder}`,
-                  background: theme.surface,
-                  display: "grid",
-                  gap: 10,
-                  opacity: stepProgress,
-                  transform: `translateY(${interpolate(stepProgress, [0, 1], [18, 0])}px)`
-                }}
-              >
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 44,
-                    height: 44,
-                    borderRadius: 14,
-                    background: theme.accentSoft,
-                    color: theme.chipText,
-                    fontSize: 16,
-                    fontWeight: 800
-                  }}
-                >
-                  {mode === "timeline" ? `T${index + 1}` : `P${index + 1}`}
-                </div>
-                <div style={{ color: "#F6FAFF", fontSize: 25, lineHeight: 1.3, fontWeight: 650 }}>
-                  {clipText(step, 54)}
-                </div>
-                <div style={{ color: "#C9D7EE", fontSize: 15, lineHeight: 1.4 }}>
-                  {mode === "timeline" ? "sequence checkpoint" : "process stage"}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  const renderComparisonBoard = () => {
-    const pairedRows = sequence.chartData.slice(0, 4).map((row) => ({
-      label: row.label,
-      value: `${row.value}${sequence.unit ? ` ${sequence.unit}` : ""}`
-    }));
-    const fallbackRows = items.slice(0, 4).map((item, index) => ({
-      label: index % 2 === 0 ? "Current" : "Shift",
-      value: clipText(item, 36)
-    }));
-    const rows = pairedRows.length > 0 ? pairedRows : fallbackRows;
-    const leftRows = rows.filter((_, index) => index % 2 === 0).slice(0, 2);
-    const rightRows = rows.filter((_, index) => index % 2 === 1).slice(0, 2);
-
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-        {[leftRows, rightRows].map((columnRows, columnIndex) => (
-          <div
-            key={columnIndex === 0 ? "left" : "right"}
-            style={{
-              minHeight: 250,
-              padding: "18px 18px 20px",
-              borderRadius: 24,
-              border: `1px solid ${theme.chipBorder}`,
-              background: theme.surface,
-              display: "grid",
-              gap: 14
-            }}
-          >
-            <div style={{ color: theme.chipText, fontSize: 14, fontWeight: 800, letterSpacing: "0.1em" }}>
-              {columnIndex === 0 ? "BOARD A" : "BOARD B"}
-            </div>
-            {columnRows.length > 0 ? (
-              columnRows.map((row) => (
-                <div
-                  key={`${row.label}:${row.value}`}
-                  style={{
-                    padding: "14px 14px 16px",
-                    borderRadius: 18,
-                    background: "rgba(255, 255, 255, 0.04)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    display: "grid",
-                    gap: 8
-                  }}
-                >
-                  <div style={{ color: "#C5D3E9", fontSize: 15, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    {row.label}
-                  </div>
-                  <div style={{ color: "#F7FBFF", fontSize: 32, fontWeight: 750 }}>{row.value}</div>
-                </div>
-              ))
-            ) : (
-              <div style={{ color: "#D7E3F7", fontSize: 20 }}>No paired comparison data.</div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderKpiCard = () => (
-    <div style={{ display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 18, alignItems: "stretch" }}>
-      <div
-        style={{
-          padding: "22px 22px 24px",
-          borderRadius: 24,
-          border: `1px solid ${theme.chipBorder}`,
-          background: theme.surface,
-          display: "grid",
-          alignContent: "center",
-          gap: 10
-        }}
-      >
-        <div style={{ color: "#C7D7EF", fontSize: 15, textTransform: "uppercase", letterSpacing: "0.12em" }}>
-          {metric?.label ?? "Primary metric"}
-        </div>
-        <div style={{ color: "#F7FBFF", fontSize: 70, fontWeight: 780, lineHeight: 0.95 }}>
-          {metric?.value ?? "--"}
-        </div>
-        <div style={{ color: theme.chipText, fontSize: 16 }}>{metric?.detail ?? "deterministic summary card"}</div>
-      </div>
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ color: "#F5FAFF", fontSize: 30, fontWeight: 700, lineHeight: 1.2 }}>{clipText(body, 120)}</div>
-        <div style={{ display: "grid", gap: 10 }}>
-          {items.slice(0, 3).map((item, index) => (
-            <div
-              key={`${item}:${index}`}
-              style={{
-                padding: "12px 14px",
-                borderRadius: 16,
-                border: `1px solid ${theme.chipBorder}`,
-                background: theme.surface,
-                color: "#EAF2FF",
-                fontSize: 20
-              }}
-            >
-              {clipText(item, 60)}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderLabeledDiagram = () => {
-    const diagramLabels = items.length > 0 ? items : splitNarrationFragments(body).slice(0, 4);
-    const leftLabels = diagramLabels.filter((_, index) => index % 2 === 0).slice(0, 2);
-    const rightLabels = diagramLabels.filter((_, index) => index % 2 === 1).slice(0, 2);
-
-    const renderDiagramLabel = (label: string, index: number, side: "left" | "right") => (
-      <div
-        key={`${side}:${label}:${index}`}
-        style={{
-          display: "grid",
-          gap: 8,
-          justifyItems: side === "left" ? "end" : "start",
-          textAlign: side === "left" ? "right" : "left"
-        }}
-      >
-        <div
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: 999,
-            background: theme.accent,
-            boxShadow: `0 0 0 6px ${theme.accentSoft}`
-          }}
-        />
-        <div style={{ color: "#F6F0FF", fontSize: 21, lineHeight: 1.3, maxWidth: 190 }}>{clipText(label, 44)}</div>
-      </div>
-    );
-
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1fr 0.8fr", gap: 16, alignItems: "center" }}>
-        <div style={{ display: "grid", gap: 34, justifyItems: "end" }}>
-          {leftLabels.map((label, index) => renderDiagramLabel(label, index, "left"))}
-        </div>
-        <div
-          style={{
-            height: 280,
-            borderRadius: 999,
-            border: `1px solid ${theme.chipBorder}`,
-            background: `radial-gradient(circle at 50% 40%, ${theme.accentSoft} 0%, rgba(255, 255, 255, 0.05) 55%, rgba(255, 255, 255, 0.02) 100%)`,
-            display: "grid",
-            alignItems: "center",
-            justifyItems: "center",
-            boxShadow: `inset 0 0 0 1px ${theme.chipBorder}, 0 0 34px ${theme.accentSoft}`
-          }}
-        >
-          <div style={{ display: "grid", gap: 10, justifyItems: "center", padding: "0 34px", textAlign: "center" }}>
-            <div style={{ color: theme.chipText, fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-              labeled diagram
-            </div>
-            <div style={{ color: "#FBF6FF", fontSize: 34, fontWeight: 760, lineHeight: 1.12 }}>{title}</div>
-            <div style={{ color: "#E5D6F2", fontSize: 18, lineHeight: 1.4 }}>{clipText(body, 90)}</div>
-          </div>
-        </div>
-        <div style={{ display: "grid", gap: 34, justifyItems: "start" }}>
-          {rightLabels.map((label, index) => renderDiagramLabel(label, index, "right"))}
-        </div>
-      </div>
-    );
-  };
-
-  const renderIconArray = () => {
-    const iconItems = items.length > 0 ? items : splitNarrationFragments(body).slice(0, 4);
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
-        {iconItems.slice(0, 4).map((item, index) => (
-          <div
-            key={`${item}:${index}`}
-            style={{
-              minHeight: 148,
-              padding: "18px 18px 16px",
-              borderRadius: 22,
-              border: `1px solid ${theme.chipBorder}`,
-              background: theme.surface,
-              display: "grid",
-              gap: 12
-            }}
-          >
-            <div
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 18,
-                background: theme.accentSoft,
-                border: `1px solid ${theme.chipBorder}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: theme.chipText,
-                fontSize: 20,
-                fontWeight: 780
-              }}
-            >
-              {resolveIconToken(item)}
-            </div>
-            <div style={{ color: "#F5FAFF", fontSize: 24, lineHeight: 1.32 }}>{clipText(item, 42)}</div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderFallbackDataRows = () => {
-    const rows =
-      sequence.chartData.length > 0
-        ? sequence.chartData.slice(0, 4).map((row) => ({
-            label: row.label,
-            value: `${row.value}${sequence.unit ? ` ${sequence.unit}` : ""}`
-          }))
-        : items.slice(0, 4).map((item, index) => ({
-            label: `Point ${index + 1}`,
-            value: clipText(item, 34)
-          }));
-    return (
-      <div style={{ display: "grid", gap: 12 }}>
-        {rows.map((row) => (
-          <div
-            key={`${row.label}:${row.value}`}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 16,
-              alignItems: "center",
-              padding: "14px 16px",
-              borderRadius: 18,
-              border: `1px solid ${theme.chipBorder}`,
-              background: theme.surface
-            }}
-          >
-            <div style={{ color: "#D5E2F8", fontSize: 21 }}>{row.label}</div>
-            <div style={{ color: "#F7FBFF", fontSize: 24, fontWeight: 720 }}>{row.value}</div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  let content: React.JSX.Element;
-  switch (primaryKind) {
-    case "checklist_card":
-      content = renderChecklistRows();
-      break;
-    case "timeline":
-      content = renderStepRail("timeline");
-      break;
-    case "process_flow":
-      content = renderStepRail("process_flow");
-      break;
-    case "comparison_board":
-      content = renderComparisonBoard();
-      break;
-    case "kpi_card":
-      content = renderKpiCard();
-      break;
-    case "labeled_diagram":
-      content = renderLabeledDiagram();
-      break;
-    case "icon_array":
-      content = renderIconArray();
-      break;
-    case "summary_card":
-      content = (
-        <div style={{ display: "grid", gap: 18 }}>
-          <div style={{ color: "#F5FAFF", fontSize: 34, lineHeight: 1.22, fontWeight: 700 }}>{clipText(body, 140)}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {items.slice(0, 4).map((item, index) => (
-              <div
-                key={`${item}:${index}`}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 999,
-                  border: `1px solid ${theme.chipBorder}`,
-                  background: theme.chipBackground,
-                  color: theme.chipText,
-                  fontSize: 18,
-                  fontWeight: 600
-                }}
-              >
-                {clipText(item, 28)}
-              </div>
-            ))}
-          </div>
-          {supportingObjects.length > 0 ? (
-            <div style={{ color: "#C8D7F0", fontSize: 16 }}>
-              support: {clipText((supportingObjects[0].title ?? supportingObjects[0].body ?? "").replaceAll("_", " "), 72)}
-            </div>
-          ) : null}
-        </div>
-      );
-      break;
-    default:
-      content = renderFallbackDataRows();
-      break;
-  }
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: visualBox.x,
-        top: visualBox.y,
-        width: visualBox.width,
-        height: visualBox.height,
-        borderRadius: 24,
-        border: `1px solid ${theme.border}`,
-        background: theme.background,
-        overflow: "hidden",
-        opacity: introProgress,
-        transform: `translateY(${interpolate(introProgress, [0, 1], [28, 0])}px) scale(${scale})`,
-        transformOrigin: "50% 50%",
-        boxShadow: `0 26px 48px rgba(0, 0, 0, 0.30), 0 0 ${Math.round(
-          28 + finishProfile.bloomOpacity * 120
-        )}px rgba(255, 255, 255, ${Math.min(0.18, finishProfile.bloomOpacity * 0.55).toFixed(3)}), 0 0 0 1px rgba(255, 255, 255, 0.03)`
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `radial-gradient(circle at 86% 18%, ${theme.accentSoft} 0%, rgba(255, 255, 255, 0) 36%)`,
-          opacity: highlightOpacity
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: finishProfile.tintGradient,
-          opacity: Math.min(0.16, finishProfile.tintOpacity * 1.7),
-          mixBlendMode: "soft-light"
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          inset: 22,
-          borderRadius: 20,
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          background: "rgba(255, 255, 255, 0.02)"
-        }}
-      />
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          display: "grid",
-          gridTemplateRows: "auto auto 1fr",
-          gap: 18,
-          height: "100%",
-          padding: "26px 28px 28px"
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start" }}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <div style={{ color: theme.chipText, fontSize: 13, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-              explainer visual
-            </div>
-            <div style={{ color: "#F7FBFF", fontSize: 36, fontWeight: 760, lineHeight: 1.08 }}>{title}</div>
-          </div>
-          <div
-            style={{
-              padding: "9px 12px",
-              borderRadius: 999,
-              border: `1px solid ${theme.chipBorder}`,
-              background: theme.chipBackground,
-              color: theme.chipText,
-              fontSize: 14,
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em"
-            }}
-          >
-            {primaryKind ? startCaseLabel(primaryKind) : "explainer"}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {badges.map((badge) => (
-            <div
-              key={badge}
-              style={{
-                padding: "7px 12px",
-                borderRadius: 999,
-                border: `1px solid ${theme.chipBorder}`,
-                background: theme.chipBackground,
-                color: theme.chipText,
-                fontSize: 13,
-                fontWeight: 650
-              }}
-            >
-              {badge}
-            </div>
-          ))}
-          {sequence.visualPlan?.selectionReason ? (
-            <div
-              style={{
-                padding: "7px 12px",
-                borderRadius: 999,
-                border: "1px solid rgba(255, 255, 255, 0.14)",
-                background: "rgba(255, 255, 255, 0.04)",
-                color: "#D6E2F6",
-                fontSize: 13
-              }}
-            >
-              {clipText(sequence.visualPlan.selectionReason.replaceAll("_", " "), 38)}
-            </div>
-          ) : null}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateRows: metric ? "auto 1fr" : "1fr", gap: 18 }}>
-          {metric ? (
-            <div
+              key={`${row.label}:${index}`}
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr auto",
-                gap: 16,
-                alignItems: "end",
-                padding: "16px 18px",
-                borderRadius: 20,
-                border: `1px solid ${theme.chipBorder}`,
-                background: theme.surface
+                alignItems: "center",
+                padding: "10px 14px",
+                borderBottom:
+                  index === rows.length - 1 ? "none" : "1px solid rgba(255, 255, 255, 0.12)",
+                background: index % 2 === 0 ? "rgba(255, 255, 255, 0.04)" : "rgba(255, 255, 255, 0.02)",
+                ...buildRevealStyle(rowProgress, {
+                  opacityFloor: 0.14,
+                  scaleFrom: 0.96,
+                  translateY: 10
+                })
               }}
             >
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ color: "#C7D7EE", fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                  spotlight
-                </div>
-                <div style={{ color: "#F8FBFF", fontSize: 22, fontWeight: 680 }}>{metric.label}</div>
-              </div>
-              <div style={{ display: "grid", gap: 4, justifyItems: "end" }}>
-                <div style={{ color: theme.chipText, fontSize: 36, fontWeight: 780, lineHeight: 1 }}>{metric.value}</div>
-                {metric.detail ? <div style={{ color: "#C0D2EA", fontSize: 14 }}>{metric.detail}</div> : null}
-              </div>
-            </div>
-          ) : null}
-          {content}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-type DebugOverlayProps = {
-  episodeId: string;
-  activeSequence?: ShotRenderSequence;
-  overlay?: ShotDebugOverlay;
-};
-
-const DebugOverlay = ({ episodeId, activeSequence, overlay }: DebugOverlayProps) => {
-  if (!overlay?.enabled) {
-    return (
-      <div
-        style={{
-          position: "absolute",
-          right: 30,
-          top: 28,
-          color: "#c4d6f8",
-          fontSize: 20,
-          padding: "8px 12px",
-          background: "rgba(6, 10, 16, 0.58)",
-          borderRadius: 10
-        }}
-      >
-        Episode: {episodeId}
-      </div>
-    );
-  }
-
-  const qcColors = statusChipColors(overlay.qc.status);
-  const fallbackSummary =
-    overlay.qc.fallbackStepsApplied.length > 0 ? overlay.qc.fallbackStepsApplied.join(", ") : "none";
-  const activeFinish = activeSequence ? resolveFinishProfileLocal(activeSequence) : undefined;
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        right: 28,
-        top: 26,
-        width: 430,
-        display: "grid",
-        gap: 10,
-        padding: "14px 16px",
-        borderRadius: 16,
-        background: "rgba(5, 9, 18, 0.76)",
-        border: "1px solid rgba(255, 255, 255, 0.12)",
-        boxShadow: "0 18px 40px rgba(0, 0, 0, 0.32)",
-        color: "#f3f7ff"
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "#98a8c7" }}>
-            Debug Overlay
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>Episode {episodeId}</div>
-          <div style={{ fontSize: 13, color: "#d5def0" }}>
-            Active shot: {activeSequence ? `${activeSequence.shotId} / ${activeSequence.setId}` : "n/a"}
-          </div>
-          {activeSequence ? (
-            <div style={{ fontSize: 12, color: "#9eb2d0", lineHeight: 1.35 }}>
-              {humanizeDebugToken(activeSequence.shotGrammar)} / {humanizeDebugToken(activeSequence.educationalIntent)} / {humanizeDebugToken(activeSequence.routeReason)} / {humanizeDebugToken(activeSequence.insertNeed)}
-            </div>
-          ) : null}
-          {activeSequence && activeFinish ? (
-            <div style={{ fontSize: 12, color: "#9eb2d0", lineHeight: 1.35 }}>
-              {activeSequence.characterPackId} / {humanizeDebugToken(activeFinish.tone)} / {humanizeDebugToken(activeFinish.textureMatch)}
-            </div>
-          ) : null}
-          {activeSequence?.profileBundle ? (
-            <div style={{ fontSize: 12, color: "#8ea7d6", lineHeight: 1.35 }}>
-              {activeSequence.profileBundle.resolverId} / {activeSequence.profileBundle.channelProfileId} / {activeSequence.profileBundle.mascotProfileId} / {humanizeDebugToken(activeSequence.profileBundle.layoutBias)} / {humanizeDebugToken(activeSequence.profileBundle.actingBias)}
-            </div>
-          ) : null}
-          {overlay.profileResolver ? (
-            <div style={{ fontSize: 12, color: "#7f98c8", lineHeight: 1.35 }}>
-              resolver {overlay.profileResolver.resolverSources.join(", ")} / {overlay.profileResolver.resolverIds.join(", ")}
-            </div>
-          ) : null}
-          {overlay.profileResolver?.resolverModulePaths.length ? (
-            <div style={{ fontSize: 12, color: "#6f89bb", lineHeight: 1.35 }}>
-              module {overlay.profileResolver.resolverModulePaths.map((modulePath) => formatResolverModulePath(modulePath)).join(", ")}
-            </div>
-          ) : null}
-        </div>
-        <div
-          style={{
-            padding: "6px 10px",
-            borderRadius: 999,
-            border: `1px solid ${qcColors.border}`,
-            background: qcColors.background,
-            color: qcColors.color,
-            fontSize: 12,
-            fontWeight: 700,
-            textTransform: "uppercase"
-          }}
-        >
-          QC {statusLabel(overlay.qc.status)}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 6,
-          padding: "10px 12px",
-          borderRadius: 12,
-          background: "rgba(255, 255, 255, 0.04)"
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#dbe6fb" }}>
-          <span>errors {overlay.qc.errorCount}</span>
-          <span>warnings {overlay.qc.warningCount}</span>
-          <span>fallback {fallbackSummary}</span>
-        </div>
-        <div style={{ fontSize: 12, color: "#96a7c4" }}>
-          Source: {overlay.sourceLabel ?? "render-orchestrator"}
-        </div>
-        {overlay.profileResolver ? (
-          <div style={{ fontSize: 12, color: "#96a7c4", lineHeight: 1.35 }}>
-            profiles: {overlay.profileResolver.channelProfileIds.join(", ")} / {overlay.profileResolver.mascotProfileIds.join(", ")}
-          </div>
-        ) : null}
-        {overlay.qc.finalIssues.length > 0 ? (
-          <div style={{ display: "grid", gap: 4 }}>
-            {overlay.qc.finalIssues.slice(0, 2).map((issue) => (
-              <div
-                key={`${issue.code}:${issue.shotId ?? "global"}`}
+              <span
                 style={{
-                  fontSize: 13,
-                  color: issue.severity === "ERROR" ? "#ffd8d8" : "#ffefc7"
+                  color: "#dbe6fa",
+                  fontSize: 24
                 }}
               >
-                {issue.code}
-                {issue.shotId ? ` @ ${issue.shotId}` : ""}: {issue.message}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ fontSize: 13, color: "#d9ffe3" }}>No final QC issues.</div>
-        )}
-      </div>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#98a8c7" }}>
-          Benchmarks
-        </div>
-        {overlay.benchmarks.length > 0 ? (
-          overlay.benchmarks.slice(0, 2).map((benchmark, index) => {
-            const colors = statusChipColors(benchmark.status);
-            return (
-              <div
-                key={`${benchmark.scope}:${benchmark.target ?? index}`}
+                {row.label}
+              </span>
+              <span
                 style={{
-                  display: "grid",
-                  gap: 5,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  background: "rgba(255, 255, 255, 0.04)"
+                  color: "#f5f9ff",
+                  fontSize: 24,
+                  fontWeight: 700
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>
-                    {benchmark.scope}
-                    {benchmark.target ? ` / ${benchmark.target}` : ""}
-                  </div>
-                  <div
-                    style={{
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.color,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textTransform: "uppercase"
-                    }}
-                  >
-                    {statusLabel(benchmark.status)}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#dbe6fb" }}>
-                  <span>score {formatScore(benchmark.score)}</span>
-                  <span>verdict {benchmark.verdict ?? "-"}</span>
-                  <span>source {benchmark.sourceLabel ?? "-"}</span>
-                </div>
-                <div style={{ fontSize: 13, color: "#d5def0", lineHeight: 1.4 }}>
-                  {benchmark.reason ?? "no benchmark note"}
-                </div>
-                <div style={{ fontSize: 12, color: "#96a7c4" }}>
-                  generated {formatDebugTimestamp(benchmark.generatedAt)}
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <div
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              background: "rgba(255, 255, 255, 0.04)",
-              fontSize: 13,
-              color: "#d5def0"
-            }}
-          >
-            No benchmark signals attached.
-          </div>
-        )}
+                {row.value}
+                {sequence.unit ? ` ${sequence.unit}` : ""}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2460,30 +1521,1695 @@ const DebugOverlay = ({ episodeId, activeSequence, overlay }: DebugOverlayProps)
 type ShotLayerProps = {
   sequence: ShotRenderSequence;
   freezeCharacterPose: boolean;
+  characterPacks?: Record<string, CharacterPack>;
+  profiles?: ResolvedProfiles;
   frameOffset?: number;
 };
 
-const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayerProps) => {
+type InsertAssetViewProps = {
+  asset: ShotInsertAsset;
+  box: ShotLayoutRect;
+  emphasisAtFrame: number;
+  localFrame: number;
+};
+
+type ExplainerObjectViewProps = {
+  sequence: ShotRenderSequence;
+  visualObject: ShotVisualObject;
+  box: ShotLayoutRect;
+  localFrame: number;
+  fps: number;
+  emphasisAtFrame: number;
+  variant: "primary" | "secondary";
+};
+
+function accentColors(token: ShotInsertAsset["accentToken"] | ShotVisualObject["accentToken"] | undefined) {
+  if (token === "medical") {
+    return {
+      border: "#6dd5c7",
+      glow: "rgba(109, 213, 199, 0.35)",
+      title: "#f3fffd",
+      body: "#d9f6f0",
+      chip: "rgba(109, 213, 199, 0.16)"
+    };
+  }
+  if (token === "economy") {
+    return {
+      border: "#f0c76a",
+      glow: "rgba(240, 199, 106, 0.35)",
+      title: "#fff9ea",
+      body: "#f7efd7",
+      chip: "rgba(240, 199, 106, 0.16)"
+    };
+  }
+  return {
+    border: "#b7c7e7",
+    glow: "rgba(183, 199, 231, 0.35)",
+    title: "#f3f7ff",
+    body: "#dce6f7",
+    chip: "rgba(183, 199, 231, 0.16)"
+  };
+}
+
+function resolveVisualObjectTitle(sequence: ShotRenderSequence, visualObject: ShotVisualObject): string {
+  const raw =
+    visualObject.title ??
+    (visualObject.kind === "line_chart"
+      ? "Trend View"
+      : visualObject.kind === "area_chart"
+        ? "Area Trend"
+        : visualObject.kind === "pie_or_donut"
+          ? "Composition View"
+          : visualObject.kind === "heatmap"
+            ? "Heatmap"
+            : visualObject.kind === "scatter"
+              ? "Scatter Plot"
+              : visualObject.kind === "boxplot"
+                ? "Distribution Plot"
+                : visualObject.kind === "map"
+                  ? "Regional Map"
+      : visualObject.kind === "kpi_card"
+        ? "Key Numbers"
+        : visualObject.kind === "comparison_board"
+          ? "Comparison Board"
+          : visualObject.kind === "icon_grid"
+            ? "Icon Grid"
+            : visualObject.kind === "callout_card"
+              ? "Callout"
+              : visualObject.kind === "process_flow"
+                ? "Process Flow"
+                : visualObject.kind === "anatomy_diagram"
+                  ? "Anatomy Diagram"
+                  : visualObject.kind === "risk_meter"
+                    ? "Risk Meter"
+                    : visualObject.kind === "summary_card"
+                      ? "Summary"
+                      : visualObject.kind === "timeline"
+                        ? "Timeline"
+                        : "Explainer Object");
+  return cleanMarkers(raw);
+}
+
+function resolveVisualObjectBody(sequence: ShotRenderSequence, visualObject: ShotVisualObject): string {
+  const raw = visualObject.body ?? sequence.chartCallout ?? sequence.narration;
+  return cleanMarkers(raw);
+}
+
+function resolveVisualObjectItems(sequence: ShotRenderSequence, visualObject: ShotVisualObject): string[] {
+  if (visualObject.items && visualObject.items.length > 0) {
+    return visualObject.items.slice(0, 6).map((item) => cleanMarkers(item));
+  }
+
+  if (sequence.chartData.length > 0) {
+    return sequence.chartData.slice(0, 6).map((row) => cleanMarkers(row.label));
+  }
+
+  const body = resolveVisualObjectBody(sequence, visualObject);
+  if (body.length === 0) {
+    return [];
+  }
+
+  return body
+    .split(/[,.]/)
+    .map((entry) => cleanMarkers(entry))
+    .filter((entry) => entry.length > 0)
+    .slice(0, 4);
+}
+
+function resolvePrimaryVisualObject(sequence: ShotRenderSequence): ShotVisualObject | undefined {
+  const objects = sequence.visualObjects ?? [];
+  return objects.find((object) => object.semanticRole === "primary_explainer") ?? objects[0];
+}
+
+function resolveSecondaryVisualObject(
+  sequence: ShotRenderSequence,
+  primaryVisualObject: ShotVisualObject | undefined
+): ShotVisualObject | undefined {
+  const objects = (sequence.visualObjects ?? []).filter((object) => object.objectId !== primaryVisualObject?.objectId);
+  if (objects.length === 0) {
+    return undefined;
+  }
+
+  return [...objects].sort((left, right) => {
+    const score = (object: ShotVisualObject) =>
+      (object.preferredRegion === "sidebar" || object.preferredRegion === "lower_third" ? 4 : 0) +
+      (object.semanticRole === "supporting_explainer" ? 2 : 0) +
+      (object.semanticRole === "accent" ? 1 : 0);
+    return score(right) - score(left);
+  })[0];
+}
+
+function formatMetricValue(value: number, unit?: string): string {
+  return `${Math.round(value)}${unit ? ` ${unit}` : ""}`;
+}
+
+function buildLineChartPoints(rows: ShotChartRow[], box: ShotLayoutRect): Array<{ x: number; y: number }> {
+  const safeRows = rows.length > 1 ? rows : [{ label: "-", value: 0 }, { label: "+", value: Math.max(1, rows[0]?.value ?? 1) }];
+  const left = 58;
+  const top = 78;
+  const plotWidth = Math.max(120, box.width - 116);
+  const plotHeight = Math.max(120, box.height - 174);
+  const maxValue = Math.max(1, ...safeRows.map((row) => row.value));
+
+  return safeRows.map((row, index) => ({
+    x: left + (plotWidth * index) / Math.max(1, safeRows.length - 1),
+    y: top + plotHeight - (plotHeight * clamp(row.value / maxValue, 0, 1))
+  }));
+}
+
+function resolveDefaultMotionProfileIdLocal(
+  visualObject?: Pick<ShotVisualObject, "motionProfileId" | "selection" | "accentToken">
+): NonNullable<ShotVisualObject["motionProfileId"]> {
+  if (visualObject?.motionProfileId) {
+    return visualObject.motionProfileId;
+  }
+  if (visualObject?.selection?.channel_domain === "medical" || visualObject?.accentToken === "medical") {
+    return "medical_guided_v1";
+  }
+  if (visualObject?.selection?.channel_domain === "economy" || visualObject?.accentToken === "economy") {
+    return "economy_analytic_v1";
+  }
+  return "studio_balanced_v1";
+}
+
+function buildRevealStyle(
+  progress: number,
+  input?: {
+    opacityFloor?: number;
+    scaleFrom?: number;
+    translateX?: number;
+    translateY?: number;
+    transformOrigin?: string;
+  }
+): CSSProperties {
+  const opacityFloor = input?.opacityFloor ?? 0.22;
+  const scaleFrom = input?.scaleFrom ?? 0.92;
+  const translateX = (1 - progress) * (input?.translateX ?? 0);
+  const translateY = (1 - progress) * (input?.translateY ?? 0);
+  const scale = scaleFrom + (1 - scaleFrom) * progress;
+
+  return {
+    opacity: clamp(opacityFloor + progress * (1 - opacityFloor), 0, 1),
+    transform: `translate(${translateX.toFixed(1)}px, ${translateY.toFixed(1)}px) scale(${scale.toFixed(4)})`,
+    transformOrigin: input?.transformOrigin ?? "50% 50%"
+  };
+}
+
+function resolveHorizontalRevealClip(progress: number): string {
+  return `inset(0 ${Math.round((1 - progress) * 100)}% 0 0 round 18px)`;
+}
+
+function resolveRadialRevealClip(progress: number): string {
+  return `circle(${(18 + progress * 62).toFixed(1)}% at 50% 56%)`;
+}
+
+function resolveVisualMotionPresetLocal(
+  visualObject?: Pick<ShotVisualObject, "kind" | "motionPreset">
+): NonNullable<ShotVisualObject["motionPreset"]> {
+  return visualObject?.motionPreset ?? resolveDefaultMotionPreset(visualObject?.kind);
+}
+
+function resolveVisualMotionProfileIdLocal(
+  visualObject?: Pick<ShotVisualObject, "motionProfileId" | "selection" | "accentToken">
+): NonNullable<ShotVisualObject["motionProfileId"]> {
+  return resolveDefaultMotionProfileIdLocal(visualObject);
+}
+
+function resolveVisualMotionItemProgress(
+  motionState: ReturnType<typeof resolveVisualMotionState>,
+  index: number,
+  extraDelayFrames = 0
+): number {
+  return resolveVisualMotionProgress(
+    motionState.localFrame,
+    Math.round(index * motionState.itemStaggerFrames) + extraDelayFrames,
+    motionState.itemRevealFrames
+  );
+}
+
+function resolvePrimaryVisualObjectLocal(sequence: ShotRenderSequence): ShotVisualObject | undefined {
+  return sequence.visualObjects?.find((object) => object.semanticRole === "primary_explainer") ?? sequence.visualObjects?.[0];
+}
+
+function resolveDefaultPointerTargetCountLocal(kind?: ShotVisualObject["kind"]): number {
+  switch (kind) {
+    case "pie_or_donut":
+      return 5;
+    case "heatmap":
+      return 6;
+    case "scatter":
+    case "boxplot":
+    case "map":
+      return 4;
+    case "comparison_board":
+      return 2;
+    case "anatomy_diagram":
+      return 4;
+    case "risk_meter":
+      return 3;
+    case "timeline":
+    case "process_flow":
+      return 4;
+    case "icon_grid":
+      return 6;
+    case "kpi_card":
+      return 4;
+    case "summary_card":
+    case "callout_card":
+      return 2;
+    case "table":
+      return 4;
+    case "area_chart":
+    case "line_chart":
+    case "bar_chart":
+      return 4;
+    default:
+      return 1;
+  }
+}
+
+function resolvePrimaryVisualPointerTargetCountLocal(sequence: ShotRenderSequence): number {
+  const primaryVisualObject = resolvePrimaryVisualObjectLocal(sequence);
+  const pointerAnchorCount =
+    primaryVisualObject?.anchors?.filter((anchor) => anchor.type === "pointer_anchor").length ?? 0;
+  const pointerTargetIdsCount = primaryVisualObject?.pointerTargetIds?.length ?? 0;
+  const chartDataCount = sequence.chartData.length;
+  const defaultCount = resolveDefaultPointerTargetCountLocal(primaryVisualObject?.kind ?? sequence.primaryVisualKind);
+  return Math.max(pointerAnchorCount, pointerTargetIdsCount, chartDataCount, defaultCount);
+}
+
+function computePrimaryVisualPointerAnchor(
+  sequence: ShotRenderSequence,
+  box: ShotLayoutRect,
+  targetIndex: number
+): { x: number; y: number } {
+  const primaryVisualObject = resolvePrimaryVisualObjectLocal(sequence);
+  const kind = primaryVisualObject?.kind ?? sequence.primaryVisualKind;
+  const pointerAnchors = primaryVisualObject?.anchors?.filter((anchor) => anchor.type === "pointer_anchor") ?? [];
+  if (pointerAnchors.length > 0) {
+    const anchor = pointerAnchors[clamp(targetIndex, 0, pointerAnchors.length - 1)];
+    return {
+      x: box.x + box.width * clamp(anchor.x, 0, 1),
+      y: box.y + box.height * clamp(anchor.y, 0, 1)
+    };
+  }
+  const count = Math.max(1, resolvePrimaryVisualPointerTargetCountLocal(sequence));
+  const clampedIndex = clamp(targetIndex, 0, Math.max(0, count - 1));
+
+  if (kind === "bar_chart") {
+    const bars = computeBarGeometry(sequence.chartData ?? [], box);
+    return bars[clampedIndex]?.anchor ?? { x: box.x + box.width * 0.65, y: box.y + box.height * 0.45 };
+  }
+
+  if (kind === "line_chart") {
+    const points = buildLineChartPoints(sequence.chartData ?? [], box);
+    return points[clampedIndex] ?? { x: box.x + box.width * 0.65, y: box.y + box.height * 0.42 };
+  }
+
+  if (kind === "area_chart") {
+    const points = buildLineChartPoints(sequence.chartData ?? [], box);
+    return points[clampedIndex] ?? { x: box.x + box.width * 0.64, y: box.y + box.height * 0.5 };
+  }
+
+  if (kind === "pie_or_donut") {
+    const angle = -Math.PI / 2 + (Math.PI * 2 * clampedIndex) / Math.max(1, count);
+    return {
+      x: box.x + box.width * (0.5 + Math.cos(angle) * 0.24),
+      y: box.y + box.height * (0.54 + Math.sin(angle) * 0.24)
+    };
+  }
+
+  if (kind === "heatmap") {
+    const columns = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
+    const rows = Math.max(1, Math.ceil(count / columns));
+    const cellWidth = (box.width - 88) / columns;
+    const cellHeight = (box.height - 132) / rows;
+    return {
+      x: box.x + 44 + cellWidth * ((clampedIndex % columns) + 0.5),
+      y: box.y + 78 + cellHeight * (Math.floor(clampedIndex / columns) + 0.5)
+    };
+  }
+
+  if (kind === "scatter") {
+    return {
+      x: box.x + box.width * (0.18 + (clampedIndex / Math.max(1, count - 1)) * 0.64),
+      y: box.y + box.height * (0.72 - (((clampedIndex * 37) % 100) / 100) * 0.44)
+    };
+  }
+
+  if (kind === "boxplot") {
+    return {
+      x: box.x + box.width * (0.18 + (clampedIndex / Math.max(1, count - 1)) * 0.64),
+      y: box.y + box.height * 0.5
+    };
+  }
+
+  if (kind === "map") {
+    const anchors = [
+      { x: 0.3, y: 0.28 },
+      { x: 0.64, y: 0.34 },
+      { x: 0.48, y: 0.48 },
+      { x: 0.34, y: 0.64 },
+      { x: 0.66, y: 0.62 },
+      { x: 0.52, y: 0.76 }
+    ];
+    const anchor = anchors[clamp(clampedIndex, 0, anchors.length - 1)] ?? { x: 0.5, y: 0.52 };
+    return {
+      x: box.x + box.width * anchor.x,
+      y: box.y + box.height * anchor.y
+    };
+  }
+
+  if (kind === "table") {
+    const rowHeight = Math.max(44, (box.height - 118) / Math.max(1, count));
+    return {
+      x: box.x + box.width * 0.72,
+      y: box.y + 104 + rowHeight * clamp(clampedIndex + 0.5, 0.5, count - 0.5)
+    };
+  }
+
+  if (kind === "kpi_card") {
+    const columns = Math.min(3, Math.max(1, count));
+    const rows = Math.ceil(count / columns);
+    const cellWidth = (box.width - 88) / columns;
+    const cellHeight = (box.height - 132) / rows;
+    return {
+      x: box.x + 44 + cellWidth * ((clampedIndex % columns) + 0.5),
+      y: box.y + 96 + cellHeight * (Math.floor(clampedIndex / columns) + 0.5)
+    };
+  }
+
+  if (kind === "timeline" || kind === "process_flow") {
+    return {
+      x: box.x + 72 + ((box.width - 144) * clampedIndex) / Math.max(1, count - 1),
+      y: box.y + box.height * 0.52
+    };
+  }
+
+  if (kind === "comparison_board") {
+    const column = clampedIndex % 2;
+    const row = Math.floor(clampedIndex / 2);
+    const rowCount = Math.max(1, Math.ceil(count / 2));
+    return {
+      x: box.x + box.width * (column === 0 ? 0.28 : 0.72),
+      y: box.y + 132 + ((box.height - 188) * row) / Math.max(1, rowCount - 1)
+    };
+  }
+
+  if (kind === "icon_grid") {
+    const columns = count >= 5 ? 3 : 2;
+    const rows = Math.max(1, Math.ceil(count / columns));
+    const cellWidth = (box.width - 72) / columns;
+    const cellHeight = (box.height - 112) / rows;
+    return {
+      x: box.x + 36 + cellWidth * ((clampedIndex % columns) + 0.5),
+      y: box.y + 86 + cellHeight * (Math.floor(clampedIndex / columns) + 0.5)
+    };
+  }
+
+  if (kind === "anatomy_diagram") {
+    const anchors = [
+      { x: box.x + box.width * 0.28, y: box.y + box.height * 0.34 },
+      { x: box.x + box.width * 0.72, y: box.y + box.height * 0.29 },
+      { x: box.x + box.width * 0.36, y: box.y + box.height * 0.7 },
+      { x: box.x + box.width * 0.7, y: box.y + box.height * 0.76 }
+    ];
+    return anchors[clamp(clampedIndex, 0, anchors.length - 1)];
+  }
+
+  if (kind === "risk_meter") {
+    const markerPositions = [0.2, 0.5, 0.82];
+    return {
+      x: box.x + 20 + (box.width - 40) * markerPositions[clamp(clampedIndex, 0, markerPositions.length - 1)],
+      y: box.y + box.height * 0.52
+    };
+  }
+
+  if (kind === "summary_card" || kind === "callout_card") {
+    const laneCount = Math.max(1, Math.min(3, count));
+    return {
+      x: box.x + box.width * 0.5,
+      y: box.y + 132 + ((box.height - 184) * clampedIndex) / Math.max(1, laneCount - 1)
+    };
+  }
+
+  return {
+    x: box.x + box.width * 0.5,
+    y: box.y + box.height * 0.5
+  };
+}
+
+const ExplainerObjectView = ({
+  sequence,
+  visualObject,
+  box,
+  localFrame,
+  fps,
+  emphasisAtFrame,
+  variant
+}: ExplainerObjectViewProps) => {
+  const colors = accentColors(visualObject.accentToken ?? sequence.insertAsset?.accentToken);
+  const title = resolveVisualObjectTitle(sequence, visualObject);
+  const body = resolveVisualObjectBody(sequence, visualObject);
+  const items = resolveVisualObjectItems(sequence, visualObject);
+  const metricRows = sequence.chartData.slice(0, variant === "primary" ? 4 : 3);
+  const isPrimary = variant === "primary";
+  const headlineFontSize = isPrimary ? 30 : 28;
+  const bodyFontSize = isPrimary ? 22 : 20;
+  const emphasisEnvelope = clamp(1 - Math.abs(localFrame - emphasisAtFrame) / 20, 0, 1);
+  const motionPreset = resolveVisualMotionPresetLocal(visualObject);
+  const motionState = resolveVisualMotionState({
+    motionPreset,
+    motionProfileId: resolveVisualMotionProfileIdLocal(visualObject),
+    animationPolicy: visualObject.animationPolicy,
+    localFrame,
+    fps,
+    emphasisAtFrame
+  });
+  const panelInset = isPrimary ? 28 : 20;
+  const innerWidth = Math.max(120, box.width - panelInset * 2);
+  const innerHeight = Math.max(120, box.height - panelInset * 2);
+
+  const renderSummaryCard = () => (
+    <>
+      <div
+        style={{
+          color: colors.title,
+          fontSize: headlineFontSize,
+          fontWeight: 800,
+          marginBottom: 12
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          color: colors.body,
+          fontSize: bodyFontSize,
+          lineHeight: 1.35,
+          marginBottom: items.length > 0 ? 16 : 0
+        }}
+      >
+        {body}
+      </div>
+      {items.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10
+          }}
+        >
+          {items.map((item, index) => (
+            <div
+              key={`${visualObject.objectId}-summary-${index}-${item}`}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                background: colors.chip,
+                color: colors.title,
+                fontSize: 18,
+                fontWeight: 700
+              }}
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+
+  const renderLineChart = () => {
+    const points = buildLineChartPoints(sequence.chartData, box);
+    const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
+    const areaString = `${pointString} ${points[points.length - 1]?.x ?? 0},${box.height - 36} ${points[0]?.x ?? 0},${box.height - 36}`;
+    const traceClip = resolveHorizontalRevealClip(motionState.sweepProgress);
+
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 10
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: box.width,
+            height: box.height,
+            clipPath: traceClip
+          }}
+        >
+          <svg
+            width={box.width}
+            height={box.height}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0
+            }}
+          >
+            <defs>
+              <linearGradient id={`line-fill-${visualObject.objectId}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={colors.border} stopOpacity={visualObject.kind === "area_chart" ? "0.46" : "0.34"} />
+                <stop offset="100%" stopColor={colors.border} stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
+            <polyline
+              fill={`url(#line-fill-${visualObject.objectId})`}
+              points={areaString}
+              style={{
+                opacity: visualObject.kind === "area_chart" ? 0.92 : 0.8
+              }}
+            />
+            <polyline
+              fill="none"
+              stroke={colors.border}
+              strokeWidth={5}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              points={pointString}
+            />
+            {points.map((point, index) => {
+              const pointProgress = resolveVisualMotionItemProgress(motionState, index, 6);
+              return (
+                <circle
+                  key={`${visualObject.objectId}-point-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={(index === points.length - 1 ? 8 : 6) * (0.72 + pointProgress * 0.28) + (index === points.length - 1 ? emphasisEnvelope * 3 : 0)}
+                  fill={index === points.length - 1 ? colors.title : colors.border}
+                  opacity={clamp(0.25 + pointProgress * 0.75, 0, 1)}
+                />
+              );
+            })}
+          </svg>
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: panelInset,
+            right: panelInset,
+            bottom: 18,
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(4, Math.max(1, sequence.chartData.length))}, minmax(0, 1fr))`,
+            gap: 8,
+            clipPath: traceClip
+          }}
+        >
+          {sequence.chartData.slice(0, 4).map((row, index) => (
+            <div
+              key={`${visualObject.objectId}-label-${index}-${row.label}`}
+              style={{
+                color: colors.body,
+                fontSize: 16,
+                textAlign: "center"
+              }}
+            >
+              {row.label}
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const renderPieOrDonut = () => {
+    const segments = (metricRows.length > 0 ? metricRows : [{ label: "Focus", value: 1 }]).slice(0, 5);
+    const total = Math.max(1, segments.reduce((sum, row) => sum + Math.max(0, row.value), 0));
+    const centerX = box.width * 0.5;
+    const centerY = box.height * 0.58;
+    const radius = Math.min(innerWidth, innerHeight) * 0.24;
+    const innerRadius = radius * 0.58;
+    const palette = [
+      colors.border,
+      "#7fd9ff",
+      "#f0c76a",
+      "#6dd5c7",
+      "#ff8f8f"
+    ];
+    let startAngle = -Math.PI / 2;
+
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 12
+          }}
+        >
+          {title}
+        </div>
+        <svg
+          width={box.width}
+          height={box.height}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            clipPath: resolveRadialRevealClip(motionState.sweepProgress)
+          }}
+        >
+          {segments.map((segment, index) => {
+            const sliceAngle = ((Math.max(0, segment.value) || 0) / total) * Math.PI * 2;
+            const endAngle = startAngle + sliceAngle;
+            const largeArcFlag = sliceAngle > Math.PI ? 1 : 0;
+            const x1 = centerX + radius * Math.cos(startAngle);
+            const y1 = centerY + radius * Math.sin(startAngle);
+            const x2 = centerX + radius * Math.cos(endAngle);
+            const y2 = centerY + radius * Math.sin(endAngle);
+            const path = [
+              `M ${centerX + innerRadius * Math.cos(startAngle)} ${centerY + innerRadius * Math.sin(startAngle)}`,
+              `L ${x1} ${y1}`,
+              `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+              `L ${centerX + innerRadius * Math.cos(endAngle)} ${centerY + innerRadius * Math.sin(endAngle)}`,
+              `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${centerX + innerRadius * Math.cos(startAngle)} ${centerY + innerRadius * Math.sin(startAngle)}`
+            ].join(" ");
+            const midAngle = startAngle + sliceAngle / 2;
+            const segmentProgress = resolveVisualMotionItemProgress(motionState, index, 6);
+            startAngle = endAngle;
+            return (
+              <g
+                key={`${visualObject.objectId}-donut-${index}-${segment.label}`}
+                style={{
+                  opacity: clamp(0.18 + segmentProgress * 0.82, 0, 1),
+                  transform: `scale(${(0.88 + segmentProgress * 0.12).toFixed(4)})`,
+                  transformOrigin: `${centerX}px ${centerY}px`
+                }}
+              >
+                <path d={path} fill={palette[index % palette.length]} opacity={0.9} />
+                <text
+                  x={centerX + Math.cos(midAngle) * (radius + 28)}
+                  y={centerY + Math.sin(midAngle) * (radius + 28)}
+                  fill={colors.body}
+                  fontSize={16}
+                  textAnchor="middle"
+                >
+                  {segment.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </>
+    );
+  };
+
+  const renderHeatmap = () => {
+    const cells = (metricRows.length > 0 ? metricRows : [{ label: "Focus", value: 1 }]).slice(0, isPrimary ? 6 : 4);
+    const columns = isPrimary ? 3 : 2;
+    const rows = Math.max(1, Math.ceil(cells.length / columns));
+    const maxValue = Math.max(1, ...cells.map((cell) => cell.value));
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 16
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gap: 12
+          }}
+        >
+          {cells.map((cell, index) => {
+            const alpha = clamp(cell.value / maxValue, 0.2, 1);
+            const cellProgress = resolveVisualMotionItemProgress(motionState, index, 4);
+            return (
+              <div
+                key={`${visualObject.objectId}-heat-${index}-${cell.label}`}
+                style={{
+                  padding: "18px 14px",
+                  borderRadius: 18,
+                  minHeight: Math.max(88, Math.floor(innerHeight / rows) - 10),
+                  background: `rgba(109, 213, 199, ${alpha * 0.34})`,
+                  border: `1px solid ${colors.border}55`,
+                  ...buildRevealStyle(cellProgress, {
+                    opacityFloor: 0.12,
+                    scaleFrom: 0.94,
+                    translateY: 12
+                  })
+                }}
+              >
+                <div
+                  style={{
+                    color: colors.title,
+                    fontSize: 18,
+                    fontWeight: 700,
+                    marginBottom: 8
+                  }}
+                >
+                  {cell.label}
+                </div>
+                <div
+                  style={{
+                    color: colors.body,
+                    fontSize: 24,
+                    fontWeight: 800
+                  }}
+                >
+                  {formatMetricValue(cell.value, sequence.unit)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  const renderScatter = () => {
+    const points = (metricRows.length > 0 ? metricRows : [{ label: "Focus", value: 1 }]).slice(0, isPrimary ? 6 : 4);
+    const maxValue = Math.max(1, ...points.map((point) => point.value));
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 10
+          }}
+        >
+          {title}
+        </div>
+        <svg
+          width={box.width}
+          height={box.height}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0
+          }}
+        >
+          <line x1={64} y1={box.height - 64} x2={box.width - 44} y2={box.height - 64} stroke={`${colors.body}88`} />
+          <line x1={64} y1={84} x2={64} y2={box.height - 64} stroke={`${colors.body}88`} />
+          {points.map((point, index) => {
+            const x = 86 + (index / Math.max(1, points.length - 1)) * (box.width - 152);
+            const y = box.height - 86 - (point.value / maxValue) * (box.height - 184);
+            const pointProgress = resolveVisualMotionItemProgress(motionState, index, 4);
+            return (
+              <g
+                key={`${visualObject.objectId}-scatter-${index}-${point.label}`}
+                style={{
+                  opacity: clamp(0.18 + pointProgress * 0.82, 0, 1),
+                  transform: `translateY(${((1 - pointProgress) * 12).toFixed(1)}px) scale(${(0.8 + pointProgress * 0.2).toFixed(4)})`,
+                  transformOrigin: `${x}px ${y}px`
+                }}
+              >
+                <circle cx={x} cy={y} r={7 + (index === points.length - 1 ? emphasisEnvelope * 3 : 0)} fill={colors.border} />
+                <text x={x} y={box.height - 38} fill={colors.body} fontSize={15} textAnchor="middle">
+                  {point.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </>
+    );
+  };
+
+  const renderBoxplot = () => {
+    const boxes = (metricRows.length > 0 ? metricRows : [{ label: "Focus", value: 1 }]).slice(0, isPrimary ? 4 : 3);
+    const maxValue = Math.max(1, ...boxes.map((point) => point.value));
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 10
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            position: "relative",
+            height: innerHeight - 30
+          }}
+        >
+          {boxes.map((boxRow, index) => {
+            const x = panelInset + 56 + (index / Math.max(1, boxes.length - 1)) * (innerWidth - 112);
+            const medianY = panelInset + innerHeight * (0.7 - (boxRow.value / maxValue) * 0.36);
+            const boxHeight = 74;
+            const boxProgress = resolveVisualMotionItemProgress(motionState, index, 5);
+            return (
+              <div
+                key={`${visualObject.objectId}-boxplot-${index}-${boxRow.label}`}
+                style={buildRevealStyle(boxProgress, {
+                  opacityFloor: 0.14,
+                  scaleFrom: 0.9,
+                  translateY: 14
+                })}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    left: x - 1,
+                    top: medianY - 78,
+                    width: 2,
+                    height: 156,
+                    background: `${colors.body}66`
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: x - 42,
+                    top: medianY - boxHeight / 2,
+                    width: 84,
+                    height: boxHeight,
+                    borderRadius: 16,
+                    border: `2px solid ${colors.border}`,
+                    background: colors.chip
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: x - 42,
+                    top: medianY - 1,
+                    width: 84,
+                    height: 2,
+                    background: colors.title
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: x - 42,
+                    top: innerHeight - 8,
+                    width: 84,
+                    color: colors.body,
+                    fontSize: 16,
+                    textAlign: "center"
+                  }}
+                >
+                  {boxRow.label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  const renderMap = () => {
+    const regions = (metricRows.length > 0 ? metricRows : [{ label: "Region", value: 1 }]).slice(0, 6);
+    const maxValue = Math.max(1, ...regions.map((region) => region.value));
+    const regionBoxes = [
+      { left: 64, top: 118, width: 128, height: 82 },
+      { left: 224, top: 92, width: 164, height: 96 },
+      { left: 180, top: 216, width: 188, height: 104 },
+      { left: 92, top: 306, width: 156, height: 92 },
+      { left: 290, top: 336, width: 152, height: 88 },
+      { left: 212, top: 430, width: 140, height: 76 }
+    ];
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 10
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            color: colors.body,
+            fontSize: bodyFontSize,
+            lineHeight: 1.35,
+            marginBottom: 12
+          }}
+        >
+          {body}
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: panelInset,
+            top: panelInset + 54,
+            width: innerWidth,
+            height: innerHeight - 56
+          }}
+        >
+          {regions.map((region, index) => {
+            const boxPreset = regionBoxes[index % regionBoxes.length];
+            const alpha = clamp(region.value / maxValue, 0.2, 1);
+            const regionProgress = resolveVisualMotionItemProgress(motionState, index, 6);
+            return (
+              <div
+                key={`${visualObject.objectId}-map-${index}-${region.label}`}
+                style={{
+                  position: "absolute",
+                  left: boxPreset.left,
+                  top: boxPreset.top,
+                  width: boxPreset.width,
+                  height: boxPreset.height,
+                  borderRadius: 22,
+                  background: `rgba(240, 199, 106, ${alpha * 0.34})`,
+                  border: `1px solid ${colors.border}66`,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  padding: "12px 14px",
+                  ...buildRevealStyle(regionProgress, {
+                    opacityFloor: 0.12,
+                    scaleFrom: 0.92,
+                    translateY: 16
+                  })
+                }}
+              >
+                <div
+                  style={{
+                    color: colors.title,
+                    fontSize: 16,
+                    fontWeight: 700
+                  }}
+                >
+                  {region.label}
+                </div>
+                <div
+                  style={{
+                    color: colors.body,
+                    fontSize: 15,
+                    marginTop: 4
+                  }}
+                >
+                  {formatMetricValue(region.value, sequence.unit)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  const renderKpiCards = () => {
+    const cards = metricRows.length > 0 ? metricRows : [{ label: "Focus", value: items.length || 1 }];
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 16
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(cards.length, isPrimary ? 3 : 2)}, minmax(0, 1fr))`,
+            gap: 14
+          }}
+        >
+          {cards.map((row, index) => (
+            <div
+              key={`${visualObject.objectId}-kpi-${index}-${row.label}`}
+              style={{
+                padding: isPrimary ? "18px 16px" : "16px 14px",
+                borderRadius: 18,
+                background: "rgba(255, 255, 255, 0.05)",
+                border: `1px solid ${colors.border}55`,
+                ...buildRevealStyle(resolveVisualMotionItemProgress(motionState, index, 4), {
+                  opacityFloor: 0.12,
+                  scaleFrom: 0.86,
+                  translateY: 16
+                })
+              }}
+            >
+              <div
+                style={{
+                  color: colors.body,
+                  fontSize: 16,
+                  marginBottom: 8
+                }}
+              >
+                {row.label}
+              </div>
+              <div
+                style={{
+                  color: colors.title,
+                  fontSize: isPrimary ? 34 : 28,
+                  fontWeight: 800
+                }}
+              >
+                {formatMetricValue(row.value, sequence.unit)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const renderComparisonBoard = () => {
+    const entries = items.length > 0 ? items : metricRows.map((row) => `${row.label}: ${formatMetricValue(row.value, sequence.unit)}`);
+    const midpoint = Math.ceil(entries.length / 2);
+    const leftItems = entries.slice(0, midpoint);
+    const rightItems = entries.slice(midpoint);
+    const columns = [leftItems, rightItems.length > 0 ? rightItems : ["No second lane"]];
+
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 16
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 16
+          }}
+        >
+          {columns.map((column, columnIndex) => (
+            <div
+              key={`${visualObject.objectId}-comparison-${columnIndex}`}
+              style={{
+                padding: "16px 16px 18px",
+                borderRadius: 18,
+                background: columnIndex === 0 ? "rgba(255, 255, 255, 0.05)" : colors.chip,
+                border: `1px solid ${colors.border}44`,
+                ...buildRevealStyle(resolveVisualMotionItemProgress(motionState, columnIndex, 4), {
+                  opacityFloor: 0.12,
+                  scaleFrom: 0.92,
+                  translateX: columnIndex === 0 ? -28 : 28,
+                  translateY: 10,
+                  transformOrigin: columnIndex === 0 ? "0% 50%" : "100% 50%"
+                })
+              }}
+            >
+              <div
+                style={{
+                  color: colors.title,
+                  fontSize: 18,
+                  fontWeight: 700,
+                  marginBottom: 10
+                }}
+              >
+                {columnIndex === 0 ? "Track A" : "Track B"}
+              </div>
+              {column.map((entry, index) => (
+                <div
+                  key={`${visualObject.objectId}-comparison-item-${columnIndex}-${index}-${entry}`}
+                  style={{
+                    color: colors.body,
+                    fontSize: 18,
+                    lineHeight: 1.35,
+                    marginBottom: index === column.length - 1 ? 0 : 10
+                  }}
+                >
+                  {entry}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const renderStepFlow = () => {
+    const steps = (items.length > 0 ? items : ["Observe", "Explain", "Conclude"]).slice(0, isPrimary ? 4 : 3);
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 18
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`,
+            gap: 14,
+            alignItems: "center"
+          }}
+        >
+          {steps.map((step, index) => (
+            <div
+              key={`${visualObject.objectId}-step-${index}-${step}`}
+              style={{
+                position: "relative",
+                minHeight: 92,
+                ...buildRevealStyle(resolveVisualMotionItemProgress(motionState, index, 4), {
+                  opacityFloor: 0.12,
+                  scaleFrom: 0.92,
+                  translateY: 18
+                })
+              }}
+            >
+              {index < steps.length - 1 ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "58%",
+                    top: 24,
+                    width: "84%",
+                    height: 2,
+                    background: `${colors.border}88`,
+                    transform: `scaleX(${resolveVisualMotionItemProgress(motionState, index, 10).toFixed(4)})`,
+                    transformOrigin: "0% 50%"
+                  }}
+                />
+              ) : null}
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 999,
+                  background: colors.chip,
+                  border: `2px solid ${colors.border}`,
+                  color: colors.title,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 18,
+                  fontWeight: 800,
+                  marginBottom: 10
+                }}
+              >
+                {index + 1}
+              </div>
+              <div
+                style={{
+                  color: colors.body,
+                  fontSize: 18,
+                  lineHeight: 1.3,
+                  maxWidth: 180
+                }}
+              >
+                {step}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const renderIconGrid = () => {
+    const gridItems = (items.length > 0 ? items : ["Signal", "Input", "Filter", "Output"]).slice(0, isPrimary ? 6 : 4);
+    const columns = isPrimary ? 3 : 2;
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 16
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gap: 14
+          }}
+        >
+          {gridItems.map((item, index) => (
+            <div
+              key={`${visualObject.objectId}-icon-${index}-${item}`}
+              style={{
+                padding: "16px 12px",
+                borderRadius: 18,
+                background: "rgba(255, 255, 255, 0.04)",
+                border: `1px solid ${colors.border}44`,
+                textAlign: "center",
+                ...buildRevealStyle(resolveVisualMotionItemProgress(motionState, index, 3), {
+                  opacityFloor: 0.1,
+                  scaleFrom: 0.86,
+                  translateY: 14
+                })
+              }}
+            >
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  margin: "0 auto 12px",
+                  background: colors.chip,
+                  border: `1px solid ${colors.border}`
+                }}
+              />
+              <div
+                style={{
+                  color: colors.body,
+                  fontSize: 17,
+                  lineHeight: 1.25
+                }}
+              >
+                {item}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const renderAnatomyDiagram = () => {
+    const callouts = (items.length > 0 ? items : ["Core", "Signal", "Boundary"]).slice(0, 4);
+    const calloutPositions = [
+      { left: 20, top: 120 },
+      { left: innerWidth - 220, top: 92 },
+      { left: 30, top: innerHeight - 120 },
+      { left: innerWidth - 230, top: innerHeight - 140 }
+    ];
+
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 6
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            color: colors.body,
+            fontSize: bodyFontSize,
+            lineHeight: 1.35,
+            marginBottom: 10,
+            maxWidth: Math.min(520, innerWidth * 0.66)
+          }}
+        >
+          {body}
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: panelInset + innerWidth * 0.36,
+            top: panelInset + 78,
+            width: innerWidth * 0.24,
+            height: innerHeight * 0.58,
+            borderRadius: 999,
+            background: "linear-gradient(180deg, rgba(109, 213, 199, 0.14) 0%, rgba(109, 213, 199, 0.04) 100%)",
+            border: `2px solid ${colors.border}99`,
+            opacity: clamp(0.24 + motionState.detailProgress * 0.76, 0, 1),
+            transform: `scale(${(0.88 + motionState.detailProgress * 0.12).toFixed(4)})`,
+            transformOrigin: "50% 50%"
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "18%",
+              width: "34%",
+              height: "18%",
+              transform: "translateX(-50%)",
+              borderRadius: 999,
+              background: `${colors.border}55`
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "46%",
+              width: 26 + emphasisEnvelope * 10,
+              height: 26 + emphasisEnvelope * 10,
+              transform: "translate(-50%, -50%)",
+              borderRadius: 999,
+              background: colors.border,
+              boxShadow: `0 0 22px ${colors.glow}`
+            }}
+          />
+        </div>
+        {callouts.map((item, index) => {
+          const position = calloutPositions[index % calloutPositions.length];
+          const calloutProgress = resolveVisualMotionItemProgress(motionState, index, 10);
+          return (
+            <div
+              key={`${visualObject.objectId}-callout-${index}-${item}`}
+              style={{
+                position: "absolute",
+                left: panelInset + position.left,
+                top: panelInset + position.top,
+                maxWidth: 210,
+                padding: "10px 12px",
+                borderRadius: 16,
+                border: `1px solid ${colors.border}77`,
+                background: "rgba(7, 12, 22, 0.82)",
+                color: colors.body,
+                fontSize: 17,
+                lineHeight: 1.25,
+                ...buildRevealStyle(calloutProgress, {
+                  opacityFloor: 0.08,
+                  scaleFrom: 0.92,
+                  translateY: 12
+                })
+              }}
+            >
+              {item}
+            </div>
+          );
+        })}
+      </>
+    );
+  };
+
+  const renderRiskMeter = () => {
+    const values = sequence.chartData.map((row) => row.value);
+    const maxValue = Math.max(1, ...values, 1);
+    const averageValue =
+      values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length) : maxValue * 0.56;
+    const normalizedRisk = clamp(averageValue / (maxValue * 1.15), 0.12, 0.92);
+    const markerLeft = 20 + normalizedRisk * (innerWidth - 40);
+    const animatedMarkerLeft = 20 + (markerLeft - 20) * motionState.sweepProgress;
+
+    return (
+      <>
+        <div
+          style={{
+            color: colors.title,
+            fontSize: headlineFontSize,
+            fontWeight: 800,
+            marginBottom: 10
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            color: colors.body,
+            fontSize: bodyFontSize,
+            lineHeight: 1.35,
+            marginBottom: 18
+          }}
+        >
+          {body}
+        </div>
+        <div
+          style={{
+            position: "relative",
+            height: isPrimary ? 84 : 72,
+            borderRadius: 999,
+            background:
+              "linear-gradient(90deg, rgba(109, 213, 199, 0.22) 0%, rgba(240, 199, 106, 0.25) 52%, rgba(255, 107, 107, 0.28) 100%)",
+            border: "1px solid rgba(255, 255, 255, 0.14)",
+            marginBottom: 14,
+            clipPath: resolveHorizontalRevealClip(motionState.sweepProgress)
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: animatedMarkerLeft,
+              borderRadius: 999,
+              background: "linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255,255,255,0) 100%)"
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: animatedMarkerLeft - 18,
+              top: 12,
+              width: 36,
+              height: 36,
+              borderRadius: 999,
+              background: colors.title,
+              boxShadow: `0 0 ${Math.round(12 + emphasisEnvelope * 16)}px ${colors.glow}`
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: animatedMarkerLeft - 2,
+              top: 42,
+              width: 4,
+              height: isPrimary ? 28 : 20,
+              borderRadius: 999,
+              background: colors.title
+            }}
+          />
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            color: colors.body,
+            fontSize: 16
+          }}
+        >
+          <span>Low</span>
+          <span>Watch</span>
+          <span>High</span>
+        </div>
+      </>
+    );
+  };
+
+  const renderContent = () => {
+    switch (visualObject.kind) {
+      case "line_chart":
+      case "area_chart":
+        return renderLineChart();
+      case "pie_or_donut":
+        return renderPieOrDonut();
+      case "heatmap":
+        return renderHeatmap();
+      case "scatter":
+        return renderScatter();
+      case "boxplot":
+        return renderBoxplot();
+      case "map":
+        return renderMap();
+      case "kpi_card":
+        return renderKpiCards();
+      case "comparison_board":
+        return renderComparisonBoard();
+      case "timeline":
+      case "process_flow":
+        return renderStepFlow();
+      case "icon_grid":
+        return renderIconGrid();
+      case "anatomy_diagram":
+        return renderAnatomyDiagram();
+      case "risk_meter":
+        return renderRiskMeter();
+      case "summary_card":
+      case "callout_card":
+      default:
+        return renderSummaryCard();
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: box.x,
+        top: box.y,
+        width: box.width,
+        minHeight: box.height,
+        padding: panelInset,
+        borderRadius: isPrimary ? 22 : 18,
+        border: `2px solid ${colors.border}`,
+        background: "linear-gradient(180deg, rgba(12, 19, 34, 0.86) 0%, rgba(6, 10, 20, 0.94) 100%)",
+        boxShadow: `0 0 ${Math.round(18 + emphasisEnvelope * 16)}px ${colors.glow}`,
+        overflow: "hidden",
+        opacity: motionState.panelOpacity,
+        transform: `translate(${motionState.panelTranslateX.toFixed(1)}px, ${motionState.panelTranslateY.toFixed(1)}px) scale(${motionState.panelScale.toFixed(4)})`,
+        transformOrigin: "50% 50%"
+      }}
+    >
+      {renderContent()}
+    </div>
+  );
+};
+
+const InsertAssetView = ({ asset, box, emphasisAtFrame, localFrame }: InsertAssetViewProps) => {
+  const colors = accentColors(asset.accentToken);
+  const emphasisEnvelope = clamp(1 - Math.abs(localFrame - emphasisAtFrame) / 18, 0, 1);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: box.x,
+        top: box.y,
+        width: box.width,
+        minHeight: box.height,
+        padding: "18px 22px",
+        borderRadius: 18,
+        border: `2px solid ${colors.border}`,
+        background: "rgba(10, 16, 28, 0.82)",
+        boxShadow: `0 0 ${Math.round(18 + emphasisEnvelope * 16)}px ${colors.glow}`,
+        backdropFilter: "blur(2px)"
+      }}
+    >
+      <div
+        style={{
+          color: colors.title,
+          fontSize: asset.layout === "sidebar" ? 30 : 28,
+          fontWeight: 800,
+          marginBottom: 10
+        }}
+      >
+        {asset.title}
+      </div>
+      <div
+        style={{
+          color: colors.body,
+          fontSize: asset.layout === "sidebar" ? 24 : 22,
+          lineHeight: 1.35,
+          marginBottom: asset.items && asset.items.length > 0 ? 14 : 0
+        }}
+      >
+        {asset.body}
+      </div>
+      {asset.items && asset.items.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap"
+          }}
+        >
+          {asset.items.map((item, index) => (
+            <div
+              key={`${asset.assetId}-${index}-${item}`}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                background: colors.chip,
+                color: colors.title,
+                fontSize: 18,
+                fontWeight: 700
+              }}
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const ShotLayer = ({ sequence, freezeCharacterPose, characterPacks, profiles, frameOffset = 0 }: ShotLayerProps) => {
   const localFrame = useCurrentFrame() + frameOffset;
   const { fps } = useVideoConfig();
+  const generativeBrollSrc =
+    (sequence.renderMode === "generative_broll" ||
+      sequence.renderMode === "generative_i2v" ||
+      sequence.renderMode === "generative_s2v") &&
+    typeof sequence.sidecarVideoSrc === "string"
+      ? sequence.sidecarVideoSrc.trim()
+      : "";
+
+  if (generativeBrollSrc.length > 0) {
+    return (
+      <AbsoluteFill
+        style={{
+          backgroundColor: "#000",
+          filter: sequence.finishProfile
+            ? `contrast(${(1 + sequence.finishProfile.sharpenOpacity * 0.18).toFixed(3)}) saturate(${(
+                1 +
+                sequence.finishProfile.tintOpacity * 0.2
+              ).toFixed(3)})`
+            : undefined
+        }}
+      >
+        <OffthreadVideo
+          src={staticFile(generativeBrollSrc)}
+          muted
+          trimBefore={Math.max(0, frameOffset)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover"
+          }}
+        />
+        {sequence.finishProfile ? <ShotFinishPass {...sequence.finishProfile} /> : null}
+      </AbsoluteFill>
+    );
+  }
+
   const animationFrame = resolveTimeRemappedFrame(sequence, localFrame);
   const emphasisAtFrame = resolveEmphasisAtFrame(sequence);
   const punchlineFrame = resolvePunchlineFrame(sequence);
-  const primaryVisualKind = resolvePrimaryVisualKindLocal(sequence);
-  const renderChartView = sequence.hasChart && sequence.visualMode === "chart";
-  const renderTableView = sequence.hasChart && sequence.visualMode === "table";
-  const renderExplainerView = !sequence.hasChart && Boolean(primaryVisualKind);
-
-  const visualBox = resolveVisualBox(sequence);
+  const visualBox = resolvePrimaryVisualBox(sequence);
   const narrationBox = resolveNarrationBox(sequence);
+  const insertBox = resolveInsertBox(sequence);
+  const occluderBox = resolveOccluderBox(sequence);
+  const primaryVisualObject = resolvePrimaryVisualObject(sequence);
+  const secondaryVisualObject = resolveSecondaryVisualObject(sequence, primaryVisualObject);
+  const primaryVisualKind = primaryVisualObject?.kind ?? sequence.primaryVisualKind;
+  const renderChartView = primaryVisualKind
+    ? primaryVisualKind === "bar_chart"
+    : sequence.hasChart && sequence.visualMode === "chart";
+  const renderTableView = primaryVisualKind
+    ? primaryVisualKind === "table"
+    : sequence.hasChart && sequence.visualMode === "table";
+  const renderObjectPrimaryView =
+    !!primaryVisualObject &&
+    primaryVisualObject.kind !== "bar_chart" &&
+    primaryVisualObject.kind !== "table";
+  const renderLegacyInsertAsset = !!sequence.insertAsset && !secondaryVisualObject;
+  const pointerTargetCount = resolvePrimaryVisualPointerTargetCountLocal(sequence);
+
   const bars = computeBarGeometry(sequence.chartData ?? [], visualBox);
   const rowCount = bars.length;
 
-  const latestActionTrack = findLatestEntry(sequence.characterTracks?.actionTrack, animationFrame);
-  const latestExpressionTrack = findLatestEntry(sequence.characterTracks?.expressionTrack, animationFrame);
-  const latestLookTrack = findLatestEntry(sequence.characterTracks?.lookTrack, animationFrame);
   const latestPointTrack = findLatestEntry(sequence.characterTracks?.pointTrack, animationFrame);
-  const pointTrackIndex = resolveTargetIndex(latestPointTrack?.targetId, rowCount, sequence.pointerTargetIndex);
+  const pointTrackIndex = resolveTargetIndex(
+    latestPointTrack?.targetId,
+    pointerTargetCount,
+    sequence.pointerTargetIndex
+  );
 
   const activeHighlightEntries = (sequence.chartHighlights ?? [])
     .filter((highlight) => animationFrame >= highlight.f && animationFrame <= highlight.f + 24)
@@ -2497,54 +3223,54 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
     highlightIndices.length > 0 ? highlightIndices[highlightIndices.length - 1] : pointTrackIndex;
 
   const targetBar = bars[clamp(effectivePointerIndex, 0, Math.max(0, bars.length - 1))];
-  const pointerReachableZone = sequence.pointerReachableZone;
-  const pointerTarget = targetBar?.anchor ?? {
-    x: pointerReachableZone
-      ? pointerReachableZone.x + pointerReachableZone.width * 0.5
-      : visualBox.x + visualBox.width * 0.65,
-    y: pointerReachableZone
-      ? pointerReachableZone.y + pointerReachableZone.height * 0.5
-      : visualBox.y + visualBox.height * 0.45
-  };
+  const pointerTarget =
+    sequence.layoutPlan?.pointerReachability.targetPoint && effectivePointerIndex === sequence.pointerTargetIndex
+      ? sequence.layoutPlan.pointerReachability.targetPoint
+      :
+    computePrimaryVisualPointerAnchor(sequence, visualBox, effectivePointerIndex);
 
   const trackedPosition = resolveCharacterPosition(sequence, animationFrame, fps);
-  const performanceOffset = resolvePerformanceOffset(
-    latestActionTrack?.clip,
-    latestExpressionTrack?.expression,
-    animationFrame,
-    sequence.profileBundle
-  );
-  const characterX = trackedPosition.x * FRAME_WIDTH + performanceOffset.x;
-  const characterY = trackedPosition.y * FRAME_HEIGHT + performanceOffset.y;
+  const characterX = trackedPosition.x * FRAME_WIDTH;
+  const characterY = trackedPosition.y * FRAME_HEIGHT;
 
   const shouldFreeze = freezeCharacterPose || sequence.freezePose;
   const usePointer =
     !shouldFreeze &&
     sequence.pointerEnabled &&
-    (renderChartView || renderExplainerView) &&
-    (Boolean(latestPointTrack) || renderChartView || renderExplainerView);
-  const lookTarget = resolveLookTarget(
-    latestLookTrack?.target,
-    pointerTarget,
-    visualBox,
-    narrationBox,
-    pointerReachableZone,
-    sequence.profileBundle
-  );
+    (sequence.layoutPlan?.pointerReachability.reachable ?? true);
 
-  const useYawBlend = hasCharacterYawPlan(sequence);
+  const resolvedPack = resolvePackForSequence(sequence, characterPacks);
+  const generatedPack = isGeneratedPack(resolvedPack) ? resolvedPack : null;
+  const explicitView = resolveExplicitView(sequence, animationFrame);
+  const trackedExpressionState = resolveTrackedExpressionState(sequence, animationFrame);
+  const explicitBuiltInViewExpression =
+    explicitView === "front"
+      ? "view_front"
+      : explicitView === "threeQuarter"
+        ? "view_right_3q"
+        : explicitView === "profile"
+          ? "view_right_profile"
+          : null;
+  const explicitPackExpression =
+    explicitBuiltInViewExpression &&
+    (resolvedPack ? resolvedPack.expressions[explicitBuiltInViewExpression] : true)
+      ? explicitBuiltInViewExpression
+      : null;
+  const generatedExpression = generatedPack
+    ? resolveGeneratedExpressionKey(
+        generatedPack,
+        explicitView ?? "front",
+        trackedExpressionState.normalizedExpression
+      )
+    : null;
+  const useYawBlend = !generatedPack && explicitBuiltInViewExpression == null && hasCharacterYawPlan(sequence);
   const characterYaw = useYawBlend ? resolveCharacterYaw(sequence, animationFrame, fps) : 0;
   const rigTalkText = resolveTalkText(sequence);
-  const activeExpression = latestExpressionTrack?.expression;
-  const rigSeed = `shot-episode:${sequence.shotId}:${activeExpression ?? "default"}`;
-  const finishProfile = resolveFinishProfileLocal(sequence);
-  const sceneFinishFilter = buildSceneFinishFilter(finishProfile);
-  const finishScanlineOpacity =
-    finishProfile.textureMatch === "deterministic_clean"
-      ? 0.07
-      : finishProfile.textureMatch === "sidecar_matched"
-        ? 0.04
-        : 0.05;
+  const trackedViseme = resolveTrackedViseme(sequence, animationFrame);
+  const lookTarget = resolveTrackedLookTarget(sequence, animationFrame, pointerTarget);
+  const rigSeed = `shot-episode:${sequence.shotId}`;
+  const mascotProfile = profiles?.mascot;
+  const mascotActingProfile = profiles?.mascot_acting ?? mascotProfile?.acting;
 
   const pose = shouldFreeze
     ? move(characterX, characterY)
@@ -2614,7 +3340,13 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
     <AbsoluteFill
       style={{
         background: backgroundForShot(sequence.shotId, sequence.setId),
-        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+        filter: sequence.finishProfile
+          ? `contrast(${(1 + sequence.finishProfile.sharpenOpacity * 0.18).toFixed(3)}) saturate(${(
+              1 +
+              sequence.finishProfile.tintOpacity * 0.16
+            ).toFixed(3)})`
+          : undefined
       }}
     >
       <CameraRig
@@ -2625,7 +3357,7 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
         preset={rigPreset}
         presetProgress={presetProgress}
       >
-        <AbsoluteFill style={{ filter: sceneFinishFilter }}>
+        <AbsoluteFill>
           <div
             style={{
               position: "absolute",
@@ -2640,15 +3372,13 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
               fontWeight: 600
             }}
           >
-            {sequence.shotId} | {sequence.setId} | {sequence.cameraPreset} | {sequence.visualMode} | {resolvePrimaryVisualKindLabel(sequence)} | {humanizeDebugToken(sequence.shotGrammar)} | {sequence.mascotId ?? "unknown_mascot"} | {humanizeDebugToken(finishProfile.tone)}
-            {sequence.profileBundle
-              ? ` | ${sequence.profileBundle.resolverSource} | ${humanizeDebugToken(sequence.profileBundle.layoutBias)} | ${humanizeDebugToken(sequence.profileBundle.pointerBias)}`
-              : ""}
+            {sequence.shotId} | {sequence.shotType} | {sequence.renderMode} | {sequence.setId} | {sequence.cameraPreset} | {sequence.visualMode}
           </div>
 
           {renderChartView ? (
             <ChartView
               sequence={sequence}
+              visualObject={primaryVisualObject}
               pointerIndex={effectivePointerIndex}
               highlightIndices={highlightIndices}
               localFrame={animationFrame}
@@ -2657,14 +3387,46 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
             />
           ) : null}
 
-          {renderTableView ? <TableView sequence={sequence} /> : null}
-
-          {renderExplainerView ? (
-            <ExplainerVisualView
+          {!renderChartView && renderTableView ? (
+            <TableView
               sequence={sequence}
+              visualObject={primaryVisualObject}
               localFrame={animationFrame}
               fps={fps}
               emphasisAtFrame={emphasisAtFrame}
+            />
+          ) : null}
+
+          {renderObjectPrimaryView && primaryVisualObject ? (
+            <ExplainerObjectView
+              sequence={sequence}
+              visualObject={primaryVisualObject}
+              box={visualBox}
+              localFrame={animationFrame}
+              fps={fps}
+              emphasisAtFrame={emphasisAtFrame}
+              variant="primary"
+            />
+          ) : null}
+
+          {secondaryVisualObject && insertBox ? (
+            <ExplainerObjectView
+              sequence={sequence}
+              visualObject={secondaryVisualObject}
+              box={insertBox}
+              localFrame={animationFrame}
+              fps={fps}
+              emphasisAtFrame={emphasisAtFrame}
+              variant="secondary"
+            />
+          ) : null}
+
+          {renderLegacyInsertAsset && sequence.insertAsset ? (
+            <InsertAssetView
+              asset={sequence.insertAsset}
+              box={insertBox ?? resolveInsertBox(sequence) ?? { x: 970, y: 720, width: 800, height: 180 }}
+              emphasisAtFrame={emphasisAtFrame}
+              localFrame={localFrame}
             />
           ) : null}
 
@@ -2692,6 +3454,7 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
               left: narrationBox.x,
               top: narrationBox.y,
               width: narrationBox.width,
+              minHeight: narrationBox.height,
               borderRadius: 16,
               border: "2px solid rgba(255, 255, 255, 0.2)",
               background: "rgba(9, 14, 24, 0.72)",
@@ -2710,18 +3473,73 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
             {cleanMarkers(sequence.narration)}
           </div>
 
-          <MascotRenderer
-            mascotId={sequence.mascotId}
-            characterPackId={sequence.characterPackId}
-            pose={pose}
-            targetPoint={usePointer ? pointerTarget : undefined}
-            expression={activeExpression}
-            yaw={characterYaw}
-            useYawBlend={useYawBlend}
-            animationMode="alive"
-            seed={rigSeed}
-            talkText={rigTalkText}
-          />
+          {generatedPack ? (
+            <EraserCatRig
+              pose={pose}
+              targetPoint={usePointer ? pointerTarget : undefined}
+              pack={generatedPack}
+              expression={generatedExpression ?? "neutral"}
+              animationMode="alive"
+              seed={rigSeed}
+              talkText={rigTalkText}
+              mouthOpen={trackedViseme.mouthOpen}
+              viseme={trackedViseme.viseme}
+              forceBlink={trackedExpressionState.forceBlink}
+              blinkDensity={mascotActingProfile?.blink_density ?? mascotProfile?.blink_density}
+              mouthIntensity={mascotActingProfile?.mouth_energy ?? mascotProfile?.mouth_intensity}
+              idleMotionAmount={mascotActingProfile?.idle_motion ?? mascotProfile?.idle_motion_amount}
+              headBobEnergy={mascotActingProfile?.head_bob_energy ?? mascotProfile?.head_bob_energy}
+            />
+          ) : explicitPackExpression ? (
+            <EraserCatRig
+              pose={pose}
+              targetPoint={usePointer ? pointerTarget : undefined}
+              pack={resolvedPack ?? SHOT_VIEW_BLEND_PACK}
+              expression={explicitPackExpression}
+              animationMode="alive"
+              seed={rigSeed}
+              talkText={rigTalkText}
+              mouthOpen={trackedViseme.mouthOpen}
+              viseme={trackedViseme.viseme}
+              forceBlink={trackedExpressionState.forceBlink}
+              blinkDensity={mascotActingProfile?.blink_density ?? mascotProfile?.blink_density}
+              mouthIntensity={mascotActingProfile?.mouth_energy ?? mascotProfile?.mouth_intensity}
+              idleMotionAmount={mascotActingProfile?.idle_motion ?? mascotProfile?.idle_motion_amount}
+              headBobEnergy={mascotActingProfile?.head_bob_energy ?? mascotProfile?.head_bob_energy}
+            />
+          ) : useYawBlend ? (
+            <EraserCatViewBlend
+              pose={pose}
+              yaw={characterYaw}
+              targetPoint={usePointer ? pointerTarget : undefined}
+              pack={resolvedPack ?? SHOT_VIEW_BLEND_PACK}
+              animationMode="alive"
+              seed={rigSeed}
+              talkText={rigTalkText}
+              mouthOpen={trackedViseme.mouthOpen}
+              viseme={trackedViseme.viseme}
+              forceBlink={trackedExpressionState.forceBlink}
+              blinkDensity={mascotActingProfile?.blink_density ?? mascotProfile?.blink_density}
+              mouthIntensity={mascotActingProfile?.mouth_energy ?? mascotProfile?.mouth_intensity}
+              idleMotionAmount={mascotActingProfile?.idle_motion ?? mascotProfile?.idle_motion_amount}
+              headBobEnergy={mascotActingProfile?.head_bob_energy ?? mascotProfile?.head_bob_energy}
+            />
+          ) : (
+            <EraserCatRig
+              pose={pose}
+              targetPoint={usePointer ? pointerTarget : undefined}
+              animationMode="alive"
+              seed={rigSeed}
+              talkText={rigTalkText}
+              mouthOpen={trackedViseme.mouthOpen}
+              viseme={trackedViseme.viseme}
+              forceBlink={trackedExpressionState.forceBlink}
+              blinkDensity={mascotActingProfile?.blink_density ?? mascotProfile?.blink_density}
+              mouthIntensity={mascotActingProfile?.mouth_energy ?? mascotProfile?.mouth_intensity}
+              idleMotionAmount={mascotActingProfile?.idle_motion ?? mascotProfile?.idle_motion_amount}
+              headBobEnergy={mascotActingProfile?.head_bob_energy ?? mascotProfile?.head_bob_energy}
+            />
+          )}
 
           {activeHighlightEntries.map((highlight, index) => {
             const barIndex = resolveTargetIndex(highlight.targetId, rowCount, effectivePointerIndex);
@@ -2769,10 +3587,10 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
             <div
               style={{
                 position: "absolute",
-                left: OCCLUDER_BOX.x,
-                top: OCCLUDER_BOX.y,
-                width: OCCLUDER_BOX.width,
-                height: OCCLUDER_BOX.height,
+                left: occluderBox.x,
+                top: occluderBox.y,
+                width: occluderBox.width,
+                height: occluderBox.height,
                 background: "linear-gradient(180deg, #412e22 0%, #2b1f17 100%)",
                 boxShadow: "8px 0 18px rgba(0, 0, 0, 0.3)"
               }}
@@ -2791,16 +3609,10 @@ const ShotLayer = ({ sequence, freezeCharacterPose, frameOffset = 0 }: ShotLayer
               }}
             />
           ) : null}
+
+          {sequence.finishProfile ? <ShotFinishPass {...sequence.finishProfile} /> : null}
         </AbsoluteFill>
       </CameraRig>
-      <ScreenFx
-        bloomOpacity={finishProfile.bloomOpacity}
-        grainOpacity={finishProfile.grainOpacity}
-        scanlineOpacity={finishScanlineOpacity}
-        vignetteOpacity={finishProfile.vignetteOpacity}
-        tintOpacity={finishProfile.tintOpacity}
-        tintGradient={finishProfile.tintGradient}
-      />
     </AbsoluteFill>
   );
 };
@@ -2811,13 +3623,13 @@ export const ShotEpisodeComposition = ({
   freezeCharacterPose,
   sequences,
   subtitles,
-  debugOverlay
+  characterPacks,
+  profiles
 }: ShotEpisodeRenderProps) => {
   const frame = useCurrentFrame();
   const activeSubtitle = subtitles.find((cue) => frame >= cue.startFrame && frame <= cue.endFrame);
-  const activeSequence =
-    sequences.find((sequence) => frame >= sequence.from && frame < sequence.from + sequence.duration) ??
-    sequences[sequences.length - 1];
+  const activeSequence = sequences.find((sequence) => frame >= sequence.from && frame < sequence.from + sequence.duration);
+  const subtitleSafeZone = activeSequence?.layoutPlan?.subtitleSafeZone;
   const overlapFrames = TRANSITION_OVERLAP_FRAMES;
   const regularTracks = sequences.map((sequence, index) => {
     const hasNext = index < sequences.length - 1;
@@ -2837,7 +3649,12 @@ export const ShotEpisodeComposition = ({
     >
       {regularTracks.map(({ sequence, duration }) => (
         <Sequence key={`base-${sequence.shotId}`} from={sequence.from} durationInFrames={duration}>
-          <ShotLayer sequence={sequence} freezeCharacterPose={freezeCharacterPose} />
+          <ShotLayer
+            sequence={sequence}
+            freezeCharacterPose={freezeCharacterPose}
+            characterPacks={characterPacks}
+            profiles={profiles}
+          />
         </Sequence>
       ))}
 
@@ -2865,10 +3682,20 @@ export const ShotEpisodeComposition = ({
                 <ShotLayer
                   sequence={sequence}
                   freezeCharacterPose={freezeCharacterPose}
+                  characterPacks={characterPacks}
+                  profiles={profiles}
                   frameOffset={Math.max(0, sequence.duration - transitionFrames)}
                 />
               }
-              next={<ShotLayer sequence={next} freezeCharacterPose={freezeCharacterPose} frameOffset={0} />}
+              next={
+                <ShotLayer
+                  sequence={next}
+                  freezeCharacterPose={freezeCharacterPose}
+                  characterPacks={characterPacks}
+                  profiles={profiles}
+                  frameOffset={0}
+                />
+              }
               direction={next.cameraPreset.toLowerCase().includes("left") ? "left" : "right"}
             />
           </Sequence>
@@ -2891,22 +3718,40 @@ export const ShotEpisodeComposition = ({
       <div
         style={{
           position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 52,
-          textAlign: "center",
+          left: subtitleSafeZone?.x ?? safeArea.left,
+          top: subtitleSafeZone?.y ?? FRAME_HEIGHT - safeArea.bottom - 84,
+          width: subtitleSafeZone?.width ?? FRAME_WIDTH - safeArea.left - safeArea.right,
+          height: subtitleSafeZone?.height ?? 64,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           color: "#f9fcff",
           fontSize: 42,
           fontWeight: 700,
-          textShadow: "0 4px 12px rgba(0, 0, 0, 0.75)"
+          textShadow: "0 4px 12px rgba(0, 0, 0, 0.75)",
+          textAlign: "center"
         }}
       >
         {activeSubtitle ? cleanMarkers(activeSubtitle.text) : ""}
       </div>
 
-      <DebugOverlay episodeId={episodeId} activeSequence={activeSequence} overlay={debugOverlay} />
+      <div
+        style={{
+          position: "absolute",
+          right: 30,
+          top: 28,
+          color: "#c4d6f8",
+          fontSize: 20,
+          padding: "8px 12px",
+          background: "rgba(6, 10, 16, 0.58)",
+          borderRadius: 10
+        }}
+      >
+        Episode: {episodeId}
+      </div>
     </AbsoluteFill>
   );
 };
+
 
 

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { MascotProfile } from "@ec/profiles";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SvgPathMorph } from "../effects/SvgPathMorph";
 import { minimalCharacterPack } from "./pack";
@@ -19,7 +20,13 @@ type RigProps = {
   seed?: string;
   talkText?: string;
   mouthOpen?: number;
+  viseme?: string;
+  forceBlink?: boolean;
   talkAudioData?: AudioDataLike;
+  blinkDensity?: MascotProfile["blink_density"];
+  mouthIntensity?: MascotProfile["mouth_intensity"];
+  idleMotionAmount?: MascotProfile["idle_motion_amount"];
+  headBobEnergy?: MascotProfile["head_bob_energy"];
 };
 
 type Bone = CharacterPack["skeleton"]["bones"][number];
@@ -60,39 +67,19 @@ const SHAPES: Record<string, ShapeSpec> = {
   body_front: { width: 420, height: 560, color: "#f2c94c", borderRadius: 26 },
   body_3q: { width: 380, height: 560, color: "#f2c94c", borderRadius: 26 },
   body_profile: { width: 290, height: 560, color: "#f2c94c", borderRadius: 24 },
-  torso_med_dog: { width: 176, height: 198, color: "#68c5c0", borderRadius: 30 },
-  torso_front_med_dog: { width: 180, height: 198, color: "#68c5c0", borderRadius: 30 },
-  torso_3q_med_dog: { width: 164, height: 198, color: "#61bdb9", borderRadius: 30 },
-  torso_profile_med_dog: { width: 122, height: 196, color: "#56b3ae", borderRadius: 28 },
   torso: { width: 170, height: 190, color: "#f2c94c", borderRadius: 28 },
   torso_front: { width: 172, height: 192, color: "#f2c94c", borderRadius: 28 },
   torso_3q: { width: 154, height: 192, color: "#f2c94c", borderRadius: 28 },
   torso_profile: { width: 112, height: 192, color: "#f2c94c", borderRadius: 26 },
-  head_med_dog: { width: 154, height: 132, color: "#dcb98f", borderRadius: "48% 48% 44% 44%" },
-  head_front_med_dog: { width: 156, height: 132, color: "#dcb98f", borderRadius: "48% 48% 44% 44%" },
-  head_3q_med_dog: { width: 146, height: 130, color: "#d2ae83", borderRadius: "48% 48% 42% 42%" },
-  head_profile_med_dog: { width: 114, height: 126, color: "#c79f72", borderRadius: "46% 50% 42% 42%" },
   head: { width: 128, height: 124, color: "#ffd68a", borderRadius: "50%" },
   head_front: { width: 132, height: 126, color: "#ffd68a", borderRadius: "50%" },
   head_3q: { width: 116, height: 124, color: "#ffd68a", borderRadius: "48%" },
   head_profile: { width: 82, height: 124, color: "#ffd68a", borderRadius: "46%" },
-  ear_front_near_med_dog: { width: 34, height: 56, color: "#ab855e", borderRadius: "42% 42% 64% 64%" },
-  ear_front_far_med_dog: { width: 30, height: 52, color: "#987151", borderRadius: "42% 42% 64% 64%" },
-  ear_3q_near_med_dog: { width: 30, height: 52, color: "#ae8760", borderRadius: "40% 40% 64% 64%" },
-  ear_3q_far_med_dog: { width: 24, height: 44, color: "#916a49", borderRadius: "40% 40% 60% 60%" },
-  ear_profile_med_dog: { width: 20, height: 42, color: "#936c4b", borderRadius: "38% 38% 58% 58%" },
   ear_front_near: { width: 36, height: 40, color: "#f5b87a", borderRadius: 14 },
   ear_front_far: { width: 32, height: 36, color: "#ebb173", borderRadius: 14 },
   ear_3q_near: { width: 30, height: 38, color: "#f5b87a", borderRadius: 13 },
   ear_3q_far: { width: 22, height: 30, color: "#e0a66a", borderRadius: 11 },
   ear_profile: { width: 18, height: 34, color: "#e0a66a", borderRadius: 10 },
-  eye_left_med_dog: { width: 22, height: 12, color: "#27384a", borderRadius: "50%" },
-  eye_right_med_dog: { width: 22, height: 12, color: "#27384a", borderRadius: "50%" },
-  eye_front_near_med_dog: { width: 22, height: 12, color: "#27384a", borderRadius: "50%" },
-  eye_front_far_med_dog: { width: 20, height: 11, color: "#27384a", borderRadius: "50%" },
-  eye_3q_near_med_dog: { width: 20, height: 11, color: "#27384a", borderRadius: "50%" },
-  eye_3q_far_med_dog: { width: 13, height: 8, color: "#27384a", borderRadius: "50%" },
-  eye_profile_med_dog: { width: 11, height: 7, color: "#27384a", borderRadius: "50%" },
   eye_left: { width: 20, height: 14, color: "#2b2b2b", borderRadius: "50%" },
   eye_right: { width: 20, height: 14, color: "#2b2b2b", borderRadius: "50%" },
   eye_front_near: { width: 20, height: 14, color: "#2b2b2b", borderRadius: "50%" },
@@ -100,15 +87,7 @@ const SHAPES: Record<string, ShapeSpec> = {
   eye_3q_near: { width: 18, height: 13, color: "#2b2b2b", borderRadius: "50%" },
   eye_3q_far: { width: 12, height: 9, color: "#2b2b2b", borderRadius: "50%" },
   eye_profile: { width: 10, height: 8, color: "#2b2b2b", borderRadius: "50%" },
-  eyelid_med_dog: { width: 84, height: 24, color: "#dcb98f", borderRadius: 16 },
   eyelid: { width: 78, height: 24, color: "#ffd68a", borderRadius: 16 },
-  mouth_med_dog: { width: 32, height: 10, color: "#7a5444", borderRadius: 10 },
-  nose_front_med_dog: { width: 22, height: 12, color: "#4e4e58", borderRadius: "50%" },
-  nose_3q_med_dog: { width: 18, height: 11, color: "#4e4e58", borderRadius: "50%" },
-  nose_profile_med_dog: { width: 13, height: 9, color: "#4e4e58", borderRadius: "50%" },
-  mouth_front_med_dog: { width: 32, height: 10, color: "#7a5444", borderRadius: 10 },
-  mouth_3q_med_dog: { width: 28, height: 9, color: "#724d3d", borderRadius: 10 },
-  mouth_profile_med_dog: { width: 18, height: 8, color: "#684535", borderRadius: 10 },
   mouth: { width: 28, height: 10, color: "#8a4d42", borderRadius: 10 },
   nose_front: { width: 16, height: 10, color: "#c17253", borderRadius: "50%" },
   nose_3q: { width: 14, height: 10, color: "#c17253", borderRadius: "50%" },
@@ -116,20 +95,12 @@ const SHAPES: Record<string, ShapeSpec> = {
   mouth_front: { width: 28, height: 10, color: "#8a4d42", borderRadius: 10 },
   mouth_3q: { width: 24, height: 9, color: "#8a4d42", borderRadius: 10 },
   mouth_profile: { width: 16, height: 8, color: "#7a443b", borderRadius: 10 },
-  upper_arm_med_dog: { width: 104, height: 26, color: "#7bd1ca", borderRadius: 18 },
-  upper_arm_profile_med_dog: { width: 82, height: 22, color: "#71c7c0", borderRadius: 16 },
-  lower_arm_med_dog: { width: 98, height: 22, color: "#68c0b8", borderRadius: 16 },
-  lower_arm_profile_med_dog: { width: 76, height: 18, color: "#63b9b2", borderRadius: 14 },
-  paw_med_dog: { width: 32, height: 28, color: "#f2e4cf", borderRadius: "50%" },
-  paw_profile_med_dog: { width: 26, height: 22, color: "#f2e4cf", borderRadius: "50%" },
   upper_arm: { width: 104, height: 26, color: "#ffb17a", borderRadius: 18 },
   upper_arm_profile: { width: 82, height: 22, color: "#ffb17a", borderRadius: 16 },
   lower_arm: { width: 98, height: 22, color: "#ff9f66", borderRadius: 16 },
   lower_arm_profile: { width: 76, height: 18, color: "#ff9f66", borderRadius: 14 },
   paw: { width: 30, height: 30, color: "#fff3cf", borderRadius: "50%" },
   paw_profile: { width: 24, height: 24, color: "#fff3cf", borderRadius: "50%" },
-  tail_med_dog: { width: 112, height: 22, color: "#b58f68", borderRadius: 18 },
-  tail_profile_med_dog: { width: 86, height: 18, color: "#a78059", borderRadius: 16 },
   tail: { width: 126, height: 20, color: "#f2c94c", borderRadius: 18 },
   tail_profile: { width: 94, height: 16, color: "#f2c94c", borderRadius: 16 }
 };
@@ -176,7 +147,27 @@ function add(a: Vec2, b: Vec2): Vec2 {
 }
 
 function getShape(imageId: string): ShapeSpec {
-  return SHAPES[imageId] ?? { width: 40, height: 40, color: "#cccccc", borderRadius: 8 };
+  const exact = SHAPES[imageId];
+  if (exact) {
+    return exact;
+  }
+
+  if (imageId === "blank") {
+    return { width: 1, height: 1, color: "transparent", borderRadius: 0 };
+  }
+  if (imageId.startsWith("torso_")) {
+    return imageId.includes("profile") ? SHAPES.torso_profile : imageId.includes("threeQuarter") ? SHAPES.torso_3q : SHAPES.torso_front;
+  }
+  if (imageId.startsWith("head_")) {
+    return imageId.includes("profile") ? SHAPES.head_profile : imageId.includes("threeQuarter") ? SHAPES.head_3q : SHAPES.head_front;
+  }
+  if (imageId.startsWith("eye_")) {
+    return SHAPES.eye_front_near;
+  }
+  if (imageId.startsWith("mouth_")) {
+    return SHAPES.mouth_front;
+  }
+  return { width: 40, height: 40, color: "#cccccc", borderRadius: 8 };
 }
 
 function resolveAssetImageRef(pack: CharacterPack, imageId: string): string | null {
@@ -190,6 +181,36 @@ function resolveAssetImageRef(pack: CharacterPack, imageId: string): string | nu
   }
 
   return source;
+}
+
+function resolveVisemeSlotOverride(
+  pack: CharacterPack,
+  mouthOpen: number,
+  expression: string | undefined,
+  explicitViseme?: string
+): { slotId: string; imageId: string } | null {
+  const candidates = pack.visemes;
+  if (!candidates || Object.keys(candidates).length === 0) {
+    return null;
+  }
+
+  const lowerExpression = (expression ?? "").toLowerCase();
+  const roundedPreference =
+    lowerExpression.includes("surprised") || lowerExpression.includes("round") || lowerExpression.includes("o");
+
+  const preferredKey =
+    typeof explicitViseme === "string" && explicitViseme.trim().length > 0 && candidates[explicitViseme]
+      ? explicitViseme
+      : mouthOpen <= 0.08
+        ? "mouth_closed"
+        : roundedPreference && candidates.mouth_round_o
+          ? "mouth_round_o"
+          : mouthOpen < 0.48
+            ? "mouth_open_small"
+            : "mouth_open_wide";
+
+  const resolved = candidates[preferredKey];
+  return resolved ? { slotId: resolved.slot_id, imageId: resolved.image_id } : null;
 }
 
 function hashStringToSeed(input: string): number {
@@ -210,16 +231,17 @@ function hashToSigned(seed: number): number {
   return hashToUnit(seed) * 2 - 1;
 }
 
-function getBlinkAmount(frame: number, seed: number): number {
+function getBlinkAmount(frame: number, seed: number, blinkDensity: number = 1): number {
   const baseInterval = 95 + (seed % 55);
-  const offset = (seed >>> 8) % baseInterval;
+  const adjustedInterval = clamp(Math.round(baseInterval / clamp(blinkDensity, 0.55, 1.75)), 48, 180);
+  const offset = (seed >>> 8) % adjustedInterval;
   const shifted = frame + offset;
-  const cycleIndex = Math.floor(shifted / baseInterval);
-  const localFrame = shifted - cycleIndex * baseInterval;
+  const cycleIndex = Math.floor(shifted / adjustedInterval);
+  const localFrame = shifted - cycleIndex * adjustedInterval;
 
   const duration = 2 + Math.floor(hashToUnit(seed + cycleIndex * 97 + 11) * 3);
   const centerOffset = 6 + Math.floor(hashToUnit(seed + cycleIndex * 131 + 23) * 12);
-  const center = baseInterval - centerOffset;
+  const center = adjustedInterval - centerOffset;
   const start = center - duration;
   const end = center + duration;
 
@@ -248,6 +270,20 @@ function getSaccadeOffset(frame: number, seed: number): Vec2 {
     x: fromX + (toX - fromX) * blend,
     y: fromY + (toY - fromY) * blend
   };
+}
+
+function getIdleSpeechMouthOpen(frame: number, seed: number): number {
+  const cycle = 18 + (seed % 10);
+  const offset = (seed >>> 11) % cycle;
+  const local = (frame + offset) % cycle;
+  const activeWindow = Math.max(4, Math.floor(cycle * 0.33));
+  if (local > activeWindow) {
+    return 0;
+  }
+
+  const t = local / Math.max(1, activeWindow);
+  const pulse = Math.sin(t * Math.PI);
+  return clamp(0.025 + pulse * 0.045, 0, 0.08);
 }
 
 function applyBoneLimits(bone: Bone, rotationDeg: number): number {
@@ -507,25 +543,37 @@ export const EraserCatRig = ({
   seed,
   talkText,
   mouthOpen,
-  talkAudioData
+  viseme,
+  forceBlink = false,
+  talkAudioData,
+  blinkDensity = 1,
+  mouthIntensity = 1,
+  idleMotionAmount = 1,
+  headBobEnergy = 1
 }: RigProps) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const resolvedPose = targetPoint == null ? pose : pointAt(targetPoint, lookAt(targetPoint, pose));
   const isAlive = animationMode === "alive";
+  const idleScale = clamp(idleMotionAmount, 0, 1.8);
+  const mouthScale = clamp(mouthIntensity, 0.65, 1.5);
+  const headScale = clamp(headBobEnergy, 0.5, 1.5);
+  const blinkScale = clamp(blinkDensity, 0.55, 1.75);
 
   const animationSeed = hashStringToSeed(seed ?? `${pack.pack_id}:${expression ?? "default"}`);
   const breathPhase = (frame + (animationSeed % 180)) * 0.1;
   const breathWave = isAlive ? Math.sin(breathPhase) : 0;
-  const breathYOffset = breathWave * 2.4;
-  const breathScaleX = 1 - breathWave * 0.006;
-  const breathScaleY = 1 + breathWave * 0.012;
-  const blinkAmount = isAlive ? getBlinkAmount(frame, animationSeed) : 0;
+  const breathYOffset = breathWave * 2.4 * idleScale;
+  const breathScaleX = 1 - breathWave * 0.006 * idleScale;
+  const breathScaleY = 1 + breathWave * 0.012 * idleScale;
+  const shouldForceBlink = forceBlink || (expression ?? "").toLowerCase().includes("blink");
+  const blinkAmount = shouldForceBlink ? 1 : isAlive ? getBlinkAmount(frame, animationSeed, blinkScale) : 0;
   const saccadeOffset = isAlive ? getSaccadeOffset(frame, animationSeed) : { x: 0, y: 0 };
 
   const speakingEnabled =
     typeof mouthOpen === "number" || Boolean(talkAudioData) || Boolean(talkText && talkText.trim().length > 0);
-  const resolvedMouthOpen = speakingEnabled
+  const explicitViseme = (viseme ?? "").trim().toLowerCase();
+  const baseMouthOpen = speakingEnabled
     ? clamp(
         typeof mouthOpen === "number"
           ? mouthOpen
@@ -534,16 +582,31 @@ export const EraserCatRig = ({
         1
       )
     : 0;
+  const idleSpeechMouthOpen =
+    isAlive &&
+    speakingEnabled &&
+    explicitViseme === "mouth_closed" &&
+    typeof talkText === "string" &&
+    talkText.trim().length > 0
+      ? getIdleSpeechMouthOpen(frame, animationSeed) * mouthScale
+      : 0;
+  const resolvedMouthOpen = speakingEnabled
+    ? clamp(Math.max(baseMouthOpen * mouthScale, idleSpeechMouthOpen), 0, 1)
+    : 0;
 
-  const headLagDeg = isAlive ? Math.sin((frame - 4 + (animationSeed % 19)) * 0.12) * 1.8 : 0;
-  const armLagUpperDeg = isAlive ? Math.sin((frame - 5 + (animationSeed % 23)) * 0.09) * 4.2 : 0;
-  const armLagLowerDeg = isAlive ? Math.sin((frame - 8 + (animationSeed % 29)) * 0.11) * 5.4 : 0;
+  const headLagDeg = isAlive ? Math.sin((frame - 4 + (animationSeed % 19)) * 0.12) * 1.8 * headScale : 0;
+  const armLagUpperDeg = isAlive ? Math.sin((frame - 5 + (animationSeed % 23)) * 0.09) * 4.2 * idleScale : 0;
+  const armLagLowerDeg = isAlive ? Math.sin((frame - 8 + (animationSeed % 29)) * 0.11) * 5.4 * idleScale : 0;
 
   const bonesById = new Map(pack.skeleton.bones.map((bone) => [bone.bone_id, bone]));
   const expressionConfig = expression ? pack.expressions[expression] : undefined;
   const slotImageOverrides = new Map<string, string>(
     (expressionConfig?.slot_overrides ?? []).map((entry) => [entry.slot_id, entry.image_id])
   );
+  const visemeSlotOverride = resolveVisemeSlotOverride(pack, resolvedMouthOpen, expression, viseme);
+  if (visemeSlotOverride) {
+    slotImageOverrides.set(visemeSlotOverride.slotId, visemeSlotOverride.imageId);
+  }
 
   const overrides = new Map<string, BoneOverride>();
   for (const boneOverride of expressionConfig?.bone_overrides ?? []) {

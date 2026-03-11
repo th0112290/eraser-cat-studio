@@ -1,12 +1,10 @@
 ﻿import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 
 export type ScreenFxProps = {
-  bloomOpacity?: number;
   grainOpacity?: number;
   scanlineOpacity?: number;
   vignetteOpacity?: number;
   tintOpacity?: number;
-  tintGradient?: string;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -14,12 +12,10 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export const ScreenFx = ({
-  bloomOpacity = 0,
   grainOpacity = 0.12,
   scanlineOpacity = 0.2,
   vignetteOpacity = 0.42,
-  tintOpacity = 0.08,
-  tintGradient = "linear-gradient(160deg, rgba(0, 216, 255, 0.4), rgba(255, 76, 0, 0.34) 60%, rgba(255, 220, 96, 0.3))"
+  tintOpacity = 0.08
 }: ScreenFxProps) => {
   const frame = useCurrentFrame();
 
@@ -36,16 +32,6 @@ export const ScreenFx = ({
 
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <AbsoluteFill
-        style={{
-          opacity: bloomOpacity,
-          background:
-            "radial-gradient(circle at 50% 36%, rgba(255,255,255,0.28) 0%, rgba(255,242,214,0.16) 18%, rgba(255,255,255,0) 56%)",
-          mixBlendMode: "screen",
-          filter: "blur(18px)"
-        }}
-      />
-
       <AbsoluteFill
         style={{
           opacity: grain,
@@ -69,7 +55,7 @@ export const ScreenFx = ({
       <AbsoluteFill
         style={{
           opacity: tintOpacity,
-          background: tintGradient,
+          background: "linear-gradient(160deg, rgba(0, 216, 255, 0.4), rgba(255, 76, 0, 0.34) 60%, rgba(255, 220, 96, 0.3))",
           mixBlendMode: "soft-light"
         }}
       />

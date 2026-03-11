@@ -3,7 +3,6 @@ export { economyChannelProfile } from "./channels/economyChannelProfile";
 export { medicalChannelProfile } from "./channels/medicalChannelProfile";
 export { eraserCatMascotProfile } from "./mascots/eraserCatMascotProfile";
 export { medDogMascotProfile } from "./mascots/medDogMascotProfile";
-export { createProfilesPackageResolver, resolveProfilesPackageResolution } from "./profileResolver";
 export {
   ALL_MOTION_PROFILE_IDS,
   coerceBenchmarkedMotionPreset,

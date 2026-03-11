@@ -41,6 +41,58 @@ export type ShotCue = {
   startSec: number;
   durationSec: number;
   tags: string[];
+  text?: string;
+};
+
+export type AudioViseme =
+  | "mouth_closed"
+  | "mouth_open_small"
+  | "mouth_open_wide"
+  | "mouth_round_o";
+
+export type NarrationAlignmentWord = {
+  shotId: string;
+  index: number;
+  text: string;
+  startSec: number;
+  endSec: number;
+  localStartSec: number;
+  localEndSec: number;
+  viseme: AudioViseme;
+  intensity: number;
+};
+
+export type NarrationAlignmentVisemeCue = {
+  shotId: string;
+  f?: number;
+  timeSec: number;
+  localTimeSec: number;
+  viseme: AudioViseme;
+  intensity: number;
+  sourceWord?: string;
+};
+
+export type NarrationAlignmentShot = {
+  shotId: string;
+  startSec: number;
+  endSec: number;
+  durationSec: number;
+  text: string;
+  words: NarrationAlignmentWord[];
+  visemeCues: NarrationAlignmentVisemeCue[];
+};
+
+export type NarrationAlignmentDocument = {
+  schema_version: "1.0";
+  generated_at: string;
+  strategy: "heuristic_shot_timing_v1";
+  voice: string;
+  speed: number;
+  provider: string;
+  narration_path?: string;
+  audio_duration_sec: number;
+  planned_duration_sec: number;
+  shots: NarrationAlignmentShot[];
 };
 
 export type SfxPlacement = {
@@ -76,6 +128,8 @@ export type AudioBuildResult = {
   narrationPath: string;
   mixPath: string;
   licenseLogPath: string;
+  alignmentPath: string;
+  alignment: NarrationAlignmentDocument;
   appliedScriptText: string;
   placementPlan: PlacementPlan;
 };

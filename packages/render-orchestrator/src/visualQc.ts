@@ -1,7 +1,5 @@
 ﻿import type {
-  DeterministicVisualObject,
   DeterministicSequence,
-  RenderLayoutBox,
   RenderQcInput,
   RenderSafeArea,
   VisualQcCheck,
@@ -10,34 +8,14 @@
   VisualQcRun,
   VisualQcSeverity
 } from "./types";
-
-const CHART_BOX = {
-  x: 1030,
-  y: 168,
-  width: 760,
-  height: 510
-};
-
-const NARRATION_BOX = {
-  x: 104,
-  y: 748,
-  width: 820,
-  height: 176
-};
-
-const OCCLUDER_BOX = {
-  x: 760,
-  y: 0,
-  width: 180,
-  height: 1080
-};
-
-const CHARACTER_BLOCKING_BOX = {
-  offsetX: -220,
-  offsetY: -320,
-  width: 460,
-  height: 720
-};
+import { isBenchmarkedMotionPreset } from "@ec/profiles";
+import {
+  DEFAULT_OCCLUDER_BOX,
+  applyLayoutContinuityToSequences,
+  computePrimaryVisualAnchorInRect,
+  resolvePrimaryVisualPointerTargetCount,
+  resolveSequenceLayoutPlan
+} from "./layoutPlan";
 
 const FALLBACK_STEPS = [
   "simplify_chart",
@@ -83,172 +61,73 @@ function normalizeText(text: string): string {
   return text.replace(/<<([^>]+)>>/g, "$1").replace(/\s+/g, " ").trim();
 }
 
+function resolveMotionProfileIdForQc(
+  visualObject: NonNullable<DeterministicSequence["visualObjects"]>[number]
+): "studio_balanced_v1" | "economy_analytic_v1" | "medical_guided_v1" {
+  if (visualObject.motionProfileId) {
+    return visualObject.motionProfileId;
+  }
+  if (visualObject.selection?.channel_domain === "medical" || visualObject.accentToken === "medical") {
+    return "medical_guided_v1";
+  }
+  if (visualObject.selection?.channel_domain === "economy" || visualObject.accentToken === "economy") {
+    return "economy_analytic_v1";
+  }
+  return "studio_balanced_v1";
+}
+
 function unique<T>(values: T[]): T[] {
   return Array.from(new Set(values));
 }
 
-function normalizeVisualObjectKind(
-  kind: DeterministicSequence["primaryVisualKind"] | DeterministicVisualObject["kind"] | undefined
-): DeterministicSequence["primaryVisualKind"] | undefined {
-  if (!kind) {
-    return undefined;
-  }
-  return kind;
-}
-
-function resolvePrimaryVisualObject(sequence: DeterministicSequence) {
-  return sequence.visualObjects?.find((visualObject) => visualObject.semanticRole === "primary_explainer") ?? sequence.visualObjects?.[0];
-}
-
-function resolvePrimaryVisualKind(sequence: DeterministicSequence): DeterministicSequence["primaryVisualKind"] | undefined {
-  return normalizeVisualObjectKind(resolvePrimaryVisualObject(sequence)?.kind ?? sequence.primaryVisualKind);
-}
-
-function isChartLikeVisualKind(kind: DeterministicSequence["primaryVisualKind"] | undefined): boolean {
-  return kind === "bar_chart" || kind === "line_chart" || kind === "table";
-}
-
-function resolveVisualRect(sequence: DeterministicSequence):
-  | {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    }
-  | undefined {
-  if (sequence.hasChart || resolvePrimaryVisualKind(sequence)) {
-    return sequence.visualBox ?? {
-      x: CHART_BOX.x,
-      y: CHART_BOX.y,
-      width: CHART_BOX.width,
-      height: CHART_BOX.height
-    };
-  }
-  return undefined;
-}
-
-function resolveNarrationRect(sequence: DeterministicSequence): RenderLayoutBox {
-  return sequence.narrationBox ?? NARRATION_BOX;
-}
-
-function resolvePointerReachableRect(sequence: DeterministicSequence): RenderLayoutBox | undefined {
-  if (sequence.pointerReachableZone) {
-    return sequence.pointerReachableZone;
-  }
-  const visualRect = resolveVisualRect(sequence);
-  if (!visualRect || !sequence.hasChart) {
-    return undefined;
-  }
-  return {
-    x: visualRect.x + 56,
-    y: visualRect.y + 86,
-    width: Math.max(40, visualRect.width - 112),
-    height: Math.max(40, visualRect.height - 202)
-  };
-}
-
-function resolveDeclaredPointerAnchor(sequence: DeterministicSequence): { x: number; y: number } | undefined {
-  if (sequence.hasChart && sequence.visualMode === "chart") {
-    if (sequence.chartData.length === 0) {
-      return undefined;
-    }
-    return computeBarAnchor(sequence, clamp(sequence.pointerTargetIndex, 0, Math.max(0, sequence.chartData.length - 1)));
-  }
-
-  const reachableRect = resolvePointerReachableRect(sequence);
-  if (reachableRect) {
-    return {
-      x: reachableRect.x + reachableRect.width * 0.5,
-      y: reachableRect.y + reachableRect.height * 0.5
-    };
-  }
-
-  const visualRect = resolveVisualRect(sequence);
-  if (!visualRect) {
-    return undefined;
-  }
-
-  return {
-    x: visualRect.x + visualRect.width * 0.5,
-    y: visualRect.y + visualRect.height * 0.5
-  };
-}
-
-function rectIntersectionArea(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number }
-): number {
-  const left = Math.max(a.x, b.x);
-  const top = Math.max(a.y, b.y);
-  const right = Math.min(a.x + a.width, b.x + b.width);
-  const bottom = Math.min(a.y + a.height, b.y + b.height);
-  if (right <= left || bottom <= top) {
-    return 0;
-  }
-  return (right - left) * (bottom - top);
-}
-
-function expandRect(
-  rect: { x: number; y: number; width: number; height: number },
-  padding: number
-): { x: number; y: number; width: number; height: number } {
-  return {
-    x: rect.x - padding,
-    y: rect.y - padding,
-    width: rect.width + padding * 2,
-    height: rect.height + padding * 2
-  };
-}
-
-function resolveCharacterBlockingRect(
-  sequence: DeterministicSequence,
-  width: number,
-  height: number
-): { x: number; y: number; width: number; height: number } {
-  if (sequence.mascotBlockingBox) {
-    return sequence.mascotBlockingBox;
-  }
-  const centerX = toPxX(sequence.characterX, width);
-  const centerY = toPxY(sequence.characterY, height);
-  return {
-    x: centerX + CHARACTER_BLOCKING_BOX.offsetX,
-    y: centerY + CHARACTER_BLOCKING_BOX.offsetY,
-    width: CHARACTER_BLOCKING_BOX.width,
-    height: CHARACTER_BLOCKING_BOX.height
-  };
-}
-
-function resolveVisualTextItems(sequence: DeterministicSequence): string[] {
-  return unique(
-    [
-      ...(resolvePrimaryVisualObject(sequence)?.items ?? []),
-      ...(sequence.visualObjects?.flatMap((visualObject) => visualObject.items ?? []) ?? []),
-      ...sequence.chartData.map((row) => row.label),
-      normalizeText(resolvePrimaryVisualObject(sequence)?.body ?? "")
-    ]
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0)
+function rectIntersects(
+  left: { x: number; y: number; width: number; height: number },
+  right: { x: number; y: number; width: number; height: number }
+): boolean {
+  return !(
+    left.x + left.width <= right.x ||
+    right.x + right.width <= left.x ||
+    left.y + left.height <= right.y ||
+    right.y + right.height <= left.y
   );
 }
 
-function computeBarAnchor(sequence: DeterministicSequence, targetIndex: number): { x: number; y: number } {
-  const rows = sequence.chartData;
-  const visualRect = resolveVisualRect(sequence) ?? CHART_BOX;
-  const clampedIndex = clamp(targetIndex, 0, Math.max(0, rows.length - 1));
-  const left = visualRect.x + 56;
-  const top = visualRect.y + 86;
-  const plotWidth = visualRect.width - 112;
-  const plotHeight = visualRect.height - 156;
-  const count = Math.max(1, rows.length);
-  const gap = 20;
-  const barWidth = (plotWidth - gap * (count - 1)) / count;
-  const maxValue = Math.max(1, ...rows.map((row) => row.value));
-  const value = rows[clampedIndex]?.value ?? 0;
-  const heightRatio = clamp(value / maxValue, 0, 1);
-  const barHeight = Math.max(6, plotHeight * heightRatio);
-  const x = left + clampedIndex * (barWidth + gap) + barWidth * 0.5;
-  const y = top + plotHeight - barHeight;
-  return { x, y };
+function resolveLayoutPlanForSequence(
+  context: Pick<VisualQcContext, "width" | "height" | "safeArea">,
+  sequence: DeterministicSequence
+) {
+  if (sequence.layoutPlan) {
+    return sequence.layoutPlan;
+  }
+  return resolveSequenceLayoutPlan({
+    width: context.width,
+    height: context.height,
+    safeArea: context.safeArea,
+    chartData: sequence.chartData,
+    hasChart: sequence.hasChart,
+    visualMode: sequence.visualMode,
+    primaryVisualKind: sequence.primaryVisualKind,
+    visualObjects: sequence.visualObjects,
+    insertAsset: sequence.insertAsset,
+    characterX: sequence.characterX,
+    characterY: sequence.characterY,
+    pointerEnabled: sequence.pointerEnabled,
+    pointerTargetIndex: sequence.pointerTargetIndex,
+    expectOcclusion: sequence.expectOcclusion,
+    visualIntentFamily: sequence.visualPlan?.selected_intent_family
+  });
+}
+
+function resolveLayoutAwareSequences(
+  context: Pick<VisualQcContext, "width" | "height" | "safeArea">,
+  sequences: DeterministicSequence[]
+): DeterministicSequence[] {
+  return applyLayoutContinuityToSequences({
+    width: context.width,
+    height: context.height,
+    safeArea: context.safeArea,
+    sequences
+  });
 }
 
 function isRectInsideSafeArea(
@@ -282,19 +161,27 @@ function cloneSequence(sequence: DeterministicSequence): DeterministicSequence {
   return {
     ...sequence,
     chartData: sequence.chartData.map((row) => ({ ...row })),
-    pointerTip: sequence.pointerTip ? { ...sequence.pointerTip } : undefined,
-    visualObjects: sequence.visualObjects?.map((visualObject) => ({
-      ...visualObject,
-      items: visualObject.items ? [...visualObject.items] : undefined,
-      dataRef: visualObject.dataRef ? { ...visualObject.dataRef } : undefined
-    })),
-    visualPlan: sequence.visualPlan ? { ...sequence.visualPlan } : undefined,
-    profileBundle: sequence.profileBundle ? { ...sequence.profileBundle } : undefined,
     finishProfile: sequence.finishProfile ? { ...sequence.finishProfile } : undefined,
-    visualBox: sequence.visualBox ? { ...sequence.visualBox } : undefined,
-    narrationBox: sequence.narrationBox ? { ...sequence.narrationBox } : undefined,
-    mascotBlockingBox: sequence.mascotBlockingBox ? { ...sequence.mascotBlockingBox } : undefined,
-    pointerReachableZone: sequence.pointerReachableZone ? { ...sequence.pointerReachableZone } : undefined
+    pointerTip: sequence.pointerTip ? { ...sequence.pointerTip } : undefined,
+    layoutPlan: sequence.layoutPlan
+      ? {
+          ...sequence.layoutPlan,
+          subtitleSafeZone: { ...sequence.layoutPlan.subtitleSafeZone },
+          narrationBox: { ...sequence.layoutPlan.narrationBox },
+          primaryVisualBox: { ...sequence.layoutPlan.primaryVisualBox },
+          chartSafeZone: sequence.layoutPlan.chartSafeZone ? { ...sequence.layoutPlan.chartSafeZone } : undefined,
+          mascotBlockingZone: { ...sequence.layoutPlan.mascotBlockingZone },
+          insertBox: sequence.layoutPlan.insertBox ? { ...sequence.layoutPlan.insertBox } : undefined,
+          negativeSpaceBox: sequence.layoutPlan.negativeSpaceBox ? { ...sequence.layoutPlan.negativeSpaceBox } : undefined,
+          occluderBox: sequence.layoutPlan.occluderBox ? { ...sequence.layoutPlan.occluderBox } : undefined,
+          pointerReachability: {
+            ...sequence.layoutPlan.pointerReachability,
+            targetPoint: sequence.layoutPlan.pointerReachability.targetPoint
+              ? { ...sequence.layoutPlan.pointerReachability.targetPoint }
+              : undefined
+          }
+        }
+      : undefined
   };
 }
 
@@ -315,45 +202,65 @@ function countIssues(issues: VisualQcIssue[]) {
   return { errorCount, warnCount };
 }
 
+function countAnchorsByType(
+  visualObject: NonNullable<DeterministicSequence["visualObjects"]>[number],
+  type: "pointer_anchor" | "look_target" | "camera_cutaway_target" | "callout_anchor" | "safe_area_box"
+): number {
+  return visualObject.anchors?.filter((anchor) => anchor.type === type).length ?? 0;
+}
+
+function resolveVisualObjectItemsForQc(
+  sequence: DeterministicSequence,
+  visualObject: NonNullable<DeterministicSequence["visualObjects"]>[number]
+): string[] {
+  if (visualObject.items && visualObject.items.length > 0) {
+    return visualObject.items.slice(0, 6).map((item) => normalizeText(item));
+  }
+
+  if (sequence.chartData.length > 0) {
+    return sequence.chartData.slice(0, 6).map((row) => normalizeText(row.label));
+  }
+
+  const body = normalizeText(visualObject.body ?? sequence.chartCallout ?? sequence.narration);
+  if (body.length === 0) {
+    return [];
+  }
+
+  return body
+    .split(/[,.]/)
+    .map((entry) => normalizeText(entry))
+    .filter((entry) => entry.length > 0)
+    .slice(0, 4);
+}
+
+function resolveVisualObjectRectForQc(
+  layoutPlan: ReturnType<typeof resolveLayoutPlanForSequence>,
+  visualObject: NonNullable<DeterministicSequence["visualObjects"]>[number],
+  primaryVisualObject: NonNullable<DeterministicSequence["visualObjects"]>[number] | undefined
+) {
+  if (visualObject.objectId === primaryVisualObject?.objectId || visualObject.semanticRole === "primary_explainer") {
+    return layoutPlan.primaryVisualBox;
+  }
+  if (visualObject.preferredRegion === "sidebar" || visualObject.preferredRegion === "lower_third") {
+    return layoutPlan.insertBox;
+  }
+  return layoutPlan.primaryVisualBox;
+}
+
 function pushIssue(
   issues: VisualQcIssue[],
   code: string,
   severity: VisualQcSeverity,
   message: string,
-  shotRef?: string | DeterministicSequence,
+  shotId?: string,
   details?: Record<string, unknown>
 ): void {
-  const sequence = typeof shotRef === "object" ? shotRef : undefined;
-  const shotId = typeof shotRef === "string" ? shotRef : sequence?.shotId;
-  const contextLabel = sequence
-    ? [sequence.shotGrammar, sequence.educationalIntent, sequence.routeReason]
-        .filter((value): value is Exclude<typeof value, undefined> => typeof value === "string" && value.length > 0)
-        .map((value) => value.replaceAll("_", " "))
-        .join(" / ")
-    : undefined;
   issues.push({
     code,
     severity,
-    message: contextLabel && contextLabel.length > 0 ? `${message} [${contextLabel}]` : message,
+    message,
     shotId,
-    details: sequence
-        ? {
-            shotGrammar: sequence.shotGrammar,
-            educationalIntent: sequence.educationalIntent,
-            routeReason: sequence.routeReason,
-            insertNeed: sequence.insertNeed,
-            primaryVisualKind: resolvePrimaryVisualKind(sequence),
-            studioProfileId: sequence.profileBundle?.studioProfileId,
-            channelProfileId: sequence.profileBundle?.channelProfileId,
-            mascotProfileId: sequence.profileBundle?.mascotProfileId,
-            resolverId: sequence.profileBundle?.resolverId,
-            resolverSource: sequence.profileBundle?.resolverSource,
-            layoutBias: sequence.profileBundle?.layoutBias,
-            actingBias: sequence.profileBundle?.actingBias,
-            pointerBias: sequence.profileBundle?.pointerBias,
-            ...details
-          }
-        : details
+    details
   });
 }
 
@@ -374,7 +281,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
     const rows = sequence.chartData;
     if (rows.length === 0) {
       chartDataErrors += 1;
-      pushIssue(issues, "chart_data_empty", "ERROR", "Chart data rows are empty.", sequence);
+      pushIssue(issues, "chart_data_empty", "ERROR", "Chart data rows are empty.", sequence.shotId);
       continue;
     }
 
@@ -387,7 +294,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_label_invalid",
         "ERROR",
         "Chart labels must be non-empty.",
-        sequence,
+        sequence.shotId,
         { invalidLabels }
       );
     }
@@ -400,7 +307,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_label_duplicate",
         "ERROR",
         "Chart labels must be unique for deterministic pointer resolution.",
-        sequence
+        sequence.shotId
       );
     }
 
@@ -414,7 +321,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_unit_inconsistent",
         "ERROR",
         "Chart units are inconsistent across rows.",
-        sequence,
+        sequence.shotId,
         { units: uniqueUnits }
       );
     }
@@ -426,7 +333,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_unit_mismatch",
         "ERROR",
         "Chart unit does not match the input dataset unit.",
-        sequence,
+        sequence.shotId,
         { declaredUnit, rowUnits }
       );
     }
@@ -442,7 +349,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
           "chart_data_sum_mismatch",
           "ERROR",
           "Chart sum does not match the expected dataset sum.",
-          sequence,
+          sequence.shotId,
           { expectedSum, actualSum, tolerance }
         );
       }
@@ -460,17 +367,14 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
   let readabilityWarnings = 0;
   let readabilityScoreTotal = 0;
   let readabilityScoreCount = 0;
+  let blockingErrors = 0;
+  let negativeSpaceWarnings = 0;
 
   for (const sequence of context.sequences) {
     let readabilityScore = 100;
-    const primaryVisualKind = resolvePrimaryVisualKind(sequence);
-    const visualRect = resolveVisualRect(sequence);
-    const narrationRect = resolveNarrationRect(sequence);
-    const primaryVisualObject = resolvePrimaryVisualObject(sequence);
-    const visualItems = resolveVisualTextItems(sequence);
-    const nonChartVisual = Boolean(primaryVisualKind) && !isChartLikeVisualKind(primaryVisualKind);
+    const layoutPlan = resolveLayoutPlanForSequence(context, sequence);
 
-    const candidateFontSizes = nonChartVisual ? [36, 24, 20] : sequence.visualMode === "table" ? [24, 22] : [34, 26, 24];
+    const candidateFontSizes = sequence.visualMode === "table" ? [24, 22] : [34, 26, 24];
     const usedMinFont = Math.min(...candidateFontSizes);
     if (usedMinFont < minFontSizePx) {
       readabilityErrors += 1;
@@ -480,14 +384,14 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_min_font_size",
         "ERROR",
         "Minimum font size check failed.",
-        sequence,
+        sequence.shotId,
         { usedMinFont, minFontSizePx }
       );
     }
 
     const narrationText = normalizeText(sequence.narration);
     const narrationEstimate = estimateTextWidth(narrationText, 32);
-    const narrationAvailable = narrationRect.width - 48;
+    const narrationAvailable = layoutPlan.narrationBox.width - 48;
     if (narrationEstimate > narrationAvailable * 2) {
       readabilityWarnings += 1;
       readabilityScore -= 14;
@@ -496,14 +400,14 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_overflow_narration",
         "WARN",
         "Narration text is likely to overflow.",
-        sequence,
+        sequence.shotId,
         { narrationEstimate, narrationAvailable }
       );
     }
 
     if (sequence.visualMode === "chart" && sequence.chartData.length > 0) {
       const barCount = sequence.chartData.length;
-      const plotWidth = (visualRect?.width ?? CHART_BOX.width) - 112;
+      const plotWidth = layoutPlan.primaryVisualBox.width - 112;
       const barWidth = (plotWidth - 20 * (barCount - 1)) / barCount;
       for (const row of sequence.chartData) {
         const labelEstimate = estimateTextWidth(row.label, 22);
@@ -515,98 +419,28 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
             "readability_overflow_label",
             "WARN",
             "A chart label is likely to overflow its bar slot.",
-            sequence,
+            sequence.shotId,
             { label: row.label, labelEstimate, barWidth }
           );
         }
       }
     }
 
-    if (visualRect && !isRectInsideSafeArea(context.safeArea, context.width, context.height, visualRect)) {
+    const hasPrimaryVisual = sequence.hasChart || !!sequence.primaryVisualKind || (sequence.visualObjects?.length ?? 0) > 0;
+    const chartRect = layoutPlan.primaryVisualBox;
+    if (hasPrimaryVisual && !isRectInsideSafeArea(context.safeArea, context.width, context.height, chartRect)) {
       readabilityErrors += 1;
       readabilityScore -= 30;
       pushIssue(
         issues,
-        sequence.hasChart ? "readability_safe_area_chart" : "readability_safe_area_visual_object",
+        "readability_safe_area_primary_visual",
         "ERROR",
-        sequence.hasChart
-          ? "Chart area violates the safe area constraints."
-          : "Primary visual object area violates the safe area constraints.",
-        sequence,
-        primaryVisualKind ? { primaryVisualKind } : undefined
+        "Primary visual area violates the safe area constraints.",
+        sequence.shotId
       );
     }
 
-    if (nonChartVisual) {
-      const visualTitle = normalizeText(primaryVisualObject?.title ?? "");
-      const visualBody = normalizeText(primaryVisualObject?.body ?? sequence.narration);
-      const titleEstimate = visualTitle ? estimateTextWidth(visualTitle, 36) : 0;
-      const bodyEstimate = visualBody ? estimateTextWidth(visualBody, 24) : 0;
-      const titleAvailable = ((visualRect?.width ?? CHART_BOX.width) - 96) * 1.8;
-      const bodyAvailable = ((visualRect?.width ?? CHART_BOX.width) - 96) * 4.8;
-
-      if (!visualTitle && visualBody.length === 0 && visualItems.length === 0) {
-        readabilityErrors += 1;
-        readabilityScore -= 32;
-        pushIssue(
-          issues,
-          "visual_object_content_missing",
-          "ERROR",
-          "Primary visual object has no usable title, body, or items.",
-          sequence,
-          { primaryVisualKind }
-        );
-      }
-
-      if (titleEstimate > titleAvailable) {
-        readabilityWarnings += 1;
-        readabilityScore -= 8;
-        pushIssue(
-          issues,
-          "visual_object_title_overflow",
-          "WARN",
-          "Primary visual title is likely to overflow the visual box.",
-          sequence,
-          { primaryVisualKind, titleEstimate, titleAvailable }
-        );
-      }
-
-      if (bodyEstimate > bodyAvailable) {
-        readabilityWarnings += 1;
-        readabilityScore -= 10;
-        pushIssue(
-          issues,
-          "visual_object_body_overflow",
-          "WARN",
-          "Primary visual body is likely to overflow the explainer layout.",
-          sequence,
-          { primaryVisualKind, bodyEstimate, bodyAvailable }
-        );
-      }
-
-      const densityLimit =
-        primaryVisualKind === "checklist_card" ||
-        primaryVisualKind === "timeline" ||
-        primaryVisualKind === "process_flow" ||
-        primaryVisualKind === "comparison_board" ||
-        primaryVisualKind === "icon_array"
-          ? 4
-          : 3;
-      if (visualItems.length > densityLimit) {
-        readabilityWarnings += 1;
-        readabilityScore -= 12;
-        pushIssue(
-          issues,
-          "visual_object_density_high",
-          "WARN",
-          "Primary visual object contains more items than the recommended density budget.",
-          sequence,
-          { primaryVisualKind, itemCount: visualItems.length, densityLimit }
-        );
-      }
-    }
-
-    if (!isRectInsideSafeArea(context.safeArea, context.width, context.height, narrationRect)) {
+    if (!isRectInsideSafeArea(context.safeArea, context.width, context.height, layoutPlan.narrationBox)) {
       readabilityWarnings += 1;
       readabilityScore -= 10;
       pushIssue(
@@ -614,7 +448,80 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_safe_area_narration",
         "WARN",
         "Narration area violates the safe area constraints.",
-        sequence
+        sequence.shotId
+      );
+    }
+
+    if (layoutPlan.insertBox && rectIntersects(layoutPlan.insertBox, layoutPlan.primaryVisualBox)) {
+      blockingErrors += 1;
+      readabilityScore -= 20;
+      pushIssue(
+        issues,
+        "layout_insert_collision",
+        "ERROR",
+        "Insert box overlaps the primary visual box.",
+        sequence.shotId,
+        {
+          insertBox: layoutPlan.insertBox,
+          primaryVisualBox: layoutPlan.primaryVisualBox
+        }
+      );
+    }
+
+    const primaryVisualObject =
+      sequence.visualObjects?.find((object) => object.semanticRole === "primary_explainer") ??
+      sequence.visualObjects?.[0];
+    const supportingInsetObjects =
+      sequence.visualObjects?.filter(
+        (object) =>
+          object.objectId !== primaryVisualObject?.objectId &&
+          (object.preferredRegion === "sidebar" || object.preferredRegion === "lower_third")
+      ) ?? [];
+    if (supportingInsetObjects.length > 0 && !layoutPlan.insertBox) {
+      blockingErrors += 1;
+      readabilityScore -= 18;
+      pushIssue(
+        issues,
+        "layout_supporting_visual_unplaced",
+        "ERROR",
+        "Supporting visual object requires an inset box but none was allocated.",
+        sequence.shotId,
+        {
+          visualObjects: supportingInsetObjects.map((object) => ({
+            objectId: object.objectId,
+            kind: object.kind,
+            preferredRegion: object.preferredRegion
+          }))
+        }
+      );
+    }
+
+    if (rectIntersects(layoutPlan.narrationBox, layoutPlan.mascotBlockingZone)) {
+      blockingErrors += 1;
+      readabilityScore -= 16;
+      pushIssue(
+        issues,
+        "layout_mascot_collision",
+        "ERROR",
+        "Narration box overlaps the mascot blocking zone.",
+        sequence.shotId,
+        {
+          narrationBox: layoutPlan.narrationBox,
+          mascotBlockingZone: layoutPlan.mascotBlockingZone
+        }
+      );
+    }
+
+    if (!layoutPlan.negativeSpaceBox || layoutPlan.negativeSpaceBox.width * layoutPlan.negativeSpaceBox.height < 18000) {
+      negativeSpaceWarnings += 1;
+      readabilityScore -= 4;
+      pushIssue(
+        issues,
+        "layout_negative_space_low",
+        "WARN",
+        "Negative space reserve is below the recommended threshold.",
+        sequence.shotId,
+        { negativeSpaceBox: layoutPlan.negativeSpaceBox }
       );
     }
 
@@ -629,7 +536,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_score_low",
         "WARN",
         "Readability score is below the recommended threshold.",
-        sequence,
+        sequence.shotId,
         { score: finalScore }
       );
     }
@@ -644,8 +551,222 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
     severity: "ERROR",
     details:
       readabilityErrors === 0
-        ? `score=${readabilityScoreAverage.toFixed(1)} warnings=${readabilityWarnings}`
-        : `score=${readabilityScoreAverage.toFixed(1)} readability_errors=${readabilityErrors} warnings=${readabilityWarnings}`
+        ? `score=${readabilityScoreAverage.toFixed(1)} warnings=${readabilityWarnings} blocking=${blockingErrors} negative_space=${negativeSpaceWarnings}`
+        : `score=${readabilityScoreAverage.toFixed(1)} readability_errors=${readabilityErrors} warnings=${readabilityWarnings} blocking=${blockingErrors} negative_space=${negativeSpaceWarnings}`
+  });
+
+  let objectSpecificErrors = 0;
+  let objectSpecificWarnings = 0;
+
+  for (const sequence of context.sequences) {
+    const primaryVisualObject =
+      sequence.visualObjects?.find((object) => object.semanticRole === "primary_explainer") ??
+      sequence.visualObjects?.[0];
+    const visualObjects = sequence.visualObjects ?? [];
+    const layoutPlan = resolveLayoutPlanForSequence(context, sequence);
+
+    for (const visualObject of visualObjects) {
+      if (!visualObject.motionPreset) {
+        objectSpecificWarnings += 1;
+        pushIssue(
+          issues,
+          "visual_object_motion_preset_missing",
+          "WARN",
+          "Visual object is missing an explicit motion preset and may bypass benchmark coverage.",
+          sequence.shotId,
+          {
+            objectId: visualObject.objectId,
+            kind: visualObject.kind,
+            motionProfileId: visualObject.motionProfileId ?? null
+          }
+        );
+      } else if (!isBenchmarkedMotionPreset(resolveMotionProfileIdForQc(visualObject), visualObject.motionPreset)) {
+        objectSpecificErrors += 1;
+        pushIssue(
+          issues,
+          "visual_object_motion_preset_unbenchmarked",
+          "ERROR",
+          "Visual object motion preset is not benchmarked for the resolved motion profile.",
+          sequence.shotId,
+          {
+            objectId: visualObject.objectId,
+            kind: visualObject.kind,
+            motionPreset: visualObject.motionPreset,
+            motionProfileId: resolveMotionProfileIdForQc(visualObject)
+          }
+        );
+      }
+
+      if (
+        visualObject.kind !== "timeline" &&
+        visualObject.kind !== "process_flow" &&
+        visualObject.kind !== "anatomy_diagram" &&
+        visualObject.kind !== "risk_meter"
+      ) {
+        continue;
+      }
+
+      const rect = resolveVisualObjectRectForQc(layoutPlan, visualObject, primaryVisualObject);
+      if (!rect) {
+        objectSpecificErrors += 1;
+        pushIssue(
+          issues,
+          "visual_object_rect_missing",
+          "ERROR",
+          "Visual object specific QC could not resolve a layout rect.",
+          sequence.shotId,
+          {
+            objectId: visualObject.objectId,
+            kind: visualObject.kind
+          }
+        );
+        continue;
+      }
+
+      const items = resolveVisualObjectItemsForQc(sequence, visualObject);
+      const pointerAnchorCount = countAnchorsByType(visualObject, "pointer_anchor");
+      const calloutAnchorCount = countAnchorsByType(visualObject, "callout_anchor");
+
+      if (visualObject.kind === "timeline" || visualObject.kind === "process_flow") {
+        const steps = Math.max(2, Math.min(visualObject.semanticRole === "primary_explainer" ? 4 : 3, items.length || 3));
+        const slotWidth = Math.max(0, (rect.width - 144) / Math.max(1, steps));
+        const longestStepLabel = items.reduce((max, item) => Math.max(max, estimateTextWidth(item, 18)), 0);
+
+        if (rect.height < (visualObject.semanticRole === "primary_explainer" ? 240 : 210) || rect.width < 480) {
+          objectSpecificErrors += 1;
+          pushIssue(
+            issues,
+            "visual_object_stepflow_footprint_small",
+            "ERROR",
+            "Timeline or process flow footprint is too small for readable step staging.",
+            sequence.shotId,
+            {
+              objectId: visualObject.objectId,
+              kind: visualObject.kind,
+              width: rect.width,
+              height: rect.height
+            }
+          );
+        }
+
+        if (slotWidth < 118 || longestStepLabel > Math.max(180, slotWidth * 1.4)) {
+          objectSpecificWarnings += 1;
+          pushIssue(
+            issues,
+            "visual_object_stepflow_density_high",
+            "WARN",
+            "Timeline or process flow steps are too dense for the allocated footprint.",
+            sequence.shotId,
+            {
+              objectId: visualObject.objectId,
+              kind: visualObject.kind,
+              stepCount: steps,
+              slotWidth,
+              longestStepLabel
+            }
+          );
+        }
+
+        if (pointerAnchorCount < 1) {
+          objectSpecificWarnings += 1;
+          pushIssue(
+            issues,
+            "visual_object_stepflow_anchor_sparse",
+            "WARN",
+            "Timeline or process flow should expose at least one pointer anchor.",
+            sequence.shotId,
+            {
+              objectId: visualObject.objectId,
+              kind: visualObject.kind
+            }
+          );
+        }
+      }
+
+      if (visualObject.kind === "anatomy_diagram") {
+        const longestCallout = items.slice(0, 4).reduce((max, item) => Math.max(max, estimateTextWidth(item, 17)), 0);
+        if (rect.width < 560 || rect.height < 520) {
+          objectSpecificErrors += 1;
+          pushIssue(
+            issues,
+            "visual_object_anatomy_footprint_small",
+            "ERROR",
+            "Anatomy diagram footprint is too small to preserve labeled structure readability.",
+            sequence.shotId,
+            {
+              objectId: visualObject.objectId,
+              width: rect.width,
+              height: rect.height
+            }
+          );
+        }
+
+        if (items.length < 2 || calloutAnchorCount < 1 || longestCallout > 220) {
+          objectSpecificWarnings += 1;
+          pushIssue(
+            issues,
+            "visual_object_anatomy_annotation_sparse",
+            "WARN",
+            "Anatomy diagram annotations are too sparse or too long for clean label reading.",
+            sequence.shotId,
+            {
+              objectId: visualObject.objectId,
+              itemCount: items.length,
+              calloutAnchorCount,
+              longestCallout
+            }
+          );
+        }
+      }
+
+      if (visualObject.kind === "risk_meter") {
+        const riskLabelWidth = ["Low", "Watch", "High"].reduce((max, item) => Math.max(max, estimateTextWidth(item, 16)), 0);
+        const zoneWidth = Math.max(0, (rect.width - 40) / 3);
+
+        if (rect.width < 640 || rect.height < 220) {
+          objectSpecificErrors += 1;
+          pushIssue(
+            issues,
+            "visual_object_risk_meter_footprint_small",
+            "ERROR",
+            "Risk meter footprint is too small to preserve threshold readability.",
+            sequence.shotId,
+            {
+              objectId: visualObject.objectId,
+              width: rect.width,
+              height: rect.height
+            }
+          );
+        }
+
+        if (riskLabelWidth > zoneWidth * 0.9 || pointerAnchorCount < 1) {
+          objectSpecificWarnings += 1;
+          pushIssue(
+            issues,
+            "visual_object_risk_meter_scale_sparse",
+            "WARN",
+            "Risk meter scale labels or pointer anchor coverage are too weak for reliable reading.",
+            sequence.shotId,
+            {
+              objectId: visualObject.objectId,
+              zoneWidth,
+              riskLabelWidth,
+              pointerAnchorCount
+            }
+          );
+        }
+      }
+    }
+  }
+
+  checks.push({
+    name: "object_specific",
+    passed: objectSpecificErrors === 0,
+    severity: "ERROR",
+    details:
+      objectSpecificErrors === 0
+        ? `object_specific_warnings=${objectSpecificWarnings}`
+        : `object_specific_errors=${objectSpecificErrors} warnings=${objectSpecificWarnings}`
   });
 
   let pointerErrors = 0;
@@ -654,52 +775,70 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
       continue;
     }
 
-    if (sequence.hasChart && sequence.visualMode === "chart" && sequence.chartData.length === 0) {
+    const primaryVisualObject =
+      sequence.visualObjects?.find((object) => object.semanticRole === "primary_explainer") ??
+      sequence.visualObjects?.[0];
+    const pointerTargetCount = resolvePrimaryVisualPointerTargetCount({
+      kind: primaryVisualObject?.kind ?? sequence.primaryVisualKind,
+      chartData: sequence.chartData,
+      pointerTargetIds: primaryVisualObject?.pointerTargetIds,
+      anchors: primaryVisualObject?.anchors
+    });
+
+    if (pointerTargetCount <= 0) {
       pointerErrors += 1;
       pushIssue(
         issues,
         "pointer_target_missing",
         "ERROR",
-        "Pointer target cannot be resolved because chart data is empty.",
-        sequence
+        "Pointer target cannot be resolved because no pointer slots are available.",
+        sequence.shotId
       );
       continue;
     }
 
-    if (
-      sequence.hasChart &&
-      sequence.visualMode === "chart" &&
-      (sequence.pointerTargetIndex < 0 || sequence.pointerTargetIndex >= sequence.chartData.length)
-    ) {
+    if (sequence.pointerTargetIndex < 0 || sequence.pointerTargetIndex >= pointerTargetCount) {
       pointerErrors += 1;
       pushIssue(
         issues,
         "pointer_target_missing",
         "ERROR",
-        "Pointer target index is outside chart data range.",
-        sequence,
+        "Pointer target index is outside the available target range.",
+        sequence.shotId,
         {
           pointerTargetIndex: sequence.pointerTargetIndex,
-          rowCount: sequence.chartData.length
+          targetCount: pointerTargetCount
         }
       );
       continue;
     }
 
-    const anchor = resolveDeclaredPointerAnchor(sequence);
-    if (!anchor) {
+    const layoutPlan = resolveLayoutPlanForSequence(context, sequence);
+    if (!layoutPlan.pointerReachability.reachable) {
       pointerErrors += 1;
       pushIssue(
         issues,
         "pointer_target_missing",
         "ERROR",
-        "Pointer target cannot be resolved for the declared visual layout.",
-        sequence
+        "Pointer target is not reachable from the mascot blocking plan.",
+        sequence.shotId,
+        {
+          reason: layoutPlan.pointerReachability.reason,
+          mascotToTargetDistancePx: layoutPlan.pointerReachability.mascotToTargetDistancePx
+        }
       );
       continue;
     }
+
+    const anchor = computePrimaryVisualAnchorInRect({
+      kind: primaryVisualObject?.kind ?? sequence.primaryVisualKind,
+      chartData: sequence.chartData,
+      pointerTargetIds: primaryVisualObject?.pointerTargetIds,
+      anchors: primaryVisualObject?.anchors,
+      targetIndex: sequence.pointerTargetIndex,
+      rect: layoutPlan.primaryVisualBox
+    });
     const tip = sequence.pointerTip ?? anchor;
-    const reachableRect = resolvePointerReachableRect(sequence);
     const distance = Math.hypot(tip.x - anchor.x, tip.y - anchor.y);
     if (distance > pointerTolerancePx) {
       pointerErrors += 1;
@@ -708,20 +847,8 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "pointer_tip_tolerance",
         "ERROR",
         "Pointer tip is outside tolerance from the target anchor.",
-        sequence,
+        sequence.shotId,
         { distance, pointerTolerancePx }
-      );
-    }
-
-    if (reachableRect && !isPointInsideRect(anchor, reachableRect)) {
-      pointerErrors += 1;
-      pushIssue(
-        issues,
-        "pointer_reachable_zone_miss",
-        "ERROR",
-        "Pointer anchor falls outside the declared reachable zone.",
-        sequence,
-        { pointerAnchor: anchor, reachableRect }
       );
     }
   }
@@ -733,80 +860,16 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
     details: pointerErrors === 0 ? "Pointer checks passed." : `pointer_errors=${pointerErrors}`
   });
 
-  let blockingErrors = 0;
-  let blockingWarnings = 0;
-  for (const sequence of context.sequences) {
-    const characterRect = resolveCharacterBlockingRect(sequence, context.width, context.height);
-    const visualRect = resolveVisualRect(sequence);
-    const narrationRect = resolveNarrationRect(sequence);
-
-    if (visualRect) {
-      const visualOverlap = rectIntersectionArea(expandRect(visualRect, 14), characterRect);
-      if (visualOverlap > 0) {
-        blockingErrors += 1;
-        pushIssue(
-          issues,
-          "blocking_visual_mascot_collision",
-          "ERROR",
-          "Mascot blocking zone overlaps the primary visual area.",
-          sequence,
-          { overlapArea: visualOverlap, primaryVisualKind: resolvePrimaryVisualKind(sequence) }
-        );
-      }
-    }
-
-    const narrationOverlap = rectIntersectionArea(expandRect(narrationRect, 10), characterRect);
-    if (narrationOverlap > 0) {
-      blockingWarnings += 1;
-      pushIssue(
-        issues,
-        "blocking_narration_mascot_collision",
-        "WARN",
-        "Mascot blocking zone overlaps the narration safe box.",
-        sequence,
-        { overlapArea: narrationOverlap }
-      );
-    }
-
-    if (sequence.pointerEnabled) {
-      const pointerAnchor = resolveDeclaredPointerAnchor(sequence);
-      if (!pointerAnchor) {
-        continue;
-      }
-      if (isPointInsideRect(pointerAnchor, expandRect(characterRect, 6))) {
-        blockingErrors += 1;
-        pushIssue(
-          issues,
-          "pointer_reachable_zone_blocked",
-          "ERROR",
-          "Pointer target anchor lands inside the mascot blocking zone.",
-          sequence,
-          { pointerAnchor }
-        );
-      }
-    }
-  }
-
-  checks.push({
-    name: "blocking_layout",
-    passed: blockingErrors === 0,
-    severity: "ERROR",
-    details:
-      blockingErrors === 0
-        ? `blocking_warnings=${blockingWarnings}`
-        : `blocking_errors=${blockingErrors} warnings=${blockingWarnings}`
-  });
-
   let occlusionErrors = 0;
-  const occluderRect = {
-    ...OCCLUDER_BOX,
-    height: context.height
-  };
 
   for (const sequence of context.sequences) {
     if (!sequence.expectOcclusion) {
       continue;
     }
+    const occluderRect = resolveLayoutPlanForSequence(context, sequence).occluderBox ?? {
+      ...DEFAULT_OCCLUDER_BOX,
+      height: context.height
+    };
     const point = {
       x: toPxX(sequence.characterX, context.width),
       y: toPxY(sequence.characterY, context.height)
@@ -818,7 +881,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "layering_occlusion_missing",
         "ERROR",
         "Character is not occluded as expected.",
-        sequence,
+        sequence.shotId,
         { character: point, occluder: occluderRect }
       );
     }
@@ -852,7 +915,9 @@ function simplifyChartRows(rows: DeterministicSequence["chartData"]): Determinis
 function applyFallbackStep(
   step: FallbackStep,
   sequences: DeterministicSequence[],
-  width: number
+  width: number,
+  height: number,
+  safeArea: RenderSafeArea
 ): {
   sequences: DeterministicSequence[];
   freezeCharacterPose: boolean;
@@ -887,14 +952,6 @@ function applyFallbackStep(
         next.annotationsEnabled = false;
         next.chartCallout = undefined;
         next.narration = normalizeText(next.narration).slice(0, 160);
-        next.talkText = next.talkText ? normalizeText(next.talkText).slice(0, 120) : next.talkText;
-        next.visualObjects =
-          next.visualObjects?.map((visualObject) => ({
-            ...visualObject,
-            title: visualObject.title ? normalizeText(visualObject.title).slice(0, 56) : visualObject.title,
-            body: visualObject.body ? normalizeText(visualObject.body).slice(0, 140) : visualObject.body,
-            items: visualObject.items?.slice(0, 4).map((item) => normalizeText(item).slice(0, 36))
-          })) ?? next.visualObjects;
         return next;
       })
     };
@@ -916,7 +973,6 @@ function applyFallbackStep(
     };
   }
 
-  const occluderCenterX = (OCCLUDER_BOX.x + OCCLUDER_BOX.width * 0.5) / Math.max(1, width);
   return {
     freezeCharacterPose: true,
     sequences: sequences.map((sequence) => {
@@ -925,6 +981,19 @@ function applyFallbackStep(
       next.pointerEnabled = false;
       next.pointerTip = undefined;
       if (next.expectOcclusion) {
+        const occluderBox =
+          resolveLayoutPlanForSequence(
+            {
+              width,
+              height,
+              safeArea
+            },
+            next
+          ).occluderBox ?? {
+            ...DEFAULT_OCCLUDER_BOX,
+            height
+          };
+        const occluderCenterX = (occluderBox.x + occluderBox.width * 0.5) / Math.max(1, width);
         next.characterX = clamp(occluderCenterX, 0, 1);
       }
       return next;
@@ -940,7 +1009,14 @@ export function runVisualQcWithFallback(input: {
   qcInput?: RenderQcInput;
 }): VisualQcFallbackResult {
   const runs: VisualQcRun[] = [];
-  let workingSequences = cloneSequences(input.sequences);
+  let workingSequences = resolveLayoutAwareSequences(
+    {
+      width: input.width,
+      height: input.height,
+      safeArea: input.safeArea
+    },
+    cloneSequences(input.sequences)
+  );
   let freezeCharacterPose = false;
   const appliedSteps: string[] = [];
 
@@ -960,8 +1036,15 @@ export function runVisualQcWithFallback(input: {
       break;
     }
 
-    const fallback = applyFallbackStep(step, workingSequences, input.width);
-    workingSequences = fallback.sequences;
+    const fallback = applyFallbackStep(step, workingSequences, input.width, input.height, input.safeArea);
+    workingSequences = resolveLayoutAwareSequences(
+      {
+        width: input.width,
+        height: input.height,
+        safeArea: input.safeArea
+      },
+      fallback.sequences
+    );
     freezeCharacterPose = freezeCharacterPose || fallback.freezeCharacterPose;
     appliedSteps.push(step);
 
@@ -985,8 +1068,46 @@ export function runVisualQcWithFallback(input: {
     runs
   };
 
+  const resolvedSequences = resolveLayoutAwareSequences(
+    {
+      width: input.width,
+      height: input.height,
+      safeArea: input.safeArea
+    },
+    workingSequences
+  ).map((sequence) => {
+    const layoutPlan = resolveLayoutPlanForSequence(
+      {
+        width: input.width,
+        height: input.height,
+        safeArea: input.safeArea
+      },
+      sequence
+    );
+    return {
+      ...sequence,
+      layoutPlan,
+      pointerTip: (() => {
+        if (!sequence.pointerEnabled) {
+          return sequence.pointerTip;
+        }
+        const primaryVisualObject =
+          sequence.visualObjects?.find((object) => object.semanticRole === "primary_explainer") ??
+          sequence.visualObjects?.[0];
+        return computePrimaryVisualAnchorInRect({
+          kind: primaryVisualObject?.kind ?? sequence.primaryVisualKind,
+          chartData: sequence.chartData,
+          pointerTargetIds: primaryVisualObject?.pointerTargetIds,
+          anchors: primaryVisualObject?.anchors,
+          targetIndex: sequence.pointerTargetIndex,
+          rect: layoutPlan.primaryVisualBox
+        });
+      })()
+    };
+  });
+
   return {
-    sequences: workingSequences,
+    sequences: resolvedSequences,
     freezeCharacterPose,
     report
   };

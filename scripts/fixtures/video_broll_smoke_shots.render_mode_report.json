@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-03-06T14:10:17.238Z",
+  "input_path": "C:\\Users\\th011\\eraser-cat-studio\\scripts\\fixtures\\video_broll_smoke_shots.json",
+  "episode_id": "ep_video_broll_smoke",
+  "policy": {
+    "generative_broll_max_frames": 72,
+    "allowed_camera_presets": [
+      "static",
+      "slow_push"
+    ]
+  },
+  "summary": {
+    "total_shots": 2,
+    "stored_generative_broll_shots": 1,
+    "recommended_generative_broll_shots": 1,
+    "mismatched_stored_vs_recommended": 0,
+    "legacy_shots_missing_policy_fields": 0
+  },
+  "breakdown": {
+    "by_shot_type": {
+      "broll": 1,
+      "talk": 1
+    },
+    "by_stored_render_mode": {
+      "deterministic": 1,
+      "generative_broll": 1
+    },
+    "by_recommended_render_mode": {
+      "deterministic": 1,
+      "generative_broll": 1
+    },
+    "blocker_counts": {
+      "shot_type:talk": 1
+    }
+  },
+  "eligible_shots": [
+    {
+      "shot_id": "shot_broll_001",
+      "shot_type": "broll",
+      "duration_frames": 48,
+      "camera_preset": "slow_push",
+      "stored_render_mode": "generative_broll"
+    }
+  ],
+  "mismatched_shots": [],
+  "shots": [
+    {
+      "shot_id": "shot_broll_001",
+      "shot_type": "broll",
+      "stored_render_mode": "generative_broll",
+      "recommended_render_mode": "generative_broll",
+      "duration_frames": 48,
+      "camera_preset": "slow_push",
+      "has_chart": false,
+      "legacy_shot": false,
+      "change_required": false,
+      "blockers": [],
+      "eligibility_note": "eligible_for_generative_broll",
+      "narration": "A short atmospheric insert of the eraser cat mascot looking toward the data scene."
+    },
+    {
+      "shot_id": "shot_talk_002",
+      "shot_type": "talk",
+      "stored_render_mode": "deterministic",
+      "recommended_render_mode": "deterministic",
+      "duration_frames": 48,
+      "camera_preset": "static",
+      "has_chart": false,
+      "legacy_shot": false,
+      "change_required": false,
+      "blockers": [
+        "shot_type:talk"
+      ],
+      "eligibility_note": "blocked_from_generative_broll",
+      "narration": "Return to the deterministic host shot after the generated insert."
+    }
+  ]
+}

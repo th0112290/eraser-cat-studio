@@ -32,8 +32,20 @@ async function run(): Promise<void> {
     { id: "beat_003", startSec: 10, tags: ["transition", "emphasis:high"] }
   ];
   const shots: ShotCue[] = [
-    { id: "shot_001", startSec: 0, durationSec: 5, tags: ["energy:high"] },
-    { id: "shot_002", startSec: 5, durationSec: 5, tags: ["chart"] }
+    {
+      id: "shot_001",
+      startSec: 0,
+      durationSec: 5,
+      tags: ["energy:high"],
+      text: "Open with the central claim and one practical context."
+    },
+    {
+      id: "shot_002",
+      startSec: 5,
+      durationSec: 5,
+      tags: ["chart"],
+      text: "Move into evidence with clear language and short lines."
+    }
   ];
 
   const scriptText = [
@@ -60,6 +72,7 @@ async function run(): Promise<void> {
   assert.ok(fs.existsSync(first.narrationPath));
   assert.ok(fs.existsSync(first.mixPath));
   assert.ok(fs.existsSync(first.licenseLogPath));
+  assert.ok(fs.existsSync(first.alignmentPath));
 
   const firstNarrationSize = sizeOf(first.narrationPath);
   const firstMixSize = sizeOf(first.mixPath);
@@ -84,6 +97,12 @@ async function run(): Promise<void> {
   };
   assert.ok(Array.isArray(licenseLog.entries));
   assert.ok(licenseLog.entries.length >= 2);
+
+  const alignment = JSON.parse(fs.readFileSync(second.alignmentPath, "utf8")) as {
+    shots?: Array<{ shotId?: string; visemeCues?: unknown[] }>;
+  };
+  assert.ok(Array.isArray(alignment.shots));
+  assert.ok((alignment.shots?.[0]?.visemeCues?.length ?? 0) > 0);
 
   console.log("[audio] smoke passed");
 }

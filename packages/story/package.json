@@ -13,6 +13,7 @@
     "shots:smoke": "pnpm exec tsx src/shotsSmoke.ts"
   },
   "dependencies": {
+    "@ec/profiles": "workspace:*",
     "@ec/shared": "workspace:*"
   },
   "devDependencies": {

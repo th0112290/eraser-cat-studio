@@ -54,6 +54,7 @@ async function main(): Promise<void> {
 
   console.log(`audio:demo narration=${result.narrationPath}`);
   console.log(`audio:demo mix=${result.mixPath}`);
+  console.log(`audio:demo alignment=${result.alignmentPath}`);
   console.log(`audio:demo license_log=${result.licenseLogPath}`);
   console.log(`audio:demo sfx_events=${result.placementPlan.sfxEvents.length}`);
 }

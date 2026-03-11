@@ -9,23 +9,25 @@ export type {
 } from "./generateBeats";
 
 export { compileShots, toShotsDocument } from "./compileShots";
-export {
-  CANONICAL_VISUAL_OBJECT_KINDS,
-  isChartLikeShotVisualObjectKind,
-  normalizeShotVisualObjectKind
-} from "./compileShots";
 export type {
   CompileShotsOptions,
   Shot,
-  ShotCanonicalVisualObjectKind,
-  ShotChannelDomain,
-  ShotEducationalIntent,
-  ShotEducationalMode,
-  ShotGrammar,
-  ShotInsertNeed,
-  ShotRouteReason,
+  ShotInsertAsset,
+  ShotVisualAnchor,
+  ShotVisualAnchorType,
+  ShotVisualIntentCandidate,
+  ShotVisualIntentFamily,
+  ShotVisualMotionProfileId,
+  ShotVisualMotionPreset,
+  ShotRenderMode,
+  ShotVisualPlan,
+  ShotVisualResolverId,
+  ShotVisualSelection,
+  ShotVisualSelectionDataShape,
+  ShotVisualSafeArea,
+  ShotSidecarPreset,
   ShotVisualObject,
   ShotVisualObjectKind,
-  ShotVisualPlan,
+  ShotType,
   ShotsDocument
 } from "./compileShots";

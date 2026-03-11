@@ -11,11 +11,16 @@ import { makeBeep, makeClick, makePop, makeWhoosh } from "./sfx/procedural";
 import { resolveProceduralSfxSpec } from "./sfx/select";
 import { normalizeFloatSamples, overlaySamples, readMonoWav, type MonoWav, writeMonoWav } from "./wav";
 import type {
+  AudioViseme,
   AudioBuildInput,
   AudioBuildResult,
   LicenseInfo,
   LicenseLogEntry,
   MusicLibrary,
+  NarrationAlignmentDocument,
+  NarrationAlignmentShot,
+  NarrationAlignmentVisemeCue,
+  NarrationAlignmentWord,
   NarrationLicenseInfo,
   PickedTrack,
   SfxPlacement,
@@ -87,6 +92,249 @@ function buildNarrationLicense(): NarrationLicenseInfo {
     source: "local://mock-tts-provider",
     usage: "Allowed for local development and tests",
     generated: true
+  };
+}
+
+function countVowelGroups(text: string): number {
+  const matches = text.toLowerCase().match(/[aeiouy]+/g);
+  return matches ? matches.length : 0;
+}
+
+function tokenizeWords(text: string): string[] {
+  return text
+    .match(/[A-Za-z0-9']+/g)
+    ?.map((token) => token.trim())
+    .filter((token) => token.length > 0) ?? [];
+}
+
+function deriveShotTexts(input: AudioBuildInput): string[] {
+  const explicitTexts = input.shots.map((shot) => (typeof shot.text === "string" ? shot.text.trim() : ""));
+  if (explicitTexts.every((text) => text.length > 0)) {
+    return explicitTexts;
+  }
+
+  const scriptWords = tokenizeWords(input.scriptText);
+  if (scriptWords.length === 0) {
+    return input.shots.map(() => "");
+  }
+
+  const totalDuration = Math.max(
+    0.001,
+    input.shots.reduce((max, shot) => Math.max(max, shot.startSec + shot.durationSec), 0)
+  );
+  let cursor = 0;
+
+  return input.shots.map((shot, index) => {
+    const explicit = explicitTexts[index];
+    if (explicit.length > 0) {
+      return explicit;
+    }
+
+    const ratio = Math.max(0.08, shot.durationSec / totalDuration);
+    const remainingShots = input.shots.length - index;
+    const remainingWords = Math.max(1, scriptWords.length - cursor);
+    const estimatedCount = Math.max(1, Math.round(scriptWords.length * ratio));
+    const count = index === input.shots.length - 1 ? remainingWords : Math.min(remainingWords, estimatedCount);
+    const slice = scriptWords.slice(cursor, cursor + count);
+    cursor += count;
+    return slice.join(" ");
+  });
+}
+
+function visemeForWord(word: string): AudioViseme {
+  const normalized = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (normalized.length === 0) {
+    return "mouth_closed";
+  }
+  if (/(oo|oh|ou|ow|o|u)/.test(normalized)) {
+    return "mouth_round_o";
+  }
+  if (/(aa|ee|ai|ay|ei)|[ae]/.test(normalized)) {
+    return normalized.length >= 4 ? "mouth_open_wide" : "mouth_open_small";
+  }
+  return normalized.length <= 2 ? "mouth_open_small" : "mouth_open_small";
+}
+
+function visemeIntensity(viseme: AudioViseme, word: string): number {
+  const syllableWeight = Math.max(1, countVowelGroups(word));
+  if (viseme === "mouth_open_wide") {
+    return Math.min(1, 0.72 + syllableWeight * 0.1);
+  }
+  if (viseme === "mouth_round_o") {
+    return Math.min(0.92, 0.62 + syllableWeight * 0.08);
+  }
+  if (viseme === "mouth_open_small") {
+    return Math.min(0.8, 0.48 + syllableWeight * 0.06);
+  }
+  return 0;
+}
+
+function wordWeight(word: string): number {
+  const vowelGroups = countVowelGroups(word);
+  return Math.max(1, Math.min(6, word.length * 0.18 + vowelGroups * 0.85));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeVisemeCues(cues: NarrationAlignmentVisemeCue[]): NarrationAlignmentVisemeCue[] {
+  const sorted = [...cues].sort((left, right) => left.timeSec - right.timeSec);
+  const deduped: NarrationAlignmentVisemeCue[] = [];
+  for (const cue of sorted) {
+    const previous = deduped[deduped.length - 1];
+    if (
+      previous &&
+      Math.abs(previous.timeSec - cue.timeSec) < 0.0001 &&
+      previous.viseme === cue.viseme &&
+      Math.abs(previous.intensity - cue.intensity) < 0.001
+    ) {
+      continue;
+    }
+    deduped.push(cue);
+  }
+  return deduped;
+}
+
+function buildNarrationAlignment(
+  input: AudioBuildInput,
+  narrationPath: string,
+  narration: MonoWav
+): NarrationAlignmentDocument {
+  const resolvedShotTexts = deriveShotTexts(input);
+  const plannedDurationSec = Math.max(
+    0.001,
+    input.shots.reduce((max, shot) => Math.max(max, shot.startSec + shot.durationSec), 0)
+  );
+  const audioDurationSec = narration.samples.length / Math.max(1, narration.sampleRate);
+
+  const shots: NarrationAlignmentShot[] = input.shots.map((shot, index) => {
+    const startSec = Math.max(0, shot.startSec);
+    const durationSec = Math.max(0.001, shot.durationSec);
+    const endSec = startSec + durationSec;
+    const text = resolvedShotTexts[index] ?? "";
+    const words = tokenizeWords(text);
+
+    if (words.length === 0) {
+      return {
+        shotId: shot.id,
+        startSec,
+        endSec,
+        durationSec,
+        text,
+        words: [],
+        visemeCues: [
+          {
+            shotId: shot.id,
+            timeSec: startSec,
+            localTimeSec: 0,
+            viseme: "mouth_closed",
+            intensity: 0
+          },
+          {
+            shotId: shot.id,
+            timeSec: endSec,
+            localTimeSec: durationSec,
+            viseme: "mouth_closed",
+            intensity: 0
+          }
+        ]
+      };
+    }
+
+    const leadInSec = Math.min(0.12, durationSec * 0.08);
+    const tailOutSec = Math.min(0.14, durationSec * 0.1);
+    const speechStartSec = startSec + leadInSec;
+    const speechEndSec = Math.max(speechStartSec + 0.1, endSec - tailOutSec);
+    const speakingDurationSec = Math.max(0.1, speechEndSec - speechStartSec);
+    const totalWeight = words.reduce((sum, word) => sum + wordWeight(word), 0);
+
+    let cursor = speechStartSec;
+    const alignedWords: NarrationAlignmentWord[] = [];
+    const visemeCues: NarrationAlignmentVisemeCue[] = [
+      {
+        shotId: shot.id,
+        timeSec: startSec,
+        localTimeSec: 0,
+        viseme: "mouth_closed",
+        intensity: 0
+      }
+    ];
+
+    words.forEach((word, wordIndex) => {
+      const ratio = wordWeight(word) / Math.max(1, totalWeight);
+      const rawDuration = speakingDurationSec * ratio;
+      const gapSec = Math.min(0.05, rawDuration * 0.18);
+      const wordStartSec = cursor;
+      const isLast = wordIndex === words.length - 1;
+      const wordEndSec = isLast
+        ? speechEndSec
+        : Math.min(speechEndSec, wordStartSec + Math.max(0.06, rawDuration - gapSec));
+      const viseme = visemeForWord(word);
+      const intensity = visemeIntensity(viseme, word);
+
+      alignedWords.push({
+        shotId: shot.id,
+        index: wordIndex,
+        text: word,
+        startSec: wordStartSec,
+        endSec: wordEndSec,
+        localStartSec: wordStartSec - startSec,
+        localEndSec: wordEndSec - startSec,
+        viseme,
+        intensity
+      });
+
+      visemeCues.push({
+        shotId: shot.id,
+        timeSec: wordStartSec,
+        localTimeSec: wordStartSec - startSec,
+        viseme,
+        intensity,
+        sourceWord: word
+      });
+      visemeCues.push({
+        shotId: shot.id,
+        timeSec: wordEndSec,
+        localTimeSec: wordEndSec - startSec,
+        viseme: "mouth_closed",
+        intensity: 0,
+        sourceWord: word
+      });
+
+      cursor = isLast ? speechEndSec : Math.min(speechEndSec, wordEndSec + gapSec);
+    });
+
+    visemeCues.push({
+      shotId: shot.id,
+      timeSec: endSec,
+      localTimeSec: durationSec,
+      viseme: "mouth_closed",
+      intensity: 0
+    });
+
+    return {
+      shotId: shot.id,
+      startSec,
+      endSec,
+      durationSec,
+      text,
+      words: alignedWords,
+      visemeCues: normalizeVisemeCues(visemeCues)
+    };
+  });
+
+  return {
+    schema_version: "1.0",
+    generated_at: new Date().toISOString(),
+    strategy: "heuristic_shot_timing_v1",
+    voice: input.voice,
+    speed: input.speed,
+    provider: "heuristic_from_shot_timing",
+    narration_path: narrationPath,
+    audio_duration_sec: audioDurationSec,
+    planned_duration_sec: plannedDurationSec,
+    shots
   };
 }
 
@@ -262,6 +510,9 @@ export async function runAudioPipeline(
 
   const narration = readMonoWav(narrationPath);
   const bgm = readMonoWav(bgmTrack.path);
+  const alignment = buildNarrationAlignment(input, narrationPath, narration);
+  const alignmentPath = path.join(input.outDir, "narration_alignment.json");
+  writeJson(alignmentPath, alignment);
 
   const mixedSamples = mixAudio(narration, bgm, sfxTrackMap, sfxEvents);
   const rawMixPath = path.join(input.outDir, "mix.raw.wav");
@@ -295,6 +546,8 @@ export async function runAudioPipeline(
     narrationPath,
     mixPath,
     licenseLogPath,
+    alignmentPath,
+    alignment,
     appliedScriptText,
     placementPlan
   };

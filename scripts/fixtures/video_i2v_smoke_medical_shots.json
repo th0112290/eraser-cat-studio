@@ -1,0 +1,187 @@
+{
+  "schema_version": "1.0",
+  "episode": {
+    "episode_id": "ep_video_i2v_smoke_medical",
+    "bible_ref": "bible_v1",
+    "profiles": {
+      "studio_profile_id": "studio_default",
+      "channel_profile_id": "medical_channel",
+      "mascot_profile_id": "med_dog"
+    }
+  },
+  "render": {
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "safe_area": {
+      "x": 0.05,
+      "y": 0.05,
+      "w": 0.9,
+      "h": 0.9
+    },
+    "coord_space": "normalized"
+  },
+  "shots": [
+    {
+      "shot_id": "shot_i2v_medical_001",
+      "shot_type": "reaction",
+      "render_mode": "generative_i2v",
+      "beat_ids": ["beat_i2v_medical_001"],
+      "start_frame": 0,
+      "duration_frames": 42,
+      "narration": "The presenter calmly reacts beside a symptom diagram while keeping a reassuring, readable silhouette.",
+      "emphasis_words": ["symptom", "warning", "readable"],
+      "shot_grammar": {
+        "camera_size": "cu",
+        "camera_motion": "hold",
+        "acting_intent": "calm_explanation",
+        "emotion_curve": "flat",
+        "primary_speaking_character": "host",
+        "required_view": "front",
+        "educational_intent": "diagram_explainer",
+        "insert_need": ["diagram", "callout_card", "caution_card"],
+        "route_reason": "diagram_explainer_dialogue"
+      },
+      "insert_asset": {
+        "asset_id": "medical_diagram_card",
+        "type": "diagram",
+        "layout": "sidebar",
+        "title": "Symptom Map",
+        "body": "Explain the affected area with calm spacing.",
+        "accent_token": "medical",
+        "items": ["check timing", "preserve identity", "keep subtitle lane clear"]
+      },
+      "visual_objects": [
+        {
+          "object_id": "medical_diagram_main",
+          "kind": "anatomy_diagram",
+          "source": "planner_v2",
+          "semantic_role": "primary_explainer",
+          "preferred_region": "main_right",
+          "safe_zone_tags": ["subtitle_safe", "mascot_blocking", "negative_space_preserve"],
+          "animation_policy": "presenter_guided",
+          "fallback_policy": "fallback_to_summary_card",
+          "title": "Symptom Area",
+          "body": "Focused explanation with calm labeling",
+          "accent_token": "medical",
+          "items": ["location", "intensity", "next step"]
+        },
+        {
+          "object_id": "medical_callout_support",
+          "kind": "callout_card",
+          "source": "planner_v2",
+          "semantic_role": "supporting_explainer",
+          "preferred_region": "lower_third",
+          "safe_zone_tags": ["subtitle_safe", "negative_space_preserve"],
+          "animation_policy": "hold",
+          "fallback_policy": "hide_optional",
+          "title": "Caution",
+          "body": "Keep the expression calm and trustworthy.",
+          "accent_token": "medical"
+        }
+      ],
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 },
+          { "f": 41, "x": 0.48, "y": 0.52, "zoom": 1.005, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "med-dog-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "idle_talk", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "warm" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ],
+          "view_track": [
+            { "f": 0, "view": "front" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    },
+    {
+      "shot_id": "shot_talk_medical_002",
+      "shot_type": "talk",
+      "render_mode": "deterministic",
+      "beat_ids": ["beat_talk_medical_002"],
+      "start_frame": 42,
+      "duration_frames": 48,
+      "narration": "Return to the deterministic host shot after the diagram-led image to video insert.",
+      "set": {
+        "set_id": "studio_host",
+        "variant": "cut",
+        "layers": {
+          "bg_far": "bg/host_far",
+          "bg_mid": "bg/host_mid",
+          "bg_near": "bg/default_near",
+          "fg_mask": "fg/default_mask"
+        }
+      },
+      "camera": {
+        "preset": "static",
+        "keyframes": [
+          { "f": 0, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 },
+          { "f": 47, "x": 0.48, "y": 0.52, "zoom": 1, "rotate_deg": 0 }
+        ]
+      },
+      "character": {
+        "pack_id": "med-dog-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.48,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.48, "y": 0.82, "interp": "ease" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "greet", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "neutral" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ]
+        }
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    }
+  ]
+}
