@@ -6,6 +6,7 @@
     "baseUrl": ".",
     "paths": {
       "@ec/analytics": ["../../packages/analytics/src/index.ts"],
+      "@ec/image-gen": ["../../packages/image-gen/src/index.ts"],
       "@ec/ops": ["../../packages/ops/src/index.ts"],
       "@ec/publish": ["../../packages/publish/src/index.ts"],
       "@ec/shared": ["../../packages/shared/src/index.ts"]
