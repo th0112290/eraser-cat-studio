@@ -1,0 +1,384 @@
+import type { MascotSpeciesId, MascotSpeciesProfile } from "./types";
+
+const DEFAULT_SPECIES_ID: MascotSpeciesId = "cat";
+const BASE_FAMILY_ID = "compact_doodle_mascot_v2";
+
+const FAMILY_POSITIVE_BASE = [
+  "cute mascot character",
+  "compact oversized head",
+  "small rounded body",
+  "stubby tube arms and legs",
+  "paw or mitten hands only",
+  "clean black outline on a light plain background",
+  "very simple readable face",
+  "single sticker-like silhouette"
+];
+
+const FAMILY_NEGATIVE_BASE = [
+  "photorealistic",
+  "3d render",
+  "anime shading",
+  "realistic fur",
+  "realistic eyebrows",
+  "realistic nose bridge",
+  "realistic mouth",
+  "human fingers",
+  "five fingers",
+  "knuckles",
+  "nails",
+  "long torso",
+  "small head",
+  "multiple characters",
+  "sticker sheet",
+  "character lineup",
+  "turnaround sheet",
+  "icon grid",
+  "logo",
+  "text",
+  "symbol only",
+  "double face parts",
+  "detached ear",
+  "rough sketch shading",
+  "double outline"
+];
+
+const FAMILY_IDENTITY_BASE = [
+  "same mascot across all angles",
+  "same compact head-to-body ratio",
+  "same stubby arm and leg proportions",
+  "same paw hand design",
+  "same simplified doodle family style"
+];
+
+const FAMILY_ANCHOR_BASE = ["same head width and height", "same eye spacing", "same body scale"];
+
+const FAMILY_GUARDRAILS_BASE = [
+  "keep the head large and compact",
+  "keep the body much smaller than the head",
+  "keep arms and legs short and simple",
+  "keep the face minimal and readable",
+  "keep the result inside the same mascot family"
+];
+
+const BASE_HERO_MODE: MascotSpeciesProfile["heroMode"] = {
+  allowOptionalHeroRef: true,
+  enabledByDefault: false,
+  stages: ["identity_lock_refine", "repair_refine"],
+  maxReferenceWeight: 0.58,
+  minFrontScore: 0.7
+};
+
+const BASE_CONTROL_NET_HINT_POLICY: MascotSpeciesProfile["controlNetHintPolicy"] = {
+  frontMasterPresetId: "mascot_front_style_v1",
+  baseStagePresetId: "mascot_side_base_v1",
+  advancedStagePresetId: "mascot_advanced_controlnet_v1",
+  repairStagePresetId: "mascot_repair_impact_v1",
+  defaultKindsByStage: {
+    front_master: ["lineart", "canny"],
+    side_view_base: ["lineart", "canny"],
+    side_view_refine: ["lineart", "canny", "depth"],
+    identity_lock_refine: ["lineart", "canny", "depth"],
+    view_only: ["lineart", "canny"],
+    repair_refine: ["lineart", "canny", "depth"]
+  }
+};
+
+const BASE_ANIMATION_QC: MascotSpeciesProfile["animationQc"] = {
+  minExpressionFaceVariation: 0.008,
+  minVisemeFaceVariation: 0.007,
+  maxExpressionBodyCenterDrift: 0.03,
+  maxExpressionBodySizeDelta: 0.08,
+  maxVisemeBodyCenterDrift: 0.03,
+  maxEyeAnchorDrift: 0.035,
+  maxMouthAnchorDrift: 0.03
+};
+
+const BASE_QC_THRESHOLDS: MascotSpeciesProfile["qcThresholds"] = {
+  frontMasterMinScore: 0.62,
+  frontMasterMinStyleScore: 0.38,
+  frontMasterMinSpeciesScore: 0.26,
+  frontMasterMinHeadSquarenessScore: 0.26,
+  repairScoreFloor: 0.41,
+  minConsistencyByView: {
+    threeQuarter: 0.48,
+    profile: 0.4
+  },
+  minHeadRatioByView: {
+    front: 0.34,
+    threeQuarter: 0.22,
+    profile: 0.18
+  },
+  minGeometryCueByView: {
+    threeQuarter: 0.4,
+    profile: 0.34
+  },
+  minFrontSymmetryScore: 0.54,
+  minSubjectIsolationFront: 0.46,
+  maxSpeciesSpread: 0.18,
+  maxStyleSpread: 0.16,
+  maxHeadRatioSpread: 0.14,
+  maxMonochromeSpread: 0.18,
+  maxEarCueSpread: 0.24,
+  maxMuzzleCueSpread: 0.22,
+  maxHeadShapeCueSpread: 0.22,
+  maxSilhouetteCueSpread: 0.24
+};
+
+type SpeciesOverride = {
+  label: string;
+  referenceBankId: string;
+  positiveTokens: string[];
+  negativeTokens: string[];
+  identityTokens: string[];
+  anchorTokens: string[];
+  guardrails: string[];
+  viewHints: Partial<Record<"front" | "threeQuarter" | "profile", string>>;
+  keepTraits: string[];
+  rejectTraits: string[];
+  animationQc?: Partial<MascotSpeciesProfile["animationQc"]>;
+  qcThresholds?: Partial<MascotSpeciesProfile["qcThresholds"]>;
+};
+
+const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freeze({
+  cat: {
+    label: "Cat",
+    referenceBankId: "cat_mascot_bank_v1",
+    positiveTokens: [
+      "rounded-square cat head",
+      "slightly flat head top",
+      "pointed triangular cat ears",
+      "almost no muzzle projection",
+      "tiny dash mouth",
+      "two short whisker strokes on each cheek",
+      "cat-first silhouette"
+    ],
+    negativeTokens: ["dog muzzle", "wolf wedge snout", "button nose", "floppy dog ears", "canine face"],
+    identityTokens: ["pointed cat ears", "two whisker strokes per cheek", "almost no muzzle projection"],
+    anchorTokens: ["same cat ear spacing", "same cat cheek width", "same whisker rhythm"],
+    guardrails: [
+      "do not add a realistic cat nose",
+      "do not turn the face into a canine muzzle",
+      "keep whiskers simple and sparse"
+    ],
+    viewHints: {
+      front:
+        "front view should read as cat first, with pointed ears, minimal muzzle, a compact blocky head, exactly two short whisker strokes per side, and full body visible",
+      threeQuarter:
+        "three-quarter cat should stay compact and cute, show both ears attached, keep both eyes visible, and avoid extra muzzle projection",
+      profile:
+        "profile cat should keep a very short feline muzzle, one eye only, a clear compact head silhouette, and short cheek whisker strokes"
+    },
+    keepTraits: [
+      "compact blocky cat head",
+      "slightly flat head top",
+      "pointed cat ears",
+      "minimal feline muzzle",
+      "two short whisker strokes per cheek",
+      "tiny body and short limbs"
+    ],
+    rejectTraits: [
+      "dog muzzle",
+      "wolf wedge snout",
+      "button nose",
+      "human fingers",
+      "long realistic tail",
+      "multiple characters"
+    ],
+    animationQc: {
+      minExpressionFaceVariation: 0.0085,
+      minVisemeFaceVariation: 0.0075
+    }
+  },
+  dog: {
+    label: "Dog",
+    referenceBankId: "dog_mascot_bank_v1",
+    positiveTokens: [
+      "compact dog head silhouette",
+      "soft rounded dog ears",
+      "short rounded puppy muzzle",
+      "tiny button nose",
+      "friendly domestic dog silhouette"
+    ],
+    negativeTokens: ["cat whiskers", "sharp wolf snout", "tall wolf ears", "flat cat face with no muzzle"],
+    identityTokens: ["soft dog ears", "short puppy muzzle", "tiny button nose"],
+    anchorTokens: ["same dog ear placement", "same puppy muzzle width", "same button nose position"],
+    guardrails: [
+      "do not drift back to a cat whisker-face",
+      "do not lengthen the muzzle into wolf territory",
+      "keep the dog muzzle rounded and short"
+    ],
+    viewHints: {
+      front:
+        "front view should read as dog first while staying in the same mascot family, with rounded or floppy ears, a short rounded muzzle, and a tiny button nose",
+      threeQuarter:
+        "three-quarter dog should preserve the same compact head and body while showing a soft rounded puppy muzzle and softer ears",
+      profile:
+        "profile dog should show a short rounded muzzle and one soft ear, domestic and cute, not cat-flat and not wolf-sharp"
+    },
+    keepTraits: [
+      "compact dog head",
+      "soft dog ears",
+      "short rounded puppy muzzle",
+      "tiny button nose",
+      "tiny body and short limbs"
+    ],
+    rejectTraits: ["cat whiskers", "sharp wolf snout", "tall wolf ears", "human fingers", "multiple characters"],
+    animationQc: {
+      minExpressionFaceVariation: 0.009,
+      minVisemeFaceVariation: 0.008,
+      maxMouthAnchorDrift: 0.028
+    },
+    qcThresholds: {
+      frontMasterMinStyleScore: 0.37,
+      frontMasterMinSpeciesScore: 0.24,
+      frontMasterMinHeadSquarenessScore: 0.24,
+      minHeadRatioByView: {
+        front: 0.32,
+        threeQuarter: 0.2,
+        profile: 0.16
+      },
+      minGeometryCueByView: {
+        threeQuarter: 0.38,
+        profile: 0.32
+      },
+      minFrontSymmetryScore: 0.5,
+      maxHeadRatioSpread: 0.16,
+      maxMuzzleCueSpread: 0.24,
+      maxSilhouetteCueSpread: 0.26
+    }
+  },
+  wolf: {
+    label: "Wolf",
+    referenceBankId: "wolf_mascot_bank_v1",
+    positiveTokens: [
+      "compact wolf head silhouette",
+      "taller sharp upright ears",
+      "short angular wedge muzzle",
+      "alert cute wolf silhouette"
+    ],
+    negativeTokens: ["floppy dog ears", "round puppy muzzle", "cat whiskers", "cat-flat no-muzzle face"],
+    identityTokens: ["tall wolf ears", "short angular wedge muzzle", "alert wolf silhouette"],
+    anchorTokens: ["same wolf ear angle", "same wedge muzzle width", "same wolf face direction"],
+    guardrails: [
+      "keep the muzzle only slightly longer, not realistic",
+      "do not round the wolf into a puppy face",
+      "do not add cat whisker-face cues"
+    ],
+    viewHints: {
+      front:
+        "front view should read as wolf first in the same mascot family, with taller upright ears and a short angular muzzle that stays cute and simplified",
+      threeQuarter:
+        "three-quarter wolf should keep the same compact body and head while showing a slightly longer wedge muzzle and alert ears",
+      profile:
+        "profile wolf should have a short angular wedge muzzle, one tall ear, a simple eye, and the same small-body mascot proportions"
+    },
+    keepTraits: [
+      "compact wolf head",
+      "tall upright ears",
+      "short angular wedge muzzle",
+      "alert silhouette",
+      "tiny body and short limbs"
+    ],
+    rejectTraits: ["floppy dog ears", "round puppy muzzle", "cat whiskers", "human fingers", "multiple characters"],
+    animationQc: {
+      minExpressionFaceVariation: 0.0095,
+      minVisemeFaceVariation: 0.0085,
+      maxExpressionBodyCenterDrift: 0.028,
+      maxVisemeBodyCenterDrift: 0.028,
+      maxEyeAnchorDrift: 0.032,
+      maxMouthAnchorDrift: 0.028
+    },
+    qcThresholds: {
+      frontMasterMinStyleScore: 0.35,
+      frontMasterMinSpeciesScore: 0.22,
+      frontMasterMinHeadSquarenessScore: 0.22,
+      minConsistencyByView: {
+        threeQuarter: 0.46,
+        profile: 0.38
+      },
+      minGeometryCueByView: {
+        threeQuarter: 0.37,
+        profile: 0.31
+      },
+      minFrontSymmetryScore: 0.48,
+      maxSpeciesSpread: 0.2,
+      maxEarCueSpread: 0.26,
+      maxMuzzleCueSpread: 0.24,
+      maxHeadShapeCueSpread: 0.24,
+      maxSilhouetteCueSpread: 0.26
+    }
+  }
+});
+
+function mergeQcThresholds(
+  overrides: Partial<MascotSpeciesProfile["qcThresholds"]> | undefined
+): MascotSpeciesProfile["qcThresholds"] {
+  return {
+    ...BASE_QC_THRESHOLDS,
+    ...overrides,
+    minConsistencyByView: {
+      ...BASE_QC_THRESHOLDS.minConsistencyByView,
+      ...(overrides?.minConsistencyByView ?? {})
+    },
+    minHeadRatioByView: {
+      ...BASE_QC_THRESHOLDS.minHeadRatioByView,
+      ...(overrides?.minHeadRatioByView ?? {})
+    },
+    minGeometryCueByView: {
+      ...BASE_QC_THRESHOLDS.minGeometryCueByView,
+      ...(overrides?.minGeometryCueByView ?? {})
+    }
+  };
+}
+
+function mergeAnimationQc(
+  overrides: Partial<MascotSpeciesProfile["animationQc"]> | undefined
+): MascotSpeciesProfile["animationQc"] {
+  return {
+    ...BASE_ANIMATION_QC,
+    ...(overrides ?? {})
+  };
+}
+
+function composeSpeciesProfile(id: MascotSpeciesId): MascotSpeciesProfile {
+  const override = SPECIES_OVERRIDES[id];
+  return {
+    id,
+    label: override.label,
+    familyId: BASE_FAMILY_ID,
+    referenceBankId: override.referenceBankId,
+    positiveTokens: [...FAMILY_POSITIVE_BASE, ...override.positiveTokens],
+    negativeTokens: [...FAMILY_NEGATIVE_BASE, ...override.negativeTokens],
+    identityTokens: [...FAMILY_IDENTITY_BASE, ...override.identityTokens],
+    anchorTokens: [...FAMILY_ANCHOR_BASE, ...override.anchorTokens],
+    guardrails: [...FAMILY_GUARDRAILS_BASE, ...override.guardrails],
+    viewHints: {
+      ...override.viewHints
+    },
+    keepTraits: [...override.keepTraits],
+    rejectTraits: [...override.rejectTraits],
+    heroMode: {
+      ...BASE_HERO_MODE
+    },
+    controlNetHintPolicy: {
+      ...BASE_CONTROL_NET_HINT_POLICY,
+      defaultKindsByStage: {
+        ...BASE_CONTROL_NET_HINT_POLICY.defaultKindsByStage
+      }
+    },
+    animationQc: mergeAnimationQc(override.animationQc),
+    qcThresholds: mergeQcThresholds(override.qcThresholds)
+  };
+}
+
+export function listMascotSpeciesProfiles(): MascotSpeciesProfile[] {
+  return (["cat", "dog", "wolf"] as const).map((id) => composeSpeciesProfile(id));
+}
+
+export function resolveMascotSpeciesProfile(id?: string): MascotSpeciesProfile {
+  const normalized = typeof id === "string" ? id.trim().toLowerCase() : "";
+  if (normalized === "dog" || normalized === "wolf" || normalized === "cat") {
+    return composeSpeciesProfile(normalized);
+  }
+  return composeSpeciesProfile(DEFAULT_SPECIES_ID);
+}

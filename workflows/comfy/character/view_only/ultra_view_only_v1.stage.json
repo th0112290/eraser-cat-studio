@@ -1,0 +1,241 @@
+{
+  "schema_version": "1.0",
+  "stage": "view_only",
+  "template_version": "ultra_view_only_v1",
+  "runtime_compiler": "scripts/comfyAdapter.mjs#buildCheckpointUltraWorkflow",
+  "sample_payload": "ultra_view_only_v1.payload.sample.json",
+  "intent": "Generate or repair a single requested view while preserving continuity with the approved front identity.",
+  "preset_contract": {
+    "preset_id": "view_only_adaptive_v1",
+    "mode": "edit",
+    "mascot_profile_policy": {
+      "resolver": "prompt_bundle.mascotProfileId",
+      "trait_contract": "keep_reject_traits_required"
+    },
+    "reference_bank_policy": {
+      "reference_bank_id_source": "prompt_bundle.referenceBankId",
+      "readiness_gate": "scaffold_only_review_only",
+      "required_roles_by_view": {
+        "front": ["front_master"],
+        "threeQuarter": ["front_master", "composition"],
+        "profile": ["front_master", "composition"]
+      },
+      "optional_roles": ["style", "hero"]
+    },
+    "controlnet_hint_policy": {
+      "hint_preset_id": "view_only_adaptive_hint_v1",
+      "required_kinds_by_view": {
+        "front": [],
+        "threeQuarter": ["lineart", "canny"],
+        "profile": ["lineart", "canny"]
+      },
+      "advanced_controlnet": false,
+      "source_priority_by_view": {
+        "front": ["front_master", "hero", "composition"],
+        "threeQuarter": ["composition"],
+        "profile": ["composition"]
+      }
+    },
+    "hero_mode_policy": {
+      "mode": "optional_front_only",
+      "activation_requires": ["front_view_request", "hero_reference_present"],
+      "max_reference_weight": 0.2
+    },
+    "acceptance_gate": {
+      "focus_metrics": ["view_drift", "species_geometry_floor", "single_view_continuity"]
+    }
+  },
+  "runtime_contract": {
+    "require_reference_mode": "img2img",
+    "require_reference_image": true,
+    "required_reference_roles": ["front_master", "composition"],
+    "min_reference_count_by_role_by_view": {
+      "front": {
+        "front_master": 1
+      },
+      "threeQuarter": {
+        "front_master": 1,
+        "composition": 1
+      },
+      "profile": {
+        "front_master": 1,
+        "composition": 1
+      }
+    },
+    "required_reference_roles_by_view": {
+      "front": ["front_master"],
+      "threeQuarter": ["front_master", "composition"],
+      "profile": ["front_master", "composition"]
+    },
+    "pose_requirement": "required",
+    "strict_pose_capability_when_required": true,
+    "structure_control_requirement": "required",
+    "structure_control_requirement_by_view": {
+      "front": "optional",
+      "threeQuarter": "required",
+      "profile": "required"
+    },
+    "required_structure_control_kinds": ["lineart", "canny"],
+    "required_structure_control_kinds_by_view": {
+      "front": [],
+      "threeQuarter": ["lineart", "canny"],
+      "profile": ["lineart", "canny"]
+    },
+    "strict_structure_control_capability_when_required": true,
+    "require_structure_control_source_trace_fields": ["sourceRole", "sourceRefId", "sourceView"],
+    "require_structure_control_source_ref_in_reference_bank": true,
+    "require_structure_control_source_role_match_reference_role": true,
+    "require_structure_control_source_view_match_reference_view": true,
+    "repair_mask_policy": "not_applicable",
+    "allow_basic_checkpoint_fallback": false,
+    "allow_poseless_ultra_fallback": false,
+    "strict_latent_refine_capability": true
+  },
+  "reference_policy": {
+    "primary_roles": ["front_master", "composition", "style"],
+    "prefer_multi_reference": true,
+    "prefer_structure_controlled_edit": true,
+    "latent_refine_quality_tiers": ["production"]
+  },
+  "structure_policy": {
+    "preferred_modes": ["lineart", "canny"],
+    "preferred_source_roles": ["composition", "front_master"],
+    "min_entries_by_kind_by_view": {
+      "threeQuarter": {
+        "lineart": 1,
+        "canny": 1
+      },
+      "profile": {
+        "lineart": 1,
+        "canny": 1
+      }
+    },
+    "max_entries_by_kind_by_view": {
+      "front": {
+        "lineart": 1,
+        "canny": 1
+      },
+      "threeQuarter": {
+        "lineart": 1,
+        "canny": 1
+      },
+      "profile": {
+        "lineart": 1,
+        "canny": 1
+      }
+    },
+    "strength_range_by_kind_by_view": {
+      "front": {
+        "lineart": { "min": 0.3, "max": 0.52 },
+        "canny": { "min": 0.22, "max": 0.4 }
+      },
+      "threeQuarter": {
+        "lineart": { "min": 0.34, "max": 0.56 },
+        "canny": { "min": 0.26, "max": 0.44 }
+      },
+      "profile": {
+        "lineart": { "min": 0.34, "max": 0.56 },
+        "canny": { "min": 0.26, "max": 0.44 }
+      }
+    },
+    "start_percent_range_by_kind_by_view": {
+      "front": {
+        "lineart": { "min": 0, "max": 0.08 },
+        "canny": { "min": 0, "max": 0.08 }
+      },
+      "threeQuarter": {
+        "lineart": { "min": 0, "max": 0.08 },
+        "canny": { "min": 0, "max": 0.08 }
+      },
+      "profile": {
+        "lineart": { "min": 0, "max": 0.08 },
+        "canny": { "min": 0, "max": 0.08 }
+      }
+    },
+    "end_percent_range_by_kind_by_view": {
+      "front": {
+        "lineart": { "min": 0.72, "max": 0.9 },
+        "canny": { "min": 0.64, "max": 0.82 }
+      },
+      "threeQuarter": {
+        "lineart": { "min": 0.76, "max": 0.9 },
+        "canny": { "min": 0.7, "max": 0.84 }
+      },
+      "profile": {
+        "lineart": { "min": 0.76, "max": 0.9 },
+        "canny": { "min": 0.7, "max": 0.84 }
+      }
+    },
+    "min_schedule_span_by_kind_by_view": {
+      "front": {
+        "lineart": 0.62,
+        "canny": 0.54
+      },
+      "threeQuarter": {
+        "lineart": 0.68,
+        "canny": 0.62
+      },
+      "profile": {
+        "lineart": 0.68,
+        "canny": 0.62
+      }
+    },
+    "allowed_source_roles_by_kind_by_view": {
+      "front": {
+        "lineart": ["front_master", "subject", "starter"],
+        "canny": ["front_master", "subject", "starter", "composition"]
+      },
+      "threeQuarter": {
+        "lineart": ["composition"],
+        "canny": ["composition"]
+      },
+      "profile": {
+        "lineart": ["composition"],
+        "canny": ["composition"]
+      }
+    },
+    "required_primary_source_role_by_kind_by_view": {
+      "front": {
+        "lineart": "front_master",
+        "canny": "front_master"
+      },
+      "threeQuarter": {
+        "lineart": "composition",
+        "canny": "composition"
+      },
+      "profile": {
+        "lineart": "composition",
+        "canny": "composition"
+      }
+    },
+    "require_view_match_for_source_roles": ["composition", "repair_base"],
+    "disallowed_source_roles": ["style", "repair_base"]
+  },
+  "control_stack": {
+    "required_nodes": [
+      "CheckpointLoaderSimple",
+      "CLIPTextEncode",
+      "IPAdapterUnifiedLoader",
+      "IPAdapterAdvanced",
+      "KSampler",
+      "VAEDecode",
+      "SaveImage"
+    ],
+    "optional_nodes": [
+      "IPAdapterPreciseStyleTransfer",
+      "IPAdapterPreciseComposition",
+      "OpenposePreprocessor",
+      "ControlNetLoader",
+      "ControlNetApplyAdvanced",
+      "CannyEdgePreprocessor",
+      "Canny",
+      "LineArtPreprocessor",
+      "LatentUpscaleBy",
+      "LatentUpscale"
+    ]
+  },
+  "output_contract": {
+    "approved_views": ["front", "threeQuarter", "profile"],
+    "expected_artifacts": ["*_workflow_api.json", "*_workflow_gui.json", "*_workflow_summary.json"]
+  }
+}

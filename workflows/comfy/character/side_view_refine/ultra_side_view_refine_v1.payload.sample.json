@@ -1,0 +1,102 @@
+{
+  "mode": "reference",
+  "view": "profile",
+  "seed": 433,
+  "prompt": "friendly mascot character, simple monochrome body, rounded paws, transparent background",
+  "viewPrompt": "profile mascot cleanup pass, preserve approved front identity, tighten silhouette and side-view consistency",
+  "negativePrompt": "photorealistic, watermark, text, multiple characters, extra fingers",
+  "presetId": "compact_mascot_production_v1",
+  "workflowStage": "side_view_refine",
+  "workflowTemplateVersion": "ultra_side_view_refine_v1",
+  "referenceMode": "img2img",
+  "referenceImageBase64": "{{profile_draft_base64}}",
+  "referenceMimeType": "image/png",
+  "qualityProfile": {
+    "id": "compact_mascot_production_v1",
+    "qualityTier": "production",
+    "targetStyle": "compact monochrome mascot",
+    "width": 1152,
+    "height": 1152,
+    "steps": 36,
+    "cfg": 4.6,
+    "sampler": "dpmpp_2m_sde",
+    "scheduler": "karras"
+  },
+  "stagePlan": {
+    "stage": "side_view_refine",
+    "templateVersion": "ultra_side_view_refine_v1",
+    "templateSpecPath": "workflows/comfy/character/side_view_refine/ultra_side_view_refine_v1.stage.json",
+    "controlPresetId": "side_advanced_control_v1",
+    "referenceBankId": "cat_mascot_bank_v1",
+    "referenceBankStatus": "species_ready",
+    "referenceBankMissingRoles": [],
+    "mascotProfileId": "cat",
+    "heroModeEnabled": false,
+    "views": ["profile"],
+    "candidateCount": 3,
+    "acceptedScoreThreshold": 0.61
+  },
+  "referenceBank": [
+    {
+      "id": "approved_front_master",
+      "role": "front_master",
+      "view": "front",
+      "weight": 0.98,
+      "note": "approved front anchor",
+      "imageBase64": "{{front_master_base64}}",
+      "mimeType": "image/png"
+    },
+    {
+      "id": "draft_profile_composition",
+      "role": "composition",
+      "view": "profile",
+      "weight": 0.34,
+      "note": "pre-refine side-view draft",
+      "imageBase64": "{{profile_draft_base64}}",
+      "mimeType": "image/png"
+    },
+    {
+      "id": "family_style_anchor",
+      "role": "style",
+      "view": "front",
+      "weight": 0.3,
+      "note": "refs/mascots/cat/bank.json#style[0]",
+      "imageBase64": "{{front_family_style_base64}}",
+      "mimeType": "image/png"
+    }
+  ],
+  "structureControls": {
+    "lineart": {
+      "imageBase64": "{{profile_lineart_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.44,
+      "endPercent": 0.82,
+      "note": "profile draft lineart lock",
+      "sourceRole": "composition",
+      "sourceRefId": "draft_profile_composition",
+      "sourceView": "profile"
+    },
+    "canny": {
+      "imageBase64": "{{profile_canny_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.36,
+      "endPercent": 0.78,
+      "note": "profile draft edge lock",
+      "sourceRole": "composition",
+      "sourceRefId": "draft_profile_composition",
+      "sourceView": "profile"
+    },
+    "depth": {
+      "imageBase64": "{{profile_depth_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.28,
+      "endPercent": 0.62,
+      "note": "profile soft depth guide",
+      "sourceRole": "composition",
+      "sourceRefId": "draft_profile_composition",
+      "sourceView": "profile"
+    }
+  },
+  "poseImageBase64": "{{profile_pose_base64}}",
+  "poseMimeType": "image/png"
+}

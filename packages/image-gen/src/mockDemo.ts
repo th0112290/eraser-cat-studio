@@ -19,8 +19,8 @@ const provider = createCharacterProvider({
 
 const promptBundle = buildCharacterPrompt({
   mode: "new",
-  presetId: "eraser-cat-flat",
-  positivePrompt: "orange cat mascot, clean animation rig"
+  presetId: "compact-mascot-production",
+  positivePrompt: "cute compact cat mascot, monochrome black line art, paw hands, simple tail silhouette"
 });
 
 const input: CharacterProviderGenerateInput = {

@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "stage": "front_master",
+  "template_version": "ultra_front_master_v1",
+  "runtime_compiler": "scripts/comfyAdapter.mjs#buildCheckpointUltraWorkflow",
+  "sample_payload": "ultra_front_master_v1.payload.sample.json",
+  "intent": "Approve a canonical front-facing mascot master before any angle expansion.",
+  "preset_contract": {
+    "preset_id": "front_style_generate_v1",
+    "mode": "generate",
+    "mascot_profile_policy": {
+      "resolver": "prompt_bundle.mascotProfileId",
+      "trait_contract": "keep_reject_traits_required"
+    },
+    "reference_bank_policy": {
+      "reference_bank_id_source": "prompt_bundle.referenceBankId",
+      "readiness_gate": "scaffold_only_review_only",
+      "required_roles": ["style"],
+      "optional_roles": ["composition", "subject", "starter"]
+    },
+    "controlnet_hint_policy": {
+      "hint_preset_id": "front_light_composition_v1",
+      "required_kinds": ["lineart", "canny"],
+      "advanced_controlnet": false,
+      "source_priority": ["composition"]
+    },
+    "hero_mode_policy": {
+      "mode": "disabled"
+    },
+    "acceptance_gate": {
+      "focus_metrics": ["front_anchor_score", "subject_isolation_front", "species_geometry_floor"]
+    }
+  },
+  "runtime_contract": {
+    "required_reference_roles": ["style"],
+    "min_reference_count_by_role": {
+      "style": 1
+    },
+    "pose_requirement": "optional",
+    "strict_pose_capability_when_required": false,
+    "structure_control_requirement": "optional",
+    "required_structure_control_kinds": ["lineart", "canny"],
+    "strict_structure_control_capability_when_required": false,
+    "require_structure_control_source_trace_fields": ["sourceRole", "sourceRefId", "sourceView"],
+    "require_structure_control_source_ref_in_reference_bank": true,
+    "require_structure_control_source_role_match_reference_role": true,
+    "require_structure_control_source_view_match_reference_view": true,
+    "repair_mask_policy": "not_applicable",
+    "allow_basic_checkpoint_fallback": false,
+    "allow_poseless_ultra_fallback": true,
+    "strict_latent_refine_capability": false
+  },
+  "reference_policy": {
+    "primary_roles": ["style", "composition", "subject", "starter"],
+    "prefer_multi_reference": false,
+    "prefer_structure_controlled_edit": true,
+    "latent_refine_quality_tiers": ["production"]
+  },
+  "structure_policy": {
+    "preferred_modes": ["lineart", "canny"],
+    "preferred_source_roles": ["composition"],
+    "max_entries_by_kind": {
+      "lineart": 1,
+      "canny": 1
+    },
+    "strength_range_by_kind": {
+      "lineart": { "min": 0.32, "max": 0.56 },
+      "canny": { "min": 0.24, "max": 0.44 }
+    },
+    "start_percent_range_by_kind": {
+      "lineart": { "min": 0, "max": 0.08 },
+      "canny": { "min": 0, "max": 0.08 }
+    },
+    "end_percent_range_by_kind": {
+      "lineart": { "min": 0.72, "max": 0.9 },
+      "canny": { "min": 0.64, "max": 0.84 }
+    },
+    "min_schedule_span_by_kind": {
+      "lineart": 0.62,
+      "canny": 0.54
+    },
+    "allowed_source_roles_by_kind": {
+      "lineart": ["composition"],
+      "canny": ["composition"]
+    },
+    "required_primary_source_role_by_kind": {
+      "lineart": "composition",
+      "canny": "composition"
+    },
+    "require_view_match_for_source_roles": ["composition"],
+    "disallowed_source_roles": ["front_master", "style", "subject", "starter", "repair_base"]
+  },
+  "control_stack": {
+    "required_nodes": [
+      "CheckpointLoaderSimple",
+      "CLIPTextEncode",
+      "IPAdapterUnifiedLoader",
+      "IPAdapterAdvanced",
+      "KSampler",
+      "VAEDecode",
+      "SaveImage"
+    ],
+    "optional_nodes": [
+      "IPAdapterPreciseStyleTransfer",
+      "IPAdapterPreciseComposition",
+      "LatentUpscaleBy",
+      "LatentUpscale",
+      "OpenposePreprocessor",
+      "ControlNetLoader",
+      "ControlNetApplyAdvanced"
+    ]
+  },
+  "output_contract": {
+    "approved_views": ["front"],
+    "expected_artifacts": ["*_workflow_api.json", "*_workflow_gui.json", "*_workflow_summary.json"]
+  }
+}

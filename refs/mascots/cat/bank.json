@@ -1,0 +1,24 @@
+{
+  "extends": "../shared/bank.json",
+  "profileId": "cat",
+  "speciesId": "cat",
+  "familyId": "compact_doodle_mascot_v2",
+  "bankStatus": "species_ready",
+  "notes": [
+    "cat bank currently owns the active house style canon and hero ref"
+  ],
+  "style": [
+    {
+      "path": "../../cat_quality_input/derived/front_style_clean.png",
+      "note": "cat front house style canon"
+    }
+  ],
+  "heroByView": {
+    "front": [
+      {
+        "path": "../../cat_quality_input/02_face_detail/ChatGPT Image 2026년 3월 6일 오후 02_10_17.png",
+        "note": "front face hero reference"
+      }
+    ]
+  }
+}

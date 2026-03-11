@@ -1,0 +1,208 @@
+{
+  "prompt": {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "zimage_generate_latest.png"
+      }
+    },
+    "2": {
+      "class_type": "FluxKontextImageScale",
+      "inputs": {
+        "image": [
+          "1",
+          0
+        ]
+      }
+    },
+    "3": {
+      "class_type": "GetImageSize",
+      "inputs": {
+        "image": [
+          "2",
+          0
+        ]
+      }
+    },
+    "4": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "flux1-dev-kontext_fp8_scaled.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "5": {
+      "class_type": "DualCLIPLoader",
+      "inputs": {
+        "clip_name1": "clip_l.safetensors",
+        "clip_name2": "t5xxl_fp16.safetensors",
+        "type": "flux",
+        "device": "default"
+      }
+    },
+    "6": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "ae.safetensors"
+      }
+    },
+    "7": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "5",
+          0
+        ],
+        "text": "keep the same character identity, change expression and angle slightly, preserve silhouette and proportions"
+      }
+    },
+    "8": {
+      "class_type": "FluxGuidance",
+      "inputs": {
+        "conditioning": [
+          "7",
+          0
+        ],
+        "guidance": 3.5
+      }
+    },
+    "9": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "5",
+          0
+        ],
+        "text": ""
+      }
+    },
+    "10": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "2",
+          0
+        ],
+        "vae": [
+          "6",
+          0
+        ]
+      }
+    },
+    "11": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "8",
+          0
+        ],
+        "latent": [
+          "10",
+          0
+        ]
+      }
+    },
+    "12": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "9",
+          0
+        ],
+        "latent": [
+          "10",
+          0
+        ]
+      }
+    },
+    "13": {
+      "class_type": "FluxKontextMultiReferenceLatentMethod",
+      "inputs": {
+        "conditioning": [
+          "11",
+          0
+        ],
+        "reference_latents_method": "index_timestep_zero"
+      }
+    },
+    "14": {
+      "class_type": "FluxKontextMultiReferenceLatentMethod",
+      "inputs": {
+        "conditioning": [
+          "12",
+          0
+        ],
+        "reference_latents_method": "index_timestep_zero"
+      }
+    },
+    "15": {
+      "class_type": "ModelSamplingFlux",
+      "inputs": {
+        "model": [
+          "4",
+          0
+        ],
+        "max_shift": 1.15,
+        "base_shift": 0.5,
+        "width": [
+          "3",
+          0
+        ],
+        "height": [
+          "3",
+          1
+        ]
+      }
+    },
+    "16": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "15",
+          0
+        ],
+        "positive": [
+          "13",
+          0
+        ],
+        "negative": [
+          "14",
+          0
+        ],
+        "latent_image": [
+          "10",
+          0
+        ],
+        "seed": 123456789,
+        "steps": 20,
+        "cfg": 1,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 0.35
+      }
+    },
+    "17": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "16",
+          0
+        ],
+        "vae": [
+          "6",
+          0
+        ]
+      }
+    },
+    "18": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "images": [
+          "17",
+          0
+        ],
+        "filename_prefix": "kontext_edit"
+      }
+    }
+  }
+}

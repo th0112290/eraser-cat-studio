@@ -3,8 +3,11 @@ import path from "node:path";
 
 const API_BASE_URL = process.env.API_BASE_URL?.trim() || "http://localhost:3000";
 const POLL_INTERVAL_MS = Number.parseInt(process.env.SMOKE_POLL_MS ?? "1200", 10);
-const POLL_TIMEOUT_MS = Number.parseInt(process.env.SMOKE_TIMEOUT_MS ?? "360000", 10);
+const POLL_TIMEOUT_MS = Number.parseInt(process.env.SMOKE_TIMEOUT_MS ?? "1200000", 10);
 const REQUIRE_CONTINUITY = process.env.SMOKE_REQUIRE_CONTINUITY === "1";
+const REQUESTED_PROVIDER = process.env.SMOKE_CHARACTER_PROVIDER?.trim() || "comfyui";
+const REQUESTED_CANDIDATE_COUNT = Number.parseInt(process.env.SMOKE_CHARACTER_CANDIDATE_COUNT ?? "4", 10);
+const REQUESTED_SPECIES = (process.env.SMOKE_CHARACTER_SPECIES?.trim().toLowerCase() || "cat");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -290,19 +293,126 @@ function resolveManifestStatus(...manifests) {
   return "unknown";
 }
 
+function readJsonIfExists(filePath) {
+  if (typeof filePath !== "string" || filePath.trim().length === 0) {
+    return null;
+  }
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function countWorkflowNodes(workflow) {
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+    return 0;
+  }
+  return Object.keys(workflow).length;
+}
+
+function assertSelectedWorkflowRuntimeDiagnostics(jobData, label) {
+  const entries = Array.isArray(jobData?.selectedWorkflowRuntimeDiagnostics)
+    ? jobData.selectedWorkflowRuntimeDiagnostics
+    : [];
+  if (entries.length === 0) {
+    throw new Error(`Missing ${label}.selectedWorkflowRuntimeDiagnostics`);
+  }
+
+  for (const entry of entries) {
+    ensureString(entry?.view, `${label}.selectedWorkflowRuntimeDiagnostics.view`);
+    ensureString(entry?.candidateId, `${label}.selectedWorkflowRuntimeDiagnostics.candidateId`);
+    ensureString(entry?.compact, `${label}.selectedWorkflowRuntimeDiagnostics.compact`);
+  }
+
+  if (typeof jobData?.selectedWorkflowRuntimeSummary !== "string" || jobData.selectedWorkflowRuntimeSummary.trim().length === 0) {
+    throw new Error(`Missing ${label}.selectedWorkflowRuntimeSummary`);
+  }
+}
+
+function assertWorkflowArtifacts(manifest, label) {
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error(`Missing ${label} manifest`);
+  }
+
+  const selectedIds = new Set(
+    Object.values(manifest.selectedByView ?? {})
+      .map((entry) => entry?.candidateId)
+      .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+  );
+
+  const selectedCandidates = Array.isArray(manifest.candidates)
+    ? manifest.candidates.filter((candidate) => selectedIds.has(candidate?.id))
+    : [];
+  if (selectedCandidates.length === 0) {
+    throw new Error(`Missing ${label} selected candidates`);
+  }
+
+  for (const candidate of selectedCandidates) {
+    const workflowFiles = candidate?.providerMeta?.workflowFiles ?? {};
+    const apiPromptPath = ensureString(workflowFiles.apiPromptPath, `${label}.${candidate.id}.workflow.apiPromptPath`);
+    const summaryPath = ensureString(workflowFiles.summaryPath, `${label}.${candidate.id}.workflow.summaryPath`);
+    if (!fs.existsSync(apiPromptPath)) {
+      throw new Error(`Missing ${label}.${candidate.id} workflow_api.json: ${apiPromptPath}`);
+    }
+    if (!fs.existsSync(summaryPath)) {
+      throw new Error(`Missing ${label}.${candidate.id} workflow_summary.json: ${summaryPath}`);
+    }
+
+    const workflowApi = readJsonIfExists(apiPromptPath);
+    const workflowSummary = readJsonIfExists(summaryPath);
+    if (!workflowApi || typeof workflowApi !== "object") {
+      throw new Error(`Invalid ${label}.${candidate.id} workflow_api.json`);
+    }
+    if (!workflowSummary || typeof workflowSummary !== "object") {
+      throw new Error(`Invalid ${label}.${candidate.id} workflow_summary.json`);
+    }
+
+    const selectedMode =
+      typeof workflowSummary.routeDecision?.selectedMode === "string"
+        ? workflowSummary.routeDecision.selectedMode
+        : typeof workflowSummary.mode === "string"
+          ? workflowSummary.mode
+          : "";
+    if (!selectedMode) {
+      throw new Error(`Missing ${label}.${candidate.id} workflow_summary.routeDecision.selectedMode`);
+    }
+    if (!Array.isArray(workflowSummary.warnings)) {
+      throw new Error(`Missing ${label}.${candidate.id} workflow_summary.warnings`);
+    }
+    if (!workflowSummary.structureControlDiagnostics || typeof workflowSummary.structureControlDiagnostics !== "object") {
+      throw new Error(`Missing ${label}.${candidate.id} workflow_summary.structureControlDiagnostics`);
+    }
+
+    const nodeCount = countWorkflowNodes(workflowApi);
+    if (selectedMode.startsWith("checkpoint-ultra") && nodeCount < 18) {
+      throw new Error(
+        `Unexpected thin ultra workflow for ${label}.${candidate.id}: mode=${selectedMode} nodeCount=${nodeCount}`
+      );
+    }
+  }
+}
+
 async function main() {
   console.log(`[smoke:character] API base: ${API_BASE_URL}`);
   console.log(`[smoke:character] requireContinuity=${REQUIRE_CONTINUITY ? "1" : "0"}`);
+  console.log(`[smoke:character] species=${REQUESTED_SPECIES}`);
 
   const seed = Number.parseInt(process.env.SMOKE_CHARACTER_SEED ?? "4242", 10);
   const topic = `Smoke Character Session ${new Date().toISOString()}`;
 
   const createPayload = {
     mode: "new",
-    provider: "mock",
-    promptPreset: "eraser-cat-flat",
+    provider: REQUESTED_PROVIDER,
+    promptPreset: "eraser-cat-mascot-production",
+    species: REQUESTED_SPECIES,
     topic,
-    candidateCount: 4,
+    candidateCount: Number.isFinite(REQUESTED_CANDIDATE_COUNT) && REQUESTED_CANDIDATE_COUNT > 0
+      ? REQUESTED_CANDIDATE_COUNT
+      : 4,
     autoPick: false,
     requireHitlPick: true,
     seed,
@@ -384,6 +494,7 @@ async function main() {
   const finalManifest = finalGenerate?.data?.manifest ?? null;
   const finalManifestPath = resolveManifestPathFromJobData(finalGenerate?.data ?? null);
   const fallbackFinalManifest = readManifestFromPath(finalManifestPath);
+  assertSelectedWorkflowRuntimeDiagnostics(finalGenerate?.data ?? null, "finalGenerate");
   const manifestStatus = resolveManifestStatus(finalManifest, fallbackFinalManifest);
   if (manifestStatus === "unknown") {
     throw new Error("final manifest status missing (api+file)");
@@ -399,6 +510,7 @@ async function main() {
       console.log("[smoke:character] WARN: finalManifest.reference.continuity missing (api+file)");
     }
   }
+  assertWorkflowArtifacts(finalManifest ?? fallbackFinalManifest, "finalManifest");
   const lastError = firstLine(finalGenerate?.data?.lastError ?? "");
 
   console.log(`[smoke:character] manifest.status=${manifestStatus}`);

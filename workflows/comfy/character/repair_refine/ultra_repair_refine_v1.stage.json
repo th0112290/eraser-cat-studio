@@ -1,0 +1,162 @@
+{
+  "schema_version": "1.0",
+  "stage": "repair_refine",
+  "template_version": "ultra_repair_refine_v1",
+  "runtime_compiler": "scripts/comfyAdapter.mjs#buildCheckpointUltraWorkflow",
+  "sample_payload": "ultra_repair_refine_v1.payload.sample.json",
+  "intent": "Rescue near-miss character views using repair-base anchoring, front-master identity lock, and lighter style reinforcement.",
+  "preset_contract": {
+    "preset_id": "repair_local_impact_v1",
+    "mode": "edit",
+    "mascot_profile_policy": {
+      "resolver": "prompt_bundle.mascotProfileId",
+      "trait_contract": "keep_reject_traits_required"
+    },
+    "reference_bank_policy": {
+      "reference_bank_id_source": "prompt_bundle.referenceBankId",
+      "readiness_gate": "scaffold_only_review_only",
+      "required_roles": ["repair_base", "front_master", "composition"],
+      "optional_roles": ["style", "hero"]
+    },
+    "controlnet_hint_policy": {
+      "hint_preset_id": "repair_local_hint_v1",
+      "required_kinds": ["lineart", "canny", "depth"],
+      "advanced_controlnet": true,
+      "source_priority": ["composition", "repair_base"]
+    },
+    "hero_mode_policy": {
+      "mode": "optional_front_only",
+      "max_reference_weight": 0.18
+    },
+    "repair_composite_policy": {
+      "local_crop_targets": ["face", "muzzle", "ears", "paws"],
+      "impact_pack_policy": "local_only",
+      "fallback": "rerender_when_mask_area_large_or_geometry_drift_high",
+      "composite_acceptance_checks": ["seam_alpha_jump", "contour_break", "local_blur_mismatch", "mask_leakage"]
+    },
+    "acceptance_gate": {
+      "focus_metrics": ["post_repair_regression", "view_drift", "species_geometry_floor", "composite_seam_qc"]
+    }
+  },
+  "runtime_contract": {
+    "require_reference_mode": "img2img",
+    "require_reference_image": true,
+    "required_reference_roles": ["repair_base", "front_master", "composition"],
+    "min_reference_count_by_role": {
+      "repair_base": 1,
+      "front_master": 1,
+      "composition": 1
+    },
+    "pose_requirement": "optional",
+    "strict_pose_capability_when_required": false,
+    "structure_control_requirement": "required",
+    "required_structure_control_kinds": ["lineart", "canny", "depth"],
+    "strict_structure_control_capability_when_required": true,
+    "require_structure_control_source_trace_fields": ["sourceRole", "sourceRefId", "sourceView"],
+    "require_structure_control_source_ref_in_reference_bank": true,
+    "require_structure_control_source_role_match_reference_role": true,
+    "require_structure_control_source_view_match_reference_view": true,
+    "repair_mask_policy": "explicit_or_reference_alpha",
+    "allowed_repair_base_stages": ["front_master", "side_view_base", "side_view_refine", "identity_lock_refine", "view_only", "repair_refine"],
+    "require_gate_accepted_repair_base_views": ["threeQuarter", "profile"],
+    "allow_basic_checkpoint_fallback": false,
+    "allow_poseless_ultra_fallback": true,
+    "strict_latent_refine_capability": false
+  },
+  "reference_policy": {
+    "primary_roles": ["repair_base", "front_master", "composition", "style"],
+    "prefer_multi_reference": true,
+    "prefer_structure_controlled_edit": true,
+    "latent_refine_quality_tiers": ["production"]
+  },
+  "structure_policy": {
+    "preferred_modes": ["lineart", "canny", "depth"],
+    "preferred_source_roles": ["composition", "repair_base"],
+    "min_entries_by_kind": {
+      "lineart": 1,
+      "canny": 1,
+      "depth": 1
+    },
+    "max_entries_by_kind": {
+      "lineart": 1,
+      "canny": 1,
+      "depth": 1
+    },
+    "strength_range_by_kind": {
+      "lineart": { "min": 0.24, "max": 0.5 },
+      "canny": { "min": 0.18, "max": 0.38 },
+      "depth": { "min": 0.14, "max": 0.3 }
+    },
+    "start_percent_range_by_kind": {
+      "lineart": { "min": 0, "max": 0.08 },
+      "canny": { "min": 0, "max": 0.08 },
+      "depth": { "min": 0, "max": 0.08 }
+    },
+    "end_percent_range_by_kind": {
+      "lineart": { "min": 0.74, "max": 0.88 },
+      "canny": { "min": 0.66, "max": 0.82 },
+      "depth": { "min": 0.5, "max": 0.7 }
+    },
+    "min_schedule_span_by_kind": {
+      "lineart": 0.66,
+      "canny": 0.56,
+      "depth": 0.44
+    },
+    "allowed_source_roles_by_kind": {
+      "lineart": ["composition", "repair_base"],
+      "canny": ["composition", "repair_base"],
+      "depth": ["repair_base"]
+    },
+    "required_primary_source_role_by_kind": {
+      "lineart": "composition",
+      "canny": "composition",
+      "depth": "repair_base"
+    },
+    "require_view_match_for_source_roles": ["repair_base", "composition"],
+    "disallowed_source_roles": ["front_master", "style", "subject", "starter"]
+  },
+  "control_stack": {
+    "required_nodes": [
+      "CheckpointLoaderSimple",
+      "CLIPTextEncode",
+      "IPAdapterUnifiedLoader",
+      "IPAdapterAdvanced",
+      "KSampler",
+      "VAEDecode",
+      "SaveImage"
+    ],
+    "optional_nodes": [
+      "IPAdapterPreciseStyleTransfer",
+      "IPAdapterPreciseComposition",
+      "OpenposePreprocessor",
+      "ControlNetLoader",
+      "ControlNetApplyAdvanced",
+      "CannyEdgePreprocessor",
+      "Canny",
+      "LineArtPreprocessor",
+      "DepthAnythingPreprocessor",
+      "MiDaS-DepthMapPreprocessor",
+      "LatentUpscaleBy",
+      "LatentUpscale",
+      "VAEEncodeForInpaint",
+      "MaskToImage",
+      "ImageToMask",
+      "InvertMask",
+      "ThresholdMask",
+      "GrowMask",
+      "FeatherMask",
+      "SetLatentNoiseMask",
+      "ImageCompositeMasked"
+    ]
+  },
+  "repair_policy": {
+    "requires_repair_base": true,
+    "front_master_required_when_available": true,
+    "preferred_repair_entry_stages": ["identity_lock_refine", "side_view_refine", "side_view_base"],
+    "quality_gate": "accepted_score_threshold"
+  },
+  "output_contract": {
+    "approved_views": ["front", "threeQuarter", "profile"],
+    "expected_artifacts": ["*_workflow_api.json", "*_workflow_gui.json", "*_workflow_summary.json"]
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "mode": "reference",
+  "view": "threeQuarter",
+  "seed": 557,
+  "prompt": "friendly mascot character, simple monochrome body, rounded paws, transparent background",
+  "viewPrompt": "repair and refine the approved mascot view, preserve front identity, correct local structure drift",
+  "negativePrompt": "photorealistic, watermark, text, extra fingers, anatomy drift, species drift",
+  "presetId": "compact_mascot_production_v1",
+  "workflowStage": "repair_refine",
+  "workflowTemplateVersion": "ultra_repair_refine_v1",
+  "referenceMode": "img2img",
+  "referenceImageBase64": "{{repair_base_base64}}",
+  "referenceMimeType": "image/png",
+  "repairMaskImageBase64": "{{threequarter_repair_mask_base64}}",
+  "repairMaskMimeType": "image/png",
+  "qualityProfile": {
+    "id": "compact_mascot_production_v1",
+    "qualityTier": "production",
+    "targetStyle": "compact monochrome mascot",
+    "width": 1152,
+    "height": 1152,
+    "steps": 36,
+    "cfg": 4.6,
+    "sampler": "dpmpp_2m_sde",
+    "scheduler": "karras"
+  },
+  "stagePlan": {
+    "stage": "repair_refine",
+    "templateVersion": "ultra_repair_refine_v1",
+    "templateSpecPath": "workflows/comfy/character/repair_refine/ultra_repair_refine_v1.stage.json",
+    "controlPresetId": "repair_local_impact_v1",
+    "referenceBankId": "cat_mascot_bank_v1",
+    "referenceBankStatus": "species_ready",
+    "referenceBankMissingRoles": [],
+    "mascotProfileId": "cat",
+    "heroModeEnabled": false,
+    "views": ["threeQuarter"],
+    "candidateCount": 2,
+    "acceptedScoreThreshold": 0.58,
+    "repairFromCandidateId": "candidate_before_repair",
+    "repairFromStage": "identity_lock_refine",
+    "acceptedByGate": true,
+    "gateDecision": "promote_lock",
+    "sourcePassLabel": "angles.acceptance_gate",
+    "referenceLineage": ["identity_lock_refine", "family:identity_lock", "family:style_cleanup"]
+  },
+  "referenceBank": [
+    {
+      "id": "repair_base",
+      "role": "repair_base",
+      "view": "threeQuarter",
+      "weight": 0.84,
+      "note": "best candidate before repair",
+      "imageBase64": "{{repair_base_base64}}",
+      "mimeType": "image/png"
+    },
+    {
+      "id": "front_master",
+      "role": "front_master",
+      "view": "front",
+      "weight": 0.98,
+      "note": "approved front anchor",
+      "imageBase64": "{{front_master_base64}}",
+      "mimeType": "image/png"
+    },
+    {
+      "id": "family_style_anchor",
+      "role": "style",
+      "view": "front",
+      "weight": 0.22,
+      "note": "refs/mascots/cat/bank.json#style[0]",
+      "imageBase64": "{{front_family_style_base64}}",
+      "mimeType": "image/png"
+    },
+    {
+      "id": "repair_composition",
+      "role": "composition",
+      "view": "threeQuarter",
+      "weight": 0.32,
+      "note": "current repair composition anchor",
+      "imageBase64": "{{repair_base_base64}}",
+      "mimeType": "image/png"
+    }
+  ],
+  "structureControls": {
+    "lineart": {
+      "imageBase64": "{{threequarter_lineart_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.44,
+      "endPercent": 0.82,
+      "note": "repair lineart boundary lock",
+      "sourceRole": "composition",
+      "sourceRefId": "repair_composition",
+      "sourceView": "threeQuarter"
+    },
+    "canny": {
+      "imageBase64": "{{threequarter_canny_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.36,
+      "endPercent": 0.78,
+      "note": "repair edge lock",
+      "sourceRole": "composition",
+      "sourceRefId": "repair_composition",
+      "sourceView": "threeQuarter"
+    },
+    "depth": {
+      "imageBase64": "{{threequarter_depth_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.28,
+      "endPercent": 0.62,
+      "note": "repair soft depth guide",
+      "sourceRole": "repair_base",
+      "sourceRefId": "repair_base",
+      "sourceView": "threeQuarter"
+    }
+  },
+  "poseImageBase64": "{{threequarter_pose_base64}}",
+  "poseMimeType": "image/png"
+}

@@ -1,6 +1,32 @@
 import { ComfyUiCharacterGenerationProvider } from "./comfyuiProvider";
+import {
+  assertCharacterPipelineAccepted,
+  buildGeneratedCharacterPack,
+  generateCharacterExpressionPack,
+  generateCharacterViewSet,
+  generateCharacterVisemePack,
+  loadGeneratedCharacterPack,
+  resolveCharacterPipelineAcceptance,
+  resolveGeneratedCharacterPackPath,
+  runCharacterAnimationSafeQc,
+  runCharacterPipelineEditRepairLoop,
+  runDeterministicCharacterPipeline,
+  runEditCharacterStill,
+  runGenerateCharacterStill,
+  approveFrontMaster
+} from "./generatedCharacterPipeline";
 import { MockCharacterGenerationProvider } from "./mockProvider";
+import {
+  buildMascotReferenceBankReviewPlan,
+  resolveEffectiveMascotReferenceBankStatus,
+  resolveMascotCompositionReferenceAsset,
+  resolveMascotReferenceBankDiagnostics,
+  resolveMascotReferenceBankManifest,
+  resolveMascotReferenceRequirementStatuses,
+  resolveMascotStyleReferenceAsset
+} from "./mascotReferenceBank";
 import { STYLE_PROMPT_PRESETS, buildPromptBundle } from "./prompt";
+import { listMascotSpeciesProfiles, resolveMascotSpeciesProfile } from "./species";
 import type {
   BuildPromptBundleInput,
   CharacterGenerationMode,
@@ -83,6 +109,37 @@ export function listStylePromptPresets(): StylePromptPreset[] {
   return [...STYLE_PROMPT_PRESETS];
 }
 
+export function listMascotSpecies() {
+  return listMascotSpeciesProfiles();
+}
+
+export { resolveMascotSpeciesProfile };
+export {
+  buildMascotReferenceBankReviewPlan,
+  resolveEffectiveMascotReferenceBankStatus,
+  resolveMascotCompositionReferenceAsset,
+  resolveMascotReferenceBankDiagnostics,
+  resolveMascotReferenceBankManifest,
+  resolveMascotReferenceRequirementStatuses,
+  resolveMascotStyleReferenceAsset
+};
+export {
+  approveFrontMaster,
+  assertCharacterPipelineAccepted,
+  buildGeneratedCharacterPack,
+  generateCharacterExpressionPack,
+  generateCharacterViewSet,
+  generateCharacterVisemePack,
+  loadGeneratedCharacterPack,
+  resolveCharacterPipelineAcceptance,
+  resolveGeneratedCharacterPackPath,
+  runCharacterAnimationSafeQc,
+  runCharacterPipelineEditRepairLoop,
+  runDeterministicCharacterPipeline,
+  runEditCharacterStill,
+  runGenerateCharacterStill
+};
+
 export function deriveStyleHintsFromChannelBible(channelBibleJson: unknown): ChannelBibleStyleHints {
   const root = asRecord(channelBibleJson);
   if (!root) {
@@ -108,6 +165,7 @@ export function deriveStyleHintsFromChannelBible(channelBibleJson: unknown): Cha
 export type BuildCharacterPromptInput = {
   mode: CharacterGenerationMode;
   presetId?: string;
+  speciesId?: "cat" | "dog" | "wolf";
   positivePrompt?: string;
   negativePrompt?: string;
   styleHints?: ChannelBibleStyleHints;
@@ -116,7 +174,11 @@ export type BuildCharacterPromptInput = {
 export function buildCharacterPrompt(input: BuildCharacterPromptInput): PromptBundle {
   const bundleInput: BuildPromptBundleInput = {
     presetId: input.presetId,
-    positivePrompt: input.mode === "reference" ? `${input.positivePrompt ?? ""}, keep identity consistency` : input.positivePrompt,
+    speciesId: input.speciesId,
+    positivePrompt:
+      input.mode === "reference"
+        ? `${input.positivePrompt ?? ""}, keep identity consistency, preserve exact costume colors, same character across all angles`
+        : input.positivePrompt,
     negativePrompt: input.negativePrompt,
     styleHints: input.styleHints
   };
@@ -125,15 +187,58 @@ export function buildCharacterPrompt(input: BuildCharacterPromptInput): PromptBu
 }
 
 export type {
+  CharacterCandidateProviderMeta,
   CharacterGenerationCandidate,
   CharacterGenerationMode,
   CharacterGenerationProvider,
   CharacterGenerationProviderResult,
   CharacterProviderCallLog,
   CharacterProviderGenerateInput,
+  CharacterRepairLineage,
   CharacterProviderName,
+  CharacterReferenceBankEntry,
+  CharacterStructureControlAsset,
+  CharacterStructureControlType,
+  CharacterReferenceRole,
+  CharacterStructureControlImage,
+  CharacterStructureControlKind,
   CharacterView,
+  CharacterWorkflowStage,
+  CharacterWorkflowStageOrigin,
+  CharacterWorkflowStagePlan,
   ChannelBibleStyleHints,
   PromptBundle,
-  StylePromptPreset
+  PromptQualityProfile,
+  PromptSelectionHints,
+  QualityTier,
+  StylePromptPreset,
+  MascotSpeciesId,
+  MascotSpeciesProfile,
+  MascotReferenceAssetEntry,
+  MascotReferenceAssetRequirement,
+  MascotReferenceBankManifest
 } from "./types";
+export type {
+  MascotReferenceAssetRequirementStatus,
+  MascotReferenceBankDiagnostics,
+  MascotReferenceBankReviewPlan,
+  ResolvedMascotReferenceAsset
+} from "./mascotReferenceBank";
+export type {
+  CharacterPipelineAcceptance,
+  CharacterPipelineAcceptanceStatus,
+  CharacterPipelineQcCheck,
+  CharacterPipelineQcReport,
+  CharacterPipelineReferenceBankStatus,
+  CharacterPipelineRepairAction,
+  CharacterPipelineRepairTask,
+  CharacterStillAsset,
+  GeneratedCharacterExpression,
+  GeneratedCharacterManifest,
+  GeneratedCharacterView,
+  GeneratedCharacterViseme,
+  RunCharacterPipelineEditRepairLoopInput,
+  RunDeterministicCharacterPipelineInput,
+  RunEditCharacterStillInput,
+  RunGenerateCharacterStillInput
+} from "./generatedCharacterPipeline";

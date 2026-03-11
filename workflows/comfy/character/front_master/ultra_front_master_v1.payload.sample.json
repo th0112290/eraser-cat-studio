@@ -1,0 +1,79 @@
+{
+  "mode": "new",
+  "view": "front",
+  "seed": 101,
+  "prompt": "simple monochrome doodle cat mascot, oversized square-rounded head, pointed cat ears, dot eyes, tiny mouth, tiny chibi body, mitten paws, short curved tail, transparent background",
+  "viewPrompt": "front-facing new cat mascot, centered pose, readable sticker silhouette, preserve house style without cloning a sample character",
+  "negativePrompt": "dog, wolf, photorealistic, watermark, text, multiple characters, extra fingers, realistic fur, anime shading",
+  "presetId": "compact_mascot_production_v1",
+  "workflowStage": "front_master",
+  "workflowTemplateVersion": "ultra_front_master_v1",
+  "referenceMode": "off",
+  "qualityProfile": {
+    "id": "compact_mascot_production_v1",
+    "qualityTier": "production",
+    "targetStyle": "compact monochrome mascot",
+    "width": 1152,
+    "height": 1152,
+    "steps": 36,
+    "cfg": 4.6,
+    "sampler": "dpmpp_2m_sde",
+    "scheduler": "karras"
+  },
+  "stagePlan": {
+    "stage": "front_master",
+    "templateVersion": "ultra_front_master_v1",
+    "templateSpecPath": "workflows/comfy/character/front_master/ultra_front_master_v1.stage.json",
+    "controlPresetId": "front_style_generate_v1",
+    "referenceBankId": "cat_mascot_bank_v1",
+    "referenceBankStatus": "species_ready",
+    "referenceBankMissingRoles": [],
+    "mascotProfileId": "cat",
+    "heroModeEnabled": false,
+    "views": ["front"],
+    "candidateCount": 4,
+    "acceptedScoreThreshold": 0.62
+  },
+  "referenceBank": [
+    {
+      "id": "front_family_style_main",
+      "role": "style",
+      "view": "front",
+      "weight": 0.42,
+      "note": "refs/mascots/cat/bank.json#style[0]",
+      "imageBase64": "{{front_family_style_main_base64}}",
+      "mimeType": "image/png"
+    },
+    {
+      "id": "front_family_composition",
+      "role": "composition",
+      "view": "front",
+      "weight": 0.36,
+      "note": "refs/mascots/cat/bank.json#familyByView.front[0]",
+      "imageBase64": "{{front_family_composition_base64}}",
+      "mimeType": "image/png"
+    }
+  ],
+  "structureControls": {
+    "lineart": {
+      "imageBase64": "{{front_lineart_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.52,
+      "endPercent": 0.82,
+      "note": "front composition silhouette guide",
+      "sourceRole": "composition",
+      "sourceRefId": "front_family_composition",
+      "sourceView": "front"
+    },
+    "canny": {
+      "imageBase64": "{{front_canny_control_base64}}",
+      "mimeType": "image/png",
+      "strength": 0.42,
+      "endPercent": 0.78,
+      "note": "front composition edge guide",
+      "sourceRole": "composition",
+      "sourceRefId": "front_family_composition",
+      "sourceView": "front"
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "extends": "../shared/bank.json",
+  "profileId": "wolf",
+  "speciesId": "wolf",
+  "familyId": "compact_doodle_mascot_v2",
+  "bankStatus": "scaffold_only",
+  "notes": [
+    "wolf bank currently has composition scaffold only",
+    "add wolf-specific style and hero refs before enabling species-ready mode"
+  ],
+  "requiredAssets": [
+    {
+      "slotId": "style.front.primary",
+      "role": "style",
+      "view": "front",
+      "requiredForStatus": "species_ready",
+      "description": "wolf front house style canon"
+    },
+    {
+      "slotId": "family.front.primary",
+      "role": "composition",
+      "view": "front",
+      "requiredForStatus": "species_ready",
+      "description": "wolf front composition anchor replacing shared scaffold"
+    },
+    {
+      "slotId": "family.threeQuarter.primary",
+      "role": "composition",
+      "view": "threeQuarter",
+      "requiredForStatus": "species_ready",
+      "description": "wolf three-quarter composition anchor replacing shared scaffold"
+    },
+    {
+      "slotId": "family.profile.primary",
+      "role": "composition",
+      "view": "profile",
+      "requiredForStatus": "species_ready",
+      "description": "wolf profile composition anchor replacing shared scaffold"
+    },
+    {
+      "slotId": "hero.front.primary",
+      "role": "hero",
+      "view": "front",
+      "requiredForStatus": "species_ready",
+      "description": "wolf front hero identity ref for face/expression lock"
+    }
+  ],
+  "style": []
+}

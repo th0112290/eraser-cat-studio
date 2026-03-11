@@ -7,10 +7,18 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "image-gen:demo": "pnpm exec tsx src/mockDemo.ts"
+    "image-gen:demo": "pnpm exec tsx src/mockDemo.ts",
+    "bank:report": "pnpm exec tsx src/reportMascotReferenceReadiness.ts",
+    "bank:smoke": "pnpm exec tsx src/smokeMascotReferenceBank.ts",
+    "pipeline:mvp": "pnpm exec tsx src/runImageToAnimationMvp.ts",
+    "pipeline:render-accepted": "pnpm exec tsx src/renderAcceptedCharacterShort.ts",
+    "pipeline:render-sidecar-placeholder": "pnpm exec tsx src/renderAcceptedCharacterSidecarPlaceholder.ts",
+    "pipeline:smoke": "pnpm exec tsx src/smokeGeneratedCharacterPipeline.ts"
   },
   "dependencies": {
-    "@ec/shared": "workspace:*"
+    "@ec/render-orchestrator": "workspace:*",
+    "@ec/shared": "workspace:*",
+    "sharp": "^0.34.2"
   },
   "devDependencies": {
     "@types/node": "^22.15.24",

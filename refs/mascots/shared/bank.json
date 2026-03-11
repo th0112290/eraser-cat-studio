@@ -1,0 +1,49 @@
+{
+  "profileId": "shared_compact_doodle_scaffold_v1",
+  "familyId": "compact_doodle_mascot_v2",
+  "bankStatus": "scaffold_only",
+  "notes": [
+    "shared bank is species-neutral scaffold only",
+    "do not place species-specific style or hero refs here"
+  ],
+  "starterByView": {
+    "front": [
+      {
+        "path": "../../cat_quality_input/derived/front_composition.png",
+        "note": "shared front starter scaffold"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "../../cat_quality_input/derived/threeQuarter_composition.png",
+        "note": "shared three-quarter starter scaffold"
+      }
+    ],
+    "profile": [
+      {
+        "path": "../../cat_quality_input/derived/profile_composition.png",
+        "note": "shared profile starter scaffold"
+      }
+    ]
+  },
+  "familyByView": {
+    "front": [
+      {
+        "path": "../../cat_quality_input/derived/front_composition.png",
+        "note": "shared front family composition"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "../../cat_quality_input/derived/threeQuarter_composition.png",
+        "note": "shared three-quarter family composition"
+      }
+    ],
+    "profile": [
+      {
+        "path": "../../cat_quality_input/derived/profile_composition.png",
+        "note": "shared profile family composition"
+      }
+    ]
+  }
+}
