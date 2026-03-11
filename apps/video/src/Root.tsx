@@ -47,6 +47,8 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       unit: "pts",
       hasChart: true,
       chartCallout: "Bars now overshoot and count up.",
+      characterPackId: "eraser-cat-turning",
+      mascotId: "eraser_cat",
       characterX: 0.43,
       characterY: 0.82,
       characterYawFrom: -0.2,
@@ -79,6 +81,8 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       unit: "pts",
       hasChart: true,
       chartCallout: "Target bar receives pulse + scribble highlight.",
+      characterPackId: "eraser-cat-turning",
+      mascotId: "eraser_cat",
       characterX: 0.46,
       characterY: 0.82,
       characterYawFrom: 0.25,
@@ -111,6 +115,8 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       unit: "pts",
       hasChart: true,
       chartCallout: "Transition defaults remain backward compatible.",
+      characterPackId: "eraser-cat-turning",
+      mascotId: "eraser_cat",
       characterX: 0.48,
       characterY: 0.82,
       characterYawFrom: 0.8,
@@ -140,7 +146,47 @@ const shotEpisodeDefaults: ShotEpisodeRenderProps = {
       endFrame: 539,
       text: "Final shot settles with a quick flash and clean value count up."
     }
-  ]
+  ],
+  debugOverlay: {
+    enabled: true,
+    sourceLabel: "studio defaults",
+    qc: {
+      status: "warn",
+      errorCount: 0,
+      warningCount: 1,
+      fallbackStepsApplied: ["hide_non_critical_overlays"],
+      finalIssues: [
+        {
+          code: "subtitle_safe_area_margin",
+          severity: "WARN",
+          message: "Subtitle baseline is close to the safe area threshold.",
+          shotId: "shot_002"
+        }
+      ]
+    },
+    benchmarks: [
+      {
+        scope: "preset rollout",
+        target: "overall",
+        status: "ready",
+        score: 90.49,
+        verdict: "recommended",
+        reason: "balanced_default | rollout candidate does not change the effective preset triplet.",
+        sourceLabel: "studio sample",
+        generatedAt: "2026-03-09T04:38:07.717Z"
+      },
+      {
+        scope: "multi-channel",
+        target: "cross-channel (major)",
+        status: "divergence",
+        score: 0.92,
+        verdict: "warn",
+        reason: "diverged(major) economy vs medical preset stack drift.",
+        sourceLabel: "studio sample",
+        generatedAt: "2026-03-10T07:35:16.876Z"
+      }
+    ]
+  }
 };
 
 export const RemotionRoot = () => {

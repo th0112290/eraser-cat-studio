@@ -1,5 +1,7 @@
 ﻿import type {
+  DeterministicVisualObject,
   DeterministicSequence,
+  RenderLayoutBox,
   RenderQcInput,
   RenderSafeArea,
   VisualQcCheck,
@@ -17,10 +19,10 @@ const CHART_BOX = {
 };
 
 const NARRATION_BOX = {
-  x: 88,
-  y: 760,
-  width: 840,
-  height: 160
+  x: 104,
+  y: 748,
+  width: 820,
+  height: 176
 };
 
 const OCCLUDER_BOX = {
@@ -28,6 +30,13 @@ const OCCLUDER_BOX = {
   y: 0,
   width: 180,
   height: 1080
+};
+
+const CHARACTER_BLOCKING_BOX = {
+  offsetX: -220,
+  offsetY: -320,
+  width: 460,
+  height: 720
 };
 
 const FALLBACK_STEPS = [
@@ -78,13 +87,158 @@ function unique<T>(values: T[]): T[] {
   return Array.from(new Set(values));
 }
 
+function normalizeVisualObjectKind(
+  kind: DeterministicSequence["primaryVisualKind"] | DeterministicVisualObject["kind"] | undefined
+): DeterministicSequence["primaryVisualKind"] | undefined {
+  if (!kind) {
+    return undefined;
+  }
+  return kind;
+}
+
+function resolvePrimaryVisualObject(sequence: DeterministicSequence) {
+  return sequence.visualObjects?.find((visualObject) => visualObject.semanticRole === "primary_explainer") ?? sequence.visualObjects?.[0];
+}
+
+function resolvePrimaryVisualKind(sequence: DeterministicSequence): DeterministicSequence["primaryVisualKind"] | undefined {
+  return normalizeVisualObjectKind(resolvePrimaryVisualObject(sequence)?.kind ?? sequence.primaryVisualKind);
+}
+
+function isChartLikeVisualKind(kind: DeterministicSequence["primaryVisualKind"] | undefined): boolean {
+  return kind === "bar_chart" || kind === "line_chart" || kind === "table";
+}
+
+function resolveVisualRect(sequence: DeterministicSequence):
+  | {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }
+  | undefined {
+  if (sequence.hasChart || resolvePrimaryVisualKind(sequence)) {
+    return sequence.visualBox ?? {
+      x: CHART_BOX.x,
+      y: CHART_BOX.y,
+      width: CHART_BOX.width,
+      height: CHART_BOX.height
+    };
+  }
+  return undefined;
+}
+
+function resolveNarrationRect(sequence: DeterministicSequence): RenderLayoutBox {
+  return sequence.narrationBox ?? NARRATION_BOX;
+}
+
+function resolvePointerReachableRect(sequence: DeterministicSequence): RenderLayoutBox | undefined {
+  if (sequence.pointerReachableZone) {
+    return sequence.pointerReachableZone;
+  }
+  const visualRect = resolveVisualRect(sequence);
+  if (!visualRect || !sequence.hasChart) {
+    return undefined;
+  }
+  return {
+    x: visualRect.x + 56,
+    y: visualRect.y + 86,
+    width: Math.max(40, visualRect.width - 112),
+    height: Math.max(40, visualRect.height - 202)
+  };
+}
+
+function resolveDeclaredPointerAnchor(sequence: DeterministicSequence): { x: number; y: number } | undefined {
+  if (sequence.hasChart && sequence.visualMode === "chart") {
+    if (sequence.chartData.length === 0) {
+      return undefined;
+    }
+    return computeBarAnchor(sequence, clamp(sequence.pointerTargetIndex, 0, Math.max(0, sequence.chartData.length - 1)));
+  }
+
+  const reachableRect = resolvePointerReachableRect(sequence);
+  if (reachableRect) {
+    return {
+      x: reachableRect.x + reachableRect.width * 0.5,
+      y: reachableRect.y + reachableRect.height * 0.5
+    };
+  }
+
+  const visualRect = resolveVisualRect(sequence);
+  if (!visualRect) {
+    return undefined;
+  }
+
+  return {
+    x: visualRect.x + visualRect.width * 0.5,
+    y: visualRect.y + visualRect.height * 0.5
+  };
+}
+
+function rectIntersectionArea(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number }
+): number {
+  const left = Math.max(a.x, b.x);
+  const top = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width);
+  const bottom = Math.min(a.y + a.height, b.y + b.height);
+  if (right <= left || bottom <= top) {
+    return 0;
+  }
+  return (right - left) * (bottom - top);
+}
+
+function expandRect(
+  rect: { x: number; y: number; width: number; height: number },
+  padding: number
+): { x: number; y: number; width: number; height: number } {
+  return {
+    x: rect.x - padding,
+    y: rect.y - padding,
+    width: rect.width + padding * 2,
+    height: rect.height + padding * 2
+  };
+}
+
+function resolveCharacterBlockingRect(
+  sequence: DeterministicSequence,
+  width: number,
+  height: number
+): { x: number; y: number; width: number; height: number } {
+  if (sequence.mascotBlockingBox) {
+    return sequence.mascotBlockingBox;
+  }
+  const centerX = toPxX(sequence.characterX, width);
+  const centerY = toPxY(sequence.characterY, height);
+  return {
+    x: centerX + CHARACTER_BLOCKING_BOX.offsetX,
+    y: centerY + CHARACTER_BLOCKING_BOX.offsetY,
+    width: CHARACTER_BLOCKING_BOX.width,
+    height: CHARACTER_BLOCKING_BOX.height
+  };
+}
+
+function resolveVisualTextItems(sequence: DeterministicSequence): string[] {
+  return unique(
+    [
+      ...(resolvePrimaryVisualObject(sequence)?.items ?? []),
+      ...(sequence.visualObjects?.flatMap((visualObject) => visualObject.items ?? []) ?? []),
+      ...sequence.chartData.map((row) => row.label),
+      normalizeText(resolvePrimaryVisualObject(sequence)?.body ?? "")
+    ]
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+  );
+}
+
 function computeBarAnchor(sequence: DeterministicSequence, targetIndex: number): { x: number; y: number } {
   const rows = sequence.chartData;
+  const visualRect = resolveVisualRect(sequence) ?? CHART_BOX;
   const clampedIndex = clamp(targetIndex, 0, Math.max(0, rows.length - 1));
-  const left = CHART_BOX.x + 56;
-  const top = CHART_BOX.y + 86;
-  const plotWidth = CHART_BOX.width - 112;
-  const plotHeight = CHART_BOX.height - 156;
+  const left = visualRect.x + 56;
+  const top = visualRect.y + 86;
+  const plotWidth = visualRect.width - 112;
+  const plotHeight = visualRect.height - 156;
   const count = Math.max(1, rows.length);
   const gap = 20;
   const barWidth = (plotWidth - gap * (count - 1)) / count;
@@ -128,7 +282,19 @@ function cloneSequence(sequence: DeterministicSequence): DeterministicSequence {
   return {
     ...sequence,
     chartData: sequence.chartData.map((row) => ({ ...row })),
-    pointerTip: sequence.pointerTip ? { ...sequence.pointerTip } : undefined
+    pointerTip: sequence.pointerTip ? { ...sequence.pointerTip } : undefined,
+    visualObjects: sequence.visualObjects?.map((visualObject) => ({
+      ...visualObject,
+      items: visualObject.items ? [...visualObject.items] : undefined,
+      dataRef: visualObject.dataRef ? { ...visualObject.dataRef } : undefined
+    })),
+    visualPlan: sequence.visualPlan ? { ...sequence.visualPlan } : undefined,
+    profileBundle: sequence.profileBundle ? { ...sequence.profileBundle } : undefined,
+    finishProfile: sequence.finishProfile ? { ...sequence.finishProfile } : undefined,
+    visualBox: sequence.visualBox ? { ...sequence.visualBox } : undefined,
+    narrationBox: sequence.narrationBox ? { ...sequence.narrationBox } : undefined,
+    mascotBlockingBox: sequence.mascotBlockingBox ? { ...sequence.mascotBlockingBox } : undefined,
+    pointerReachableZone: sequence.pointerReachableZone ? { ...sequence.pointerReachableZone } : undefined
   };
 }
 
@@ -154,15 +320,40 @@ function pushIssue(
   code: string,
   severity: VisualQcSeverity,
   message: string,
-  shotId?: string,
+  shotRef?: string | DeterministicSequence,
   details?: Record<string, unknown>
 ): void {
+  const sequence = typeof shotRef === "object" ? shotRef : undefined;
+  const shotId = typeof shotRef === "string" ? shotRef : sequence?.shotId;
+  const contextLabel = sequence
+    ? [sequence.shotGrammar, sequence.educationalIntent, sequence.routeReason]
+        .filter((value): value is Exclude<typeof value, undefined> => typeof value === "string" && value.length > 0)
+        .map((value) => value.replaceAll("_", " "))
+        .join(" / ")
+    : undefined;
   issues.push({
     code,
     severity,
-    message,
+    message: contextLabel && contextLabel.length > 0 ? `${message} [${contextLabel}]` : message,
     shotId,
-    details
+    details: sequence
+        ? {
+            shotGrammar: sequence.shotGrammar,
+            educationalIntent: sequence.educationalIntent,
+            routeReason: sequence.routeReason,
+            insertNeed: sequence.insertNeed,
+            primaryVisualKind: resolvePrimaryVisualKind(sequence),
+            studioProfileId: sequence.profileBundle?.studioProfileId,
+            channelProfileId: sequence.profileBundle?.channelProfileId,
+            mascotProfileId: sequence.profileBundle?.mascotProfileId,
+            resolverId: sequence.profileBundle?.resolverId,
+            resolverSource: sequence.profileBundle?.resolverSource,
+            layoutBias: sequence.profileBundle?.layoutBias,
+            actingBias: sequence.profileBundle?.actingBias,
+            pointerBias: sequence.profileBundle?.pointerBias,
+            ...details
+          }
+        : details
   });
 }
 
@@ -183,7 +374,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
     const rows = sequence.chartData;
     if (rows.length === 0) {
       chartDataErrors += 1;
-      pushIssue(issues, "chart_data_empty", "ERROR", "Chart data rows are empty.", sequence.shotId);
+      pushIssue(issues, "chart_data_empty", "ERROR", "Chart data rows are empty.", sequence);
       continue;
     }
 
@@ -196,7 +387,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_label_invalid",
         "ERROR",
         "Chart labels must be non-empty.",
-        sequence.shotId,
+        sequence,
         { invalidLabels }
       );
     }
@@ -209,7 +400,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_label_duplicate",
         "ERROR",
         "Chart labels must be unique for deterministic pointer resolution.",
-        sequence.shotId
+        sequence
       );
     }
 
@@ -223,7 +414,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_unit_inconsistent",
         "ERROR",
         "Chart units are inconsistent across rows.",
-        sequence.shotId,
+        sequence,
         { units: uniqueUnits }
       );
     }
@@ -235,7 +426,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "chart_unit_mismatch",
         "ERROR",
         "Chart unit does not match the input dataset unit.",
-        sequence.shotId,
+        sequence,
         { declaredUnit, rowUnits }
       );
     }
@@ -251,7 +442,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
           "chart_data_sum_mismatch",
           "ERROR",
           "Chart sum does not match the expected dataset sum.",
-          sequence.shotId,
+          sequence,
           { expectedSum, actualSum, tolerance }
         );
       }
@@ -272,8 +463,14 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
 
   for (const sequence of context.sequences) {
     let readabilityScore = 100;
+    const primaryVisualKind = resolvePrimaryVisualKind(sequence);
+    const visualRect = resolveVisualRect(sequence);
+    const narrationRect = resolveNarrationRect(sequence);
+    const primaryVisualObject = resolvePrimaryVisualObject(sequence);
+    const visualItems = resolveVisualTextItems(sequence);
+    const nonChartVisual = Boolean(primaryVisualKind) && !isChartLikeVisualKind(primaryVisualKind);
 
-    const candidateFontSizes = sequence.visualMode === "table" ? [24, 22] : [34, 26, 24];
+    const candidateFontSizes = nonChartVisual ? [36, 24, 20] : sequence.visualMode === "table" ? [24, 22] : [34, 26, 24];
     const usedMinFont = Math.min(...candidateFontSizes);
     if (usedMinFont < minFontSizePx) {
       readabilityErrors += 1;
@@ -283,14 +480,14 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_min_font_size",
         "ERROR",
         "Minimum font size check failed.",
-        sequence.shotId,
+        sequence,
         { usedMinFont, minFontSizePx }
       );
     }
 
     const narrationText = normalizeText(sequence.narration);
     const narrationEstimate = estimateTextWidth(narrationText, 32);
-    const narrationAvailable = NARRATION_BOX.width - 48;
+    const narrationAvailable = narrationRect.width - 48;
     if (narrationEstimate > narrationAvailable * 2) {
       readabilityWarnings += 1;
       readabilityScore -= 14;
@@ -299,14 +496,14 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_overflow_narration",
         "WARN",
         "Narration text is likely to overflow.",
-        sequence.shotId,
+        sequence,
         { narrationEstimate, narrationAvailable }
       );
     }
 
     if (sequence.visualMode === "chart" && sequence.chartData.length > 0) {
       const barCount = sequence.chartData.length;
-      const plotWidth = CHART_BOX.width - 112;
+      const plotWidth = (visualRect?.width ?? CHART_BOX.width) - 112;
       const barWidth = (plotWidth - 20 * (barCount - 1)) / barCount;
       for (const row of sequence.chartData) {
         const labelEstimate = estimateTextWidth(row.label, 22);
@@ -318,35 +515,98 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
             "readability_overflow_label",
             "WARN",
             "A chart label is likely to overflow its bar slot.",
-            sequence.shotId,
+            sequence,
             { label: row.label, labelEstimate, barWidth }
           );
         }
       }
     }
 
-    const chartRect = {
-      x: CHART_BOX.x,
-      y: CHART_BOX.y,
-      width: CHART_BOX.width,
-      height: CHART_BOX.height
-    };
-    if (
-      sequence.hasChart &&
-      !isRectInsideSafeArea(context.safeArea, context.width, context.height, chartRect)
-    ) {
+    if (visualRect && !isRectInsideSafeArea(context.safeArea, context.width, context.height, visualRect)) {
       readabilityErrors += 1;
       readabilityScore -= 30;
       pushIssue(
         issues,
-        "readability_safe_area_chart",
+        sequence.hasChart ? "readability_safe_area_chart" : "readability_safe_area_visual_object",
         "ERROR",
-        "Chart area violates the safe area constraints.",
-        sequence.shotId
+        sequence.hasChart
+          ? "Chart area violates the safe area constraints."
+          : "Primary visual object area violates the safe area constraints.",
+        sequence,
+        primaryVisualKind ? { primaryVisualKind } : undefined
       );
     }
 
-    if (!isRectInsideSafeArea(context.safeArea, context.width, context.height, NARRATION_BOX)) {
+    if (nonChartVisual) {
+      const visualTitle = normalizeText(primaryVisualObject?.title ?? "");
+      const visualBody = normalizeText(primaryVisualObject?.body ?? sequence.narration);
+      const titleEstimate = visualTitle ? estimateTextWidth(visualTitle, 36) : 0;
+      const bodyEstimate = visualBody ? estimateTextWidth(visualBody, 24) : 0;
+      const titleAvailable = ((visualRect?.width ?? CHART_BOX.width) - 96) * 1.8;
+      const bodyAvailable = ((visualRect?.width ?? CHART_BOX.width) - 96) * 4.8;
+
+      if (!visualTitle && visualBody.length === 0 && visualItems.length === 0) {
+        readabilityErrors += 1;
+        readabilityScore -= 32;
+        pushIssue(
+          issues,
+          "visual_object_content_missing",
+          "ERROR",
+          "Primary visual object has no usable title, body, or items.",
+          sequence,
+          { primaryVisualKind }
+        );
+      }
+
+      if (titleEstimate > titleAvailable) {
+        readabilityWarnings += 1;
+        readabilityScore -= 8;
+        pushIssue(
+          issues,
+          "visual_object_title_overflow",
+          "WARN",
+          "Primary visual title is likely to overflow the visual box.",
+          sequence,
+          { primaryVisualKind, titleEstimate, titleAvailable }
+        );
+      }
+
+      if (bodyEstimate > bodyAvailable) {
+        readabilityWarnings += 1;
+        readabilityScore -= 10;
+        pushIssue(
+          issues,
+          "visual_object_body_overflow",
+          "WARN",
+          "Primary visual body is likely to overflow the explainer layout.",
+          sequence,
+          { primaryVisualKind, bodyEstimate, bodyAvailable }
+        );
+      }
+
+      const densityLimit =
+        primaryVisualKind === "checklist_card" ||
+        primaryVisualKind === "timeline" ||
+        primaryVisualKind === "process_flow" ||
+        primaryVisualKind === "comparison_board" ||
+        primaryVisualKind === "icon_array"
+          ? 4
+          : 3;
+      if (visualItems.length > densityLimit) {
+        readabilityWarnings += 1;
+        readabilityScore -= 12;
+        pushIssue(
+          issues,
+          "visual_object_density_high",
+          "WARN",
+          "Primary visual object contains more items than the recommended density budget.",
+          sequence,
+          { primaryVisualKind, itemCount: visualItems.length, densityLimit }
+        );
+      }
+    }
+
+    if (!isRectInsideSafeArea(context.safeArea, context.width, context.height, narrationRect)) {
       readabilityWarnings += 1;
       readabilityScore -= 10;
       pushIssue(
@@ -354,7 +614,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_safe_area_narration",
         "WARN",
         "Narration area violates the safe area constraints.",
-        sequence.shotId
+        sequence
       );
     }
 
@@ -369,7 +629,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "readability_score_low",
         "WARN",
         "Readability score is below the recommended threshold.",
-        sequence.shotId,
+        sequence,
         { score: finalScore }
       );
     }
@@ -390,30 +650,34 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
 
   let pointerErrors = 0;
   for (const sequence of context.sequences) {
-    if (!sequence.hasChart || sequence.visualMode !== "chart" || !sequence.pointerEnabled) {
+    if (!sequence.pointerEnabled) {
       continue;
     }
 
-    if (sequence.chartData.length === 0) {
+    if (sequence.hasChart && sequence.visualMode === "chart" && sequence.chartData.length === 0) {
       pointerErrors += 1;
       pushIssue(
         issues,
         "pointer_target_missing",
         "ERROR",
         "Pointer target cannot be resolved because chart data is empty.",
-        sequence.shotId
+        sequence
       );
       continue;
     }
 
-    if (sequence.pointerTargetIndex < 0 || sequence.pointerTargetIndex >= sequence.chartData.length) {
+    if (
+      sequence.hasChart &&
+      sequence.visualMode === "chart" &&
+      (sequence.pointerTargetIndex < 0 || sequence.pointerTargetIndex >= sequence.chartData.length)
+    ) {
       pointerErrors += 1;
       pushIssue(
         issues,
         "pointer_target_missing",
         "ERROR",
         "Pointer target index is outside chart data range.",
-        sequence.shotId,
+        sequence,
         {
           pointerTargetIndex: sequence.pointerTargetIndex,
           rowCount: sequence.chartData.length
@@ -422,8 +686,20 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
       continue;
     }
 
-    const anchor = computeBarAnchor(sequence, sequence.pointerTargetIndex);
+    const anchor = resolveDeclaredPointerAnchor(sequence);
+    if (!anchor) {
+      pointerErrors += 1;
+      pushIssue(
+        issues,
+        "pointer_target_missing",
+        "ERROR",
+        "Pointer target cannot be resolved for the declared visual layout.",
+        sequence
+      );
+      continue;
+    }
     const tip = sequence.pointerTip ?? anchor;
+    const reachableRect = resolvePointerReachableRect(sequence);
     const distance = Math.hypot(tip.x - anchor.x, tip.y - anchor.y);
     if (distance > pointerTolerancePx) {
       pointerErrors += 1;
@@ -432,8 +708,20 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "pointer_tip_tolerance",
         "ERROR",
         "Pointer tip is outside tolerance from the target anchor.",
-        sequence.shotId,
+        sequence,
         { distance, pointerTolerancePx }
+      );
+    }
+
+    if (reachableRect && !isPointInsideRect(anchor, reachableRect)) {
+      pointerErrors += 1;
+      pushIssue(
+        issues,
+        "pointer_reachable_zone_miss",
+        "ERROR",
+        "Pointer anchor falls outside the declared reachable zone.",
+        sequence,
+        { pointerAnchor: anchor, reachableRect }
       );
     }
   }
@@ -443,6 +731,70 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
     passed: pointerErrors === 0,
     severity: "ERROR",
     details: pointerErrors === 0 ? "Pointer checks passed." : `pointer_errors=${pointerErrors}`
+  });
+
+  let blockingErrors = 0;
+  let blockingWarnings = 0;
+  for (const sequence of context.sequences) {
+    const characterRect = resolveCharacterBlockingRect(sequence, context.width, context.height);
+    const visualRect = resolveVisualRect(sequence);
+    const narrationRect = resolveNarrationRect(sequence);
+
+    if (visualRect) {
+      const visualOverlap = rectIntersectionArea(expandRect(visualRect, 14), characterRect);
+      if (visualOverlap > 0) {
+        blockingErrors += 1;
+        pushIssue(
+          issues,
+          "blocking_visual_mascot_collision",
+          "ERROR",
+          "Mascot blocking zone overlaps the primary visual area.",
+          sequence,
+          { overlapArea: visualOverlap, primaryVisualKind: resolvePrimaryVisualKind(sequence) }
+        );
+      }
+    }
+
+    const narrationOverlap = rectIntersectionArea(expandRect(narrationRect, 10), characterRect);
+    if (narrationOverlap > 0) {
+      blockingWarnings += 1;
+      pushIssue(
+        issues,
+        "blocking_narration_mascot_collision",
+        "WARN",
+        "Mascot blocking zone overlaps the narration safe box.",
+        sequence,
+        { overlapArea: narrationOverlap }
+      );
+    }
+
+    if (sequence.pointerEnabled) {
+      const pointerAnchor = resolveDeclaredPointerAnchor(sequence);
+      if (!pointerAnchor) {
+        continue;
+      }
+      if (isPointInsideRect(pointerAnchor, expandRect(characterRect, 6))) {
+        blockingErrors += 1;
+        pushIssue(
+          issues,
+          "pointer_reachable_zone_blocked",
+          "ERROR",
+          "Pointer target anchor lands inside the mascot blocking zone.",
+          sequence,
+          { pointerAnchor }
+        );
+      }
+    }
+  }
+
+  checks.push({
+    name: "blocking_layout",
+    passed: blockingErrors === 0,
+    severity: "ERROR",
+    details:
+      blockingErrors === 0
+        ? `blocking_warnings=${blockingWarnings}`
+        : `blocking_errors=${blockingErrors} warnings=${blockingWarnings}`
   });
 
   let occlusionErrors = 0;
@@ -466,7 +818,7 @@ function evaluateVisualQcStage(context: VisualQcContext): VisualQcRun {
         "layering_occlusion_missing",
         "ERROR",
         "Character is not occluded as expected.",
-        sequence.shotId,
+        sequence,
         { character: point, occluder: occluderRect }
       );
     }
@@ -535,6 +887,14 @@ function applyFallbackStep(
         next.annotationsEnabled = false;
         next.chartCallout = undefined;
         next.narration = normalizeText(next.narration).slice(0, 160);
+        next.talkText = next.talkText ? normalizeText(next.talkText).slice(0, 120) : next.talkText;
+        next.visualObjects =
+          next.visualObjects?.map((visualObject) => ({
+            ...visualObject,
+            title: visualObject.title ? normalizeText(visualObject.title).slice(0, 56) : visualObject.title,
+            body: visualObject.body ? normalizeText(visualObject.body).slice(0, 140) : visualObject.body,
+            items: visualObject.items?.slice(0, 4).map((item) => normalizeText(item).slice(0, 36))
+          })) ?? next.visualObjects;
         return next;
       })
     };

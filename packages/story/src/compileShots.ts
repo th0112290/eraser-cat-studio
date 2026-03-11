@@ -10,8 +10,116 @@ type BeatSegment = {
   beats: Beat[];
 };
 
+export const CANONICAL_VISUAL_OBJECT_KINDS = [
+  "bar_chart",
+  "line_chart",
+  "table",
+  "kpi_card",
+  "summary_card",
+  "checklist_card",
+  "process_flow",
+  "comparison_board",
+  "timeline",
+  "labeled_diagram",
+  "icon_array"
+] as const;
+
+export type ShotCanonicalVisualObjectKind = (typeof CANONICAL_VISUAL_OBJECT_KINDS)[number];
+export type ShotVisualObjectKind = ShotCanonicalVisualObjectKind | "icon_grid" | "anatomy_diagram";
+export type ShotVisualObjectRole = "primary_explainer" | "supporting_explainer" | "accent";
+export type ShotChannelDomain = "economy" | "medical" | "generic";
+export type ShotEducationalMode = "data_explainer" | "summary_explainer" | "generic";
+export type ShotGrammar =
+  | "host_intro"
+  | "metric_focus"
+  | "comparison_explainer"
+  | "process_walkthrough"
+  | "timeline_bridge"
+  | "diagram_explainer"
+  | "checklist_recap"
+  | "summary_recap";
+export type ShotRouteReason =
+  | "chart_reference"
+  | "metric_focus"
+  | "comparison_language"
+  | "process_language"
+  | "timeline_language"
+  | "medical_diagram_language"
+  | "checklist_density"
+  | "summary_fallback";
+export type ShotEducationalIntent =
+  | "introduce_topic"
+  | "explain_metric"
+  | "compare_tradeoffs"
+  | "walkthrough_steps"
+  | "sequence_events"
+  | "explain_structure"
+  | "summarize_takeaways";
+export type ShotInsertNeed =
+  | "none"
+  | "summary_support"
+  | "checklist_support"
+  | "comparison_support"
+  | "process_support"
+  | "timeline_support"
+  | "diagram_support";
+
+export type ShotVisualObject = {
+  object_id: string;
+  kind: ShotVisualObjectKind;
+  semantic_role: ShotVisualObjectRole;
+  title?: string;
+  body?: string;
+  items?: string[];
+  data_ref?: {
+    chart_id?: string;
+    dataset_id?: string;
+    time_range?: string;
+  };
+  selection_reason?: string;
+};
+
+export type ShotVisualPlan = {
+  resolver_id: "legacy_chart_backbone_v1";
+  channel_domain: ShotChannelDomain;
+  educational_mode: ShotEducationalMode;
+  selected_primary_kind: ShotCanonicalVisualObjectKind;
+  selection_reason: string;
+};
+
+const VISUAL_OBJECT_KIND_ALIASES: Record<string, ShotCanonicalVisualObjectKind> = {
+  icon_grid: "icon_array",
+  anatomy_diagram: "labeled_diagram"
+};
+
+export function normalizeShotVisualObjectKind(
+  kind: ShotVisualObjectKind | undefined
+): ShotCanonicalVisualObjectKind | undefined {
+  if (!kind) {
+    return undefined;
+  }
+  if (kind in VISUAL_OBJECT_KIND_ALIASES) {
+    return VISUAL_OBJECT_KIND_ALIASES[kind];
+  }
+  return (CANONICAL_VISUAL_OBJECT_KINDS as readonly string[]).includes(kind)
+    ? (kind as ShotCanonicalVisualObjectKind)
+    : undefined;
+}
+
+export function isChartLikeShotVisualObjectKind(kind: ShotVisualObjectKind | undefined): boolean {
+  const normalized = normalizeShotVisualObjectKind(kind);
+  return normalized === "bar_chart" || normalized === "line_chart";
+}
+
 export type Shot = {
   shot_id: string;
+  talk_text?: string;
+  visual_plan?: ShotVisualPlan;
+  visual_objects?: ShotVisualObject[];
+  shot_grammar: ShotGrammar;
+  route_reason: ShotRouteReason;
+  educational_intent: ShotEducationalIntent;
+  insert_need: ShotInsertNeed;
   beat_ids: string[];
   start_frame: number;
   duration_frames: number;
@@ -157,6 +265,10 @@ function countWords(text: string): number {
     return 1;
   }
   return cleaned.split(/\s+/).length;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter((value) => value.length > 0)));
 }
 
 function visualIntentFromBeat(beat: Beat): VisualIntent {
@@ -328,6 +440,710 @@ function expressionFromSegment(segment: BeatSegment): string {
     return "focused";
   }
   return "neutral";
+}
+
+const COMPARISON_KEYWORDS = [
+  "compare",
+  "versus",
+  "vs",
+  "higher",
+  "lower",
+  "better",
+  "worse",
+  "tradeoff",
+  "difference",
+  "option"
+];
+
+const PROCESS_KEYWORDS = [
+  "step",
+  "process",
+  "workflow",
+  "how",
+  "first",
+  "second",
+  "third",
+  "finally",
+  "then"
+];
+
+const TIMELINE_KEYWORDS = [
+  "timeline",
+  "before",
+  "after",
+  "over time",
+  "sequence",
+  "phase",
+  "stage",
+  "history",
+  "trend"
+];
+
+const MEDICAL_KEYWORDS = [
+  "patient",
+  "clinical",
+  "diagnosis",
+  "therapy",
+  "treatment",
+  "symptom",
+  "disease",
+  "dose",
+  "hospital",
+  "anatomy",
+  "organ",
+  "medic"
+];
+
+const ECONOMY_KEYWORDS = [
+  "inflation",
+  "market",
+  "gdp",
+  "rate",
+  "price",
+  "stock",
+  "jobs",
+  "salary",
+  "tax",
+  "economy",
+  "budget",
+  "debt"
+];
+
+type DirectedVisualDecision = {
+  channelDomain: ShotChannelDomain;
+  educationalIntent: ShotEducationalIntent;
+  routeReason: ShotRouteReason;
+  shotGrammar: ShotGrammar;
+  insertNeed: ShotInsertNeed;
+  primaryKind: ShotCanonicalVisualObjectKind;
+  supportingKind?: ShotCanonicalVisualObjectKind;
+};
+
+function containsAnyKeyword(text: string, keywords: readonly string[]): boolean {
+  const normalized = text.toLowerCase();
+  return keywords.some((keyword) => normalized.includes(keyword));
+}
+
+function inferChannelDomain(input: { datasetId?: string; cueItems: string[]; narration: string }): ShotChannelDomain {
+  const source = `${input.datasetId ?? ""} ${input.narration} ${input.cueItems.join(" ")}`.toLowerCase();
+  if (containsAnyKeyword(source, MEDICAL_KEYWORDS)) {
+    return "medical";
+  }
+  if (containsAnyKeyword(source, ECONOMY_KEYWORDS)) {
+    return "economy";
+  }
+  return "generic";
+}
+
+function inferDominantChannelDomain(beats: Beat[]): ShotChannelDomain {
+  const datasetIdSource = beats
+    .flatMap((beat) => beat.references ?? [])
+    .map((reference) => reference.datasetId?.trim() ?? "")
+    .filter((datasetId) => datasetId.length > 0)
+    .join(" ");
+  const cueItems = uniqueStrings(beats.flatMap((beat) => beat.onScreen ?? []));
+  const narration = beats
+    .map((beat) => beat.narration.trim())
+    .filter((entry) => entry.length > 0)
+    .join(" ");
+
+  return inferChannelDomain({
+    datasetId: datasetIdSource,
+    cueItems,
+    narration
+  });
+}
+
+function inferRouteReason(input: {
+  intent: VisualIntent;
+  hasChart: boolean;
+  cueItems: string[];
+  narration: string;
+  channelDomain: ShotChannelDomain;
+}): ShotRouteReason {
+  const source = `${input.narration} ${input.cueItems.join(" ")}`.toLowerCase();
+  if (input.hasChart) {
+    if (containsAnyKeyword(source, COMPARISON_KEYWORDS)) {
+      return "comparison_language";
+    }
+    return input.intent === "data" ? "metric_focus" : "chart_reference";
+  }
+  if (input.channelDomain === "medical" && containsAnyKeyword(source, MEDICAL_KEYWORDS)) {
+    return "medical_diagram_language";
+  }
+  if (containsAnyKeyword(source, COMPARISON_KEYWORDS)) {
+    return "comparison_language";
+  }
+  if (containsAnyKeyword(source, PROCESS_KEYWORDS)) {
+    return "process_language";
+  }
+  if (input.intent === "bridge" || containsAnyKeyword(source, TIMELINE_KEYWORDS)) {
+    return "timeline_language";
+  }
+  if (input.cueItems.length >= 3) {
+    return "checklist_density";
+  }
+  return "summary_fallback";
+}
+
+function inferEducationalIntent(input: {
+  intent: VisualIntent;
+  routeReason: ShotRouteReason;
+}): ShotEducationalIntent {
+  if (input.routeReason === "comparison_language") {
+    return "compare_tradeoffs";
+  }
+  if (input.routeReason === "chart_reference" || input.routeReason === "metric_focus") {
+    return "explain_metric";
+  }
+  if (input.routeReason === "process_language") {
+    return "walkthrough_steps";
+  }
+  if (input.routeReason === "timeline_language") {
+    return "sequence_events";
+  }
+  if (input.routeReason === "medical_diagram_language") {
+    return "explain_structure";
+  }
+  if (input.intent === "intro") {
+    return "introduce_topic";
+  }
+  return "summarize_takeaways";
+}
+
+function inferShotGrammar(input: {
+  intent: VisualIntent;
+  routeReason: ShotRouteReason;
+  educationalIntent: ShotEducationalIntent;
+}): ShotGrammar {
+  if (input.routeReason === "chart_reference" || input.routeReason === "metric_focus") {
+    return "metric_focus";
+  }
+  if (input.routeReason === "comparison_language") {
+    return "comparison_explainer";
+  }
+  if (input.routeReason === "process_language") {
+    return "process_walkthrough";
+  }
+  if (input.routeReason === "timeline_language") {
+    return "timeline_bridge";
+  }
+  if (input.routeReason === "medical_diagram_language") {
+    return "diagram_explainer";
+  }
+  if (input.intent === "intro") {
+    return "host_intro";
+  }
+  if (input.routeReason === "checklist_density") {
+    return "checklist_recap";
+  }
+  return input.educationalIntent === "summarize_takeaways" ? "summary_recap" : "metric_focus";
+}
+
+function inferDirectedPrimaryVisualKind(input: {
+  hasChart: boolean;
+  chartType?: string;
+  cueItems: string[];
+  routeReason: ShotRouteReason;
+  shotGrammar: ShotGrammar;
+  channelDomain: ShotChannelDomain;
+}): ShotCanonicalVisualObjectKind {
+  if (input.hasChart) {
+    const normalizedChartType = input.chartType?.trim().toLowerCase() ?? "";
+    if (normalizedChartType.includes("line") || normalizedChartType.includes("trend")) {
+      return "line_chart";
+    }
+    return "bar_chart";
+  }
+  if (input.routeReason === "medical_diagram_language" || input.shotGrammar === "diagram_explainer") {
+    return "labeled_diagram";
+  }
+  if (input.routeReason === "comparison_language" || input.shotGrammar === "comparison_explainer") {
+    return "comparison_board";
+  }
+  if (input.routeReason === "process_language" || input.shotGrammar === "process_walkthrough") {
+    return "process_flow";
+  }
+  if (input.routeReason === "timeline_language" || input.shotGrammar === "timeline_bridge") {
+    return "timeline";
+  }
+  if (input.cueItems.length >= 3) {
+    return "checklist_card";
+  }
+  if (input.channelDomain === "economy" && input.cueItems.length <= 1) {
+    return "kpi_card";
+  }
+  return "summary_card";
+}
+
+function inferInsertNeed(input: {
+  hasChart: boolean;
+  primaryKind: ShotCanonicalVisualObjectKind;
+  routeReason: ShotRouteReason;
+  cueItems: string[];
+}): ShotInsertNeed {
+  if (input.hasChart && input.routeReason === "comparison_language") {
+    return "comparison_support";
+  }
+  if (input.hasChart && input.routeReason === "process_language") {
+    return "process_support";
+  }
+  if (input.hasChart && input.routeReason === "timeline_language") {
+    return "timeline_support";
+  }
+  if (input.routeReason === "medical_diagram_language") {
+    return "diagram_support";
+  }
+  if (input.primaryKind === "checklist_card" || input.routeReason === "checklist_density") {
+    return "checklist_support";
+  }
+  if (input.cueItems.length > 0 && (input.primaryKind === "bar_chart" || input.primaryKind === "line_chart")) {
+    return "summary_support";
+  }
+  return "none";
+}
+
+function supportingKindForDecision(decision: DirectedVisualDecision): ShotCanonicalVisualObjectKind | undefined {
+  if (decision.insertNeed === "comparison_support") {
+    return "comparison_board";
+  }
+  if (decision.insertNeed === "process_support") {
+    return "process_flow";
+  }
+  if (decision.insertNeed === "timeline_support") {
+    return "timeline";
+  }
+  if (decision.insertNeed === "diagram_support") {
+    return "labeled_diagram";
+  }
+  if (decision.insertNeed === "checklist_support") {
+    return decision.primaryKind === "checklist_card" ? "summary_card" : "checklist_card";
+  }
+  if (decision.insertNeed === "summary_support") {
+    return "summary_card";
+  }
+  return undefined;
+}
+
+function titleForVisualKind(kind: ShotCanonicalVisualObjectKind, channelDomain: ShotChannelDomain): string {
+  if (kind === "line_chart") {
+    return "Trend View";
+  }
+  if (kind === "bar_chart") {
+    return "Metric Snapshot";
+  }
+  if (kind === "comparison_board") {
+    return "Tradeoff Board";
+  }
+  if (kind === "process_flow") {
+    return "Process Flow";
+  }
+  if (kind === "timeline") {
+    return "Timeline";
+  }
+  if (kind === "labeled_diagram") {
+    return channelDomain === "medical" ? "Clinical Diagram" : "Labeled Diagram";
+  }
+  if (kind === "kpi_card") {
+    return "Key Metric";
+  }
+  if (kind === "checklist_card") {
+    return "Key Checklist";
+  }
+  return "Summary";
+}
+
+function buildLegacyVisualContract(input: {
+  shotId: string;
+  intent: VisualIntent;
+  hasChart: boolean;
+  chartType?: string;
+  chartId?: string;
+  datasetId?: string;
+  timeRange?: string;
+  cueItems: string[];
+  title?: string;
+  narration: string;
+  fallbackChannelDomain?: ShotChannelDomain;
+}): {
+  visualPlan: ShotVisualPlan;
+  visualObjects: ShotVisualObject[];
+  channelDomain: ShotChannelDomain;
+  educationalIntent: ShotEducationalIntent;
+  routeReason: ShotRouteReason;
+  insertNeed: ShotInsertNeed;
+  shotGrammar: ShotGrammar;
+} {
+  const channelDomain = inferChannelDomain({
+    datasetId: input.datasetId,
+    cueItems: input.cueItems,
+    narration: input.narration
+  });
+  const resolvedChannelDomain = channelDomain === "generic" ? (input.fallbackChannelDomain ?? channelDomain) : channelDomain;
+  const routeReason = inferRouteReason({
+    intent: input.intent,
+    hasChart: input.hasChart,
+    cueItems: input.cueItems,
+    narration: input.narration,
+    channelDomain: resolvedChannelDomain
+  });
+  const educationalIntent = inferEducationalIntent({
+    intent: input.intent,
+    routeReason
+  });
+  const shotGrammar = inferShotGrammar({
+    intent: input.intent,
+    routeReason,
+    educationalIntent
+  });
+  const primaryKind = inferDirectedPrimaryVisualKind({
+    hasChart: input.hasChart,
+    chartType: input.chartType,
+    cueItems: input.cueItems,
+    routeReason,
+    shotGrammar,
+    channelDomain: resolvedChannelDomain
+  });
+  const insertNeed = inferInsertNeed({
+    hasChart: input.hasChart,
+    primaryKind,
+    routeReason,
+    cueItems: input.cueItems
+  });
+  const supportingKind = supportingKindForDecision({
+    channelDomain: resolvedChannelDomain,
+    educationalIntent,
+    routeReason,
+    shotGrammar,
+    insertNeed,
+    primaryKind
+  });
+  const title =
+    input.title?.trim() || titleForVisualKind(primaryKind, resolvedChannelDomain);
+  const selectionReason = `route:${routeReason}|intent:${educationalIntent}|grammar:${shotGrammar}`;
+
+  const visualObjects: ShotVisualObject[] = [
+    {
+      object_id: `${input.shotId}__primary`,
+      kind: primaryKind,
+      semantic_role: "primary_explainer",
+      title,
+      body: input.narration,
+      items: input.cueItems.length > 0 ? input.cueItems.slice(0, 4) : undefined,
+      data_ref: input.hasChart
+        ? {
+            chart_id: input.chartId,
+            dataset_id: input.datasetId,
+            time_range: input.timeRange
+          }
+        : undefined,
+      selection_reason: selectionReason
+    }
+  ];
+
+  if (supportingKind) {
+    visualObjects.push({
+      object_id: `${input.shotId}__supporting`,
+      kind: supportingKind,
+      semantic_role: "supporting_explainer",
+      title: titleForVisualKind(supportingKind, resolvedChannelDomain),
+      body: input.narration,
+      items: input.cueItems.slice(0, 4),
+      data_ref: input.hasChart
+        ? {
+            chart_id: input.chartId,
+            dataset_id: input.datasetId,
+            time_range: input.timeRange
+          }
+        : undefined,
+      selection_reason: `support:${insertNeed}`
+    });
+  }
+
+  return {
+    visualPlan: {
+      resolver_id: "legacy_chart_backbone_v1",
+      channel_domain: resolvedChannelDomain,
+      educational_mode:
+        educationalIntent === "introduce_topic"
+          ? "generic"
+          : educationalIntent === "summarize_takeaways" || educationalIntent === "sequence_events"
+            ? "summary_explainer"
+            : "data_explainer",
+      selected_primary_kind: primaryKind,
+      selection_reason: selectionReason
+    },
+    visualObjects,
+    channelDomain: resolvedChannelDomain,
+    educationalIntent,
+    routeReason,
+    insertNeed,
+    shotGrammar
+  };
+}
+
+function actionClipForDirection(input: {
+  intent: VisualIntent;
+  shotGrammar: ShotGrammar;
+  educationalIntent: ShotEducationalIntent;
+}): string {
+  if (input.shotGrammar === "host_intro") {
+    return "greet";
+  }
+  if (input.shotGrammar === "timeline_bridge" || input.shotGrammar === "process_walkthrough") {
+    return "move";
+  }
+  if (input.shotGrammar === "checklist_recap" || input.shotGrammar === "summary_recap") {
+    return input.intent === "close" ? "conclude" : "explain";
+  }
+  if (input.educationalIntent === "compare_tradeoffs" || input.educationalIntent === "explain_structure") {
+    return "explain";
+  }
+  return actionClipFromIntent(input.intent);
+}
+
+function expressionForDirection(
+  segment: BeatSegment,
+  educationalIntent: ShotEducationalIntent,
+  routeReason: ShotRouteReason
+): string {
+  if (segment.beats.some((beat) => beat.emphasis === "high")) {
+    return "excited";
+  }
+  if (
+    educationalIntent === "compare_tradeoffs" ||
+    educationalIntent === "explain_metric" ||
+    educationalIntent === "explain_structure" ||
+    routeReason === "chart_reference"
+  ) {
+    return "focused";
+  }
+  if (educationalIntent === "walkthrough_steps" || educationalIntent === "sequence_events") {
+    return "neutral";
+  }
+  return expressionFromSegment(segment);
+}
+
+function appendTrackEntry<T extends { f: number }>(
+  entries: T[],
+  entry: T,
+  isSame: (left: T, right: T) => boolean
+) {
+  const last = entries[entries.length - 1];
+  if (!last || !isSame(last, entry)) {
+    entries.push(entry);
+  }
+}
+
+function buildActionTrack(input: {
+  duration: number;
+  intent: VisualIntent;
+  shotGrammar: ShotGrammar;
+  educationalIntent: ShotEducationalIntent;
+  insertNeed: ShotInsertNeed;
+}): Shot["character"]["tracks"]["action_track"] {
+  const { duration, intent, shotGrammar, educationalIntent, insertNeed } = input;
+  const entries: Shot["character"]["tracks"]["action_track"] = [];
+  const startClip = actionClipForDirection({
+    intent,
+    shotGrammar,
+    educationalIntent
+  });
+  appendTrackEntry(entries, { f: 0, clip: startClip, weight: 1 }, (left, right) => left.clip === right.clip);
+
+  const supportClip =
+    shotGrammar === "process_walkthrough" || shotGrammar === "timeline_bridge"
+      ? "move"
+      : shotGrammar === "summary_recap" || shotGrammar === "checklist_recap"
+        ? "conclude"
+        : shotGrammar === "comparison_explainer" || shotGrammar === "diagram_explainer" || insertNeed !== "none"
+          ? "explain"
+          : startClip;
+  if (duration >= 36) {
+    appendTrackEntry(
+      entries,
+      {
+        f: Math.floor(duration * 0.34),
+        clip: supportClip,
+        weight: supportClip === startClip ? 0.96 : 0.92
+      },
+      (left, right) => left.clip === right.clip
+    );
+  }
+
+  const closingClip =
+    shotGrammar === "host_intro"
+      ? "explain"
+      : educationalIntent === "summarize_takeaways" || insertNeed !== "none"
+        ? "conclude"
+        : supportClip;
+  if (duration >= 54) {
+    appendTrackEntry(
+      entries,
+      {
+        f: Math.floor(duration * 0.72),
+        clip: closingClip,
+        weight: closingClip === "conclude" ? 0.88 : 0.9
+      },
+      (left, right) => left.clip === right.clip
+    );
+  }
+
+  return entries;
+}
+
+function buildExpressionTrack(input: {
+  duration: number;
+  segment: BeatSegment;
+  educationalIntent: ShotEducationalIntent;
+  routeReason: ShotRouteReason;
+  shotGrammar: ShotGrammar;
+  insertNeed: ShotInsertNeed;
+}): Shot["character"]["tracks"]["expression_track"] {
+  const { duration, segment, educationalIntent, routeReason, shotGrammar, insertNeed } = input;
+  const entries: Shot["character"]["tracks"]["expression_track"] = [];
+  const startExpression = expressionForDirection(segment, educationalIntent, routeReason);
+  appendTrackEntry(
+    entries,
+    { f: 0, expression: startExpression },
+    (left, right) => left.expression === right.expression
+  );
+
+  const supportExpression =
+    routeReason === "chart_reference" ||
+    routeReason === "metric_focus" ||
+    routeReason === "comparison_language" ||
+    routeReason === "medical_diagram_language" ||
+    insertNeed !== "none"
+      ? "focused"
+      : educationalIntent === "walkthrough_steps" || educationalIntent === "sequence_events"
+        ? "neutral"
+        : startExpression;
+  if (duration >= 32) {
+    appendTrackEntry(
+      entries,
+      { f: Math.floor(duration * 0.28), expression: supportExpression },
+      (left, right) => left.expression === right.expression
+    );
+  }
+
+  const closingExpression =
+    shotGrammar === "summary_recap" || shotGrammar === "checklist_recap" || educationalIntent === "summarize_takeaways"
+      ? "neutral"
+      : startExpression === "excited" && insertNeed === "none"
+        ? "focused"
+        : supportExpression;
+  if (duration >= 52) {
+    appendTrackEntry(
+      entries,
+      { f: Math.floor(duration * 0.7), expression: closingExpression },
+      (left, right) => left.expression === right.expression
+    );
+  }
+
+  return entries;
+}
+
+function buildLookTrack(input: {
+  duration: number;
+  hasChart: boolean;
+  shotGrammar: ShotGrammar;
+  educationalIntent: ShotEducationalIntent;
+  insertNeed: ShotInsertNeed;
+}): Shot["character"]["tracks"]["look_track"] {
+  const { duration, hasChart, shotGrammar, educationalIntent, insertNeed } = input;
+  const entries: Shot["character"]["tracks"]["look_track"] = [];
+  const startTarget =
+    hasChart ? "chart" : insertNeed !== "none" || shotGrammar !== "host_intro" ? "visual" : "viewer";
+  appendTrackEntry(entries, { f: 0, target: startTarget }, (left, right) => left.target === right.target);
+
+  if (hasChart) {
+    appendTrackEntry(
+      entries,
+      { f: Math.floor(duration * 0.2), target: "chart" },
+      (left, right) => left.target === right.target
+    );
+  } else if (insertNeed !== "none" || shotGrammar !== "host_intro") {
+    appendTrackEntry(
+      entries,
+      { f: Math.floor(duration * 0.24), target: "visual" },
+      (left, right) => left.target === right.target
+    );
+  }
+
+  if (shotGrammar === "summary_recap" || shotGrammar === "checklist_recap") {
+    appendTrackEntry(
+      entries,
+      { f: Math.floor(duration * 0.56), target: "narration" },
+      (left, right) => left.target === right.target
+    );
+  } else if (educationalIntent === "compare_tradeoffs" && hasChart) {
+    appendTrackEntry(
+      entries,
+      { f: Math.floor(duration * 0.54), target: "chart" },
+      (left, right) => left.target === right.target
+    );
+  }
+
+  const closingTarget =
+    shotGrammar === "host_intro"
+      ? "viewer"
+      : educationalIntent === "summarize_takeaways"
+        ? "narration"
+        : insertNeed !== "none" || hasChart
+          ? "viewer"
+          : "visual";
+  if (duration >= 44) {
+    appendTrackEntry(
+      entries,
+      { f: Math.floor(duration * 0.82), target: closingTarget },
+      (left, right) => left.target === right.target
+    );
+  }
+
+  return entries;
+}
+
+function shouldEnablePointTrack(input: {
+  hasChart: boolean;
+  hasReference: boolean;
+  educationalIntent: ShotEducationalIntent;
+  shotGrammar: ShotGrammar;
+  insertNeed: ShotInsertNeed;
+}): boolean {
+  if (
+    input.hasChart &&
+    (input.educationalIntent === "explain_metric" ||
+      input.educationalIntent === "compare_tradeoffs" ||
+      input.hasReference)
+  ) {
+    return true;
+  }
+
+  return (
+    input.insertNeed !== "none" ||
+    input.shotGrammar === "comparison_explainer" ||
+    input.shotGrammar === "process_walkthrough" ||
+    input.shotGrammar === "timeline_bridge" ||
+    input.shotGrammar === "diagram_explainer"
+  );
+}
+
+function tuneCameraPresetForDirection(
+  preset: CameraPreset,
+  shotGrammar: ShotGrammar,
+  rng: () => number
+): CameraPreset {
+  if (shotGrammar === "comparison_explainer") {
+    return preset === "whip_pan" ? (rng() < 0.65 ? "slow_push" : "static") : preset;
+  }
+  if (shotGrammar === "process_walkthrough" || shotGrammar === "timeline_bridge") {
+    return preset === "static" ? "slow_push" : preset;
+  }
+  if (shotGrammar === "diagram_explainer" || shotGrammar === "summary_recap" || shotGrammar === "checklist_recap") {
+    return preset === "shake_emphasis" || preset === "whip_pan" ? "slow_push" : preset;
+  }
+  return preset;
 }
 
 function shotDurationFrames(
@@ -771,15 +1587,18 @@ function buildCharacterPosPath(input: {
 function buildPointTrack(input: {
   duration: number;
   intent: VisualIntent;
+  hasChart: boolean;
+  shotGrammar: ShotGrammar;
+  insertNeed: ShotInsertNeed;
   primaryTargetId: string;
   secondaryTargetId: string;
   rng: () => number;
 }): Shot["character"]["tracks"]["point_track"] {
-  const { duration, intent, primaryTargetId, secondaryTargetId, rng } = input;
+  const { duration, intent, hasChart, shotGrammar, insertNeed, primaryTargetId, secondaryTargetId, rng } = input;
 
   const baseHand: "left" | "right" = rng() < 0.18 ? "left" : "right";
 
-  if (intent === "data") {
+  if (hasChart && intent === "data") {
     return [
       {
         f: Math.floor(duration * 0.22),
@@ -799,6 +1618,36 @@ function buildPointTrack(input: {
     ];
   }
 
+  if (!hasChart) {
+    const primaryVisualTarget =
+      shotGrammar === "comparison_explainer"
+        ? "visual_compare"
+        : shotGrammar === "process_walkthrough"
+          ? "process_focus"
+          : shotGrammar === "timeline_bridge"
+            ? "timeline_focus"
+            : shotGrammar === "diagram_explainer"
+              ? "diagram_focus"
+              : insertNeed === "checklist_support"
+                ? "checklist_focus"
+                : insertNeed === "summary_support"
+                  ? "summary_focus"
+                  : "visual_focus";
+    const supportTarget = insertNeed !== "none" ? "support_insert" : primaryVisualTarget;
+    return [
+      {
+        f: Math.floor(duration * 0.3),
+        target_id: primaryVisualTarget,
+        hand: baseHand
+      },
+      {
+        f: Math.floor(duration * 0.58),
+        target_id: supportTarget,
+        hand: baseHand
+      }
+    ];
+  }
+
   return [
     {
       f: Math.floor(duration * 0.36),
@@ -811,6 +1660,13 @@ function buildPointTrack(input: {
       hand: baseHand
     }
   ];
+}
+
+function resolveCharacterPackId(channelDomain: ShotChannelDomain): string {
+  if (channelDomain === "medical") {
+    return "med-dog-minimal";
+  }
+  return "eraser-cat-minimal";
 }
 
 export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}): Shot[] {
@@ -827,6 +1683,7 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
   const merged = mergeAdjacentByIntent(beats);
   const targetShotCount = resolveTargetShotCount(beats.length, options);
   const segments = rebalanceSegments(merged, targetShotCount, beatFrames);
+  const dominantChannelDomain = inferDominantChannelDomain(beats);
 
   const shots: Shot[] = [];
   let startFrame = 0;
@@ -865,16 +1722,7 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
     const cameraAnchorY = intent === "data" ? 0.5 : 0.52;
     const cameraAnchorZoom = intent === "data" ? 1.06 : intent === "close" ? 1.08 : 1.0;
 
-    const cameraPreset = presetForIntent(intent, rng);
-    const cameraKeyframes = buildCameraKeyframes({
-      intent,
-      preset: cameraPreset,
-      duration,
-      baseX: cameraAnchorX,
-      baseY: cameraAnchorY,
-      baseZoom: cameraAnchorZoom,
-      rng
-    });
+    const baseCameraPreset = presetForIntent(intent, rng);
 
     const hasChart = hasReference || intent === "data";
     const characterLayer = chooseCharacterLayer(intent, rng);
@@ -887,17 +1735,6 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
       rng
     });
 
-    const enablePointTrack = hasChart && (intent === "data" || hasReference);
-    const pointTrack = enablePointTrack
-      ? buildPointTrack({
-          duration,
-          intent,
-          primaryTargetId,
-          secondaryTargetId,
-          rng
-        })
-      : undefined;
-
     const highlights = hasChart
       ? buildChartHighlights({
           duration,
@@ -908,9 +1745,68 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
           rng
         })
       : undefined;
+    const talkText = segment.beats
+      .map((beat) => beat.narration.trim())
+      .filter((entry) => entry.length > 0)
+      .join(" ");
+    const cueItems = uniqueStrings(segment.beats.flatMap((beat) => beat.onScreen ?? []));
+    const chartId = `chart_${String(i + 1).padStart(3, "0")}`;
+    const legacyVisualContract = buildLegacyVisualContract({
+      shotId,
+      intent,
+      hasChart,
+      chartType: hasChart ? "bar" : undefined,
+      chartId,
+      datasetId: firstRef?.datasetId ?? "dataset_main",
+      timeRange: "full",
+      cueItems,
+      title: segment.beats[0]?.onScreen?.[0],
+      narration: talkText,
+      fallbackChannelDomain: dominantChannelDomain === "generic" ? undefined : dominantChannelDomain
+    });
+    const directedCameraPreset = tuneCameraPresetForDirection(
+      baseCameraPreset,
+      legacyVisualContract.shotGrammar,
+      rng
+    );
+    const directedCameraKeyframes = buildCameraKeyframes({
+      intent,
+      preset: directedCameraPreset,
+      duration,
+      baseX: cameraAnchorX,
+      baseY: cameraAnchorY,
+      baseZoom: cameraAnchorZoom,
+      rng
+    });
+    const enablePointTrack = shouldEnablePointTrack({
+      hasChart,
+      hasReference,
+      educationalIntent: legacyVisualContract.educationalIntent,
+      shotGrammar: legacyVisualContract.shotGrammar,
+      insertNeed: legacyVisualContract.insertNeed
+    });
+    const directedPointTrack = enablePointTrack
+      ? buildPointTrack({
+          duration,
+          intent,
+          hasChart,
+          shotGrammar: legacyVisualContract.shotGrammar,
+          insertNeed: legacyVisualContract.insertNeed,
+          primaryTargetId,
+          secondaryTargetId,
+          rng
+        })
+      : undefined;
 
     const shot: Shot = {
       shot_id: shotId,
+      talk_text: talkText,
+      visual_plan: legacyVisualContract.visualPlan,
+      visual_objects: legacyVisualContract.visualObjects,
+      shot_grammar: legacyVisualContract.shotGrammar,
+      route_reason: legacyVisualContract.routeReason,
+      educational_intent: legacyVisualContract.educationalIntent,
+      insert_need: legacyVisualContract.insertNeed,
       beat_ids: segment.beats.map((beat) => beat.id),
       start_frame: startFrame,
       duration_frames: duration,
@@ -925,12 +1821,12 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
         }
       },
       camera: {
-        preset: cameraPreset,
-        keyframes: cameraKeyframes
+        preset: directedCameraPreset,
+        keyframes: directedCameraKeyframes
       },
       chart: hasChart
         ? {
-            chart_id: `chart_${String(i + 1).padStart(3, "0")}`,
+            chart_id: chartId,
             type: "bar",
             dataset_id: firstRef?.datasetId ?? "dataset_main",
             time_range: "full",
@@ -946,7 +1842,7 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
           }
         : undefined,
       character: {
-        pack_id: "eraser-cat-minimal",
+        pack_id: resolveCharacterPackId(legacyVisualContract.channelDomain),
         layer: characterLayer,
         transform: {
           x: posPath[0].x,
@@ -956,26 +1852,29 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
         },
         tracks: {
           pos_path: posPath,
-          action_track: [
-            {
-              f: 0,
-              clip: actionClipFromIntent(intent),
-              weight: 1
-            }
-          ],
-          expression_track: [
-            {
-              f: 0,
-              expression: expressionFromSegment(segment)
-            }
-          ],
-          look_track: [
-            {
-              f: 0,
-              target: enablePointTrack ? "chart" : "viewer"
-            }
-          ],
-          point_track: pointTrack
+          action_track: buildActionTrack({
+            duration,
+            intent,
+            shotGrammar: legacyVisualContract.shotGrammar,
+            educationalIntent: legacyVisualContract.educationalIntent,
+            insertNeed: legacyVisualContract.insertNeed
+          }),
+          expression_track: buildExpressionTrack({
+            duration,
+            segment,
+            educationalIntent: legacyVisualContract.educationalIntent,
+            routeReason: legacyVisualContract.routeReason,
+            shotGrammar: legacyVisualContract.shotGrammar,
+            insertNeed: legacyVisualContract.insertNeed
+          }),
+          look_track: buildLookTrack({
+            duration,
+            hasChart,
+            shotGrammar: legacyVisualContract.shotGrammar,
+            educationalIntent: legacyVisualContract.educationalIntent,
+            insertNeed: legacyVisualContract.insertNeed
+          }),
+          point_track: directedPointTrack
         }
       },
       audio:
