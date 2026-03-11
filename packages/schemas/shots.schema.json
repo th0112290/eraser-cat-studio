@@ -12,7 +12,16 @@
       "required": ["episode_id", "bible_ref"],
       "properties": {
         "episode_id": { "type": "string" },
-        "bible_ref": { "type": "string" }
+        "bible_ref": { "type": "string" },
+        "profiles": {
+          "type": "object",
+          "required": ["studio_profile_id", "channel_profile_id", "mascot_profile_id"],
+          "properties": {
+            "studio_profile_id": { "type": "string" },
+            "channel_profile_id": { "type": "string" },
+            "mascot_profile_id": { "type": "string" }
+          }
+        }
       }
     },
 
@@ -42,9 +51,719 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["shot_id", "start_frame", "duration_frames", "beat_ids", "set", "camera", "character"],
+        "required": ["shot_id", "start_frame", "duration_frames", "beat_ids", "shot_grammar", "acting", "set", "camera", "character"],
         "properties": {
           "shot_id": { "type": "string" },
+          "shot_type": {
+            "type": "string",
+            "enum": ["talk", "reaction", "broll", "transition", "fx"],
+            "default": "talk"
+          },
+          "render_mode": {
+            "type": "string",
+            "enum": ["deterministic", "generative_broll", "generative_i2v", "generative_s2v", "generative_overlay"],
+            "default": "deterministic"
+          },
+          "shot_grammar": {
+            "type": "object",
+            "required": [
+              "camera_size",
+              "camera_motion",
+              "acting_intent",
+              "emotion_curve",
+              "primary_speaking_character",
+              "required_view",
+              "educational_intent",
+              "insert_need",
+              "route_reason"
+            ],
+            "properties": {
+              "camera_size": { "type": "string", "enum": ["ecu", "cu", "mcu", "ms", "ws"] },
+              "camera_motion": { "type": "string", "enum": ["hold", "push", "pan", "tilt"] },
+              "acting_intent": { "type": "string" },
+              "emotion_curve": { "type": "string", "enum": ["flat", "rise", "fall", "accent"] },
+              "primary_speaking_character": { "type": "string" },
+              "required_view": { "type": "string", "enum": ["front", "threeQuarter", "profile"] },
+              "educational_intent": { "type": "string" },
+              "insert_need": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "chart",
+                    "board",
+                    "caption_card",
+                    "callout_card",
+                    "diagram",
+                    "icon_explainer",
+                    "caution_card"
+                  ]
+                }
+              },
+              "route_reason": { "type": "string" }
+            }
+          },
+          "acting": {
+            "type": "object",
+            "required": ["blink_cues", "gesture_cues", "look_cues", "expression_cues", "mouth_cues"],
+            "properties": {
+              "blink_cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "duration_frames", "intensity"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "duration_frames": { "type": "integer", "minimum": 1 },
+                    "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              },
+              "gesture_cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "cue", "intensity"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "cue": { "type": "string" },
+                    "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              },
+              "look_cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "target", "intensity"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "target": {
+                      "type": "string",
+                      "enum": ["viewer", "chart", "left", "right", "up", "down"]
+                    },
+                    "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              },
+              "expression_cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "expression", "intensity"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "expression": { "type": "string" },
+                    "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              },
+              "mouth_cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["f", "viseme", "intensity"],
+                  "properties": {
+                    "f": { "type": "integer", "minimum": 0 },
+                    "viseme": {
+                      "type": "string",
+                      "enum": ["mouth_closed", "mouth_open_small", "mouth_open_wide", "mouth_round_o"]
+                    },
+                    "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              }
+            }
+          },
+          "sidecar_renderer": {
+            "type": "string"
+          },
+          "sidecar_backend": {
+            "type": "string"
+          },
+          "sidecar_preset": {
+            "type": "object",
+            "required": ["controlnet_preset", "impact_preset", "qc_preset", "preset_source"],
+            "properties": {
+              "controlnet_preset": {
+                "type": "string",
+                "enum": ["pose_depth_balance_v1", "pose_canny_balance_v1", "profile_lineart_depth_v1"]
+              },
+              "impact_preset": {
+                "type": "string",
+                "enum": [
+                  "broadcast_cleanup_v1",
+                  "identity_repair_detail_v1",
+                  "soft_clarity_cleanup_v1",
+                  "soft_clarity_repair_v1"
+                ]
+              },
+              "qc_preset": {
+                "type": "string",
+                "enum": ["broadcast_balanced_v1", "broadcast_identity_strict_v1"]
+              },
+              "preset_source": {
+                "type": "string",
+                "enum": ["profile_rules_v1", "smoke_override_v1", "benchmark_rollout_v1"]
+              },
+              "policy_tags": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          },
+          "emphasis_words": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "talk_text": {
+            "type": "string"
+          },
+          "insert_asset": {
+            "type": "object",
+            "required": ["asset_id", "type", "layout", "title", "body", "accent_token"],
+            "properties": {
+              "asset_id": { "type": "string" },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "chart",
+                  "board",
+                  "caption_card",
+                  "callout_card",
+                  "diagram",
+                  "icon_explainer",
+                  "caution_card"
+                ]
+              },
+              "layout": { "type": "string", "enum": ["lower_third", "sidebar"] },
+              "title": { "type": "string" },
+              "body": { "type": "string" },
+              "accent_token": { "type": "string", "enum": ["economy", "medical", "neutral"] },
+              "items": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "selection": {
+                "type": "object",
+                "required": [
+                  "resolver_id",
+                  "selected_insert_type",
+                  "candidate_insert_types",
+                  "supporting_kind",
+                  "educational_mode",
+                  "channel_domain",
+                  "selection_reason"
+                ],
+                "properties": {
+                  "resolver_id": {
+                    "type": "string",
+                    "enum": ["visual_object_resolver_v1", "visual_object_planner_v2"]
+                  },
+                  "selected_insert_type": {
+                    "type": "string",
+                    "enum": [
+                      "chart",
+                      "board",
+                      "caption_card",
+                      "callout_card",
+                      "diagram",
+                      "icon_explainer",
+                      "caution_card"
+                    ]
+                  },
+                  "candidate_insert_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "chart",
+                        "board",
+                        "caption_card",
+                        "callout_card",
+                        "diagram",
+                        "icon_explainer",
+                        "caution_card"
+                      ]
+                    }
+                  },
+                  "supporting_kind": {
+                    "type": "string",
+                    "enum": [
+                      "bar_chart",
+                      "line_chart",
+                      "area_chart",
+                      "pie_or_donut",
+                      "heatmap",
+                      "scatter",
+                      "boxplot",
+                      "map",
+                      "table",
+                      "kpi_card",
+                      "timeline",
+                      "comparison_board",
+                      "icon_grid",
+                      "callout_card",
+                      "process_flow",
+                      "anatomy_diagram",
+                      "risk_meter",
+                      "summary_card"
+                    ]
+                  },
+                  "educational_mode": { "type": "string" },
+                  "channel_domain": { "type": "string", "enum": ["economy", "medical"] },
+                  "selection_reason": { "type": "string" }
+                }
+              }
+            }
+          },
+          "visual_objects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "object_id",
+                "kind",
+                "source",
+                "semantic_role",
+                "preferred_region",
+                "safe_zone_tags",
+                "animation_policy",
+                "fallback_policy"
+              ],
+              "properties": {
+                "object_id": { "type": "string" },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "bar_chart",
+                    "line_chart",
+                    "area_chart",
+                    "pie_or_donut",
+                    "heatmap",
+                    "scatter",
+                    "boxplot",
+                    "map",
+                    "table",
+                    "kpi_card",
+                    "timeline",
+                    "comparison_board",
+                    "icon_grid",
+                    "callout_card",
+                    "process_flow",
+                    "anatomy_diagram",
+                    "risk_meter",
+                    "summary_card"
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["legacy_chart_v1", "legacy_insert_v1", "planner_v2"]
+                },
+                "semantic_role": {
+                  "type": "string",
+                  "enum": ["primary_explainer", "supporting_explainer", "accent"]
+                },
+                "preferred_region": {
+                  "type": "string",
+                  "enum": ["main_left", "main_right", "center_stage", "sidebar", "lower_third"]
+                },
+                "safe_zone_tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "subtitle_safe",
+                      "chart_safe",
+                      "mascot_blocking",
+                      "pointer_reachable",
+                      "negative_space_preserve"
+                    ]
+                  }
+                },
+                "animation_policy": {
+                  "type": "string",
+                  "enum": ["hold", "emphasis_pulse", "presenter_guided"]
+                },
+                "motion_preset": {
+                  "type": "string",
+                  "enum": [
+                    "panel_hold",
+                    "data_sweep",
+                    "trace_reveal",
+                    "radial_reveal",
+                    "metric_pop",
+                    "step_stagger",
+                    "comparison_split",
+                    "grid_stagger",
+                    "diagram_callout",
+                    "risk_sweep"
+                  ]
+                },
+                "motion_profile_id": {
+                  "type": "string",
+                  "enum": ["studio_balanced_v1", "economy_analytic_v1", "medical_guided_v1"]
+                },
+                "fallback_policy": {
+                  "type": "string",
+                  "enum": ["fallback_to_table", "fallback_to_summary_card", "hide_optional"]
+                },
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "accent_token": { "type": "string", "enum": ["economy", "medical", "neutral"] },
+                "items": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "pointer_target_ids": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "anchors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["anchor_id", "type", "x", "y"],
+                    "properties": {
+                      "anchor_id": { "type": "string" },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "pointer_anchor",
+                          "look_target",
+                          "camera_cutaway_target",
+                          "callout_anchor",
+                          "safe_area_box"
+                        ]
+                      },
+                      "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                      "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                      "width": { "type": "number", "minimum": 0, "maximum": 1 },
+                      "height": { "type": "number", "minimum": 0, "maximum": 1 },
+                      "target_id": { "type": "string" },
+                      "weight": { "type": "number", "minimum": 0 }
+                    }
+                  }
+                },
+                "safe_area": {
+                  "type": "object",
+                  "required": ["x", "y", "width", "height", "subtitle_avoid", "mascot_avoid", "pointer_reachable"],
+                  "properties": {
+                    "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "width": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "height": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "subtitle_avoid": { "type": "boolean" },
+                    "mascot_avoid": { "type": "boolean" },
+                    "pointer_reachable": { "type": "boolean" }
+                  }
+                },
+                "selection": {
+                  "type": "object",
+                  "required": [
+                    "resolver_id",
+                    "data_shape",
+                    "educational_mode",
+                    "channel_domain",
+                    "selected_kind",
+                    "candidate_kinds",
+                    "selection_reason"
+                  ],
+                  "properties": {
+                    "resolver_id": {
+                      "type": "string",
+                      "enum": ["visual_object_resolver_v1", "visual_object_planner_v2"]
+                    },
+                    "data_shape": {
+                      "type": "string",
+                      "enum": [
+                        "categorical_comparison",
+                        "time_series",
+                        "proportion",
+                        "correlation",
+                        "distribution",
+                        "geo",
+                        "matrix",
+                        "tabular",
+                        "process_steps",
+                        "structure",
+                        "risk_signal",
+                        "metric_snapshot",
+                        "summary",
+                        "generic"
+                      ]
+                    },
+                    "educational_mode": { "type": "string" },
+                    "channel_domain": { "type": "string", "enum": ["economy", "medical"] },
+                    "selected_kind": {
+                      "type": "string",
+                      "enum": [
+                        "bar_chart",
+                        "line_chart",
+                        "area_chart",
+                        "pie_or_donut",
+                        "heatmap",
+                        "scatter",
+                        "boxplot",
+                        "map",
+                        "table",
+                        "kpi_card",
+                        "timeline",
+                        "comparison_board",
+                        "icon_grid",
+                        "callout_card",
+                        "process_flow",
+                        "anatomy_diagram",
+                        "risk_meter",
+                        "summary_card"
+                      ]
+                    },
+                    "candidate_kinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "bar_chart",
+                          "line_chart",
+                          "area_chart",
+                          "pie_or_donut",
+                          "heatmap",
+                          "scatter",
+                          "boxplot",
+                          "map",
+                          "table",
+                          "kpi_card",
+                          "timeline",
+                          "comparison_board",
+                          "icon_grid",
+                          "callout_card",
+                          "process_flow",
+                          "anatomy_diagram",
+                          "risk_meter",
+                          "summary_card"
+                        ]
+                      }
+                    },
+                    "selection_reason": { "type": "string" }
+                  }
+                },
+                "data_ref": {
+                  "type": "object",
+                  "properties": {
+                    "chart_id": { "type": "string" },
+                    "dataset_id": { "type": "string" },
+                    "time_range": { "type": "string" },
+                    "layout_hint": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "visual_plan": {
+            "type": "object",
+            "required": [
+              "resolver_id",
+              "educational_mode",
+              "channel_domain",
+              "insert_need_candidates",
+              "candidate_intents",
+              "selected_intent_id",
+              "selected_intent_family",
+              "selection_reason"
+            ],
+            "properties": {
+              "resolver_id": {
+                "type": "string",
+                "enum": ["visual_pair_planner_v1"]
+              },
+              "educational_mode": { "type": "string" },
+              "channel_domain": { "type": "string", "enum": ["economy", "medical"] },
+              "insert_need_candidates": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "chart",
+                    "board",
+                    "caption_card",
+                    "callout_card",
+                    "diagram",
+                    "icon_explainer",
+                    "caution_card"
+                  ]
+                }
+              },
+              "candidate_intents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "intent_id",
+                    "intent_family",
+                    "score",
+                    "candidate_insert_types",
+                    "candidate_primary_kinds",
+                    "candidate_supporting_kinds",
+                    "selection_reason"
+                  ],
+                  "properties": {
+                    "intent_id": { "type": "string" },
+                    "intent_family": {
+                      "type": "string",
+                      "enum": [
+                        "chart_primary",
+                        "timeline_metric",
+                        "comparison_focus",
+                        "diagram_primary",
+                        "risk_focus",
+                        "summary_focus"
+                      ]
+                    },
+                    "score": { "type": "number" },
+                    "candidate_insert_types": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "chart",
+                          "board",
+                          "caption_card",
+                          "callout_card",
+                          "diagram",
+                          "icon_explainer",
+                          "caution_card"
+                        ]
+                      }
+                    },
+                    "candidate_primary_kinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "bar_chart",
+                          "line_chart",
+                          "area_chart",
+                          "pie_or_donut",
+                          "heatmap",
+                          "scatter",
+                          "boxplot",
+                          "map",
+                          "table",
+                          "kpi_card",
+                          "timeline",
+                          "comparison_board",
+                          "icon_grid",
+                          "callout_card",
+                          "process_flow",
+                          "anatomy_diagram",
+                          "risk_meter",
+                          "summary_card"
+                        ]
+                      }
+                    },
+                    "candidate_supporting_kinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "bar_chart",
+                          "line_chart",
+                          "area_chart",
+                          "pie_or_donut",
+                          "heatmap",
+                          "scatter",
+                          "boxplot",
+                          "map",
+                          "table",
+                          "kpi_card",
+                          "timeline",
+                          "comparison_board",
+                          "icon_grid",
+                          "callout_card",
+                          "process_flow",
+                          "anatomy_diagram",
+                          "risk_meter",
+                          "summary_card"
+                        ]
+                      }
+                    },
+                    "selection_reason": { "type": "string" }
+                  }
+                }
+              },
+              "selected_intent_id": { "type": "string" },
+              "selected_intent_family": {
+                "type": "string",
+                "enum": [
+                  "chart_primary",
+                  "timeline_metric",
+                  "comparison_focus",
+                  "diagram_primary",
+                  "risk_focus",
+                  "summary_focus"
+                ]
+              },
+              "selected_primary_kind": {
+                "type": "string",
+                "enum": [
+                  "bar_chart",
+                  "line_chart",
+                  "area_chart",
+                  "pie_or_donut",
+                  "heatmap",
+                  "scatter",
+                  "boxplot",
+                  "map",
+                  "table",
+                  "kpi_card",
+                  "timeline",
+                  "comparison_board",
+                  "icon_grid",
+                  "callout_card",
+                  "process_flow",
+                  "anatomy_diagram",
+                  "risk_meter",
+                  "summary_card"
+                ]
+              },
+              "selected_supporting_kind": {
+                "type": "string",
+                "enum": [
+                  "bar_chart",
+                  "line_chart",
+                  "area_chart",
+                  "pie_or_donut",
+                  "heatmap",
+                  "scatter",
+                  "boxplot",
+                  "map",
+                  "table",
+                  "kpi_card",
+                  "timeline",
+                  "comparison_board",
+                  "icon_grid",
+                  "callout_card",
+                  "process_flow",
+                  "anatomy_diagram",
+                  "risk_meter",
+                  "summary_card"
+                ]
+              },
+              "selected_insert_type": {
+                "type": "string",
+                "enum": [
+                  "chart",
+                  "board",
+                  "caption_card",
+                  "callout_card",
+                  "diagram",
+                  "icon_explainer",
+                  "caution_card"
+                ]
+              },
+              "selection_reason": { "type": "string" }
+            }
+          },
           "beat_ids": { "type": "array", "items": { "type": "string" } },
           "start_frame": { "type": "integer", "minimum": 0 },
           "duration_frames": { "type": "integer", "minimum": 1 },
@@ -93,7 +812,10 @@
             "type": "object",
             "properties": {
               "chart_id": { "type": "string" },
-              "type": { "type": "string" },
+              "type": {
+                "type": "string",
+                "enum": ["bar", "line", "area", "pie", "heatmap", "scatter", "boxplot", "map", "table"]
+              },
               "dataset_id": { "type": "string" },
               "time_range": { "type": "string" },
               "layout_preset": { "type": "string", "default": "main_left" },
@@ -190,6 +912,35 @@
                       "properties": {
                         "f": { "type": "integer", "minimum": 0 },
                         "target": { "type": "string" }
+                      }
+                    }
+                  },
+                  "view_track": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["f", "view"],
+                      "properties": {
+                        "f": { "type": "integer", "minimum": 0 },
+                        "view": {
+                          "type": "string",
+                          "enum": ["front", "threeQuarter", "profile"]
+                        }
+                      }
+                    }
+                  },
+                  "viseme_track": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["f", "viseme", "intensity"],
+                      "properties": {
+                        "f": { "type": "integer", "minimum": 0 },
+                        "viseme": {
+                          "type": "string",
+                          "enum": ["mouth_closed", "mouth_open_small", "mouth_open_wide", "mouth_round_o"]
+                        },
+                        "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
                       }
                     }
                   },

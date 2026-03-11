@@ -15,6 +15,15 @@
         "bible_ref": { "type": "string" },
         "topic": { "type": "string" },
         "target_duration_sec": { "type": "integer", "default": 600 },
+        "profiles": {
+          "type": "object",
+          "required": ["studio_profile_id", "channel_profile_id", "mascot_profile_id"],
+          "properties": {
+            "studio_profile_id": { "type": "string" },
+            "channel_profile_id": { "type": "string" },
+            "mascot_profile_id": { "type": "string" }
+          }
+        },
         "data_inputs": {
           "type": "array",
           "items": {

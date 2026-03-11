@@ -38,6 +38,9 @@ export type PipelineStoryOptions = {
   outline?: string[];
   paragraphs?: string[];
   targetBeatCount?: number;
+  studioProfileId?: string;
+  channelProfileId?: string;
+  mascotProfileId?: string;
   stylePresetId?: string;
   styleSeed?: string;
   hookBoost?: number;
@@ -68,6 +71,7 @@ export type CharacterAssetSelection = {
 export type CharacterGenerationMode = "reference" | "new";
 export type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi";
 export type CharacterGenerationView = "front" | "threeQuarter" | "profile";
+export type CharacterGenerationSpecies = "cat" | "dog" | "wolf";
 export type CharacterGenerationSelection = {
   front: string;
   threeQuarter: string;
@@ -86,6 +90,7 @@ export type CharacterGenerationPayload = {
   mode: CharacterGenerationMode;
   provider?: CharacterGenerationProvider;
   promptPreset?: string;
+  species?: CharacterGenerationSpecies;
   positivePrompt?: string;
   negativePrompt?: string;
   boostNegativePrompt?: boolean;

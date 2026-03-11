@@ -21,7 +21,13 @@ function toStableJsonValue(value: unknown, seen: WeakSet<object>): JsonValue {
   }
 
   if (Array.isArray(value)) {
-    return value.map((entry) => (entry === undefined ? null : toStableJsonValue(entry, seen)));
+    if (seen.has(value)) {
+      throw new Error("stableStringify: circular structure");
+    }
+    seen.add(value);
+    const out = value.map((entry) => (entry === undefined ? null : toStableJsonValue(entry, seen)));
+    seen.delete(value);
+    return out;
   }
 
   if (typeof value === "object") {
@@ -41,6 +47,7 @@ function toStableJsonValue(value: unknown, seen: WeakSet<object>): JsonValue {
       }
       out[key] = toStableJsonValue(entry, seen);
     }
+    seen.delete(value);
     return out;
   }
 
