@@ -11,6 +11,9 @@ const pages = [
   "/ui/hitl",
   "/ui/publish",
   "/ui/health",
+  "/ui/rollouts",
+  "/ui/benchmarks",
+  "/ui/profiles",
   "/ui/artifacts"
 ];
 
@@ -25,6 +28,9 @@ const requiredPageHeadings = new Map([
   ["/ui/hitl", ["HITL"]],
   ["/ui/publish", ["Publish"]],
   ["/ui/health", ["Health", "Health Report"]],
+  ["/ui/rollouts", ["Rollouts"]],
+  ["/ui/benchmarks", ["Benchmarks"]],
+  ["/ui/profiles", ["Profile Browser"]],
   ["/ui/artifacts", ["Artifacts"]]
 ]);
 
@@ -38,6 +44,9 @@ const requiredPageKeywords = new Map([
   ["/ui/hitl", ["HITL Rerender", "Failed Jobs"]],
   ["/ui/publish", ["episodeId", "Run publish"]],
   ["/ui/health", ["Service Status"]],
+  ["/ui/rollouts", ["Rollout Signals", "Artifact Sources", "Detail"]],
+  ["/ui/benchmarks", ["Backend Benchmark Matrix", "Episode Regression Reports", "Render Modes"]],
+  ["/ui/profiles", ["Active Channel Bibles", "Runtime Profile Bundles", "Profile Runtime Evidence"]],
   ["/ui/artifacts", ["out/ index"]]
 ]);
 
@@ -52,6 +61,9 @@ const requiredNavLabelCandidates = [
   ["Episodes", "에피소드"],
   ["Publish", "발행", "퍼블리시"],
   ["Health", "상태", "헬스", "헬스 리포트"],
+  ["Rollouts", "롤아웃"],
+  ["Benchmarks", "벤치마크"],
+  ["Profiles", "프로필"],
   ["Artifacts", "산출물", "아티팩트"]
 ];
 
@@ -66,6 +78,9 @@ const requiredNavHrefList = [
   "/ui/episodes",
   "/ui/publish",
   "/ui/health",
+  "/ui/rollouts",
+  "/ui/benchmarks",
+  "/ui/profiles",
   "/ui/artifacts"
 ];
 
@@ -74,6 +89,9 @@ const requiredTableFilterByPage = new Map([
   ["/ui/episodes", ['data-table-filter="episodes-table"']],
   ["/ui/jobs", ['data-table-filter="jobs-table"']],
   ["/ui/hitl", ['data-table-filter="hitl-failed-table"']],
+  ["/ui/rollouts", ['data-table-filter="rollouts-table"']],
+  ["/ui/benchmarks", ['data-table-filter="benchmark-backend-table"', 'data-table-filter="benchmark-regression-table"']],
+  ["/ui/profiles", ['data-table-filter="profiles-evidence-table"', 'data-table-filter="profiles-bible-table"']],
   ["/ui/artifacts", ['data-table-filter="artifact-index-table"']]
 ]);
 
@@ -163,6 +181,11 @@ async function checkPage(path) {
     if (!matched) {
       throw new Error(`${path} missing expected keyword: ${dynamicKeywords.join(" | ")}`);
     }
+    const opsKeywords = ["Profile & Route Inspector", "Acceptance / QC Reasons", "Per-shot Ops Signals"];
+    const opsMatched = opsKeywords.some((keyword) => html.includes(keyword));
+    if (!opsMatched) {
+      throw new Error(`${path} missing ops keyword: ${opsKeywords.join(" | ")}`);
+    }
   }
   if (path.startsWith("/ui/jobs/") && !requiredPageKeywords.has(path)) {
     const dynamicKeywords = ["Job Detail", "Job Logs", "Retry"];
@@ -195,6 +218,22 @@ function findFirstMatch(html, regex) {
 }
 
 async function checkDetailPages() {
+  const charactersRes = await fetch(`${baseUrl}/ui/characters`, {
+    headers: {
+      "x-request-id": "smoke-ui-visual"
+    }
+  });
+  if (charactersRes.ok) {
+    const html = await charactersRes.text();
+    if (html.includes("Selected Pack")) {
+      const required = ["Generated Pack Lineage", "View Lineage", "Repair Tasks"];
+      const matched = required.some((keyword) => html.includes(keyword));
+      if (!matched) {
+        throw new Error(`/ui/characters missing expected lineage keyword: ${required.join(" | ")}`);
+      }
+    }
+  }
+
   const episodesRes = await fetch(`${baseUrl}/ui/episodes`, {
     headers: {
       "x-request-id": "smoke-ui-visual"
@@ -218,6 +257,36 @@ async function checkDetailPages() {
     const jobId = findFirstMatch(html, /href="\/ui\/jobs\/([^"]+)"/);
     if (jobId) {
       await checkPage(`/ui/jobs/${jobId}`);
+    }
+  }
+
+  const benchmarksRes = await fetch(`${baseUrl}/ui/benchmarks`, {
+    headers: {
+      "x-request-id": "smoke-ui-visual"
+    }
+  });
+  if (benchmarksRes.ok) {
+    const html = await benchmarksRes.text();
+    const match = html.match(/href="(\/ui\/benchmarks\/candidates\?path=[^"]+)"/);
+    if (match?.[1]) {
+      const candidatePath = match[1]
+        .replaceAll("&amp;", "&")
+        .replaceAll("&#39;", "'")
+        .replaceAll("&quot;", "\"");
+      const res = await fetch(`${baseUrl}${candidatePath}`, {
+        headers: {
+          "x-request-id": "smoke-ui-visual"
+        }
+      });
+      if (!res.ok) {
+        throw new Error(`/ui/benchmarks candidate compare expected 200 but got ${res.status}`);
+      }
+      const candidateHtml = await res.text();
+      const required = ["Sidecar Candidate Compare", "Candidate Score Matrix", "Request Context"];
+      const matched = required.some((keyword) => candidateHtml.includes(keyword));
+      if (!matched) {
+        throw new Error(`/ui/benchmarks candidate compare missing expected keyword: ${required.join(" | ")}`);
+      }
     }
   }
 }
