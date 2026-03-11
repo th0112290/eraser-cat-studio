@@ -109,11 +109,11 @@ const DEFAULT_VIEW_MODIFIERS: Record<CharacterView, string> = {
 
 const MASCOT_VIEW_MODIFIERS: Record<CharacterView, string> = {
   front:
-    "front view, symmetric face, compact oversized mascot head, tiny body, minimal mascot expression, preserve species-specific ear shape and muzzle length, full body visible, generous empty margin around head and paws, no crop-tight framing, no extra props",
+    "front view, symmetric face, compact oversized mascot head, tiny body, minimal mascot expression, preserve species-specific ear shape and muzzle length, full body visible, both short arms and both paws visible and attached, generous empty margin around head and paws, no crop-tight framing, no extra props",
   threeQuarter:
-    "strict three-quarter view around 35 to 45 degrees, head and torso clearly turned, both eyes visible but far-side features smaller, far ear slightly occluded, asymmetric cheek read, preserve compact mascot head silhouette, tiny body, same family proportions, no near-front cheat, no near-profile collapse, no duplicate face parts, no human facial structure, no straight-on symmetry",
+    "strict three-quarter view around 35 to 45 degrees, head and torso clearly turned, both eyes visible but far-side features smaller, far ear slightly occluded, near cheek and near muzzle plane dominant, far paw smaller but still readable, preserve compact mascot head silhouette, tiny body, same family proportions, clear torso yaw, no near-front cheat, no near-profile collapse, no duplicate face parts, no human facial structure, no straight-on symmetry",
   profile:
-    "strict true side profile, 90-degree rotation, one eye only, far eye hidden, only one cheek plane visible, nose and mouth placed on the outer contour, far ear mostly hidden, compact mascot head silhouette, tiny body, minimal mouth, preserve species-specific muzzle length, no realistic jawline, no realistic snout, no straight-on symmetry"
+    "strict true side profile, 90-degree rotation, one eye only, far eye hidden, only one cheek plane visible, nose and mouth placed on the outer contour, far ear mostly hidden, one near paw readable with no detached far-limb fragments, compact mascot head silhouette, tiny body, minimal mouth, preserve species-specific muzzle length, no realistic jawline, no realistic snout, no straight-on symmetry"
 };
 
 const DEFAULT_PRESET_ID = "compact-mascot-production";
@@ -323,6 +323,7 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
         "clean sticker silhouette",
         "flat black line-art on light plain background",
         "clear empty margin around the character",
+        "all limbs attached, no missing arms, no missing paws",
         ...keepTraitTokens.slice(4)
       ].join(", ")
     : [

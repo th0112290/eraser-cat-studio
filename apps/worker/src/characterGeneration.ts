@@ -13624,7 +13624,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 role: "front_master",
                 view: "front",
                 weight: resolveAdaptiveReferenceWeight({
-                  stage: autoRerouteDecision.strategy === "full_pack_rebuild" ? "angles" : "view_only",
+                  stage: "angles",
                   role: "front_master",
                   targetView: view,
                   hasStarter: Boolean(starterReference)
@@ -13640,7 +13640,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 role: "subject",
                 view: "front",
                 weight: resolveAdaptiveReferenceWeight({
-                  stage: autoRerouteDecision.strategy === "full_pack_rebuild" ? "angles" : "view_only",
+                  stage: "angles",
                   role: "subject",
                   targetView: view,
                   hasStarter: Boolean(starterReference)
@@ -13657,7 +13657,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 role: "view_starter",
                 view,
                 weight: resolveAdaptiveReferenceWeight({
-                  stage: autoRerouteDecision.strategy === "full_pack_rebuild" ? "angles" : "view_only",
+                  stage: "angles",
                   role: "view_starter",
                   targetView: view,
                   hasStarter: true
@@ -13670,13 +13670,13 @@ export async function handleGenerateCharacterAssetsJob(input: {
           bank.push(
             ...buildMascotFamilyReferenceEntries({
               speciesId: promptBundle.speciesId,
-              stage: autoRerouteDecision.strategy === "full_pack_rebuild" ? "angles" : "view_only",
+              stage: "angles",
               targetView: view,
               familyReferencesByView: mascotFamilyReferencesByView,
               hasStarter: Boolean(starterReference),
               preferMultiReference: promptBundle.selectionHints.preferMultiReference,
               heroModeEnabled: shouldEnableMascotHeroMode({
-                stage: autoRerouteDecision.strategy === "full_pack_rebuild" ? "angles" : "view_only",
+                stage: "angles",
                 heroMode: promptBundle.heroMode,
                 frontAnchorScore: autoRerouteFrontBaseline?.score
               })
@@ -13688,12 +13688,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
         }
         await runViewGeneration({
           views: autoRerouteSideViews,
-          stage: autoRerouteDecision.strategy === "full_pack_rebuild" ? "angles" : "view_only",
+          stage: "angles",
           origin: "auto_reroute",
-          passLabel:
-            autoRerouteDecision.strategy === "full_pack_rebuild"
-              ? "angles.auto_reroute"
-              : "view_only.auto_reroute",
+          passLabel: "angles.auto_reroute",
           reasonCodes: autoRerouteDecision.triggers,
           triggerViews: autoRerouteDecision.targetViews,
           referenceInput: autoRerouteSideReference,
@@ -13728,10 +13725,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           bestByView: autoRerouteBestAfterBase,
           frontReferenceInput: autoRerouteSideReference,
           origin: "auto_reroute",
-          passLabel:
-            autoRerouteDecision.strategy === "full_pack_rebuild"
-              ? "angles.refine_auto_reroute"
-              : "view_only.refine_auto_reroute",
+          passLabel: "angles.refine_auto_reroute",
           reasonCodes: [...autoRerouteDecision.triggers, "side_view_refine"],
           triggerViews: autoRerouteSideViews,
           seedOffset: autoRerouteDecision.seedOffset + 7000,
@@ -13744,10 +13738,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           bestByView: autoRerouteBestAfterRefine,
           frontReferenceInput: autoRerouteSideReference,
           origin: "auto_reroute",
-          passLabel:
-            autoRerouteDecision.strategy === "full_pack_rebuild"
-              ? "angles.identity_lock_auto_reroute"
-              : "view_only.identity_lock_auto_reroute",
+          passLabel: "angles.identity_lock_auto_reroute",
           reasonCodes: [...autoRerouteDecision.triggers, "identity_lock_refine"],
           triggerViews: autoRerouteSideViews,
           seedOffset: autoRerouteDecision.seedOffset + 8200,
@@ -13773,10 +13764,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
             selectedByView: autoRerouteAcceptanceGate.selectedByView,
             gateDecisionsByView: autoRerouteAcceptanceGate.gateDecisionsByView,
             origin: "auto_reroute",
-            passLabel:
-              autoRerouteDecision.strategy === "full_pack_rebuild"
-                ? "angles.acceptance_gate_auto_reroute"
-                : "view_only.acceptance_gate_auto_reroute",
+            passLabel: "angles.acceptance_gate_auto_reroute",
             reasonCodes: [...autoRerouteDecision.triggers, "side_view_acceptance_gate"],
             triggerViews: autoRerouteSideViews,
             seedOffset: autoRerouteDecision.seedOffset + 8600
@@ -13821,10 +13809,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         selectedByView: autoRerouteRepairCandidateByView,
         repairTriageByView: autoRerouteRepairTriage.repairTriageByView,
         origin: "auto_reroute",
-        passLabel:
-          autoRerouteDecision.strategy === "full_pack_rebuild"
-            ? "angles.repair_triage_auto_reroute"
-            : "view_only.repair_triage_auto_reroute",
+        passLabel: "angles.repair_triage_auto_reroute",
         reasonCodes: [...autoRerouteDecision.triggers, "repair_triage_gate"],
         triggerViews: autoRerouteDecision.targetViews,
         seedOffset: autoRerouteDecision.seedOffset + 8800
