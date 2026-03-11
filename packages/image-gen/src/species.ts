@@ -197,32 +197,52 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "soft rounded dog ears",
       "short rounded puppy muzzle",
       "tiny button nose",
-      "friendly domestic dog silhouette"
+      "friendly domestic dog silhouette",
+      "stubby front arms with mitten paws"
     ],
-    negativeTokens: ["cat whiskers", "sharp wolf snout", "tall wolf ears", "flat cat face with no muzzle"],
+    negativeTokens: [
+      "cat whiskers",
+      "sharp wolf snout",
+      "tall wolf ears",
+      "flat cat face with no muzzle",
+      "fox face",
+      "missing arm",
+      "detached limb"
+    ],
     identityTokens: ["soft dog ears", "short puppy muzzle", "tiny button nose"],
     anchorTokens: ["same dog ear placement", "same puppy muzzle width", "same button nose position"],
     guardrails: [
       "do not drift back to a cat whisker-face",
       "do not lengthen the muzzle into wolf territory",
-      "keep the dog muzzle rounded and short"
+      "keep the dog muzzle rounded and short",
+      "keep both front arms and both paws readable when the pose shows them"
     ],
     viewHints: {
       front:
-        "front view should read as dog first while staying in the same mascot family, with rounded or floppy ears, a short rounded muzzle, and a tiny button nose",
+        "front view should read as dog first while staying in the same mascot family, with rounded or floppy ears, a short rounded muzzle, a tiny button nose, and both short arms visible with attached paws",
       threeQuarter:
-        "three-quarter dog should preserve the same compact head and body while showing a soft rounded puppy muzzle and softer ears",
+        "three-quarter dog should preserve the same compact head and body while clearly turning about 35 to 45 degrees, showing a soft rounded puppy muzzle, softer ears, a larger near cheek, and a smaller but still present far paw",
       profile:
-        "profile dog should show a short rounded muzzle and one soft ear, domestic and cute, not cat-flat and not wolf-sharp"
+        "profile dog should show a short rounded muzzle and one soft ear, domestic and cute, not cat-flat and not wolf-sharp, with one readable near paw and no detached far-limb fragments"
     },
     keepTraits: [
       "compact dog head",
       "soft dog ears",
       "short rounded puppy muzzle",
       "tiny button nose",
-      "tiny body and short limbs"
+      "tiny body and short limbs",
+      "stubby front arms"
     ],
-    rejectTraits: ["cat whiskers", "sharp wolf snout", "tall wolf ears", "human fingers", "multiple characters"],
+    rejectTraits: [
+      "cat whiskers",
+      "sharp wolf snout",
+      "tall wolf ears",
+      "fox face",
+      "human fingers",
+      "missing arm",
+      "detached limb",
+      "multiple characters"
+    ],
     animationQc: {
       minExpressionFaceVariation: 0.009,
       minVisemeFaceVariation: 0.008,
@@ -238,8 +258,8 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
         profile: 0.16
       },
       minGeometryCueByView: {
-        threeQuarter: 0.38,
-        profile: 0.32
+        threeQuarter: 0.4,
+        profile: 0.34
       },
       minFrontSymmetryScore: 0.5,
       maxHeadRatioSpread: 0.16,
@@ -254,32 +274,52 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "compact wolf head silhouette",
       "taller sharp upright ears",
       "short angular wedge muzzle",
-      "alert cute wolf silhouette"
+      "alert cute wolf silhouette",
+      "broad wolf cheek ruff"
     ],
-    negativeTokens: ["floppy dog ears", "round puppy muzzle", "cat whiskers", "cat-flat no-muzzle face"],
-    identityTokens: ["tall wolf ears", "short angular wedge muzzle", "alert wolf silhouette"],
+    negativeTokens: [
+      "floppy dog ears",
+      "round puppy muzzle",
+      "cat whiskers",
+      "cat-flat no-muzzle face",
+      "fox face",
+      "fox muzzle",
+      "fox ears"
+    ],
+    identityTokens: ["tall wolf ears", "short angular wedge muzzle", "alert wolf silhouette", "broad wolf cheek ruff"],
     anchorTokens: ["same wolf ear angle", "same wedge muzzle width", "same wolf face direction"],
     guardrails: [
       "keep the muzzle only slightly longer, not realistic",
       "do not round the wolf into a puppy face",
-      "do not add cat whisker-face cues"
+      "do not add cat whisker-face cues",
+      "do not turn the wolf into a fox with a narrow sly face"
     ],
     viewHints: {
       front:
-        "front view should read as wolf first in the same mascot family, with taller upright ears and a short angular muzzle that stays cute and simplified",
+        "front view should read as wolf first in the same mascot family, with taller upright ears, a short angular muzzle that stays cute and simplified, a broader wolf head than a fox, and no puppy softness",
       threeQuarter:
-        "three-quarter wolf should keep the same compact body and head while showing a slightly longer wedge muzzle and alert ears",
+        "three-quarter wolf should keep the same compact body and head while clearly turning about 35 to 45 degrees, showing a slightly longer wedge muzzle, alert ears, a larger near eye than far eye, and a broad wolf head that does not read as fox-like",
       profile:
-        "profile wolf should have a short angular wedge muzzle, one tall ear, a simple eye, and the same small-body mascot proportions"
+        "profile wolf should have a short angular wedge muzzle, one tall ear, a simple eye, and the same small-body mascot proportions, with a broader wolf contour and not a slim fox profile"
     },
     keepTraits: [
       "compact wolf head",
       "tall upright ears",
       "short angular wedge muzzle",
       "alert silhouette",
-      "tiny body and short limbs"
+      "tiny body and short limbs",
+      "broad wolf cheek ruff"
     ],
-    rejectTraits: ["floppy dog ears", "round puppy muzzle", "cat whiskers", "human fingers", "multiple characters"],
+    rejectTraits: [
+      "floppy dog ears",
+      "round puppy muzzle",
+      "cat whiskers",
+      "fox face",
+      "fox muzzle",
+      "fox ears",
+      "human fingers",
+      "multiple characters"
+    ],
     animationQc: {
       minExpressionFaceVariation: 0.0095,
       minVisemeFaceVariation: 0.0085,
@@ -293,12 +333,12 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       frontMasterMinSpeciesScore: 0.22,
       frontMasterMinHeadSquarenessScore: 0.22,
       minConsistencyByView: {
-        threeQuarter: 0.46,
+        threeQuarter: 0.48,
         profile: 0.38
       },
       minGeometryCueByView: {
-        threeQuarter: 0.37,
-        profile: 0.31
+        threeQuarter: 0.4,
+        profile: 0.33
       },
       minFrontSymmetryScore: 0.48,
       maxSpeciesSpread: 0.2,
