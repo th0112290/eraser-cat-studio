@@ -4,6 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  resolveSidecarBackendCapability,
+  resolveSidecarBackendSmokeTimeoutMs
+} from "./generatedSidecar";
+import {
   SIDECAR_CONTROLNET_PRESET_MANIFEST,
   SIDECAR_IMPACT_PRESET_MANIFEST,
   SIDECAR_PRESET_MANIFEST_VERSION,
@@ -234,6 +238,10 @@ function resolveScenarioTimeoutMs(): number | null {
     return null;
   }
   return parsed;
+}
+
+function resolveDefaultSmokeTimeoutMs(renderer: string): number {
+  return resolveSidecarBackendSmokeTimeoutMs(resolveSidecarBackendCapability(renderer), process.env);
 }
 
 function resolveScenarioTimeoutGraceMs(scenarioTimeoutMs: number | null): number {
@@ -730,7 +738,9 @@ async function main() {
   const generatedAt = new Date().toISOString();
   const runId = `sidecar_preset_matrix:${Date.now()}`;
   const scenarioTimeoutMs = resolveScenarioTimeoutMs();
-  const smokeTimeoutMs = scenarioTimeoutMs ? scenarioTimeoutMs + resolveScenarioTimeoutGraceMs(scenarioTimeoutMs) : null;
+  const smokeTimeoutMs = scenarioTimeoutMs
+    ? scenarioTimeoutMs + resolveScenarioTimeoutGraceMs(scenarioTimeoutMs)
+    : resolveDefaultSmokeTimeoutMs(renderer);
   const pnpmExecutable = resolvePnpmExecutable();
   const rawResults: PresetBenchmarkRawResult[] = [];
 
@@ -768,7 +778,7 @@ async function main() {
           SMOKE_CONTROLNET_PRESET: scenario.controlnetPreset,
           SMOKE_IMPACT_PRESET: scenario.impactPreset,
           SMOKE_QC_PRESET: scenario.qcPreset,
-          ...(smokeTimeoutMs ? { SMOKE_VIDEO_BROLL_TIMEOUT_MS: String(smokeTimeoutMs) } : {}),
+          SMOKE_VIDEO_BROLL_TIMEOUT_MS: String(smokeTimeoutMs),
           ...(fastMode
             ? {
                 BENCHMARK_PRESET_FAST_MODE: "true",

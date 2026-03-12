@@ -10,6 +10,8 @@ import {
 } from "./sidecarPresetManifest";
 import {
   deriveEffectiveRetakeCount,
+  resolveSidecarBackendCapability,
+  resolveSidecarBackendSmokeTimeoutMs,
   resolveSidecarFailureReason,
   resolveSidecarFallbackReason,
   resolveSidecarJudgeScore
@@ -33,8 +35,21 @@ const PREMIUM_ACTUAL_CANDIDATE_COUNT = Math.max(
   1,
   Math.min(3, Number.parseInt(process.env.VIDEO_SIDECAR_PREMIUM_ACTUAL_CANDIDATE_COUNT ?? "2", 10) || 2)
 );
+function resolveDefaultSmokeTimeoutMs(): number {
+  const rendererHint =
+    process.env.SMOKE_VIDEO_I2V_RENDERER?.trim() ||
+    process.env.VIDEO_I2V_RENDERER?.trim() ||
+    process.env.SMOKE_VIDEO_BROLL_RENDERER?.trim() ||
+    process.env.VIDEO_BROLL_RENDERER?.trim() ||
+    "comfyui-wan-i2v";
+  const backendTimeoutMs = resolveSidecarBackendSmokeTimeoutMs(
+    resolveSidecarBackendCapability(rendererHint),
+    process.env
+  );
+  return Math.max(backendTimeoutMs, 900000 * Math.max(1, PREMIUM_ACTUAL_CANDIDATE_COUNT));
+}
 const TIMEOUT_MS = Number.parseInt(
-  process.env.SMOKE_VIDEO_BROLL_TIMEOUT_MS ?? String(900000 * Math.max(1, PREMIUM_ACTUAL_CANDIDATE_COUNT)),
+  process.env.SMOKE_VIDEO_BROLL_TIMEOUT_MS ?? String(resolveDefaultSmokeTimeoutMs()),
   10
 );
 const POLL_INTERVAL_MS = 2000;

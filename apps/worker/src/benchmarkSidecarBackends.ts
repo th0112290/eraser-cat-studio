@@ -41,6 +41,10 @@ function resolveArgValue(name: string): string | null {
   return value.length > 0 ? value : null;
 }
 
+function hasFlag(name: string): boolean {
+  return process.argv.slice(2).includes(`--${name}`);
+}
+
 function resolveLocalPath(inputPath: string): string {
   return path.isAbsolute(inputPath) ? inputPath : path.resolve(process.cwd(), inputPath);
 }
@@ -67,6 +71,21 @@ function writeJson(filePath: string, value: unknown): void {
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function shouldReuseExistingScenarioResults(): boolean {
+  const raw = process.env.BENCHMARK_BACKEND_REUSE_EXISTING?.trim().toLowerCase();
+  return hasFlag("reuse-existing") || raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function resolveScenarioTimeoutGraceMs(smokeTimeoutMs: number): number {
+  const raw =
+    resolveArgValue("scenario-timeout-grace-ms") ?? process.env.BENCHMARK_BACKEND_SCENARIO_TIMEOUT_GRACE_MS ?? "";
+  const parsed = Number.parseInt(raw.trim(), 10);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  return Math.max(30_000, Math.min(180_000, Math.round(smokeTimeoutMs * 0.05)));
 }
 
 async function main() {
@@ -104,46 +123,69 @@ async function main() {
 
   const generatedAt = new Date().toISOString();
   const runId = `sidecar_backend_i2v:${Date.now()}`;
+  const reuseExistingScenarioResults = shouldReuseExistingScenarioResults();
   const results: Array<Record<string, unknown>> = [];
   const rows: SidecarBenchmarkRow[] = [];
   for (const scenario of scenarios) {
     const scenarioOutDir = path.join(outDir, scenario.name);
-    const startedAt = Date.now();
     const smokeTimeoutMs = resolveSidecarBackendSmokeTimeoutMs(scenario.name);
-    const pnpmExecutable = resolvePnpmExecutable();
-    const run = spawnSync(
-      pnpmExecutable,
-      [
-        "-C",
-        path.join(repoRoot, "apps", "worker"),
-        "exec",
-        "tsx",
-        "src/smokeVideoBrollRender.ts",
-        `--fixture=${fixturePath}`,
-        `--out-dir=${scenarioOutDir}`,
-        `--label=benchmark-${scenario.name}`,
-        "--channel=Video Backend Benchmark",
-        `--topic=Video Backend Benchmark ${scenario.name}`,
-        ...toSmokeProfileArgs(profileSelection)
-      ],
-      {
-        cwd: repoRoot,
-        encoding: "utf8",
-        shell: process.platform === "win32",
-        windowsHide: true,
-        env: {
-          ...process.env,
-          SMOKE_VIDEO_BROLL_CHARACTER_PACK_ID: characterPackId,
-          SMOKE_VIDEO_I2V_RENDERER: scenario.renderer,
-          SMOKE_EXPECT_SIDECAR_STATUS: "resolved",
-          SMOKE_VIDEO_BROLL_TIMEOUT_MS: String(smokeTimeoutMs)
-        }
-      }
-    );
-    const endedAt = Date.now();
+    const scenarioTimeoutMs = smokeTimeoutMs + resolveScenarioTimeoutGraceMs(smokeTimeoutMs);
     const reportPath = path.join(scenarioOutDir, "smoke_report.json");
     const planPath = path.join(scenarioOutDir, "shot_sidecar_plan.json");
     const renderLogPath = path.join(scenarioOutDir, "render_log.json");
+    const canReuseExistingScenario =
+      reuseExistingScenarioResults && (fs.existsSync(reportPath) || fs.existsSync(planPath) || fs.existsSync(renderLogPath));
+    const startedAt = Date.now();
+    const pnpmExecutable = resolvePnpmExecutable();
+    let run: {
+      status: number | null;
+      error?: Error;
+      stdout: string;
+      stderr: string;
+    } = {
+      status: null,
+      stdout: "",
+      stderr: ""
+    };
+    if (!canReuseExistingScenario) {
+      const spawnResult = spawnSync(
+        pnpmExecutable,
+        [
+          "-C",
+          path.join(repoRoot, "apps", "worker"),
+          "exec",
+          "tsx",
+          "src/smokeVideoBrollRender.ts",
+          `--fixture=${fixturePath}`,
+          `--out-dir=${scenarioOutDir}`,
+          `--label=benchmark-${scenario.name}`,
+          "--channel=Video Backend Benchmark",
+          `--topic=Video Backend Benchmark ${scenario.name}`,
+          ...toSmokeProfileArgs(profileSelection)
+        ],
+        {
+          cwd: repoRoot,
+          encoding: "utf8",
+          shell: process.platform === "win32",
+          windowsHide: true,
+          timeout: scenarioTimeoutMs,
+          env: {
+            ...process.env,
+            SMOKE_VIDEO_BROLL_CHARACTER_PACK_ID: characterPackId,
+            SMOKE_VIDEO_I2V_RENDERER: scenario.renderer,
+            SMOKE_EXPECT_SIDECAR_STATUS: "resolved",
+            SMOKE_VIDEO_BROLL_TIMEOUT_MS: String(smokeTimeoutMs)
+          }
+        }
+      );
+      run = {
+        status: spawnResult.status,
+        error: spawnResult.error ? (spawnResult.error as Error) : undefined,
+        stdout: typeof spawnResult.stdout === "string" ? spawnResult.stdout : "",
+        stderr: typeof spawnResult.stderr === "string" ? spawnResult.stderr : ""
+      };
+    }
+    const endedAt = Date.now();
     const report = readJson(reportPath);
     const plan = readJson(planPath);
     const renderLog = readJson(renderLogPath);
@@ -172,15 +214,21 @@ async function main() {
     });
     const judgeScore = resolveSidecarJudgeScore(firstPlanMetadata);
     const renderLogRecord = asRecord(renderLog);
+    const latencyMs =
+      canReuseExistingScenario && typeof renderLogRecord?.duration_ms === "number"
+        ? renderLogRecord.duration_ms
+        : endedAt - startedAt;
     const renderLogSucceeded = renderLogRecord?.status === "SUCCEEDED";
     const sidecarResolved = firstPlan?.status === "resolved";
-    const effectiveSuccess = Boolean(renderLogSucceeded && sidecarResolved);
     const actualBackendCapability =
       typeof firstPlanJudge?.actualBackendCapability === "string"
         ? firstPlanJudge.actualBackendCapability
         : typeof firstPlanMetadata?.actualBackendCapability === "string"
           ? firstPlanMetadata.actualBackendCapability
           : null;
+    const effectiveSuccess = Boolean(
+      renderLogSucceeded && sidecarResolved && actualBackendCapability === scenario.name
+    );
     const resultRow = {
       backend: scenario.name,
       renderer: scenario.renderer,
@@ -188,8 +236,9 @@ async function main() {
       failure: failureReason,
       exitCode: run.status,
       spawnError: run.error ? String(run.error) : null,
-      latency_ms: endedAt - startedAt,
+      latency_ms: latencyMs,
       smoke_timeout_ms: smokeTimeoutMs,
+      scenario_timeout_ms: canReuseExistingScenario ? null : scenarioTimeoutMs,
       fixture_path: fixturePath,
       output_dir: scenarioOutDir,
       smoke_report_path: fs.existsSync(reportPath) ? reportPath : null,
@@ -381,8 +430,9 @@ async function main() {
       geometric_drift_score: null,
       render_failure_rate: effectiveSuccess ? 0 : 1,
       acceptance_rate: effectiveSuccess ? 1 : 0,
-      stdout_tail: (run.stdout || "").split(/\r?\n/).slice(-20).join("\n"),
-      stderr_tail: (run.stderr || "").split(/\r?\n/).slice(-20).join("\n")
+      reused_existing: canReuseExistingScenario,
+      stdout_tail: run.stdout.split(/\r?\n/).slice(-20).join("\n"),
+      stderr_tail: run.stderr.split(/\r?\n/).slice(-20).join("\n")
     };
     results.push(resultRow);
     rows.push(
@@ -401,7 +451,7 @@ async function main() {
         actualBackend: actualBackendCapability,
         success: effectiveSuccess,
         failure: failureReason,
-        latencyMs: endedAt - startedAt,
+        latencyMs,
         durationSec: typeof firstPlanMetadata?.outputDurationSeconds === "number" ? firstPlanMetadata.outputDurationSeconds : null,
         resolutionProfile: typeof firstPlanMetadata?.resolutionProfile === "string" ? firstPlanMetadata.resolutionProfile : null,
         stepProfile: typeof firstPlanMetadata?.stepProfile === "string" ? firstPlanMetadata.stepProfile : null,
@@ -461,6 +511,7 @@ async function main() {
           shot_sidecar_plan_path: fs.existsSync(planPath) ? planPath : null,
           render_log_path: fs.existsSync(renderLogPath) ? renderLogPath : null,
           smoke_report_path: fs.existsSync(reportPath) ? reportPath : null,
+          reused_existing: canReuseExistingScenario,
           studio_profile_id: profileSelection.selection.studio_profile_id,
           channel_profile_id: profileSelection.selection.channel_profile_id,
           mascot_profile_id: profileSelection.selection.mascot_profile_id,

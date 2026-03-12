@@ -174,9 +174,12 @@ const VIDEO_BROLL_WAN_AUTO_MATERIALIZE_FROM_CACHE = parseBoolean(
   true
 );
 const VIDEO_HUNYUAN_I2V_MODEL =
-  process.env.VIDEO_HUNYUAN_I2V_MODEL?.trim() || "hunyuanvideo1.5_720p_i2v_fp16.safetensors";
+  process.env.VIDEO_HUNYUAN_I2V_MODEL?.trim() ||
+  "hunyuanvideo1.5_480p_i2v_step_distilled_fp8_scaled.safetensors";
 const VIDEO_HUNYUAN_SR_MODEL =
-  process.env.VIDEO_HUNYUAN_SR_MODEL?.trim() || "hunyuanvideo1.5_1080p_sr_distilled_fp16.safetensors";
+  process.env.VIDEO_HUNYUAN_SR_MODEL?.trim() ||
+  "hunyuanvideo1.5_1080p_sr_distilled_fp8_scaled.safetensors";
+const VIDEO_HUNYUAN_MODEL_IS_480P = /(^|_)480p(_|$)/i.test(VIDEO_HUNYUAN_I2V_MODEL);
 const VIDEO_HUNYUAN_TEXT_ENCODER_PRIMARY =
   process.env.VIDEO_HUNYUAN_TEXT_ENCODER_PRIMARY?.trim() || "qwen_2.5_vl_7b_fp8_scaled.safetensors";
 const VIDEO_HUNYUAN_TEXT_ENCODER_SECONDARY =
@@ -187,16 +190,27 @@ const VIDEO_HUNYUAN_CLIP_VISION =
   process.env.VIDEO_HUNYUAN_CLIP_VISION?.trim() || "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors";
 const VIDEO_HUNYUAN_CLIP_DEVICE = process.env.VIDEO_HUNYUAN_CLIP_DEVICE?.trim() || "default";
 const VIDEO_HUNYUAN_WEIGHT_DTYPE = process.env.VIDEO_HUNYUAN_WEIGHT_DTYPE?.trim() || "default";
-const VIDEO_HUNYUAN_WIDTH = Number.parseInt(process.env.VIDEO_HUNYUAN_WIDTH ?? "1280", 10);
-const VIDEO_HUNYUAN_HEIGHT = Number.parseInt(process.env.VIDEO_HUNYUAN_HEIGHT ?? "720", 10);
+const VIDEO_HUNYUAN_WIDTH = Number.parseInt(
+  process.env.VIDEO_HUNYUAN_WIDTH ?? (VIDEO_HUNYUAN_MODEL_IS_480P ? "848" : "1280"),
+  10
+);
+const VIDEO_HUNYUAN_HEIGHT = Number.parseInt(
+  process.env.VIDEO_HUNYUAN_HEIGHT ?? (VIDEO_HUNYUAN_MODEL_IS_480P ? "480" : "720"),
+  10
+);
 const VIDEO_HUNYUAN_FPS = Number.parseInt(process.env.VIDEO_HUNYUAN_FPS ?? "16", 10);
 const VIDEO_HUNYUAN_MAX_FRAMES = parsePositiveInt(process.env.VIDEO_HUNYUAN_MAX_FRAMES, 49);
-const VIDEO_HUNYUAN_STEPS = Number.parseInt(process.env.VIDEO_HUNYUAN_STEPS ?? "20", 10);
+const VIDEO_HUNYUAN_STEPS = Number.parseInt(
+  process.env.VIDEO_HUNYUAN_STEPS ?? (VIDEO_HUNYUAN_MODEL_IS_480P ? "12" : "20"),
+  10
+);
 const VIDEO_HUNYUAN_CFG = Number.parseFloat(process.env.VIDEO_HUNYUAN_CFG ?? "1.0");
 const VIDEO_HUNYUAN_SAMPLER = process.env.VIDEO_HUNYUAN_SAMPLER?.trim() || "euler";
 const VIDEO_HUNYUAN_SCHEDULER = process.env.VIDEO_HUNYUAN_SCHEDULER?.trim() || "simple";
 const VIDEO_HUNYUAN_IMAGE_INTERLEAVE = Number.parseInt(process.env.VIDEO_HUNYUAN_IMAGE_INTERLEAVE ?? "2", 10);
-const VIDEO_HUNYUAN_RESOLUTION_PROFILE = process.env.VIDEO_HUNYUAN_RESOLUTION_PROFILE?.trim() || "720p_i2v";
+const VIDEO_HUNYUAN_RESOLUTION_PROFILE =
+  process.env.VIDEO_HUNYUAN_RESOLUTION_PROFILE?.trim() ||
+  (VIDEO_HUNYUAN_MODEL_IS_480P ? "480p_i2v_step_distilled" : "720p_i2v");
 const VIDEO_HUNYUAN_STEP_PROFILE = process.env.VIDEO_HUNYUAN_STEP_PROFILE?.trim() || "installed-default";
 const VIDEO_HUNYUAN_CACHE_PROFILE = process.env.VIDEO_HUNYUAN_CACHE_PROFILE?.trim() || "off";
 const VIDEO_HUNYUAN_SR_PROFILE = process.env.VIDEO_HUNYUAN_SR_PROFILE?.trim() || "off";
@@ -206,7 +220,9 @@ const VIDEO_HUNYUAN_VRAM_MODE = process.env.VIDEO_HUNYUAN_VRAM_MODE?.trim() || "
 const VIDEO_HUNYUAN_SR_NOISE_AUGMENTATION = Number.parseFloat(
   process.env.VIDEO_HUNYUAN_SR_NOISE_AUGMENTATION ?? "0.7"
 );
-const VIDEO_HUNYUAN_SR_SCALE = Number.parseFloat(process.env.VIDEO_HUNYUAN_SR_SCALE ?? "1.5");
+const VIDEO_HUNYUAN_SR_SCALE = Number.parseFloat(
+  process.env.VIDEO_HUNYUAN_SR_SCALE ?? (VIDEO_HUNYUAN_MODEL_IS_480P ? "2.25" : "1.5")
+);
 const VIDEO_HUNYUAN_SR_TILED_VAE_DECODE = parseBoolean(process.env.VIDEO_HUNYUAN_SR_TILED_VAE_DECODE, true);
 const VIDEO_HUNYUAN_SR_VAE_TILE_SIZE = parsePositiveInt(process.env.VIDEO_HUNYUAN_SR_VAE_TILE_SIZE, 512);
 const VIDEO_HUNYUAN_SR_VAE_OVERLAP = parseNonNegativeInt(process.env.VIDEO_HUNYUAN_SR_VAE_OVERLAP, 64);
@@ -2053,7 +2069,11 @@ function deriveSidecarOperationalProfiles(input: {
   if (input.backendCapability === "hunyuan15_local_i2v" || input.backendCapability === "hunyuan15_local_i2v_sr") {
     const enableSr = input.backendCapability === "hunyuan15_local_i2v_sr";
     return {
-      resolutionProfile: enableSr ? "720p_i2v_sr_detail_v1" : VIDEO_HUNYUAN_RESOLUTION_PROFILE || "720p_i2v",
+      resolutionProfile: enableSr
+        ? VIDEO_HUNYUAN_MODEL_IS_480P
+          ? "480p_i2v_sr_detail_v1"
+          : "720p_i2v_sr_detail_v1"
+        : VIDEO_HUNYUAN_RESOLUTION_PROFILE || "720p_i2v",
       stepProfile:
         strictIdentity || detailImpact || forceDetailProfile
           ? "hunyuan_detail_v1"
@@ -2168,6 +2188,8 @@ function resolveHunyuanExecutionProfile(input: {
     input.backendCapability === "hunyuan15_local_i2v_sr" ||
     input.requestPack.sr_profile === "on" ||
     input.requestPack.sr_profile === "identity_strict_v1";
+  const maxBaseWidth = VIDEO_HUNYUAN_MODEL_IS_480P ? 848 : Number.POSITIVE_INFINITY;
+  const maxBaseHeight = VIDEO_HUNYUAN_MODEL_IS_480P ? 480 : Number.POSITIVE_INFINITY;
 
   let width = VIDEO_HUNYUAN_WIDTH || input.width;
   let height = VIDEO_HUNYUAN_HEIGHT || input.height;
@@ -2180,10 +2202,10 @@ function resolveHunyuanExecutionProfile(input: {
       continue;
     }
     if (typeof hint.minWidth === "number") {
-      width = Math.max(width, hint.minWidth);
+      width = Math.max(width, Math.min(hint.minWidth, maxBaseWidth));
     }
     if (typeof hint.minHeight === "number") {
-      height = Math.max(height, hint.minHeight);
+      height = Math.max(height, Math.min(hint.minHeight, maxBaseHeight));
     }
     steps += hint.stepDelta ?? 0;
     cfg += hint.cfgDelta ?? 0;
@@ -2587,6 +2609,35 @@ type ComfyHistoryFileRef = {
   nodeId: string;
 };
 
+function extractComfyHistoryFileRef(candidate: unknown, nodeId: string): ComfyHistoryFileRef | null {
+  if (!isRecord(candidate)) {
+    return null;
+  }
+  const outputLists = ["images", "gifs", "videos", "files"];
+  for (const key of outputLists) {
+    const entries = candidate[key];
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!isRecord(entry)) {
+        continue;
+      }
+      const filename = asString(entry.filename);
+      const subfolder = asString(entry.subfolder);
+      const type = asString(entry.type, "output");
+      if (!filename) {
+        continue;
+      }
+      const lower = filename.toLowerCase();
+      if (lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov")) {
+        return { filename, subfolder, type, nodeId };
+      }
+    }
+  }
+  return null;
+}
+
 type WanVideoPreflightResult = {
   ok: boolean;
   comfyServerUrl: string;
@@ -2654,8 +2705,19 @@ type HunyuanVideoPreflightResult = {
 
 async function waitForComfyHistoryFile(promptId: string, timeoutMs = VIDEO_BROLL_COMFY_TIMEOUT_MS): Promise<ComfyHistoryFileRef> {
   const deadline = Date.now() + timeoutMs;
+  let lastTransientError: string | null = null;
   while (Date.now() < deadline) {
-    const history = await fetchJson(`${COMFY_SERVER_URL}/history/${encodeURIComponent(promptId)}`);
+    let history: unknown;
+    try {
+      history = await fetchJson(`${COMFY_SERVER_URL}/history/${encodeURIComponent(promptId)}`);
+      lastTransientError = null;
+    } catch (error) {
+      lastTransientError = error instanceof Error ? error.message : String(error);
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(1000, COMFY_FETCH_RETRY_COUNT * COMFY_FETCH_RETRY_DELAY_MS))
+      );
+      continue;
+    }
     if (!isRecord(history)) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       continue;
@@ -2684,18 +2746,15 @@ async function waitForComfyHistoryFile(promptId: string, timeoutMs = VIDEO_BROLL
       continue;
     }
     for (const [nodeId, candidate] of Object.entries(item.outputs)) {
-      if (!isRecord(candidate)) continue;
-      const images = candidate.images;
-      if (!Array.isArray(images) || images.length === 0 || !isRecord(images[0])) continue;
-      const first = images[0];
-      const filename = asString(first.filename);
-      const subfolder = asString(first.subfolder);
-      const type = asString(first.type, "output");
-      if (filename.toLowerCase().endsWith(".mp4")) {
-        return { filename, subfolder, type, nodeId };
+      const fileRef = extractComfyHistoryFileRef(candidate, nodeId);
+      if (fileRef) {
+        return fileRef;
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (lastTransientError) {
+    throw new Error(`Timed out waiting for ComfyUI video prompt result: ${promptId} (last error: ${lastTransientError})`);
   }
   throw new Error(`Timed out waiting for ComfyUI video prompt result: ${promptId}`);
 }
@@ -3321,8 +3380,9 @@ function buildHunyuanImageToVideoWorkflow(input: {
   clipVisionModelName: string;
   useTiledVaeDecode: boolean;
 }) {
-  const width = roundDimensionToStep(Math.max(512, input.width), 16);
-  const height = roundDimensionToStep(Math.max(512, input.height), 16);
+  const minBaseDimension = VIDEO_HUNYUAN_MODEL_IS_480P ? 480 : 512;
+  const width = roundDimensionToStep(Math.max(minBaseDimension, input.width), 16);
+  const height = roundDimensionToStep(Math.max(minBaseDimension, input.height), 16);
   const workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {
     "1": {
       class_type: "LoadImage",

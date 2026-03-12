@@ -4,9 +4,11 @@ import path from "node:path";
 
 const COMFY_SERVER_URL = (process.env.COMFY_SERVER_URL?.trim() || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const TARGET_BASE_MODEL =
-  process.env.VIDEO_HUNYUAN_I2V_MODEL?.trim() || "hunyuanvideo1.5_720p_i2v_fp16.safetensors";
+  process.env.VIDEO_HUNYUAN_I2V_MODEL?.trim() ||
+  "hunyuanvideo1.5_480p_i2v_step_distilled_fp8_scaled.safetensors";
 const TARGET_SR_MODEL =
-  process.env.VIDEO_HUNYUAN_SR_MODEL?.trim() || "hunyuanvideo1.5_1080p_sr_distilled_fp16.safetensors";
+  process.env.VIDEO_HUNYUAN_SR_MODEL?.trim() ||
+  "hunyuanvideo1.5_1080p_sr_distilled_fp8_scaled.safetensors";
 const TARGET_TEXT_ENCODER_PRIMARY =
   process.env.VIDEO_HUNYUAN_TEXT_ENCODER_PRIMARY?.trim() || "qwen_2.5_vl_7b_fp8_scaled.safetensors";
 const TARGET_TEXT_ENCODER_SECONDARY =
