@@ -99,6 +99,24 @@ export function parseSidecarTruthy(value: string | undefined, fallback = false):
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+function parsePositiveInt(value: string | undefined): number | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const parsed = Number.parseInt(value.trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolvePositiveIntOverride(env: NodeJS.ProcessEnv, keys: string[]): number | null {
+  for (const key of keys) {
+    const parsed = parsePositiveInt(env[key]);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 export function resolveSidecarBackendCapability(rendererName: string): SidecarBackendCapability {
   const normalized = rendererName.trim().toLowerCase();
   if (normalized === "hunyuan15_local_i2v_sr") {
@@ -171,15 +189,45 @@ export function resolveSidecarBackendSmokeTimeoutMs(
     false
   );
   if (backendCapability === "hunyuan15_local_i2v_sr") {
-    return benchmarkFastMode ? 3_000_000 : 4_200_000;
+    return (
+      resolvePositiveIntOverride(env, [
+        "VIDEO_SIDECAR_BACKEND_HUNYUAN_SR_SMOKE_TIMEOUT_MS",
+        "VIDEO_HUNYUAN_SR_COMFY_TIMEOUT_MS",
+        "VIDEO_HUNYUAN_COMFY_TIMEOUT_MS",
+        "VIDEO_BROLL_COMFY_TIMEOUT_MS",
+        "VIDEO_SIDECAR_BACKEND_SMOKE_TIMEOUT_MS",
+        "SMOKE_VIDEO_BROLL_TIMEOUT_MS"
+      ]) ?? (benchmarkFastMode ? 3_000_000 : 4_200_000)
+    );
   }
   if (backendCapability === "hunyuan15_local_i2v") {
-    return benchmarkFastMode ? 2_400_000 : 3_600_000;
+    return (
+      resolvePositiveIntOverride(env, [
+        "VIDEO_SIDECAR_BACKEND_HUNYUAN_SMOKE_TIMEOUT_MS",
+        "VIDEO_HUNYUAN_COMFY_TIMEOUT_MS",
+        "VIDEO_BROLL_COMFY_TIMEOUT_MS",
+        "VIDEO_SIDECAR_BACKEND_SMOKE_TIMEOUT_MS",
+        "SMOKE_VIDEO_BROLL_TIMEOUT_MS"
+      ]) ?? (benchmarkFastMode ? 2_400_000 : 3_600_000)
+    );
   }
   if (backendCapability === "wan") {
-    return benchmarkFastMode ? 900_000 : 1_800_000;
+    return (
+      resolvePositiveIntOverride(env, [
+        "VIDEO_SIDECAR_BACKEND_WAN_SMOKE_TIMEOUT_MS",
+        "VIDEO_BROLL_COMFY_TIMEOUT_MS",
+        "VIDEO_SIDECAR_BACKEND_SMOKE_TIMEOUT_MS",
+        "SMOKE_VIDEO_BROLL_TIMEOUT_MS"
+      ]) ?? (benchmarkFastMode ? 900_000 : 1_800_000)
+    );
   }
-  return 600_000;
+  return (
+    resolvePositiveIntOverride(env, [
+      "VIDEO_SIDECAR_BACKEND_STILL_SMOKE_TIMEOUT_MS",
+      "VIDEO_SIDECAR_BACKEND_SMOKE_TIMEOUT_MS",
+      "SMOKE_VIDEO_BROLL_TIMEOUT_MS"
+    ]) ?? 600_000
+  );
 }
 
 export function deriveEffectiveRetakeCount(retakes: unknown[]): number {

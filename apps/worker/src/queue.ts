@@ -7,7 +7,7 @@ import { workerQueueRetentionOptions } from "./jobRetention";
 
 bootstrapEnv();
 
-export const QUEUE_NAME = "episode-jobs";
+export const QUEUE_NAME = process.env.WORKER_EPISODE_QUEUE_NAME?.trim() || "episode-jobs";
 
 export const GENERATE_BEATS_JOB_NAME = "GENERATE_BEATS";
 export const COMPILE_SHOTS_JOB_NAME = "COMPILE_SHOTS";
@@ -17,7 +17,7 @@ export const PACKAGE_OUTPUTS_JOB_NAME = "PACKAGE_OUTPUTS";
 export const BUILD_CHARACTER_PACK_JOB_NAME = "BUILD_CHARACTER_PACK";
 export const RENDER_CHARACTER_PREVIEW_JOB_NAME = "RENDER_CHARACTER_PREVIEW";
 export const ASSET_INGEST_JOB_NAME = "ASSET_INGEST";
-export const ASSET_QUEUE_NAME = "asset-ingest-jobs";
+export const ASSET_QUEUE_NAME = process.env.WORKER_ASSET_QUEUE_NAME?.trim() || "asset-ingest-jobs";
 export const GENERATE_CHARACTER_ASSETS_JOB_NAME = "GENERATE_CHARACTER_ASSETS";
 
 export const EPISODE_JOB_NAME = GENERATE_BEATS_JOB_NAME;

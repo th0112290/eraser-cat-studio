@@ -135,6 +135,14 @@ const WORKER_MAX_STALLED_COUNT = Number.parseInt(process.env.WORKER_MAX_STALLED_
 const COMFY_SERVER_URL = (process.env.COMFY_SERVER_URL?.trim() || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const COMFY_INPUT_DIR = process.env.COMFY_INPUT_DIR?.trim() || "C:\\input";
 const VIDEO_BROLL_COMFY_TIMEOUT_MS = Number.parseInt(process.env.VIDEO_BROLL_COMFY_TIMEOUT_MS ?? "900000", 10);
+const VIDEO_HUNYUAN_COMFY_TIMEOUT_MS = parsePositiveInt(
+  process.env.VIDEO_HUNYUAN_COMFY_TIMEOUT_MS,
+  VIDEO_BROLL_COMFY_TIMEOUT_MS
+);
+const VIDEO_HUNYUAN_SR_COMFY_TIMEOUT_MS = parsePositiveInt(
+  process.env.VIDEO_HUNYUAN_SR_COMFY_TIMEOUT_MS,
+  4 * 60 * 60 * 1000
+);
 const COMFY_FETCH_RETRY_COUNT = Math.max(1, Number.parseInt(process.env.COMFY_FETCH_RETRY_COUNT ?? "3", 10) || 3);
 const COMFY_FETCH_RETRY_DELAY_MS = Math.max(
   100,
@@ -199,24 +207,23 @@ const VIDEO_HUNYUAN_SR_NOISE_AUGMENTATION = Number.parseFloat(
   process.env.VIDEO_HUNYUAN_SR_NOISE_AUGMENTATION ?? "0.7"
 );
 const VIDEO_HUNYUAN_SR_SCALE = Number.parseFloat(process.env.VIDEO_HUNYUAN_SR_SCALE ?? "1.5");
+const VIDEO_HUNYUAN_SR_TILED_VAE_DECODE = parseBoolean(process.env.VIDEO_HUNYUAN_SR_TILED_VAE_DECODE, true);
+const VIDEO_HUNYUAN_SR_VAE_TILE_SIZE = parsePositiveInt(process.env.VIDEO_HUNYUAN_SR_VAE_TILE_SIZE, 512);
+const VIDEO_HUNYUAN_SR_VAE_OVERLAP = parseNonNegativeInt(process.env.VIDEO_HUNYUAN_SR_VAE_OVERLAP, 64);
+const VIDEO_HUNYUAN_SR_VAE_TEMPORAL_SIZE = parsePositiveInt(process.env.VIDEO_HUNYUAN_SR_VAE_TEMPORAL_SIZE, 16);
+const VIDEO_HUNYUAN_SR_VAE_TEMPORAL_OVERLAP = parsePositiveInt(process.env.VIDEO_HUNYUAN_SR_VAE_TEMPORAL_OVERLAP, 4);
 const VIDEO_SIDECAR_BENCHMARK_FAST_MODE = parseBoolean(
   process.env.VIDEO_SIDECAR_BENCHMARK_FAST_MODE ?? process.env.BENCHMARK_PRESET_FAST_MODE,
   false
 );
-const VIDEO_SIDECAR_PREMIUM_CANDIDATE_COUNT = Math.max(
-  VIDEO_SIDECAR_BENCHMARK_FAST_MODE ? 1 : 2,
-  Math.min(3, parsePositiveInt(process.env.VIDEO_SIDECAR_PREMIUM_CANDIDATE_COUNT, VIDEO_SIDECAR_BENCHMARK_FAST_MODE ? 1 : 3))
+const VIDEO_SIDECAR_PREMIUM_CANDIDATE_COUNT = Math.min(
+  3,
+  parsePositiveInt(process.env.VIDEO_SIDECAR_PREMIUM_CANDIDATE_COUNT, VIDEO_SIDECAR_BENCHMARK_FAST_MODE ? 1 : 3)
 );
 const PREMIUM_SIDECAR_PROMPT_CANDIDATE_JUDGE_VERSION = "premium_prompt_candidate_judge_v1";
-const VIDEO_SIDECAR_PREMIUM_ACTUAL_CANDIDATE_COUNT = Math.max(
-  VIDEO_SIDECAR_BENCHMARK_FAST_MODE ? 1 : 2,
-  Math.min(
-    3,
-    parsePositiveInt(
-      process.env.VIDEO_SIDECAR_PREMIUM_ACTUAL_CANDIDATE_COUNT,
-      VIDEO_SIDECAR_BENCHMARK_FAST_MODE ? 1 : 2
-    )
-  )
+const VIDEO_SIDECAR_PREMIUM_ACTUAL_CANDIDATE_COUNT = Math.min(
+  3,
+  parsePositiveInt(process.env.VIDEO_SIDECAR_PREMIUM_ACTUAL_CANDIDATE_COUNT, VIDEO_SIDECAR_BENCHMARK_FAST_MODE ? 1 : 2)
 );
 const VIDEO_SIDECAR_PREMIUM_ACTUAL_RETAKE_COUNT = Math.max(
   0,
@@ -2044,10 +2051,9 @@ function deriveSidecarOperationalProfiles(input: {
   const forceDetailProfile = Boolean(presetPolicies.controlnet.flags.forceDetailProfile);
 
   if (input.backendCapability === "hunyuan15_local_i2v" || input.backendCapability === "hunyuan15_local_i2v_sr") {
-    const enableSr = input.backendCapability === "hunyuan15_local_i2v_sr" || strictIdentity || detailImpact;
+    const enableSr = input.backendCapability === "hunyuan15_local_i2v_sr";
     return {
-      resolutionProfile:
-        enableSr || input.premiumFlag ? "720p_i2v_sr_detail_v1" : VIDEO_HUNYUAN_RESOLUTION_PROFILE || "720p_i2v",
+      resolutionProfile: enableSr ? "720p_i2v_sr_detail_v1" : VIDEO_HUNYUAN_RESOLUTION_PROFILE || "720p_i2v",
       stepProfile:
         strictIdentity || detailImpact || forceDetailProfile
           ? "hunyuan_detail_v1"
@@ -2621,6 +2627,7 @@ type HunyuanVideoPreflightResult = {
   missingNodes: string[];
   missingModels: string[];
   warnings?: string[];
+  supportsTiledVaeDecode: boolean;
   modelRoot: ReturnType<typeof detectComfyModelRootStatus>;
   target: {
     baseModel: string;
@@ -2645,8 +2652,8 @@ type HunyuanVideoPreflightResult = {
   installCommand?: string;
 };
 
-async function waitForComfyHistoryFile(promptId: string): Promise<ComfyHistoryFileRef> {
-  const deadline = Date.now() + VIDEO_BROLL_COMFY_TIMEOUT_MS;
+async function waitForComfyHistoryFile(promptId: string, timeoutMs = VIDEO_BROLL_COMFY_TIMEOUT_MS): Promise<ComfyHistoryFileRef> {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const history = await fetchJson(`${COMFY_SERVER_URL}/history/${encodeURIComponent(promptId)}`);
     if (!isRecord(history)) {
@@ -2842,6 +2849,7 @@ async function preflightComfyHunyuanVideoWithReference(input: {
   const dualClipTypes = readComfyOptions(objectInfo, ["DualCLIPLoader", "input", "required", "type", 0]);
   const vaes = readComfyOptions(objectInfo, ["VAELoader", "input", "required", "vae_name", 0]);
   const clipVisionModels = readComfyOptions(objectInfo, ["CLIPVisionLoader", "input", "required", "clip_name", 0]);
+  const supportsTiledVaeDecode = hasComfyNode(objectInfo, "VAEDecodeTiled");
   const clipVisionSelection = resolvePreferredComfyOption({
     preferred: VIDEO_HUNYUAN_CLIP_VISION,
     available: clipVisionModels
@@ -2897,6 +2905,7 @@ async function preflightComfyHunyuanVideoWithReference(input: {
     missingNodes,
     missingModels,
     warnings,
+    supportsTiledVaeDecode,
     modelRoot,
     target: {
       baseModel: VIDEO_HUNYUAN_I2V_MODEL,
@@ -3310,6 +3319,7 @@ function buildHunyuanImageToVideoWorkflow(input: {
   latentUpscaleMethod: "bilinear" | "bicubic";
   outputCodec: "h264";
   clipVisionModelName: string;
+  useTiledVaeDecode: boolean;
 }) {
   const width = roundDimensionToStep(Math.max(512, input.width), 16);
   const height = roundDimensionToStep(Math.max(512, input.height), 16);
@@ -3476,13 +3486,25 @@ function buildHunyuanImageToVideoWorkflow(input: {
       denoise: input.denoise
     }
   };
-  workflow["15"] = {
-    class_type: "VAEDecode",
-    inputs: {
-      samples: ["14", 0],
-      vae: ["7", 0]
-    }
-  };
+  workflow["15"] = input.useTiledVaeDecode
+    ? {
+        class_type: "VAEDecodeTiled",
+        inputs: {
+          samples: ["14", 0],
+          vae: ["7", 0],
+          tile_size: VIDEO_HUNYUAN_SR_VAE_TILE_SIZE,
+          overlap: VIDEO_HUNYUAN_SR_VAE_OVERLAP,
+          temporal_size: VIDEO_HUNYUAN_SR_VAE_TEMPORAL_SIZE,
+          temporal_overlap: VIDEO_HUNYUAN_SR_VAE_TEMPORAL_OVERLAP
+        }
+      }
+    : {
+        class_type: "VAEDecode",
+        inputs: {
+          samples: ["14", 0],
+          vae: ["7", 0]
+        }
+      };
   workflow["16"] = {
     class_type: "CreateVideo",
     inputs: {
@@ -3572,7 +3594,8 @@ async function renderComfyHunyuanI2V(input: {
     srScale: workflowBinding.srScale,
     latentUpscaleMethod: workflowBinding.latentUpscaleMethod,
     outputCodec: workflowBinding.outputCodec,
-    clipVisionModelName: preflight.target.clipVision
+    clipVisionModelName: preflight.target.clipVision,
+    useTiledVaeDecode: enableSr && VIDEO_HUNYUAN_SR_TILED_VAE_DECODE && preflight.supportsTiledVaeDecode
   });
   writeJson(workflowPath, workflow);
 
@@ -3653,7 +3676,10 @@ async function renderComfyHunyuanI2V(input: {
   if (!promptId) {
     throw new Error("ComfyUI did not return prompt_id for Hunyuan video workflow");
   }
-  const fileRef = await waitForComfyHistoryFile(promptId);
+  const fileRef = await waitForComfyHistoryFile(
+    promptId,
+    enableSr ? Math.max(VIDEO_HUNYUAN_COMFY_TIMEOUT_MS, VIDEO_HUNYUAN_SR_COMFY_TIMEOUT_MS) : VIDEO_HUNYUAN_COMFY_TIMEOUT_MS
+  );
   const viewUrl =
     `${COMFY_SERVER_URL}/view?filename=${encodeURIComponent(fileRef.filename)}` +
     `&subfolder=${encodeURIComponent(fileRef.subfolder)}` +

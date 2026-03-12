@@ -12,7 +12,7 @@ export function bootstrapEnv(): void {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const envPath = path.resolve(__dirname, "../../../.env");
-  const result = config({ path: envPath, override: true });
+  const result = config({ path: envPath, override: false });
 
   if (result.error && !process.env.DATABASE_URL) {
     throw new Error(`[worker] Failed to load .env from ${envPath}: ${result.error.message}`);
