@@ -10891,6 +10891,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
   let autoRerouteDiagnostics: AutoRerouteDiagnostics | undefined;
   const workflowStageRuns: NonNullable<GenerationManifest["workflowStages"]> = [];
   let preferredSelectionByView: Partial<Record<CharacterView, ScoredCandidate>> = {};
+  const requestedBaseStage: GenerationStageKey = generation.viewToGenerate === "front" ? "front" : "angles";
+  const requestedBasePassPrefix = generation.viewToGenerate === "front" ? "front" : "angles";
   const repairEmbargoedCandidateIdsByView: Partial<Record<CharacterView, Set<string>>> = {};
   const repairEmbargoedFallbackViews = new Set<CharacterView>();
   const isRepairEmbargoedSelection = (view: CharacterView, candidate: ScoredCandidate): boolean => {
@@ -12838,8 +12840,6 @@ export async function handleGenerateCharacterAssetsJob(input: {
       });
     }
   } else {
-    const requestedBaseStage: GenerationStageKey = generation.viewToGenerate === "front" ? "front" : "angles";
-    const requestedBasePassPrefix = generation.viewToGenerate === "front" ? "front" : "angles";
     let perViewReference: InlineImageReference | undefined;
     if (generation.viewToGenerate && generation.viewToGenerate !== "front") {
       perViewReference = await resolveFrontReferenceFromManifest(manifestPath);
