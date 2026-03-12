@@ -4,6 +4,14 @@ dist
 .DS_Store
 *.log
 
+# Generated runtime artifacts
+out/
+apps/video/public/sidecar_*/
+apps/worker/.tmp/
+apps/worker/out/
+assets/generated/
+packages/render-orchestrator/out/
+
 # Prisma
 packages/db/node_modules
 packages/db/prisma/dev.db
