@@ -197,7 +197,7 @@ export function resolveSidecarBackendSmokeTimeoutMs(
         "VIDEO_BROLL_COMFY_TIMEOUT_MS",
         "VIDEO_SIDECAR_BACKEND_SMOKE_TIMEOUT_MS",
         "SMOKE_VIDEO_BROLL_TIMEOUT_MS"
-      ]) ?? (benchmarkFastMode ? 3_000_000 : 4_200_000)
+      ]) ?? (benchmarkFastMode ? 3_000_000 : 6_000_000)
     );
   }
   if (backendCapability === "hunyuan15_local_i2v") {

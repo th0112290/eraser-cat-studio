@@ -1936,7 +1936,7 @@ function resolveHunyuanWorkflowBinding(input: { requestPack: SidecarBrollRequest
       srNoiseAugmentation = Math.min(srNoiseAugmentation, hint.srNoiseAugmentation);
     }
     if (typeof hint.srScale === "number") {
-      srScale = Math.max(srScale, hint.srScale);
+      srScale = Math.min(srScale, hint.srScale);
     }
     if (hint.latentUpscaleMethod) {
       latentUpscaleMethod = hint.latentUpscaleMethod;
@@ -2212,6 +2212,11 @@ function resolveHunyuanExecutionProfile(input: {
     if (typeof hint.imageInterleaveMin === "number") {
       imageInterleave = Math.max(imageInterleave, hint.imageInterleaveMin);
     }
+  }
+
+  // Hunyuan 1.5 480p step-distilled checkpoints are intended to stay within 8-12 steps.
+  if (VIDEO_HUNYUAN_MODEL_IS_480P) {
+    steps = Math.min(steps, 12);
   }
 
   if (VIDEO_SIDECAR_BENCHMARK_FAST_MODE) {
