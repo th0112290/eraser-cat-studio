@@ -2009,45 +2009,47 @@ function summarizeCounts(values: Array<string | null | undefined>, limit = 4): s
 
 function decisionSurfaceStyles(): string {
   return `<style>
-.decision-surface{display:grid;gap:14px}
-.decision-hero{position:relative;overflow:hidden;padding:18px;border-color:#c7dade;background:linear-gradient(140deg,#f7fcfb 0%,#ffffff 54%,#eef8f5 100%)}
+.decision-surface{display:grid;gap:12px}
+.decision-hero{position:relative;overflow:hidden;padding:16px;border-color:#c7dade;background:linear-gradient(140deg,#f7fcfb 0%,#ffffff 54%,#eef8f5 100%)}
 .decision-eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid #bfd7d3;background:#eff8f6;color:#0d5e59;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
-.decision-title{display:grid;gap:8px}
+.decision-title{display:grid;gap:6px}
 .decision-title h1{margin:0}
 .decision-statusline{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .decision-statusline .muted-text{font-size:13px}
-.decision-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.95fr);gap:14px}
-.decision-column{display:grid;gap:12px}
-.decision-panel{display:grid;gap:10px;padding:14px;border-radius:16px;border:1px solid #d6e4ea;background:#ffffffd9}
+.decision-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.9fr);gap:12px}
+.decision-column{display:grid;gap:10px}
+.decision-panel{display:grid;gap:8px;padding:12px;border-radius:16px;border:1px solid #d6e4ea;background:#ffffffd9}
 .decision-panel h2,.decision-panel h3{margin:0}
-.decision-panel p{margin:0;color:#405663;line-height:1.55}
+.decision-panel p{margin:0;color:#405663;line-height:1.5}
 .decision-panel.tone-ok{border-color:#cbe6d7;background:linear-gradient(180deg,#effcf7,#ffffff)}
 .decision-panel.tone-warn{border-color:#ecd9ad;background:linear-gradient(180deg,#fff8ea,#fffdf7)}
 .decision-panel.tone-bad{border-color:#efc4c4;background:linear-gradient(180deg,#fff4f4,#fffdfd)}
 .decision-panel.tone-muted{border-color:#dbe5ef;background:linear-gradient(180deg,#f7fafc,#ffffff)}
-.decision-meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
-.decision-meta-card{display:grid;gap:6px;padding:12px;border:1px solid #d8e5ee;border-radius:14px;background:#f8fbff}
+.decision-meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}
+.decision-meta-card{display:grid;gap:5px;padding:10px;border:1px solid #d8e5ee;border-radius:14px;background:#f8fbff}
 .decision-meta-card .label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#557083}
-.decision-meta-card .value{font-size:16px;font-weight:800;line-height:1.35;word-break:break-word}
+.decision-meta-card .value{font-size:15px;font-weight:800;line-height:1.35;word-break:break-word}
 .decision-meta-card .hint{font-size:12px;line-height:1.45;color:#5f7380}
-.decision-stack{display:grid;gap:10px}
-.decision-item{display:grid;gap:8px;padding:12px;border-radius:14px;border:1px solid #d7e3eb;background:#fbfdff}
+.decision-stack{display:grid;gap:8px}
+.decision-item{display:grid;gap:6px;padding:10px;border-radius:14px;border:1px solid #d7e3eb;background:#fbfdff}
 .decision-item.tone-ok{border-color:#cbe6d7;background:#f3fbf7}
 .decision-item.tone-warn{border-color:#ecd9ad;background:#fffaf0}
 .decision-item.tone-bad{border-color:#efc4c4;background:#fff6f6}
 .decision-item.tone-muted{border-color:#dbe5ef;background:#fbfdff}
 .decision-item-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
 .decision-item-title{font-size:15px;font-weight:800;letter-spacing:-.01em}
-.decision-item p{margin:0;color:#425466;line-height:1.5}
+.decision-item p{margin:0;color:#425466;line-height:1.45}
 .decision-actions{display:flex;flex-wrap:wrap;gap:8px}
 .decision-empty{padding:12px;border:1px dashed #cbd6e2;border-radius:12px;background:#f8fbff;color:#536475}
-.decision-media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
-.decision-media-card{display:grid;gap:10px;padding:14px;border:1px solid #d8e4ed;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#ffffff)}
-.decision-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.decision-media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.decision-media-card{display:grid;gap:8px;padding:12px;border:1px solid #d8e4ed;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#ffffff)}
+.decision-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.decision-priority-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px}
 .decision-pill-row{display:flex;flex-wrap:wrap;gap:8px}
 .decision-hero .summary-grid .summary-card{background:#ffffffcc}
 .decision-code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:12px;word-break:break-all}
-@media (max-width:900px){.decision-layout{grid-template-columns:1fr}}
+@media (max-width:900px){.decision-layout,.decision-priority-grid{grid-template-columns:1fr}.decision-hero{padding:14px}}
+@media (max-width:640px){.decision-surface{gap:10px}.decision-hero{padding:12px}.decision-panel,.decision-media-card{padding:10px}.decision-meta-grid,.decision-compare-grid{grid-template-columns:1fr}.decision-item-title{font-size:14px}}
 </style>`;
 }
 
@@ -2101,6 +2103,36 @@ function renderDecisionPanel(title: string, intro: string, body: string, tone: U
   return `<section class="decision-panel tone-${decisionTone(tone)}"><div class="stack"><h2>${esc(title)}</h2><p>${esc(
     intro
   )}</p></div>${body}</section>`;
+}
+
+function renderDecisionPrioritySection(input: {
+  title: string;
+  intro: string;
+  linksHtml?: string;
+  railTitle: string;
+  railIntro: string;
+  railCards: DecisionCard[];
+  railEmpty: string;
+  railTone?: UiBadgeTone;
+  snapshotTitle?: string;
+  snapshotIntro: string;
+  snapshotFacts: DecisionFact[];
+  snapshotEmpty: string;
+  snapshotTone?: UiBadgeTone;
+}): string {
+  return `<section class="card"><div class="section-head"><div><h2>${esc(input.title)}</h2><p class="section-intro">${esc(
+    input.intro
+  )}</p></div>${input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""}</div><div class="decision-priority-grid">${renderDecisionPanel(
+    input.railTitle,
+    input.railIntro,
+    renderDecisionCards(input.railCards, input.railEmpty),
+    input.railTone ?? ((input.railCards[0]?.tone ? decisionTone(input.railCards[0].tone) : "muted") as UiBadgeTone)
+  )}${renderDecisionPanel(
+    input.snapshotTitle ?? "Recovery Snapshot",
+    input.snapshotIntro,
+    renderDecisionMetaGrid(input.snapshotFacts, input.snapshotEmpty),
+    input.snapshotTone ?? "muted"
+  )}</div></section>`;
 }
 
 function renderObjectHero(input: ObjectHeroInput): string {
@@ -3661,6 +3693,29 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         hint: String(artifacts.outDir ?? localOut.outDir)
       }
     ];
+    const episodeDecisionRail: DecisionCard[] = [
+      {
+        title: recommendAction.title,
+        detail: `${recommendAction.detail} Use ${recommendAction.profile} as the current primary path.`,
+        tone: episodeStatusTone,
+        badge: "primary",
+        html: `<a href="#episode-run-control">Run Control</a><a href="/ui/jobs">Job Monitor</a>`
+      },
+      {
+        title: "Compare before promotion",
+        detail: previewAExists || previewBExists ? "A/B artifacts are already attached, so compare can happen immediately from this detail surface." : "Generate A/B preview compare when style, QC, or fallback signals need operator review.",
+        tone: previewAExists || previewBExists ? "warn" : "muted",
+        badge: previewAExists || previewBExists ? "ready" : "optional",
+        html: `<a href="#episode-compare-review">Compare / Review</a><a href="/ui/episodes/${esc(id)}/ab-compare">A/B Compare</a>`
+      },
+      {
+        title: "Recovery anchor",
+        detail: finalExists ? "final.mp4 and upload manifest are the strongest rollback point." : previewExists ? "preview.mp4 is the current last-known-good artifact." : "Use shots.json or rerun compile as the first recovery anchor.",
+        tone: finalExists || previewExists ? "ok" : "warn",
+        badge: finalExists ? "final" : previewExists ? "preview" : "rebuild",
+        html: `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">Artifact Index</a><a href="/ui/episodes/${esc(id)}/editor">Shot Editor</a>`
+      }
+    ];
 
     const episodeBody = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
       eyebrow: "Episode Control Plane",
@@ -3698,16 +3753,20 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       recoveryActions: recoveryActionCards,
       recentActivity: recentActivityCards,
       linkedObjects: linkedObjectCards
-    })}<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>Recovery Snapshot</h2>
-      <p class="section-intro">Failure reason, last known good state, fallback, and next path stay above the fold.</p>
-    </div>
-    <div class="quick-links"><a href="/ui/episodes/${esc(id)}/editor">Shot Editor</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">Artifact Index</a></div>
-  </div>
-  ${renderDecisionMetaGrid(recoveryFacts, "Recovery data is not available yet.")}
-</section>
+    })}${renderDecisionPrioritySection({
+      title: "Decision Rail",
+      intro: "Keep the recommended run path, compare entry, and rollback anchor above the heavy evidence sections.",
+      linksHtml: `<a href="/ui/episodes/${esc(id)}/editor">Shot Editor</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">Artifact Index</a>`,
+      railTitle: "Next operator moves",
+      railIntro: "Use this rail to decide whether to run, compare, or recover before dropping into raw evidence.",
+      railCards: episodeDecisionRail,
+      railEmpty: "No operator rail is available yet.",
+      railTone: episodeStatusTone,
+      snapshotIntro: "Failure reason, last known good state, fallback, and next path stay above the fold.",
+      snapshotFacts: recoveryFacts,
+      snapshotEmpty: "Recovery data is not available yet.",
+      snapshotTone: episodeStatusTone
+    })}
 <section class="card">
   <div class="section-head">
     <div>
@@ -3772,6 +3831,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     </div>
   </div>
   <div class="card">
+    <div id="episode-run-control"></div>
     <div class="section-head"><div><h3>Run Control</h3><p class="section-intro">Primary run path and live job rail stay attached to the episode object.</p></div><div class="quick-links"><a href="/ui/jobs">Job Monitor</a><a href="/ui/publish?episodeId=${encodeURIComponent(
       id
     )}">Publish Surface</a></div></div>
@@ -3799,6 +3859,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     <table><thead><tr><th>Recent Job Type</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">No job history. Start from Run Profile above.</div></td></tr>'}</tbody></table>
   </div>
   <div class="card">
+    <div id="episode-compare-review"></div>
     <div class="section-head"><div><h3>Compare / Review</h3><p class="section-intro">Explicit compare targets and alternate review paths live inside the detail surface.</p></div><div class="quick-links"><a href="/ui/episodes/${esc(
       id
     )}/ab-compare">Open A/B Compare</a><a href="${episodeProfilesHref}">Profile Browser Focus</a></div></div>
@@ -4585,8 +4646,41 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       linkedObjects: [
         { title: "Episode object", detail: "Decision promotion and rollback both happen from episode detail.", tone: "muted", html: `<a href="/ui/episodes/${esc(id)}">Open Episode Detail</a>` }
       ]
-    })}<section class="card"><div class="section-head"><div><h2>Recovery Snapshot</h2><p class="section-intro">Failure reason, last known good state, retry path, and rollback point stay visible above playback.</p></div></div>${renderDecisionMetaGrid(
-      [
+    })}${renderDecisionPrioritySection({
+      title: "Decision Rail",
+      intro: "Keep the current verdict, rerun path, and episode promotion target visible before playback.",
+      linksHtml: `<a href="/ui/episodes/${esc(id)}">Episode Detail</a><a href="/ui/episodes/${esc(id)}/ab-compare">Refresh Compare</a>`,
+      railTitle: "Compare actions",
+      railIntro: "Use this rail to promote a winner, rerun the compare, or step sideways into style preview without losing the target context.",
+      railCards: [
+        {
+          title: "Current verdict",
+          detail: nextDecision,
+          tone: verdictTone,
+          badge: verdict,
+          html: `<a href="/ui/episodes/${esc(id)}">Carry verdict to Episode Detail</a>`
+        },
+        {
+          title: "Regenerate compare set",
+          detail: compareReady ? "If the verdict still feels noisy, rerun the same pair or send a new style pair into compare." : "One or both previews are missing, so rerun before approving or rolling back.",
+          tone: compareReady ? "warn" : "bad",
+          badge: compareReady ? "rerun" : "blocked",
+          html: `<form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="inline"><input type="hidden" name="styleA" value="${esc(
+            variantAStyle
+          )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">Rerun A/B Compare</button></form>`
+        },
+        {
+          title: "Alternate review path",
+          detail: "Use style preview or linked jobs when the preview pair is too close to call.",
+          tone: "muted",
+          badge: "alternate",
+          html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">Open jobA</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">Open jobB</a>` : ""}<a href="/ui/episodes/${esc(id)}">Episode Detail</a>`
+        }
+      ],
+      railEmpty: "No compare actions are available.",
+      railTone: verdictTone,
+      snapshotIntro: "Failure reason, last known good state, retry path, and rollback point stay visible above playback.",
+      snapshotFacts: [
         {
           label: "Failure Reason",
           value: !compareReady ? "one or both preview artifacts are missing" : "no hard blocker; operator verdict required",
@@ -4598,8 +4692,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         { label: "Alternate Path", value: "style preview", hint: "use when compare is noisy" },
         { label: "Rollback Point", value: "episode detail", hint: "promotion and rollback land here" }
       ],
-      "No recovery snapshot available."
-    )}</section><section class="card"><div class="section-head"><div><h2>Variant Playback</h2><p class="section-intro">Watch both targets side by side only after the verdict rail above is clear.</p></div></div><div class="decision-media-grid"><article class="decision-media-card"><div class="section-head"><div><h3>Variant A</h3><p class="muted-text">${esc(
+      snapshotEmpty: "No recovery snapshot available.",
+      snapshotTone: verdictTone
+    })}<section class="card"><div class="section-head"><div><h2>Variant Playback</h2><p class="section-intro">Watch both targets side by side only after the verdict rail above is clear.</p></div></div><div class="decision-media-grid"><article class="decision-media-card"><div class="section-head"><div><h3>Variant A</h3><p class="muted-text">${esc(
       variantAStyle
     )}</p></div><span class="badge ${aExists ? "ok" : "bad"}">${aExists ? "ready" : "missing"}</span></div>${aExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${aUrl}"></video><div class="quick-links"><a href="${aUrl}">Open preview_A.mp4</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
       jobA
@@ -4925,20 +5020,29 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         }
       ]
     });
-    const recoverySnapshot = renderDecisionMetaGrid(
-      [
-        { label: "Failure Reason", value: job.lastError ?? "none", hint: recoveryCategory.label },
-        {
-          label: "Last Known Good",
-          value: lastLog?.message ?? "no successful checkpoint logged",
-          hint: lastLog ? fmtDate(lastLog.createdAt.toISOString()) : "awaiting logs"
-        },
-        { label: "Retry Path", value: canRetry ? "retry failed job" : "monitor until terminal", hint: recoveryCategory.hint },
-        { label: "Alternate Path", value: "episode detail -> artifacts -> HITL", hint: "linked object recovery route" },
-        { label: "Rollback Point", value: episodeId, hint: "owning episode object" }
-      ],
-      "No recovery metadata is available."
-    );
+    const jobDecisionRail: DecisionCard[] = [
+      {
+        title: canRetry ? "Retry this run" : "Monitor this run",
+        detail: canRetry ? "Retry directly from the failed run, then confirm the next checkpoint in the evidence below." : "Retry stays locked until the run reaches FAILED. Use the owning episode for alternate actions.",
+        tone: canRetry ? "bad" : jobStatusTone,
+        badge: canRetry ? "retry" : "monitor",
+        html: `${retryAction}${episodeId ? `<a href="/ui/episodes/${esc(episodeId)}">Episode Detail</a>` : ""}`
+      },
+      {
+        title: "Owning object",
+        detail: `${episodeId} remains the rollback and alternate-path anchor for this run.`,
+        tone: "muted",
+        badge: "episode",
+        html: `<a href="/ui/episodes/${esc(episodeId)}">Open Episode Detail</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}">Artifacts</a>`
+      },
+      {
+        title: "Recovery route",
+        detail: job.lastError ? recoveryCategory.hint : "No recovery work is required unless a later checkpoint fails.",
+        tone: job.lastError ? "warn" : "ok",
+        badge: recoveryCategory.label,
+        html: `<a href="/ui/hitl">Recovery Queue</a><a href="/ui/health">Health</a>`
+      }
+    ];
     const jobDetailBody = buildJobDetailPageBody({
       flash: "",
       jobId: esc(job.id),
@@ -4957,7 +5061,30 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     return reply.type("text/html; charset=utf-8").send(
       page(
         `Job ${id}`,
-        `${decisionSurfaceStyles()}<div class="decision-surface">${jobHero}<section class="card"><div class="section-head"><div><h2>Recovery Snapshot</h2><p class="section-intro">The failure reason, retry path, and owning object stay above the raw log table.</p></div></div>${recoverySnapshot}</section>${jobDetailBody}</div>`
+        `${decisionSurfaceStyles()}<div class="decision-surface">${jobHero}${renderDecisionPrioritySection({
+          title: "Decision Rail",
+          intro: "Keep the retry action, owning episode, and recovery route visible before raw run evidence.",
+          linksHtml: `<a href="/ui/jobs">Back to Jobs</a><a href="/ui/episodes/${esc(episodeId)}">Episode Detail</a>`,
+          railTitle: "Run actions",
+          railIntro: "Use the run object for immediate retry, then step into the owning episode when the alternate path needs more context.",
+          railCards: jobDecisionRail,
+          railEmpty: "No run actions are available.",
+          railTone: canRetry ? "bad" : jobStatusTone,
+          snapshotIntro: "The failure reason, retry path, and owning object stay above the raw log table.",
+          snapshotFacts: [
+            { label: "Failure Reason", value: job.lastError ?? "none", hint: recoveryCategory.label },
+            {
+              label: "Last Known Good",
+              value: lastLog?.message ?? "no successful checkpoint logged",
+              hint: lastLog ? fmtDate(lastLog.createdAt.toISOString()) : "awaiting logs"
+            },
+            { label: "Retry Path", value: canRetry ? "retry failed job" : "monitor until terminal", hint: recoveryCategory.hint },
+            { label: "Alternate Path", value: "episode detail -> artifacts -> HITL", hint: "linked object recovery route" },
+            { label: "Rollback Point", value: episodeId, hint: "owning episode object" }
+          ],
+          snapshotEmpty: "No recovery metadata is available.",
+          snapshotTone: job.lastError ? "warn" : jobStatusTone
+        })}${jobDetailBody}</div>`
       )
     );
   });
@@ -5130,8 +5257,39 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       ],
       recentActivity: detailPairs.slice(0, 4).map((pair) => ({ title: pair.label, detail: pair.value, tone: "muted" })),
       linkedObjects: [{ title: "Rollout source", detail: resolved.source.label, tone: "muted", html: `<a href="/ui/rollouts">Open Rollout Queue</a>` }]
-    })}<section class="card"><div class="section-head"><div><h2>Recovery Snapshot</h2><p class="section-intro">Failure reason, last known good state, retry path, alternate path, and rollback point stay above raw JSON.</p></div></div>${renderDecisionMetaGrid(
-      [
+    })}${renderDecisionPrioritySection({
+      title: "Decision Rail",
+      intro: "Keep promotion, rerun, and rollback context visible before target rows and raw JSON.",
+      linksHtml: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`,
+      railTitle: "Rollout actions",
+      railIntro: "Use this rail to confirm promotion, rerun the owning rollout flow, or hold on the safest ready anchor.",
+      railCards: [
+        {
+          title: "Current rollout verdict",
+          detail: str(isRecord(doc) ? doc.recommendation : undefined) ?? "No explicit recommendation stored in the artifact.",
+          tone: artifactTone,
+          badge: rolloutStatusLabel(artifactStatus),
+          html: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/rollouts/artifact?path=${encodeURIComponent(resolved.resolvedPath)}">Open Raw JSON</a>`
+        },
+        {
+          title: "Rerun or inspect",
+          detail: artifactTone === "bad" ? "Inspect the blocking target or bundle rows first, then rerun the owning rollout flow." : "Inspect bundle and target rows only if promotion still feels uncertain.",
+          tone: artifactTone === "bad" ? "bad" : "warn",
+          badge: artifactTone === "bad" ? "rerun" : "review",
+          html: `<button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button>`
+        },
+        {
+          title: "Rollback anchor",
+          detail: `${lastKnownGood} is the closest ready bundle or target available for rollback or confirmation.`,
+          tone: lastKnownGood === "none" ? "warn" : "ok",
+          badge: "anchor",
+          html: `<a href="/ui/benchmarks">Benchmark Queue</a><a href="/ui/rollouts">Rollout Queue</a>`
+        }
+      ],
+      railEmpty: "No rollout actions are available.",
+      railTone: artifactTone,
+      snapshotIntro: "Failure reason, last known good state, retry path, alternate path, and rollback point stay above raw JSON.",
+      snapshotFacts: [
         { label: "Failure Reason", value: issues[0] ?? str(isRecord(doc) ? doc.reason : undefined) ?? "none", hint: "top rollout blocker" },
         { label: "Last Known Good", value: lastKnownGood, hint: "best ready target/bundle in this artifact" },
         { label: "Fallback Applied", value: str(isRecord(doc) ? doc.recommendation : undefined) ?? "-", hint: "recommended fallback / promotion" },
@@ -5139,8 +5297,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         { label: "Alternate Path", value: "benchmark queue / rollout queue", hint: "linked object review path" },
         { label: "Rollback Point", value: lastKnownGood, hint: "nearest ready anchor" }
       ],
-      "No rollout recovery snapshot available."
-    )}</section>
+      snapshotEmpty: "No rollout recovery snapshot available.",
+      snapshotTone: artifactTone
+    })}
 <section class="card dashboard-shell">
   <div class="section-head"><h2>Key Fields</h2><span class="muted-text">Top-level artifact metadata extracted from the JSON.</span></div>
   <div class="status-list">${metricRows}</div>
@@ -5658,8 +5817,39 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         badge: row.actualSelected ? "actual" : row.plannedSelected ? "prompt" : "candidate"
       })),
       linkedObjects: [{ title: "Rollout bundle", detail: bundle.stem, tone: "muted", html: topLinks || `<a href="/ui/rollouts">Rollouts</a>` }]
-    })}<section class="card"><div class="section-head"><div><h2>Recovery Snapshot</h2><p class="section-intro">Failure reason, fallback, retry path, alternate path, and rollback point stay above the candidate matrix.</p></div></div>${renderDecisionMetaGrid(
-      [
+    })}${renderDecisionPrioritySection({
+      title: "Decision Rail",
+      intro: "Keep approval, retry, and rollback logic visible before the full candidate matrix.",
+      linksHtml: `<a href="/ui/benchmarks">Benchmark Queue</a><a href="/ui/rollouts">Rollouts</a>`,
+      railTitle: "Compare actions",
+      railIntro: "Use this rail to decide whether to approve the actual winner, retry actual judging, or fall back to the prompt winner.",
+      railCards: [
+        {
+          title: "Current decision",
+          detail: comparisonNextDecision,
+          tone: comparisonTone,
+          badge: comparisonVerdict,
+          html: topLinks || `<a href="/ui/rollouts">Open Rollouts</a>`
+        },
+        {
+          title: "Retry actual judge",
+          detail: !actualSelectionId ? "The actual selected candidate is missing, so retry the actual judge before approving or rolling back." : "Retry only if the artifact evidence still looks inconsistent with the verdict.",
+          tone: !actualSelectionId ? "bad" : "warn",
+          badge: !actualSelectionId ? "blocked" : "optional",
+          html: `<a href="/ui/benchmarks">Benchmark Queue</a>${topCandidate?.resultPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(topCandidate.resultPath)}">Inspect Top Result</a>` : ""}`
+        },
+        {
+          title: "Rollback anchor",
+          detail: `${humanizeOpsLabel(promptWinner)} remains the safest prompt-side rollback point when actual and prompt winners diverge.`,
+          tone: comparisonAligned ? "ok" : "warn",
+          badge: "rollback",
+          html: topLinks || `<a href="/ui/rollouts">Open Rollouts</a>`
+        }
+      ],
+      railEmpty: "No candidate actions are available.",
+      railTone: comparisonTone,
+      snapshotIntro: "Failure reason, fallback, retry path, alternate path, and rollback point stay above the candidate matrix.",
+      snapshotFacts: [
         { label: "Failure Reason", value: !actualSelectionId ? "actual selected candidate missing" : comparisonAligned ? "none" : "prompt and actual winners diverge", hint: "top compare blocker" },
         { label: "Last Known Good", value: promptWinner, hint: "prompt-side approved candidate" },
         { label: "Fallback Applied", value: actualWinner, hint: "actual-side chosen candidate" },
@@ -5667,8 +5857,9 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         { label: "Alternate Path", value: "benchmark queue / rollout detail", hint: "linked object review path" },
         { label: "Rollback Point", value: promptWinner, hint: "prompt winner remains the safest rollback anchor" }
       ],
-      "No candidate recovery snapshot available."
-    )}</section>
+      snapshotEmpty: "No candidate recovery snapshot available.",
+      snapshotTone: comparisonTone
+    })}
 <section class="card dashboard-shell">
   <div class="section-head">
     <div>
