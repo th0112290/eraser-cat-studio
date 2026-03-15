@@ -182,15 +182,15 @@ export function buildStudioBody(input: StudioBodyInput): string {
     .studio-section h2{margin:0;font-size:22px;letter-spacing:-.03em}
     .studio-field-note{margin:12px 0 0;color:#5b6b82;font-size:12px;line-height:1.5}
     .studio-page-input,.studio-toolbar-input{}
-    .studio-shell label,.studio-grid label{display:grid;gap:6px;font-size:13px;font-weight:600;color:#142033}
-    .studio-shell input:not([type="checkbox"]):not([type="file"]),.studio-shell select,.studio-shell textarea,.studio-grid input:not([type="checkbox"]):not([type="file"]),.studio-grid select,.studio-grid textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d4deec;border-radius:12px;background:#fff;color:#142033;transition:border-color .15s ease,box-shadow .15s ease}
-    .studio-shell input[type="file"],.studio-grid input[type="file"]{padding:9px 10px;border:1px dashed #c1d2e7;border-radius:12px;background:#fff}
-    .studio-shell input:not([type="checkbox"]):not([type="file"]):focus,.studio-shell select:focus,.studio-shell textarea:focus,.studio-grid input:not([type="checkbox"]):not([type="file"]):focus,.studio-grid select:focus,.studio-grid textarea:focus{outline:none;border-color:#8eb1ef;box-shadow:0 0 0 3px rgba(18,87,199,.12)}
-    .studio-shell textarea,.studio-grid textarea{resize:vertical;min-height:88px}
-    .studio-shell button,.studio-grid button{appearance:none;padding:10px 14px;border-radius:12px;border:1px solid #c1d2e7;background:#fff;color:#142033;font-weight:700;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
-    .studio-shell button:hover,.studio-grid button:hover{transform:translateY(-1px);border-color:#aac2e9;box-shadow:0 10px 24px rgba(15,23,42,.08)}
-    .studio-shell button[data-primary-action="1"],.studio-grid button[data-primary-action="1"]{border-color:#0f4aad;background:linear-gradient(180deg,#1660d0,#0f4fad);color:#fff;box-shadow:0 12px 24px rgba(18,87,199,.18)}
-    .studio-shell button.secondary,.studio-grid button.secondary{background:#f5f8fe}
+    .studio-shell label,.studio-grid label,.studio-board label{display:grid;gap:6px;font-size:13px;font-weight:600;color:#142033}
+    .studio-shell input:not([type="checkbox"]):not([type="file"]),.studio-shell select,.studio-shell textarea,.studio-grid input:not([type="checkbox"]):not([type="file"]),.studio-grid select,.studio-grid textarea,.studio-board input:not([type="checkbox"]):not([type="file"]),.studio-board select,.studio-board textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d4deec;border-radius:12px;background:#fff;color:#142033;transition:border-color .15s ease,box-shadow .15s ease}
+    .studio-shell input[type="file"],.studio-grid input[type="file"],.studio-board input[type="file"]{padding:9px 10px;border:1px dashed #c1d2e7;border-radius:12px;background:#fff}
+    .studio-shell input:not([type="checkbox"]):not([type="file"]):focus,.studio-shell select:focus,.studio-shell textarea:focus,.studio-grid input:not([type="checkbox"]):not([type="file"]):focus,.studio-grid select:focus,.studio-grid textarea:focus,.studio-board input:not([type="checkbox"]):not([type="file"]):focus,.studio-board select:focus,.studio-board textarea:focus{outline:none;border-color:#8eb1ef;box-shadow:0 0 0 3px rgba(18,87,199,.12)}
+    .studio-shell textarea,.studio-grid textarea,.studio-board textarea{resize:vertical;min-height:88px}
+    .studio-shell button,.studio-grid button,.studio-board button{appearance:none;padding:10px 14px;border-radius:12px;border:1px solid #c1d2e7;background:#fff;color:#142033;font-weight:700;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
+    .studio-shell button:hover,.studio-grid button:hover,.studio-board button:hover{transform:translateY(-1px);border-color:#aac2e9;box-shadow:0 10px 24px rgba(15,23,42,.08)}
+    .studio-shell button[data-primary-action="1"],.studio-grid button[data-primary-action="1"],.studio-board button[data-primary-action="1"]{border-color:#0f4aad;background:linear-gradient(180deg,#1660d0,#0f4fad);color:#fff;box-shadow:0 12px 24px rgba(18,87,199,.18)}
+    .studio-shell button.secondary,.studio-grid button.secondary,.studio-board button.secondary{background:#f5f8fe}
     .studio-output{margin:14px 0 0;min-height:120px;padding:14px 16px;border:1px solid #233554;border-radius:16px;background:linear-gradient(180deg,#0f1726,#142033);color:#dfe9ff;overflow:auto;font-size:12px;line-height:1.55}
     .studio-binding-grid{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px}
     .studio-binding{padding:12px;border:1px solid #d4deec;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
@@ -247,7 +247,7 @@ export function buildStudioBody(input: StudioBodyInput): string {
     .studio-ops-summary::-webkit-details-marker{display:none}
     .studio-ops-details{padding:0}
     .studio-ops-body{padding:0 18px 18px;display:grid;gap:12px}
-    .studio-shell code,.studio-shell pre,.studio-shell input,.studio-shell select,.studio-shell textarea,.studio-grid code,.studio-grid pre,.studio-grid input,.studio-grid select,.studio-grid textarea{font-family:"IBM Plex Mono","Cascadia Code","SFMono-Regular",Consolas,monospace}
+    .studio-shell code,.studio-shell pre,.studio-shell input,.studio-shell select,.studio-shell textarea,.studio-grid code,.studio-grid pre,.studio-grid input,.studio-grid select,.studio-grid textarea,.studio-board code,.studio-board pre,.studio-board input,.studio-board select,.studio-board textarea{font-family:"IBM Plex Mono","Cascadia Code","SFMono-Regular",Consolas,monospace}
     @media (max-width:1240px){.studio-hero,.studio-grid,.studio-signal-grid,.studio-runtime-controls,.studio-binding-grid,.studio-board,.studio-activity-grid{grid-template-columns:1fr}.studio-ops-rail{position:static}}
     @media (max-width:720px){.studio-shell,.studio-hero-card,.studio-runtime-card,.studio-section,.studio-signal,.studio-risk-card{padding:16px}.studio-head{flex-direction:column}.studio-action-cluster{align-items:stretch}.studio-action-cluster button{width:100%}}
   </style>
@@ -299,77 +299,152 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     </section>
   </div>
 </section>
-<section class="studio-grid">
-  <div class="studio-col">
-    <section class="candidate studio-section">
+<section class="studio-board">
+  <div class="studio-main-col">
+    <section class="studio-section">
       <div class="studio-head">
         <div class="studio-head-copy">
-          <div class="studio-kicker"><span class="studio-step">1</span><span>Asset Intake</span></div>
-          <h2>Upload source assets</h2>
-          <p class="studio-monitor-note">Send references, view variants, backgrounds, and chart sources into the pipeline without leaving Studio.</p>
-        </div>
-        <div class="studio-stage-meta">
-          <span class="studio-meta-chip">PNG / JPG / WebP</span>
-          <span class="studio-meta-chip">Redirects to asset detail</span>
+          <div class="studio-kicker">Current State Summary</div>
+          <h2>Read the operating state first</h2>
+          <p class="studio-monitor-note">Selection, active pack, and channel policy stay visible here before you dispatch or open the next workbench.</p>
         </div>
       </div>
-      <form id="studio-asset-upload-form" enctype="multipart/form-data" class="grid">
-        <div class="grid two">
-          <label>Asset Type<select name="assetType"><option value="character_reference">character_reference (reference)</option><option value="character_view">character_view (view variant)</option><option value="background">background (environment)</option><option value="chart_source">chart_source (chart)</option></select></label>
-          <label>File<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label>
-        </div>
-        <div class="studio-actions">
-          <button id="studio-asset-upload-submit" type="submit">Upload</button>
-        </div>
-      </form>
-      <p class="studio-field-note">A successful upload opens the matching asset inspection view automatically.</p>
-      <pre id="studio-asset-upload-result" class="studio-output" role="status" aria-live="polite" aria-atomic="true">Waiting</pre>
+      <div class="studio-signal-grid">
+        <section class="studio-signal">
+          <span class="studio-signal-label">Selected Pack</span>
+          <strong id="studio-signal-pack" class="studio-signal-value">No pack selected</strong>
+          <span class="studio-signal-note">Choose a pack from recent object activity to bind dispatch safely.</span>
+        </section>
+        <section class="studio-signal">
+          <span class="studio-signal-label">Episode Target</span>
+          <strong id="studio-signal-episode" class="studio-signal-value">No episode selected</strong>
+          <span id="studio-signal-topic" class="studio-signal-note">Topic not set.</span>
+        </section>
+        <section class="studio-signal">
+          <span class="studio-signal-label">Operating Model</span>
+          <strong class="studio-signal-value">Review -> Stage -> Dispatch</strong>
+          <span class="studio-signal-note">Use the workbench that matches the decision you are making now.</span>
+        </section>
+      </div>
+      <div class="studio-overview-grid">
+        <article class="studio-overview-card"><span>Channel</span><strong>${esc(input.channelProfile.channelName)}</strong><p>${esc(input.channelProfile.channelId || "(default)")} / ${esc(input.channelProfile.language)}</p></article>
+        <article class="studio-overview-card"><span>Active Pack</span><strong>${esc(activePackSummary)}</strong><p>${esc(input.packState.activePackStatus || "No pack status recorded")}</p></article>
+        <article class="studio-overview-card"><span>Latest Pack Activity</span><strong>${esc(latestPackSummary)}</strong><p>Approved ${esc(String(input.packState.approvedCount))} / Archived ${esc(String(input.packState.archivedCount))}</p></article>
+        <article class="studio-overview-card"><span>Profile Updated</span><strong>${esc(input.channelProfile.updatedAt)}</strong><p>${esc(input.channelProfile.tone)} / ${esc(input.channelProfile.pacing)}</p></article>
+      </div>
     </section>
-    <section class="candidate studio-section">
+    <section class="studio-section">
       <div class="studio-head">
         <div class="studio-head-copy">
-          <div class="studio-kicker"><span class="studio-step">2</span><span>Character Generation</span></div>
-          <h2>Generate a character pack</h2>
-          <p class="studio-monitor-note">Run prompt-based or reference-based generation, then bind a resulting pack directly into the episode step.</p>
-        </div>
-        <div class="studio-stage-meta">
-          <span class="studio-meta-chip">Prompt or reference mode</span>
-          <span class="studio-meta-chip">Up to 8 candidates</span>
+          <div class="studio-kicker">Risk Signals</div>
+          <h2>Scan the friction before you act</h2>
+          <p class="studio-monitor-note">These signals keep compare, review, and recovery concerns visible without forcing every control open.</p>
         </div>
       </div>
-      <form method="post" action="/ui/character-generator/create" class="grid">
-        <div class="grid two">
-          <label>Mode<select name="mode"><option value="new">new (prompt-based)</option><option value="reference">reference (asset-based)</option></select></label>
-          <label>Provider<select name="provider"><option value="mock">mock (default free)</option><option value="comfyui">comfyui (optional)</option><option value="remoteApi">remoteApi (optional)</option></select></label>
-          <label>Prompt Preset<select name="promptPreset">${input.styleOptions}</select></label>
-          <label>Species<select name="species">${input.speciesOptions}</select></label>
-          <label>Candidates<input name="candidateCount" type="number" min="1" max="8" value="4"/></label>
-          <label>Topic (optional)<input name="topic" placeholder="eraser cat mascot"/></label>
-          <label>Seed<input name="seed" type="number" value="20260305"/></label>
-        </div>
-        <label>Positive Prompt (optional)<textarea name="positivePrompt" rows="2" placeholder="cute square-head cat mascot, monochrome black line art, paw hands, eraser dust tail"></textarea></label>
-        <label>Negative Prompt (optional)<textarea name="negativePrompt" rows="2" placeholder="realistic fingers, glossy anime shading, realistic fur, long body, text"></textarea></label>
-        <div class="studio-actions">
-          <button type="submit" data-primary-action="1">Start Character Generation</button>
-        </div>
-      </form>
+      <div class="studio-risk-grid">
+        <article class="studio-risk-card">
+          <span class="studio-risk-level ${input.packState.latestPackId && input.packState.activePackId && input.packState.latestPackId !== input.packState.activePackId ? "attn" : "good"}">Pack Drift</span>
+          <strong>${esc(packDriftHeadline)}</strong>
+          <p>Active pack: ${esc(activePackSummary)}. Latest activity: ${esc(latestPackSummary)}.</p>
+        </article>
+        <article class="studio-risk-card">
+          <span class="studio-risk-level ${input.packState.pendingCount > 0 ? "watch" : "good"}">Review Pressure</span>
+          <strong>${esc(reviewPressureHeadline)}</strong>
+          <p>Pack counts: approved ${esc(String(input.packState.approvedCount))} / archived ${esc(String(input.packState.archivedCount))} / pending ${esc(String(input.packState.pendingCount))}.</p>
+        </article>
+        <article class="studio-risk-card">
+          <span class="studio-risk-level ${guardrailHeadline.includes("active") ? "attn" : "good"}">Guardrails</span>
+          <strong>${esc(guardrailHeadline)}</strong>
+          <p>Forbidden terms: ${esc(input.channelProfile.forbiddenTermsSummary)}. Negative terms: ${esc(input.channelProfile.negativeTermsSummary)}.</p>
+        </article>
+      </div>
     </section>
-    <section class="candidate studio-section">
+    <section class="studio-section">
       <div class="studio-head">
         <div class="studio-head-copy">
-          <div class="studio-kicker"><span class="studio-step">3</span><span>Episode Dispatch</span></div>
-          <h2>Bind a pack and move the episode</h2>
-          <p class="studio-monitor-note">Use the pack and episode rails to preload the next run target, then dispatch preview, editor, or publish actions from a single action group.</p>
+          <div class="studio-kicker">Recent Object Activity</div>
+          <h2>Review the live feeds</h2>
+          <p class="studio-monitor-note">Use these compact feeds to choose the object that needs attention, then continue in the matching workbench or the dispatch rail.</p>
         </div>
-        <div class="studio-stage-meta">
-          <span class="studio-meta-chip">One-click preview path</span>
-          <span class="studio-meta-chip">Manual episode ops</span>
-        </div>
+        <div class="studio-links"><a href="#studio-live-controls" class="studio-link">Open live controls</a></div>
       </div>
+      <div class="studio-activity-grid">
+        ${renderStudioFeedCard({
+          kicker: "Assets",
+          title: "Recent Assets",
+          note: "Jump into asset review when QC or preview verification is the next decision.",
+          counterId: "studio-assets-count",
+          refreshId: "studio-refresh-assets",
+          filterId: "studio-filter-assets",
+          filterLabel: "Filter recent assets",
+          filterPlaceholder: "Search assets (id/type/status)",
+          filterNote: "Current page filter",
+          tableId: "studio-assets-table",
+          tableHead: "<tr><th>ID</th><th>Type</th><th>Status</th><th>Created</th></tr>",
+          loadingColspan: 4,
+          loadingTitle: "Loading assets",
+          loadingDetail: "Fetching the latest asset intake records."
+        })}
+        ${renderStudioFeedCard({
+          kicker: "Packs",
+          title: "Generated Character Packs",
+          note: "Click a row to bind it into the dispatch rail or open pack review.",
+          counterId: "studio-packs-count",
+          refreshId: "studio-refresh-packs",
+          filterId: "studio-filter-packs",
+          filterLabel: "Filter generated character packs",
+          filterPlaceholder: "Search packs (id/status/episode)",
+          filterNote: "Row click selects pack",
+          tableId: "studio-packs-table",
+          tableHead: "<tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th></tr>",
+          loadingColspan: 4,
+          loadingTitle: "Loading character packs",
+          loadingDetail: "Pulling the latest generation outputs."
+        })}
+        ${renderStudioFeedCard({
+          kicker: "Episodes",
+          title: "Recent Episodes",
+          note: "Click a row to preload episode id and topic into the dispatch rail.",
+          counterId: "studio-episodes-count",
+          refreshId: "studio-refresh-episodes",
+          filterId: "studio-filter-episodes",
+          filterLabel: "Filter recent episodes",
+          filterPlaceholder: "Search episodes (id/topic/status)",
+          filterNote: "Row click selects episode",
+          tableId: "studio-episodes-table",
+          tableHead: "<tr><th>ID</th><th>Topic</th><th>Status</th><th>Latest Job</th></tr>",
+          loadingColspan: 4,
+          loadingTitle: "Loading episodes",
+          loadingDetail: "Syncing the latest episode queue state."
+        })}
+        ${renderStudioFeedCard({
+          kicker: "Jobs",
+          title: "Recent Jobs",
+          note: "Watch preview, render, and publish execution without leaving the hub.",
+          counterId: "studio-jobs-count",
+          refreshId: "studio-refresh-jobs",
+          filterId: "studio-filter-jobs",
+          filterLabel: "Filter recent jobs",
+          filterPlaceholder: "Search jobs (id/type/status/episode)",
+          filterNote: "Newest rows only",
+          tableId: "studio-jobs-table",
+          tableHead: "<tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Episode</th></tr>",
+          loadingColspan: 5,
+          loadingTitle: "Loading jobs",
+          loadingDetail: "Waiting for the latest queue telemetry."
+        })}
+      </div>
+    </section>
+  </div>
+  <aside class="studio-ops-rail">
+    <section class="studio-ops-card" id="studio-dispatch">
+      <p class="studio-ops-kicker">Dispatch Rail</p>
+      <h2 style="margin:0">Bind a pack and move the episode</h2>
+      <p class="studio-monitor-note">This is the only active input surface kept in Studio. Everything noisier stays behind a dedicated workbench or collapsed detail.</p>
       <div class="studio-binding-grid">
         <label class="studio-binding"><span>Episode Topic</span><input id="studio-topic" placeholder="e.g. character intro video"/></label>
         <label class="studio-binding"><span>Episode Id</span><input id="studio-episode-id" placeholder="cmm..."/></label>
-        <label class="studio-binding"><span>Selected Character Pack</span><input id="studio-selected-pack" placeholder="select from right list" readonly/></label>
+        <label class="studio-binding"><span>Selected Character Pack</span><input id="studio-selected-pack" placeholder="select from activity feed" readonly/></label>
       </div>
       <div style="display:grid;gap:12px;margin-top:16px">
         <div class="studio-action-cluster">
@@ -385,62 +460,59 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
         </div>
       </div>
     </section>
-  </div>
-  <div class="studio-col">
-    <section class="candidate studio-section">
-      <div class="studio-head">
-        <div class="studio-head-copy">
-          <div class="studio-kicker">Inspection Feed</div>
-          <h2>Recent Assets</h2>
-          <p class="studio-monitor-note">Jump into asset detail when you need QC or preview verification.</p>
-        </div>
-        <div class="studio-actions"><span id="studio-assets-count" class="studio-counter">Waiting</span><button type="button" id="studio-refresh-assets" class="secondary">Refresh</button></div>
-      </div>
-      <div class="studio-table-tools"><input id="studio-filter-assets" type="search" autocomplete="off" aria-label="Filter recent assets" placeholder="Search assets (id/type/status)" /><span class="studio-filter-note">Current page filter</span></div>
-      <div class="studio-table-wrap"><table id="studio-assets-table"><thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Created</th></tr></thead><tbody><tr><td colspan="4"><div class="studio-state studio-state-loading"><strong>Loading assets</strong><span>Fetching the latest asset intake records.</span></div></td></tr></tbody></table></div>
+    <section class="studio-ops-card">
+      <p class="studio-ops-kicker">Current Selection</p>
+      <h2 id="studio-selection-title" style="margin:0">No Selection</h2>
+      <p id="studio-selection-meta" class="studio-monitor-note">Select a pack or episode from recent object activity to inspect route-ready metadata.</p>
+      <div id="studio-selection-fields" class="studio-meta"><div class="studio-selection-empty">No pack or episode is selected yet.</div></div>
+      <div id="studio-selection-links" class="studio-links" style="margin-top:12px"></div>
     </section>
-    <section class="candidate studio-section">
-      <div class="studio-head">
-        <div class="studio-head-copy">
-          <div class="studio-kicker">Character Feed</div>
-          <h2>Generated Character Packs</h2>
-          <p class="studio-monitor-note">Click a pack row to bind it into the episode stage.</p>
-        </div>
-        <div class="studio-actions"><span id="studio-packs-count" class="studio-counter">Waiting</span><button type="button" id="studio-refresh-packs" class="secondary">Refresh</button></div>
+    <details class="studio-ops-card studio-ops-details" id="studio-intake">
+      <summary class="studio-ops-summary"><span>Quick intake</span><span class="studio-guide-note">Collapsed by default</span></summary>
+      <div class="studio-ops-body">
+        <p class="studio-monitor-note" style="margin-top:0">Use this only for a fast handoff into the Assets review workbench.</p>
+        <form id="studio-asset-upload-form" enctype="multipart/form-data" class="grid">
+          <div class="grid two">
+            <label>Asset Type<select name="assetType"><option value="character_reference">character_reference (reference)</option><option value="character_view">character_view (view variant)</option><option value="background">background (environment)</option><option value="chart_source">chart_source (chart)</option></select></label>
+            <label>File<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label>
+          </div>
+          <div class="studio-actions">
+            <button id="studio-asset-upload-submit" type="submit">Upload</button>
+            <a href="/ui/assets" class="studio-link">Open Assets</a>
+          </div>
+        </form>
+        <p class="studio-field-note">A successful upload opens the matching asset inspection view automatically.</p>
+        <pre id="studio-asset-upload-result" class="studio-output" role="status" aria-live="polite" aria-atomic="true">Waiting</pre>
       </div>
-      <div class="studio-table-tools"><input id="studio-filter-packs" type="search" autocomplete="off" aria-label="Filter generated character packs" placeholder="Search packs (id/status/episode)" /><span class="studio-filter-note">Row click selects pack</span></div>
-      <div class="studio-table-wrap"><table id="studio-packs-table"><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th></tr></thead><tbody><tr><td colspan="4"><div class="studio-state studio-state-loading"><strong>Loading character packs</strong><span>Pulling the latest generation outputs.</span></div></td></tr></tbody></table></div>
-    </section>
-    <section class="candidate studio-section">
-      <div class="studio-head">
-        <div class="studio-head-copy">
-          <div class="studio-kicker">Episode Feed</div>
-          <h2>Recent Episodes</h2>
-          <p class="studio-monitor-note">Click a row to preload episode id and topic into the dispatch form.</p>
+    </details>
+    <details class="studio-ops-card studio-ops-details" id="studio-live-controls">
+      <summary class="studio-ops-summary"><span>Live feed controls</span><span class="studio-guide-note">Auto refresh and manual sync</span></summary>
+      <div class="studio-ops-body">
+        <p class="studio-monitor-note" style="margin-top:0">Keep the monitor rail warm while you review activity. Manual refresh stays available when you need a clean sync point.</p>
+        <div class="studio-runtime-controls">
+          <label class="studio-toggle"><span>Auto refresh</span><input id="studio-auto-refresh" type="checkbox" checked/></label>
+          <label>Interval
+            <select id="studio-refresh-interval">
+              <option value="3000">3s</option>
+              <option value="5000" selected>5s</option>
+              <option value="10000">10s</option>
+            </select>
+          </label>
         </div>
-        <div class="studio-actions"><span id="studio-episodes-count" class="studio-counter">Waiting</span><button type="button" id="studio-refresh-episodes" class="secondary">Refresh</button></div>
-      </div>
-      <div class="studio-table-tools"><input id="studio-filter-episodes" type="search" autocomplete="off" aria-label="Filter recent episodes" placeholder="Search episodes (id/topic/status)" /><span class="studio-filter-note">Row click selects episode</span></div>
-      <div class="studio-table-wrap"><table id="studio-episodes-table"><thead><tr><th>ID</th><th>Topic</th><th>Status</th><th>Latest Job</th></tr></thead><tbody><tr><td colspan="4"><div class="studio-state studio-state-loading"><strong>Loading episodes</strong><span>Syncing the latest episode queue state.</span></div></td></tr></tbody></table></div>
-    </section>
-    <section class="candidate studio-section">
-      <div class="studio-head">
-        <div class="studio-head-copy">
-          <div class="studio-kicker">Job Feed</div>
-          <h2>Recent Jobs</h2>
-          <p class="studio-monitor-note">Watch preview, render, and publish execution without leaving Studio.</p>
+        <div class="studio-actions">
+          <button type="button" id="studio-refresh-all" class="secondary">Refresh all feeds</button>
         </div>
-        <div class="studio-actions"><span id="studio-jobs-count" class="studio-counter">Waiting</span><button type="button" id="studio-refresh-jobs" class="secondary">Refresh</button></div>
+        <div class="studio-links">
+          <a href="/ui/jobs" class="studio-link">Jobs</a>
+          <a href="/ui/episodes" class="studio-link">Episodes</a>
+          <a href="/ui/rollouts" class="studio-link">Rollouts</a>
+        </div>
       </div>
-      <div class="studio-table-tools"><input id="studio-filter-jobs" type="search" autocomplete="off" aria-label="Filter recent jobs" placeholder="Search jobs (id/type/status/episode)" /><span class="studio-filter-note">Newest rows only</span></div>
-      <div class="studio-table-wrap"><table id="studio-jobs-table"><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Episode</th></tr></thead><tbody><tr><td colspan="5"><div class="studio-state studio-state-loading"><strong>Loading jobs</strong><span>Waiting for the latest queue telemetry.</span></div></td></tr></tbody></table></div>
-    </section>
-  </div>
-  <aside class="studio-ops-rail">
+    </details>
     <section class="studio-ops-card">
       <p class="studio-ops-kicker">Channel Profile</p>
       <h2 style="margin:0">${esc(input.channelProfile.channelName)}</h2>
-      <p class="studio-monitor-note">Operator-facing summary of the active channel profile. Verify this before queueing pack generation or preview runs.</p>
+      <p class="studio-monitor-note">Verify the active channel profile before queueing generation or episode preview work.</p>
       <div class="studio-meta">
         ${renderMetaRow("Source", input.channelProfile.source)}
         ${renderMetaRow("Channel", `${input.channelProfile.channelId || "(default)"} / ${input.channelProfile.language}`)}
@@ -455,30 +527,6 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
         <a href="/ui/profiles" class="studio-link">Open Profiles</a>
         <a href="/ui/rollouts" class="studio-link">Open Rollouts</a>
       </div>
-    </section>
-    <section class="studio-ops-card">
-      <p class="studio-ops-kicker">Pack Control</p>
-      <h2 style="margin:0">Active Pack Snapshot</h2>
-      <p class="studio-monitor-note">Use this to compare the active pack against recent outputs before rollback or promotion decisions.</p>
-      <div class="studio-meta">
-        ${renderMetaRow("Active Pack", input.packState.activePackId || "(none)")}
-        ${renderMetaRow("Status", `${input.packState.activePackStatus} / v${input.packState.activePackVersion}`)}
-        ${renderMetaRow("Latest Pack", input.packState.latestPackId || "(none)")}
-        ${renderMetaRow("Recent Activity", input.packState.latestPackCreatedAt)}
-        ${renderMetaRow("Pack Counts", `approved ${input.packState.approvedCount} / archived ${input.packState.archivedCount} / pending ${input.packState.pendingCount}`)}
-      </div>
-      <div class="studio-links" style="margin-top:12px">
-        <a href="${esc(input.packState.charactersHref)}" class="studio-link">Open Characters</a>
-        <a href="${esc(input.packState.generatorHref)}" class="studio-link">Open Generator</a>
-        ${input.packState.compareHref ? `<a href="${esc(input.packState.compareHref)}" class="studio-link">Open Compare</a>` : ""}
-      </div>
-    </section>
-    <section class="studio-ops-card">
-      <p class="studio-ops-kicker">Current Selection</p>
-      <h2 id="studio-selection-title" style="margin:0">No Selection</h2>
-      <p id="studio-selection-meta" class="studio-monitor-note">Select a pack or episode from the feeds to inspect route-ready metadata.</p>
-      <div id="studio-selection-fields" class="studio-meta"><div class="studio-selection-empty">No pack or episode is selected yet.</div></div>
-      <div id="studio-selection-links" class="studio-links" style="margin-top:12px"></div>
     </section>
   </aside>
 </section>
@@ -683,7 +731,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       const list = Array.isArray(json?.data) ? json.data : [];
       setCounter("studio-packs-count", list.length);
       if (!list.length) {
-        packsBody.innerHTML = renderStateRow(4, "empty", "No character packs yet", "Run generation from the left lane to populate pack history.");
+        packsBody.innerHTML = renderStateRow(4, "empty", "No character packs yet", "Open Character Generator when you are ready to stage the next pack.");
         return;
       }
       packsBody.innerHTML = list.map((pack) => {
@@ -776,7 +824,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   const refreshAll = async () => {
     setStatus("Syncing assets, character packs, episodes, and jobs...");
     await Promise.allSettled([loadAssets(), loadPacks(), loadEpisodes(), loadJobs()]);
-    setStatus("Feeds synced. Continue operating from the left lane.");
+    setStatus("Feeds synced. Review activity and choose the next workbench.");
   };
 
   const startAutoRefresh = () => {
@@ -835,7 +883,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
 
   q("studio-create-episode")?.addEventListener("click", async () => {
     try {
-      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "Studio Demo Episode";
+      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "Studio Dispatch Episode";
       const res = await fetch("/api/episodes", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -860,7 +908,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
 
   q("studio-oneclick")?.addEventListener("click", async () => {
     try {
-      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "Studio Oneclick Episode";
+      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "Studio Preview Episode";
       const createRes = await fetch("/api/episodes", {
         method: "POST",
         headers: { "content-type": "application/json" },
