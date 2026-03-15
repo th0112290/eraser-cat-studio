@@ -4616,7 +4616,6 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         ]);
         const breakdown = isRecord(raw.score_breakdown) ? raw.score_breakdown : {};
         const scoreBreakdownEntries: Array<[string, unknown]> = [
-        const scoreBreakdownEntries: Array<[string, unknown]> = [
           ["face", breakdown.face_stability],
           ["motion", breakdown.motion_coherence],
           ["silhouette", breakdown.silhouette_readability],

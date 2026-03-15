@@ -4086,7 +4086,7 @@ function buildCharacterPackLineageSection(input: {
       input.selectedPackId
     )}</strong>. This page only reads existing generated pack artifacts; it does not rerun generation.</div>${renderLineageLinks([
       input.compareHref ? { label: "Compare vs active pack", href: input.compareHref } : null
-    ].filter((item): item is { label: string; href: string | null } => Boolean(item)))}</section>`;
+    ].filter((item): item is { label: string; href: string } => Boolean(item)))}</section>`;
   }
 
   const lineage = input.lineage;
