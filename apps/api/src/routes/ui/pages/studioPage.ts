@@ -449,7 +449,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       <div style="display:grid;gap:12px;margin-top:16px">
         <div class="studio-action-cluster">
           <span class="studio-cluster-label">Pipeline</span>
-          <button type="button" id="studio-oneclick" data-primary-action="1">Start one-click (create + preview)</button>
+          <button type="button" id="studio-oneclick" data-primary-action="1" data-primary-label="Start one-click preview flow">Start one-click (create + preview)</button>
           <button type="button" id="studio-create-episode" class="secondary">Create episode only</button>
         </div>
         <div class="studio-action-cluster">

@@ -5,6 +5,8 @@ export const UI_SHELL_CLIENT = `
   const live = document.getElementById("global-live");
   const shortcut = document.getElementById("shortcut-help");
   const shortcutCard = shortcut instanceof HTMLElement ? shortcut.querySelector(".shortcut-card") : null;
+  const shellNav = document.getElementById("shell-primary-nav");
+  const shellNavToggle = document.getElementById("shell-nav-toggle");
   const openShortcut = document.getElementById("shortcut-open");
   const closeShortcut = document.getElementById("shortcut-close");
   const shellCurrentObject = document.getElementById("shell-current-object");
@@ -28,6 +30,7 @@ export const UI_SHELL_CLIENT = `
   let lastShortcutFocus = null;
   let liveTimer = null;
   let pendingGo = "";
+  const compactNavQuery = window.matchMedia("(max-width: 900px)");
   const cleanText = (value) => String(value || "").replace(/\\s+/g, " ").trim();
   const shorten = (value, max = 40) => {
     const text = cleanText(value);
@@ -157,6 +160,21 @@ export const UI_SHELL_CLIENT = `
     else nextUrl.searchParams.delete(key);
     window.history.replaceState({}, "", nextUrl.pathname + (nextUrl.searchParams.toString() ? "?" + nextUrl.searchParams.toString() : "") + nextUrl.hash);
   };
+  const syncNavCollapse = () => {
+    const compact = compactNavQuery.matches;
+    if (compact) {
+      if (!document.body.dataset.shellNavCollapsed) document.body.dataset.shellNavCollapsed = "1";
+    } else {
+      document.body.dataset.shellNavCollapsed = "0";
+    }
+    const collapsed = document.body.dataset.shellNavCollapsed === "1";
+    if (shellNav instanceof HTMLElement) shellNav.hidden = compact && collapsed;
+    if (shellNavToggle instanceof HTMLButtonElement) {
+      shellNavToggle.hidden = !compact;
+      shellNavToggle.setAttribute("aria-expanded", String(!(compact && collapsed)));
+      shellNavToggle.textContent = compact && collapsed ? "Menu" : "Hide menu";
+    }
+  };
   const summarizeFilters = () => {
     const active = filterBindings
       .map((binding) => ({ key: binding.key, value: cleanText(binding.node.value) }))
@@ -164,13 +182,27 @@ export const UI_SHELL_CLIENT = `
     if (!active.length) return { label: "URL state idle", chip: "URL state idle" };
     return { label: active.length + " active filter" + (active.length > 1 ? "s" : ""), chip: active.map((binding) => binding.key + "=" + shorten(binding.value, 18)).join(" | ") };
   };
-  const primaryActionNode = () => document.querySelector("button[data-primary-action='1']:not([disabled]), form button[type='submit']:not([disabled])");
+  const primaryActionNode = () => document.querySelector("[data-primary-action='1']:not([disabled]):not([aria-disabled='true'])");
   const searchFieldNode = () => document.querySelector("input[type='search']:not([disabled]), input[data-table-filter]:not([disabled])");
   const syncPrimaryAction = () => {
     const primary = primaryActionNode();
-    if (shellPrimaryAction instanceof HTMLButtonElement) shellPrimaryAction.disabled = !(primary instanceof HTMLElement);
-    if (shellFilterAction instanceof HTMLButtonElement) shellFilterAction.disabled = !(searchFieldNode() instanceof HTMLElement);
-    setText(shellPrimaryLabel, primary instanceof HTMLElement ? shorten(primary.getAttribute("aria-label") || primary.textContent || "Run primary action", 34) : "Run primary action");
+    const searchField = searchFieldNode();
+    const hasPrimary = primary instanceof HTMLElement;
+    const hasSearch = searchField instanceof HTMLElement;
+    if (shellPrimaryAction instanceof HTMLButtonElement) {
+      shellPrimaryAction.disabled = !hasPrimary;
+      shellPrimaryAction.hidden = !hasPrimary;
+    }
+    if (shellFilterAction instanceof HTMLButtonElement) {
+      shellFilterAction.disabled = !hasSearch;
+      shellFilterAction.hidden = !hasSearch;
+    }
+    document.body.dataset.shellHasPrimary = hasPrimary ? "1" : "0";
+    document.body.dataset.shellHasFilter = hasSearch ? "1" : "0";
+    setText(
+      shellPrimaryLabel,
+      hasPrimary ? shorten(primary.getAttribute("data-primary-label") || primary.getAttribute("aria-label") || primary.textContent || "Run primary action", 34) : "Run primary action"
+    );
   };
   const syncShellState = () => {
     const url = new URL(window.location.href);
@@ -204,7 +236,29 @@ export const UI_SHELL_CLIENT = `
     setText(shellFilterChip, filterSummary.chip);
     setText(shellAlertChip, alertLabel);
     syncPrimaryAction();
+    syncNavCollapse();
   };
+  if (shellNavToggle instanceof HTMLButtonElement) {
+    shellNavToggle.addEventListener("click", () => {
+      document.body.dataset.shellNavCollapsed = document.body.dataset.shellNavCollapsed === "1" ? "0" : "1";
+      syncNavCollapse();
+      speak(document.body.dataset.shellNavCollapsed === "1" ? "Navigation collapsed." : "Navigation expanded.");
+    });
+  }
+  document.querySelectorAll("#shell-primary-nav a[href]").forEach((node) => {
+    if (!(node instanceof HTMLAnchorElement)) return;
+    node.addEventListener("click", () => {
+      if (!compactNavQuery.matches) return;
+      document.body.dataset.shellNavCollapsed = "1";
+      syncNavCollapse();
+    });
+  });
+  const bindCompactNavListener = () => {
+    const onChange = () => syncNavCollapse();
+    if (typeof compactNavQuery.addEventListener === "function") compactNavQuery.addEventListener("change", onChange);
+    else if (typeof compactNavQuery.addListener === "function") compactNavQuery.addListener(onChange);
+  };
+  bindCompactNavListener();
   document.querySelectorAll("[data-copy]").forEach((node) => {
     if (!(node instanceof HTMLElement)) return;
     node.addEventListener("click", async () => {
@@ -421,6 +475,10 @@ export const UI_SHELL_CLIENT = `
   updateClock();
   window.setInterval(updateClock, 1000);
   syncShellState();
+  const observer = new MutationObserver(() => {
+    syncPrimaryAction();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "aria-disabled", "data-primary-action"] });
   window.addEventListener("keydown", (event) => {
     const target = event.target;
     const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
@@ -472,6 +530,9 @@ export const UI_SHELL_CLIENT = `
         if (search instanceof HTMLInputElement) search.select();
       }
     }
+  });
+  window.addEventListener("beforeunload", () => {
+    observer.disconnect();
   });
 })();
 `;

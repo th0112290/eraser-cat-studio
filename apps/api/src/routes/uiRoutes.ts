@@ -2657,22 +2657,46 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const overallOk = data.ok === true;
     const checkedAt = typeof data.checkedAt === "string" ? data.checkedAt : "";
 
-    const serviceRows = [
+    const serviceEntries = [
       { name: "database", value: services.database },
       { name: "redis", value: services.redis },
       { name: "minio", value: services.minio }
-    ]
-      .map(({ name, value }) => {
-        const record = isRecord(value) ? value : {};
-        const status = typeof record.status === "string" ? record.status : "unknown";
-        const detail = JSON.stringify(record, null, 2);
-        return `<tr><td>${esc(name)}</td><td><span class="badge ${badgeClass(status)}">${esc(status)}</span></td><td><pre>${esc(detail)}</pre></td></tr>`;
-      })
+    ].map(({ name, value }) => {
+      const record = isRecord(value) ? value : {};
+      const status = typeof record.status === "string" ? record.status : "unknown";
+      const detail = JSON.stringify(record, null, 2);
+      return { name, status, detail };
+    });
+
+    const degradedServices = serviceEntries.filter((entry) => entry.status !== "up");
+    const serviceRows = serviceEntries
+      .map(
+        (entry) =>
+          `<tr><td>${esc(entry.name)}</td><td><span class="badge ${badgeClass(entry.status)}">${esc(entry.status)}</span></td><td><pre>${esc(entry.detail)}</pre></td></tr>`
+      )
       .join("");
 
-    const commandRows = Object.entries(fixes)
-      .map(([key, command]) => `<tr><td>${esc(key)}</td><td><code>${esc(command)}</code></td></tr>`)
+    const fixEntries = Object.entries(fixes);
+    const commandRows = fixEntries
+      .map(
+        ([key, command]) =>
+          `<tr><td>${esc(key)}</td><td><code>${esc(command)}</code></td><td><button type="button" class="secondary" data-copy="${esc(command)}">Copy</button></td></tr>`
+      )
       .join("");
+    const recoveryCards = fixEntries
+      .map(
+        ([key, command]) =>
+          `<article class="summary-card"><span class="caption">${esc(key)}</span><div class="mono">${esc(command)}</div><div class="actions"><button type="button" class="secondary" data-copy="${esc(command)}">Copy command</button></div></article>`
+      )
+      .join("");
+    const degradedSummary = degradedServices.length
+      ? degradedServices
+          .map(
+            (entry) =>
+              `<article class="summary-card"><span class="caption">${esc(entry.name)}</span><div class="metric">${esc(entry.status)}</div><div class="section-intro">Inspect this service before retrying work that depends on it.</div></article>`
+          )
+          .join("")
+      : `<article class="summary-card"><span class="caption">Degraded services</span><div class="metric">0</div><div class="section-intro">No blocked dependencies right now.</div></article>`;
 
     const baseHealthData = isRecord(health.body) && isRecord(health.body.data) ? health.body.data : {};
     const nowMs = Date.now();
@@ -2689,7 +2713,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     return reply.type("text/html; charset=utf-8").send(
       page(
         "Health",
-        `<section class="card"><h1>Health Report</h1><p>overall: <span class="badge ${overallOk ? "ok" : "bad"}">${overallOk ? "up" : "down"}</span></p><p>checkedAt: ${esc(checkedAt)}</p><p>queue: ${esc(baseHealthData.queue ?? "-")} / redis=${esc(baseHealthData.redis ?? "-")} / queueReady=${esc(baseHealthData.queueReady ?? "-")}</p>${overallOk ? '<div class="notice">Core services are healthy.</div>' : '<div class="error">One or more services are degraded. Run recovery commands below.</div>'}</section><section class="card"><h2>Run Profile Dedup Guard</h2><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">Reset dedup cache/stats</button></form></div><table><thead><tr><th>Dedup Key</th><th>Job</th><th>Age</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">No recent dedup entries.</div></td></tr>'}</tbody></table></section><section class="card"><h2>Service Status</h2><table><thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>Recovery Commands (PowerShell)</h2><table><thead><tr><th>Name</th><th>Command</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
+        `<section class="card dashboard-shell"><div class="section-head"><div><h1>Health Report</h1><p class="section-intro">Keep degraded dependencies and recovery commands above the fold so retry and rollback decisions stay immediate.</p></div><div class="quick-links"><a href="/health">Open /health JSON</a><a href="/ui/jobs">Open Jobs</a><a href="/ui/rollouts">Open Rollouts</a></div></div><div class="summary-grid"><article class="summary-card"><span class="caption">Overall</span><div class="metric">${overallOk ? "up" : "down"}</div><div class="section-intro">checkedAt ${esc(checkedAt || "-")}</div></article><article class="summary-card"><span class="caption">Queue</span><div class="metric">${esc(String(baseHealthData.queue ?? "-"))}</div><div class="section-intro">redis ${esc(String(baseHealthData.redis ?? "-"))} / ready ${esc(String(baseHealthData.queueReady ?? "-"))}</div></article><article class="summary-card"><span class="caption">Recovery commands</span><div class="metric">${fixEntries.length}</div><div class="section-intro">Copy the right command before retrying pipeline work.</div></article>${degradedSummary}</div>${overallOk ? '<div class="notice">Core services are healthy. Use the tables below only when you need deeper evidence.</div>' : '<div class="error">One or more services are degraded. Pick a recovery command first, then inspect service details before rerunning work.</div>'}<section class="table-shell"><div class="section-head"><div><h2>Recovery Rail</h2><p class="section-intro">Quick actions stay above the raw service payloads.</p></div><div class="quick-links"><a href="/ui/hitl">Open HITL</a><a href="/ui/artifacts">Open Artifacts</a></div></div>${recoveryCards ? `<div class="quick-grid">${recoveryCards}</div>` : '<div class="notice">No recovery commands configured.</div>'}</section></section><section class="card"><div class="section-head"><div><h2>Run Profile Dedup Guard</h2><p class="section-intro">Reset the dedup state only when the queue has stalled and you have already inspected the recent jobs list.</p></div><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">Reset dedup cache/stats</button></form></div></div><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><table><thead><tr><th>Dedup Key</th><th>Job</th><th>Age</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">No recent dedup entries.</div></td></tr>'}</tbody></table></section><section class="card"><h2>Service Status</h2><table><thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>Recovery Commands (PowerShell)</h2><table><thead><tr><th>Name</th><th>Command</th><th>Copy</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
       )
     );
   });
@@ -3765,7 +3789,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       </label>
       <input type="hidden" name="returnTo" value="episode"/>
       <div class="actions" style="grid-column:1/-1">
-        <button type="submit" data-primary-action="1">Run Profile (Recommended)</button>
+        <button type="submit" data-primary-action="1" data-primary-label="Run recommended episode profile">Run Profile (Recommended)</button>
         <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Open Job Monitor</a>
         <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Open Shot Editor</a>
       </div>
@@ -3960,7 +3984,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   <div class="editor-top-actions">
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="undo"/><button type="submit" ${history.pointer <= 0 ? "disabled" : ""}>Undo</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="redo"/><button type="submit" ${history.pointer >= history.states.length - 1 ? "disabled" : ""}>Redo</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1">Save snapshot</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/editor" class="inline"><input type="hidden" name="op" value="snapshot"/><button type="submit" class="secondary" data-primary-action="1" data-primary-label="Save shot editor snapshot">Save snapshot</button></form>
     <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/><button type="submit" class="secondary">Run preview render</button></form>
     <button type="button" class="secondary" id="editor-left-toggle" aria-expanded="true">Collapse Left Panel</button>
   </div>

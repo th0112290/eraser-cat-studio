@@ -52,7 +52,7 @@ export function renderUiPage(title: string, body: string): string {
         <div class="shell-brand">
           <div class="shell-brand-mark"><strong>EC</strong><span>Eraser Cat Control Plane</span></div>
           <h1>Object-Centered Operator Console</h1>
-          <p>Dense operator shell for observing queue state, launching work, comparing outputs, and staying recovery-aware when a dependency or object degrades.</p>
+          <p>Global shell for dashboard, list, detail, workbench, and compare surfaces. Lists are entry points. Decisions happen in detail, compare, and recovery panels.</p>
         </div>
         <div class="shell-meta">
           <div class="shell-chip-row">
@@ -67,17 +67,18 @@ export function renderUiPage(title: string, body: string): string {
             <span class="shell-status"><strong>Clock</strong><span id="shell-live-clock">--:--:--</span></span>
           </div>
           <div class="shell-shortcuts">
-            <span class="muted-text">Shortcuts: <span class="kbd">?</span> help, <span class="kbd">/</span> filter, <span class="kbd">r</span> primary action</span>
+            <span class="muted-text shell-shortcut-copy">Shortcuts: <span class="kbd">?</span> help, <span class="kbd">/</span> filter, <span class="kbd">r</span> primary action</span>
+            <button id="shell-nav-toggle" type="button" class="secondary shell-nav-toggle" aria-expanded="false" aria-controls="shell-primary-nav">Menu</button>
             <button id="shortcut-open" type="button" class="secondary" aria-haspopup="dialog" aria-expanded="false" aria-controls="shortcut-help">Shortcuts</button>
           </div>
         </div>
       </div>
-      <nav aria-label="Primary"><div class="shell-nav-grid">${renderNav()}</div></nav>
+      <nav id="shell-primary-nav" aria-label="Primary"><div class="shell-nav-grid">${renderNav()}</div></nav>
     </div>
   </header>
   <main id="main-content">
     <section class="page-intro" aria-label="Page intro">
-      <div class="grid">
+      <div class="hero-grid">
         <div class="page-intro-head">
           <div class="stack">
             <span class="muted-text shell-page-kicker" id="shell-page-group">Observe</span>

@@ -54,28 +54,28 @@ type BenchmarksPageBodyInput = {
 
 const OPERATOR_PATTERN_STYLE = `<style>
 .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#0c5c58}
-.ops-shell{display:grid;gap:12px}
+.ops-shell{display:grid;gap:10px}
 .ops-titlebar{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
-.ops-titleblock{display:grid;gap:6px;max-width:760px}
+.ops-titleblock{display:grid;gap:4px;max-width:720px}
 .ops-titleblock h1,.ops-titleblock h2{margin-bottom:0}
-.ops-kpi-grid,.ops-note-grid,.ops-mini-grid,.ops-filter-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-.ops-kpi,.ops-lane,.ops-resource-card,.ops-inline-card{display:grid;gap:8px;padding:12px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fff,#f7fbfc);border-radius:14px}
+.ops-kpi-grid,.ops-note-grid,.ops-mini-grid,.ops-filter-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.ops-kpi,.ops-lane,.ops-resource-card,.ops-inline-card{display:grid;gap:6px;padding:10px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fff,#f7fbfc);border-radius:12px}
 .ops-kpi-label{font-size:12px;font-weight:700;color:#42556a;text-transform:uppercase;letter-spacing:.08em}
-.ops-kpi-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:18px;font-weight:800}
-.ops-callout{display:grid;gap:6px;padding:12px;border-radius:14px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fbfefd,#f2f8f9)}
-.ops-callout h3,.ops-lane h3,.ops-resource-card h3{margin:0;font-size:15px}
+.ops-kpi-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;font-weight:800}
+.ops-callout{display:grid;gap:6px;padding:10px;border-radius:12px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fbfefd,#f2f8f9)}
+.ops-callout h3,.ops-lane h3,.ops-resource-card h3{margin:0;font-size:14px}
 .ops-callout p,.ops-lane p,.ops-resource-card p{margin:0;color:#4f6470;line-height:1.5}
 .ops-callout.warn{border-color:#edd2ac;background:linear-gradient(180deg,#fffaf1,#fff3df)}
 .ops-callout.bad{border-color:#efc5c8;background:linear-gradient(180deg,#fff7f7,#fff1f2)}
 .ops-callout.ok{border-color:#bcdccf;background:linear-gradient(180deg,#f5fcf7,#edf8f0)}
 .ops-actions-list,.ops-mini-list{display:grid;gap:7px;margin:0;padding:0;list-style:none}
-.ops-actions-list li,.ops-mini-list li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid #e1eaef}
+.ops-actions-list li,.ops-mini-list li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:6px 0;border-top:1px solid #e1eaef}
 .ops-actions-list li:first-child,.ops-mini-list li:first-child{border-top:none;padding-top:0}
 .ops-actions-list li span:first-child,.ops-mini-list li span:first-child{font-weight:700;color:#1f3340}
 .ops-table-shell{display:grid;gap:10px}
 .ops-table-meta{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
-.ops-summary-line{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 10px;border:1px solid #d9e4e8;background:#fff;border-radius:10px}
-.search-cluster{display:grid;gap:6px;padding:12px;border:1px solid #dbe7f3;background:#f8fbff;border-radius:12px}
+.ops-summary-line{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 9px;border:1px solid #d9e4e8;background:#fff;border-radius:10px}
+.search-cluster{display:grid;gap:6px;padding:10px;border:1px solid #dbe7f3;background:#f8fbff;border-radius:12px}
 .search-cluster label{font-size:12px;font-weight:700;color:#334155}
 .search-cluster input{width:100%}
 .search-cluster .muted-text{line-height:1.4}
@@ -261,7 +261,7 @@ ${renderOpsStyle()}
       <input id="publish-episode-id" name="episodeId" value="${input.episodeId}" placeholder="clx..." required/>
       <small>Copy this from episode detail, job detail, or the artifacts quick-link flow.</small>
     </div>
-    <div class="actions"><button type="submit" data-primary-action="1">${t.runAction}</button></div>
+    <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="Run publish handoff">${t.runAction}</button></div>
   </form>
 </section>
 
@@ -393,7 +393,7 @@ ${renderOpsStyle()}
       <div class="field"><label for="hitl-episode-id">episodeId</label><input id="hitl-episode-id" name="episodeId" value="${input.episodeIdValue}" required/></div>
       <div class="field"><label for="hitl-shot-ids">failedShotIds <span class="hint" data-tooltip="${t.failedShotHelp}">?</span></label><input id="hitl-shot-ids" name="failedShotIds" value="${input.failedShotIdsValue}" placeholder="shot_1,shot_2" required/><small>${t.failedShotHint}</small></div>
       <label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun</label>
-      <div class="actions"><button type="submit" data-primary-action="1">${t.runAction}</button></div>
+      <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="Run HITL rerender">${t.runAction}</button></div>
     </form>
     <div class="form-card">
       <h3>After Rerender</h3>
@@ -467,7 +467,7 @@ ${renderOpsStyle()}
     <form method="get" action="/ui/artifacts" class="form-card">
       <h3>Episode Quick Links</h3>
       <div class="field"><label for="artifact-episode-id">episodeId</label><input id="artifact-episode-id" name="episodeId" value="${input.episodeId}"/><small>${t.episodeHelp}</small></div>
-      <div class="actions"><button type="submit" class="secondary" data-primary-action="1">${t.quickLinkAction}</button></div>
+      <div class="actions"><button type="submit" class="secondary" data-primary-action="1" data-primary-label="Load episode artifact quick links">${t.quickLinkAction}</button></div>
     </form>
     <div class="ops-resource-card">
       <h3>Episode Outputs</h3>
