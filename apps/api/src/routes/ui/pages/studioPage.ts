@@ -48,11 +48,93 @@ function renderMetaRow(label: string, value: string): string {
   return `<div class="studio-meta-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`;
 }
 
+type StudioLinkItem = {
+  label: string;
+  href: string;
+};
+
+type StudioFeedCardInput = {
+  kicker: string;
+  title: string;
+  note: string;
+  counterId: string;
+  refreshId: string;
+  filterId: string;
+  filterLabel: string;
+  filterPlaceholder: string;
+  filterNote: string;
+  tableId: string;
+  tableHead: string;
+  loadingColspan: number;
+  loadingTitle: string;
+  loadingDetail: string;
+};
+
+function renderStudioWorkbenchLink(label: string, note: string, href: string): string {
+  return `<a href="${esc(href)}" class="studio-workbench-link"><strong>${esc(label)}</strong><span>${esc(note)}</span></a>`;
+}
+
+function renderStudioNextAction(step: string, label: string, title: string, copy: string, links: StudioLinkItem[]): string {
+  return `<article class="studio-next-card"><div class="studio-kicker"><span class="studio-step">${esc(step)}</span><span>${esc(
+    label
+  )}</span></div><h3>${esc(title)}</h3><p class="studio-copy">${esc(copy)}</p><div class="studio-links">${links
+    .map((link) => `<a href="${esc(link.href)}" class="studio-link">${esc(link.label)}</a>`)
+    .join("")}</div></article>`;
+}
+
+function renderStudioFeedCard(input: StudioFeedCardInput): string {
+  return `<section class="studio-section studio-feed-card"><div class="studio-head"><div class="studio-head-copy"><div class="studio-kicker">${esc(
+    input.kicker
+  )}</div><h2>${esc(input.title)}</h2><p class="studio-monitor-note">${esc(input.note)}</p></div><div class="studio-actions"><span id="${esc(
+    input.counterId
+  )}" class="studio-counter">Waiting</span><button type="button" id="${esc(
+    input.refreshId
+  )}" class="secondary">Refresh</button></div></div><div class="studio-table-tools"><input id="${esc(
+    input.filterId
+  )}" type="search" autocomplete="off" aria-label="${esc(input.filterLabel)}" placeholder="${esc(
+    input.filterPlaceholder
+  )}" /><span class="studio-filter-note">${esc(
+    input.filterNote
+  )}</span></div><div class="studio-table-wrap"><table id="${esc(
+    input.tableId
+  )}"><thead>${input.tableHead}</thead><tbody><tr><td colspan="${input.loadingColspan}"><div class="studio-state studio-state-loading"><strong>${esc(
+    input.loadingTitle
+  )}</strong><span>${esc(input.loadingDetail)}</span></div></td></tr></tbody></table></div></section>`;
+}
+
 export function buildStudioBody(input: StudioBodyInput): string {
   const seed = {
     activePackId: input.packState.activePackId,
     compareHref: input.packState.compareHref
   };
+  const activePackSummary = input.packState.activePackId
+    ? `${input.packState.activePackId} / v${input.packState.activePackVersion || "-"}`
+    : "No active pack";
+  const latestPackSummary = input.packState.latestPackId
+    ? `${input.packState.latestPackId} @ ${input.packState.latestPackCreatedAt}`
+    : "No recent pack activity";
+  const packDriftHeadline =
+    input.packState.latestPackId &&
+    input.packState.activePackId &&
+    input.packState.latestPackId !== input.packState.activePackId
+      ? "Latest pack is newer than the active pack."
+      : "Active pack matches the latest reviewed output.";
+  const reviewPressureHeadline =
+    input.packState.pendingCount > 0
+      ? `${input.packState.pendingCount} pack decision(s) are still waiting.`
+      : "No pending pack approvals are blocking dispatch.";
+  const guardrailHeadline =
+    input.channelProfile.forbiddenTermsSummary !== "(none)" || input.channelProfile.negativeTermsSummary !== "(none)"
+      ? "Prompt guardrails are active on this channel."
+      : "Prompt guardrails are currently light.";
+  const workbenchLinks = [
+    renderStudioWorkbenchLink("Assets", "Review intake, QC, and previews.", "/ui/assets"),
+    renderStudioWorkbenchLink("Character Generator", "Run staged generation with compare and approval.", input.packState.generatorHref),
+    renderStudioWorkbenchLink("Characters", "Review packs, compare versions, and rollback safely.", input.packState.charactersHref),
+    renderStudioWorkbenchLink("Episodes", "Open editor and episode detail workbenches.", "/ui/episodes"),
+    renderStudioWorkbenchLink("Jobs", "Watch queue execution and recover failures.", "/ui/jobs"),
+    renderStudioWorkbenchLink("Profiles", "Inspect prompt rules and channel policy.", "/ui/profiles")
+  ].join("");
   return `<style>
     .studio-shell{display:grid;gap:14px;padding:18px;border:1px solid #d6e0ef;background:linear-gradient(180deg,#fbfdff,#f3f7fd);box-shadow:0 18px 46px rgba(15,23,42,.08)}
     .studio-hero{display:grid;gap:14px;grid-template-columns:minmax(0,1.2fr) minmax(280px,.9fr)}
@@ -135,86 +217,87 @@ export function buildStudioBody(input: StudioBodyInput): string {
     .studio-signal-label{color:#5b6b82;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
     .studio-signal-value{font-size:18px;font-weight:700;line-height:1.3;letter-spacing:-.02em}
     .studio-signal-note{color:#5b6b82;font-size:13px;line-height:1.5}
+    .studio-title-row{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+    .studio-workbench-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:16px}
+    .studio-workbench-link{display:grid;gap:6px;padding:14px;border:1px solid #d6e0ef;border-radius:16px;background:linear-gradient(180deg,#fff,#f8fbff);text-decoration:none;color:#142033}
+    .studio-workbench-link strong{font-size:13px}
+    .studio-workbench-link span{font-size:12px;line-height:1.5;color:#5b6b82}
+    .studio-workbench-link:hover{text-decoration:none;box-shadow:0 12px 24px rgba(18,87,199,.08);border-color:#b8cde9}
+    .studio-plan-list{display:grid;gap:10px}
+    .studio-next-card{padding:14px;border:1px solid #ecd5c3;border-radius:16px;background:rgba(255,255,255,.82)}
+    .studio-next-card h3{margin:0;font-size:18px;letter-spacing:-.02em}
+    .studio-board{display:grid;gap:14px;grid-template-columns:minmax(0,1.28fr) minmax(320px,.92fr);align-items:start}
+    .studio-main-col{display:grid;gap:14px}
+    .studio-overview-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:14px}
+    .studio-overview-card{padding:14px;border:1px solid #d4deec;border-radius:16px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
+    .studio-overview-card span{display:block;margin-bottom:8px;color:#5b6b82;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+    .studio-overview-card strong{display:block;font-size:15px;line-height:1.4}
+    .studio-overview-card p{margin:8px 0 0;color:#5b6b82;font-size:13px;line-height:1.5}
+    .studio-risk-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+    .studio-risk-card{display:grid;gap:8px;min-height:132px;padding:16px;border:1px solid #d6e0ef;border-radius:18px;background:linear-gradient(180deg,#fff,#f8fbff)}
+    .studio-risk-card strong{font-size:18px;line-height:1.35;letter-spacing:-.02em}
+    .studio-risk-card p{margin:0;color:#5b6b82;font-size:13px;line-height:1.55}
+    .studio-risk-level{display:inline-flex;align-items:center;padding:6px 9px;border-radius:999px;border:1px solid #d4deec;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;justify-self:start}
+    .studio-risk-level.attn{background:#fff7e8;border-color:#ecd5c3;color:#8b4c1c}
+    .studio-risk-level.watch{background:#eef4ff;border-color:#c8d9fb;color:#1257c7}
+    .studio-risk-level.good{background:#effcf5;border-color:#b8e7c8;color:#0f6b45}
+    .studio-activity-grid{display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .studio-feed-card{min-height:0}
+    .studio-ops-summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;gap:10px;font-weight:700}
+    .studio-ops-summary::-webkit-details-marker{display:none}
+    .studio-ops-details{padding:0}
+    .studio-ops-body{padding:0 18px 18px;display:grid;gap:12px}
     .studio-shell code,.studio-shell pre,.studio-shell input,.studio-shell select,.studio-shell textarea,.studio-grid code,.studio-grid pre,.studio-grid input,.studio-grid select,.studio-grid textarea{font-family:"IBM Plex Mono","Cascadia Code","SFMono-Regular",Consolas,monospace}
-    @media (max-width:1240px){.studio-hero,.studio-grid,.studio-signal-grid,.studio-runtime-controls,.studio-binding-grid{grid-template-columns:1fr}.studio-ops-rail{position:static}}
-    @media (max-width:720px){.studio-shell,.studio-hero-card,.studio-runtime-card,.studio-section,.studio-signal{padding:16px}.studio-head{flex-direction:column}.studio-action-cluster{align-items:stretch}.studio-action-cluster button{width:100%}}
+    @media (max-width:1240px){.studio-hero,.studio-grid,.studio-signal-grid,.studio-runtime-controls,.studio-binding-grid,.studio-board,.studio-activity-grid{grid-template-columns:1fr}.studio-ops-rail{position:static}}
+    @media (max-width:720px){.studio-shell,.studio-hero-card,.studio-runtime-card,.studio-section,.studio-signal,.studio-risk-card{padding:16px}.studio-head{flex-direction:column}.studio-action-cluster{align-items:stretch}.studio-action-cluster button{width:100%}}
   </style>
 ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input.error ? `<div class="error">${esc(input.error)}</div>` : ""}
 <section class="card studio-shell">
   <div class="studio-hero">
     <section class="studio-hero-card">
-      <p class="studio-eyebrow">Creative Ops Console</p>
-      <h1>Studio</h1>
-      <p class="studio-hint">Coordinate asset intake, character generation, episode dispatch, and render handoff from one operational surface. Left lane creates work. Right rail stays live on queue state.</p>
+      <p class="studio-eyebrow">Orchestration Hub</p>
+      <div class="studio-title-row">
+        <div>
+          <h1>Studio</h1>
+          <p class="studio-hint">Review current state, recent object activity, and risk before stepping into the workbench that owns the next decision. Studio should point you forward, not dump every control onto one screen.</p>
+        </div>
+      </div>
       <div class="studio-pill-row">
-        <span class="studio-pill">Asset intake</span>
-        <span class="studio-pill">Pack binding</span>
-        <span class="studio-pill">Episode dispatch</span>
-        <span class="studio-pill">Live job watch</span>
+        <span class="studio-pill">Current state summary</span>
+        <span class="studio-pill">Recent object activity</span>
+        <span class="studio-pill">Risk signals</span>
+        <span class="studio-pill">Dedicated workbench handoff</span>
       </div>
       <div class="studio-status">
         <span class="studio-status-label">Operator status</span>
-        <div id="studio-status" role="status" aria-live="polite" aria-atomic="true">Ready: create on the left, inspect history on the right.</div>
+        <div id="studio-status" role="status" aria-live="polite" aria-atomic="true">Ready: review state, choose the next action, then hand work off to the right workbench.</div>
       </div>
+      <div class="studio-workbench-grid">${workbenchLinks}</div>
     </section>
     <section class="studio-runtime-card">
       <div>
-        <p class="studio-eyebrow" style="color:#be6727">Live Runtime</p>
-        <h2 style="margin:0">Feed Controls</h2>
-        <p class="studio-copy">Keep the monitor rail warm while you queue work. Manual refresh is always available when you need a clean sync point.</p>
+        <p class="studio-eyebrow" style="color:#be6727">Top 3 Next Actions</p>
+        <h2 style="margin:0">Move the pipeline with fewer simultaneous decisions</h2>
+        <p class="studio-copy">Each action below narrows the operator to one decision surface instead of keeping every input visible at once.</p>
       </div>
-      <div class="studio-runtime-controls">
-        <label class="studio-toggle"><span>Auto refresh</span><input id="studio-auto-refresh" type="checkbox" checked/></label>
-        <label>Interval
-          <select id="studio-refresh-interval">
-            <option value="3000">3s</option>
-            <option value="5000" selected>5s</option>
-            <option value="10000">10s</option>
-          </select>
-        </label>
-      </div>
-      <div class="studio-actions">
-        <button type="button" id="studio-refresh-all" class="secondary">Refresh all feeds</button>
-      </div>
-      <div class="studio-links">
-        <a href="/ui/assets" class="studio-link">Assets</a>
-        <a href="/ui/characters" class="studio-link">Characters</a>
-        <a href="/ui/episodes" class="studio-link">Episodes</a>
-        <a href="/ui/jobs" class="studio-link">Jobs</a>
-        <a href="/ui/profiles" class="studio-link">Profiles</a>
-        <a href="/ui/rollouts" class="studio-link">Rollouts</a>
+      <div class="studio-plan-list">
+        ${renderStudioNextAction("1", "Review", "Inspect fresh intake in Assets", "Use the review workbench to confirm QC, preview outputs, and whether a source is ready to anchor downstream work.", [
+          { label: "Open Assets", href: "/ui/assets" },
+          { label: "Open Studio Intake", href: "#studio-intake" }
+        ])}
+        ${renderStudioNextAction("2", "Stage", "Generate or compare the next pack", "Step into Character Generator for the staged run flow, or Characters when you need compare, approval, or rollback context.", [
+          { label: "Open Character Generator", href: input.packState.generatorHref },
+          { label: "Open Characters", href: input.packState.charactersHref },
+          ...(input.packState.compareHref ? [{ label: "Open Compare", href: input.packState.compareHref }] : [])
+        ])}
+        ${renderStudioNextAction("3", "Dispatch", "Bind the selected pack and move an episode", "Use the dispatch rail when you are ready to create, preview, edit, or publish without reopening the old all-in-one dashboard.", [
+          { label: "Open Dispatch Rail", href: "#studio-dispatch" },
+          { label: "Open Episodes", href: "/ui/episodes" },
+          { label: "Open Jobs", href: "/ui/jobs" }
+        ])}
       </div>
     </section>
   </div>
-  <div class="studio-signal-grid">
-    <section class="studio-signal">
-      <span class="studio-signal-label">Selected Pack</span>
-      <strong id="studio-signal-pack" class="studio-signal-value">No pack selected</strong>
-      <span class="studio-signal-note">Click a pack row on the right to bind it into episode operations.</span>
-    </section>
-    <section class="studio-signal">
-      <span class="studio-signal-label">Episode Target</span>
-      <strong id="studio-signal-episode" class="studio-signal-value">No episode selected</strong>
-      <span id="studio-signal-topic" class="studio-signal-note">Topic not set.</span>
-    </section>
-    <section class="studio-signal">
-      <span class="studio-signal-label">Operating Model</span>
-      <strong class="studio-signal-value">Create, bind, dispatch</strong>
-      <span class="studio-signal-note">Use one-click for a fast preview path. Use episode controls when you want a manual sequence.</span>
-    </section>
-  </div>
-  <details class="studio-guide">
-    <summary><span>Quick Start Guide</span><span class="studio-guide-note">Expand for workflow order</span></summary>
-    <div class="studio-guide-body">
-      <ol>
-        <li>Upload or inspect assets, then verify references from the asset feed.</li>
-        <li>Generate a new character pack or select an existing pack from the live list.</li>
-        <li>Create an episode manually or run the one-click preview path.</li>
-        <li>Use the episode and job rails to open editor, preview render, or publish handoff.</li>
-        <li>Use the ops rail for channel profile, active pack compare, and selection inspection.</li>
-      </ol>
-    </div>
-  </details>
 </section>
 <section class="studio-grid">
   <div class="studio-col">
