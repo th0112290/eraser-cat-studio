@@ -3,11 +3,50 @@
   "profileId": "wolf",
   "speciesId": "wolf",
   "familyId": "compact_doodle_mascot_v2",
-  "bankStatus": "scaffold_only",
+  "bankStatus": "species_ready",
   "notes": [
-    "wolf bank currently has composition scaffold only",
-    "add wolf-specific style and hero refs before enabling species-ready mode"
+    "wolf bank bootstrapped from 2026-03-10 one-off outputs for worker stage-chain verification",
+    "replace these temporary refs with dedicated wolf canon before rollout or promotion"
   ],
+  "style": [
+    {
+      "path": "./style_front_primary.png",
+      "note": "temporary wolf front style canon from prior one-off"
+    }
+  ],
+  "starterByView": {
+    "front": [],
+    "threeQuarter": [],
+    "profile": []
+  },
+  "familyByView": {
+    "front": [
+      {
+        "path": "./family_front_primary.png",
+        "note": "temporary wolf front composition anchor from prior one-off"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "./family_threeQuarter_primary.png",
+        "note": "temporary wolf three-quarter composition guide for worker side-view verification"
+      }
+    ],
+    "profile": [
+      {
+        "path": "./family_profile_primary.png",
+        "note": "temporary wolf profile composition guide for worker side-view verification"
+      }
+    ]
+  },
+  "heroByView": {
+    "front": [
+      {
+        "path": "./hero_front_primary.png",
+        "note": "temporary wolf front hero ref from prior one-off"
+      }
+    ]
+  },
   "requiredAssets": [
     {
       "slotId": "style.front.primary",
@@ -44,6 +83,5 @@
       "requiredForStatus": "species_ready",
       "description": "wolf front hero identity ref for face/expression lock"
     }
-  ],
-  "style": []
+  ]
 }

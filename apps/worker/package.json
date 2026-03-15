@@ -31,6 +31,7 @@
     "smoke:auto-reroute": "pnpm exec tsx src/characterGenerationAutoReroute.smoke.ts",
     "smoke:side-view-gate": "pnpm exec tsx src/characterGenerationSideViewGate.smoke.ts",
     "smoke:stage-input-preflight": "pnpm exec tsx src/characterGenerationStageInputPreflight.smoke.ts",
+    "smoke:pose-contract": "pnpm exec tsx src/characterGenerationPoseContract.smoke.ts",
     "smoke:repair-triage-gate": "pnpm exec tsx src/characterGenerationRepairTriageGate.smoke.ts",
     "smoke:post-repair-acceptance-gate": "pnpm exec tsx src/characterGenerationPostRepairAcceptanceGate.smoke.ts",
     "smoke:selection-firewall": "pnpm exec tsx src/characterGenerationSelectionFirewall.smoke.ts",

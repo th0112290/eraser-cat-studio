@@ -102,6 +102,7 @@ export type CharacterGenerationPayload = {
   requireHitlPick?: boolean;
   seed?: number;
   manifestPath?: string;
+  sourceManifestPath?: string;
   selectedCandidateIds?: CharacterGenerationSelection;
 };
 

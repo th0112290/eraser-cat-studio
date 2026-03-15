@@ -206,22 +206,31 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "tall wolf ears",
       "flat cat face with no muzzle",
       "fox face",
+      "rabbit ears",
+      "bunny ears",
+      "rabbit face",
       "missing arm",
       "detached limb"
     ],
-    identityTokens: ["soft dog ears", "short puppy muzzle", "tiny button nose"],
-    anchorTokens: ["same dog ear placement", "same puppy muzzle width", "same button nose position"],
+    identityTokens: ["soft dog ears", "short puppy muzzle", "tiny button nose", "visible short front arms"],
+    anchorTokens: [
+      "same dog ear placement",
+      "same puppy muzzle width",
+      "same button nose position",
+      "same front arm placement"
+    ],
     guardrails: [
       "do not drift back to a cat whisker-face",
       "do not lengthen the muzzle into wolf territory",
       "keep the dog muzzle rounded and short",
-      "keep both front arms and both paws readable when the pose shows them"
+      "keep both front arms and both paws readable when the pose shows them",
+      "do not turn the dog into a rabbit with tall narrow ears"
     ],
     viewHints: {
       front:
-        "front view should read as dog first while staying in the same mascot family, with rounded or floppy ears, a short rounded muzzle, a tiny button nose, and both short arms visible with attached paws",
+        "front view should read as dog first while staying in the same mascot family, with rounded-base dog ears, a short rounded muzzle, a tiny button nose, a simple tiny mouth, and both short arms visible with attached paws",
       threeQuarter:
-        "three-quarter dog should preserve the same compact head and body while clearly turning about 35 to 45 degrees, showing a soft rounded puppy muzzle, softer ears, a larger near cheek, and a smaller but still present far paw",
+        "three-quarter dog should preserve the same compact head and body while clearly turning about 35 to 45 degrees, showing a soft rounded puppy muzzle, lower rounded ears, a larger near cheek, and a smaller but still present far paw",
       profile:
         "profile dog should show a short rounded muzzle and one soft ear, domestic and cute, not cat-flat and not wolf-sharp, with one readable near paw and no detached far-limb fragments"
     },
@@ -238,6 +247,8 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "sharp wolf snout",
       "tall wolf ears",
       "fox face",
+      "rabbit ears",
+      "bunny ears",
       "human fingers",
       "missing arm",
       "detached limb",
@@ -249,9 +260,9 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       maxMouthAnchorDrift: 0.028
     },
     qcThresholds: {
-      frontMasterMinStyleScore: 0.37,
-      frontMasterMinSpeciesScore: 0.24,
-      frontMasterMinHeadSquarenessScore: 0.24,
+      frontMasterMinStyleScore: 0.4,
+      frontMasterMinSpeciesScore: 0.34,
+      frontMasterMinHeadSquarenessScore: 0.26,
       minHeadRatioByView: {
         front: 0.32,
         threeQuarter: 0.2,
@@ -261,7 +272,8 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
         threeQuarter: 0.4,
         profile: 0.34
       },
-      minFrontSymmetryScore: 0.5,
+      minFrontSymmetryScore: 0.52,
+      maxSpeciesSpread: 0.16,
       maxHeadRatioSpread: 0.16,
       maxMuzzleCueSpread: 0.24,
       maxSilhouetteCueSpread: 0.26
@@ -284,7 +296,8 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "cat-flat no-muzzle face",
       "fox face",
       "fox muzzle",
-      "fox ears"
+      "fox ears",
+      "puppy face"
     ],
     identityTokens: ["tall wolf ears", "short angular wedge muzzle", "alert wolf silhouette", "broad wolf cheek ruff"],
     anchorTokens: ["same wolf ear angle", "same wedge muzzle width", "same wolf face direction"],
@@ -292,13 +305,14 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "keep the muzzle only slightly longer, not realistic",
       "do not round the wolf into a puppy face",
       "do not add cat whisker-face cues",
-      "do not turn the wolf into a fox with a narrow sly face"
+      "do not turn the wolf into a fox with a narrow sly face",
+      "keep the wolf cheeks broad and the face short, not sly or narrow"
     ],
     viewHints: {
       front:
-        "front view should read as wolf first in the same mascot family, with taller upright ears, a short angular muzzle that stays cute and simplified, a broader wolf head than a fox, and no puppy softness",
+        "front view should read as wolf first in the same mascot family, with taller upright ears, a short angular muzzle that stays cute and simplified, a broader wolf head than a fox, and no puppy softness or fox narrowing",
       threeQuarter:
-        "three-quarter wolf should keep the same compact body and head while clearly turning about 35 to 45 degrees, showing a slightly longer wedge muzzle, alert ears, a larger near eye than far eye, and a broad wolf head that does not read as fox-like",
+        "three-quarter wolf should keep the same compact body and head while clearly turning about 35 to 45 degrees, showing a slightly longer wedge muzzle, alert ears, a larger near eye than far eye, and a broad wolf head that does not read as fox-like or front-facing",
       profile:
         "profile wolf should have a short angular wedge muzzle, one tall ear, a simple eye, and the same small-body mascot proportions, with a broader wolf contour and not a slim fox profile"
     },
@@ -329,19 +343,19 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       maxMouthAnchorDrift: 0.028
     },
     qcThresholds: {
-      frontMasterMinStyleScore: 0.35,
-      frontMasterMinSpeciesScore: 0.22,
-      frontMasterMinHeadSquarenessScore: 0.22,
+      frontMasterMinStyleScore: 0.37,
+      frontMasterMinSpeciesScore: 0.28,
+      frontMasterMinHeadSquarenessScore: 0.24,
       minConsistencyByView: {
         threeQuarter: 0.48,
         profile: 0.38
       },
       minGeometryCueByView: {
-        threeQuarter: 0.4,
-        profile: 0.33
+        threeQuarter: 0.42,
+        profile: 0.35
       },
-      minFrontSymmetryScore: 0.48,
-      maxSpeciesSpread: 0.2,
+      minFrontSymmetryScore: 0.5,
+      maxSpeciesSpread: 0.18,
       maxEarCueSpread: 0.26,
       maxMuzzleCueSpread: 0.24,
       maxHeadShapeCueSpread: 0.24,

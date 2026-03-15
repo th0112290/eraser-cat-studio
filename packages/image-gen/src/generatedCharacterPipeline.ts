@@ -466,6 +466,13 @@ type LoadedImageRaster = {
   data: Buffer;
 };
 
+type RgbaColor = {
+  r: number;
+  g: number;
+  b: number;
+  alpha: number;
+};
+
 type LocalImageReference = {
   filePath: string;
   mimeType: string;
@@ -549,6 +556,19 @@ async function loadImageRaster(filePath: string): Promise<LoadedImageRaster> {
   };
 }
 
+async function loadImageRasterFromBuffer(buffer: Buffer, filePath = "<buffer>"): Promise<LoadedImageRaster> {
+  const image = sharp(buffer, { limitInputPixels: false }).rotate().ensureAlpha();
+  const metadata = await image.metadata();
+  const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
+  return {
+    filePath,
+    width: info.width,
+    height: info.height,
+    hasAlpha: Boolean(metadata.hasAlpha),
+    data
+  };
+}
+
 function lumaAt(buffer: Buffer, offset: number): number {
   return 0.299 * (buffer[offset] ?? 0) + 0.587 * (buffer[offset + 1] ?? 0) + 0.114 * (buffer[offset + 2] ?? 0);
 }
@@ -558,7 +578,18 @@ function isDarkFeaturePixel(buffer: Buffer, offset: number): boolean {
   if (alpha < 24) {
     return false;
   }
-  return lumaAt(buffer, offset) <= 180;
+  const red = buffer[offset] ?? 0;
+  const green = buffer[offset + 1] ?? 0;
+  const blue = buffer[offset + 2] ?? 0;
+  const luma = lumaAt(buffer, offset);
+  const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
+  const sorted = [red, green, blue].sort((a, b) => b - a);
+  const dominantGap = (sorted[0] ?? 0) - (sorted[1] ?? 0);
+  // Worker-selected mascot fronts can preserve facial marks as warm or saturated
+  // accent strokes instead of pure black linework. Keep the original dark-line
+  // detector, but also treat strong chroma accents as feature pixels so eye and
+  // mouth crops still localize on the interior face instead of falling back.
+  return luma <= 96 || (chroma >= 60 && dominantGap >= 32 && luma <= 235);
 }
 
 function isForegroundPixel(buffer: Buffer, offset: number): boolean {
@@ -654,6 +685,52 @@ function measureDarkFeatureCenter(
   };
 }
 
+function meanVisibleRegionColor(
+  image: LoadedImageRaster,
+  crop: { cx: number; cy: number; w: number; h: number },
+  options?: {
+    skipDarkFeatures?: boolean;
+    minLuma?: number;
+  }
+): RgbaColor | null {
+  const region = normalizedRegionToPixels(image, crop);
+  let redTotal = 0;
+  let greenTotal = 0;
+  let blueTotal = 0;
+  let alphaTotal = 0;
+  let count = 0;
+  for (let y = region.top; y < region.bottom; y += 1) {
+    for (let x = region.left; x < region.right; x += 1) {
+      const offset = (y * image.width + x) * 4;
+      const alpha = image.data[offset + 3] ?? 255;
+      if (alpha < 40) {
+        continue;
+      }
+      if (options?.skipDarkFeatures && isDarkFeaturePixel(image.data, offset)) {
+        continue;
+      }
+      const luma = lumaAt(image.data, offset);
+      if (luma < (options?.minLuma ?? 0)) {
+        continue;
+      }
+      redTotal += image.data[offset] ?? 0;
+      greenTotal += image.data[offset + 1] ?? 0;
+      blueTotal += image.data[offset + 2] ?? 0;
+      alphaTotal += alpha;
+      count += 1;
+    }
+  }
+  if (count === 0) {
+    return null;
+  }
+  return {
+    r: Math.round(redTotal / count),
+    g: Math.round(greenTotal / count),
+    b: Math.round(blueTotal / count),
+    alpha: Math.round(alphaTotal / count)
+  };
+}
+
 function meanRegionDifference(
   a: LoadedImageRaster,
   b: LoadedImageRaster,
@@ -709,11 +786,22 @@ function componentToCropBox(component: DarkFeatureComponent, padX: number, padY:
   });
 }
 
+function normalizeEyeFeatureCrop(crop: CropBox, headCrop: CropBox): CropBox {
+  return clampCropBox({
+    cx: crop.cx,
+    cy: crop.cy,
+    w: Math.max(crop.w * 1.18, headCrop.w * 0.11),
+    h: Math.max(crop.h * 1.24, headCrop.h * 0.14)
+  });
+}
+
 function deriveHeadCropFromBodyBounds(bounds: ForegroundBounds, view: GeneratedCharacterView): CropBox {
-  const widthRatio = view === "profile" ? 0.58 : 0.62;
-  const heightRatio = view === "profile" ? 0.4 : 0.42;
-  const centerYOffset = view === "profile" ? 0.25 : 0.24;
-  const centerXOffset = view === "profile" ? 0.015 : 0;
+  const widthRatio = view === "profile" ? 0.6 : 0.62;
+  const heightRatio = view === "profile" ? 0.5 : 0.54;
+  // Compact mascot faces sit noticeably lower than the ear tips, so keep more
+  // vertical head area to preserve ears plus the eye/mouth band in one crop.
+  const centerYOffset = view === "profile" ? 0.31 : 0.32;
+  const centerXOffset = view === "profile" ? 0.01 : 0;
   return clampCropBox({
     cx: bounds.centerX + centerXOffset,
     cy: bounds.top + bounds.height * centerYOffset,
@@ -842,27 +930,91 @@ function detectFrontFaceFeatureCrops(
   components: DarkFeatureComponent[];
 } {
   const components = detectInteriorDarkComponents(image, headCrop);
+  const searchContainsComponentCenter = (searchCrop: CropBox, component: DarkFeatureComponent): boolean =>
+    Math.abs(component.centerX - searchCrop.cx) <= searchCrop.w / 2 &&
+    Math.abs(component.centerY - searchCrop.cy) <= searchCrop.h / 2;
+  const pickBestComponentForSearch = (
+    candidates: DarkFeatureComponent[],
+    searchCrop: CropBox
+  ): DarkFeatureComponent | undefined =>
+    [...candidates]
+      .filter((component) => searchContainsComponentCenter(expandCropBox(searchCrop, 1.18, 1.14), component))
+      .sort((a, b) => {
+        const distanceA = Math.hypot(a.centerX - searchCrop.cx, (a.centerY - searchCrop.cy) * 1.2);
+        const distanceB = Math.hypot(b.centerX - searchCrop.cx, (b.centerY - searchCrop.cy) * 1.2);
+        return distanceA - distanceB || b.pixelCount - a.pixelCount;
+      })[0];
+  const fallbackFeatureCrop = (
+    searchCrop: CropBox,
+    widthScale: number,
+    heightScale: number
+  ): CropBox | undefined => {
+    const center = measureDarkFeatureCenter(image, searchCrop);
+    if (!center) {
+      return undefined;
+    }
+    return clampCropBox({
+      cx: center.x,
+      cy: center.y,
+      w: searchCrop.w * widthScale,
+      h: searchCrop.h * heightScale
+    });
+  };
+  const leftEyeSearch = clampCropBox({
+    cx: headCrop.cx - headCrop.w * 0.12,
+    cy: headCrop.cy + headCrop.h * 0.11,
+    w: headCrop.w * 0.14,
+    h: headCrop.h * 0.2
+  });
+  const rightEyeSearch = clampCropBox({
+    cx: headCrop.cx + headCrop.w * 0.12,
+    cy: headCrop.cy + headCrop.h * 0.11,
+    w: headCrop.w * 0.14,
+    h: headCrop.h * 0.2
+  });
+  const mouthSearch = clampCropBox({
+    cx: headCrop.cx,
+    cy: headCrop.cy + headCrop.h * 0.46,
+    w: headCrop.w * 0.3,
+    h: headCrop.h * 0.16
+  });
+
   if (components.length === 0) {
-    return { components };
+    return {
+      leftEye: fallbackFeatureCrop(leftEyeSearch, 0.7, 0.78),
+      rightEye: fallbackFeatureCrop(rightEyeSearch, 0.7, 0.78),
+      mouth: fallbackFeatureCrop(mouthSearch, 0.72, 0.82),
+      components
+    };
   }
 
-  const eyesByY = [...components]
-    .sort((a, b) => a.centerY - b.centerY || a.centerX - b.centerX)
-    .slice(0, 2)
-    .sort((a, b) => a.centerX - b.centerX);
-  const leftEyeComponent =
-    eyesByY.length === 2 && eyesByY[0]!.centerX < eyesByY[1]!.centerX ? eyesByY[0]! : undefined;
-  const rightEyeComponent =
-    eyesByY.length === 2 && eyesByY[0]!.centerX < eyesByY[1]!.centerX ? eyesByY[1]! : undefined;
+  const leftEyeComponent = pickBestComponentForSearch(components, leftEyeSearch);
+  const rightEyeComponent = pickBestComponentForSearch(
+    components.filter((component) => component !== leftEyeComponent),
+    rightEyeSearch
+  );
   const mouthComponent =
     [...components]
       .filter((component) => component !== leftEyeComponent && component !== rightEyeComponent)
-      .sort((a, b) => b.centerY - a.centerY || b.pixelCount - a.pixelCount)[0] ?? undefined;
+      .filter((component) => searchContainsComponentCenter(expandCropBox(mouthSearch, 1.24, 1.28), component))
+      .sort((a, b) => b.pixelCount - a.pixelCount || b.centerY - a.centerY)[0] ??
+    [...components]
+      .filter((component) => component !== leftEyeComponent && component !== rightEyeComponent)
+      .sort((a, b) => b.centerY - a.centerY || b.pixelCount - a.pixelCount)[0] ??
+    undefined;
 
   return {
-    leftEye: leftEyeComponent ? componentToCropBox(leftEyeComponent, 0.45, 0.45) : undefined,
-    rightEye: rightEyeComponent ? componentToCropBox(rightEyeComponent, 0.45, 0.45) : undefined,
-    mouth: mouthComponent ? componentToCropBox(mouthComponent, 0.4, 0.55) : undefined,
+    leftEye: normalizeEyeFeatureCrop(
+      leftEyeComponent ? componentToCropBox(leftEyeComponent, 0.45, 0.45) : fallbackFeatureCrop(leftEyeSearch, 0.7, 0.78) ?? leftEyeSearch,
+      headCrop
+    ),
+    rightEye: normalizeEyeFeatureCrop(
+      rightEyeComponent
+        ? componentToCropBox(rightEyeComponent, 0.45, 0.45)
+        : fallbackFeatureCrop(rightEyeSearch, 0.7, 0.78) ?? rightEyeSearch,
+      headCrop
+    ),
+    mouth: mouthComponent ? componentToCropBox(mouthComponent, 0.4, 0.55) : fallbackFeatureCrop(mouthSearch, 0.72, 0.82),
     components
   };
 }
@@ -957,6 +1109,37 @@ function collectManifestAssets(manifest: GeneratedCharacterManifest): CharacterS
     }
   }
   return assets;
+}
+
+async function synchronizeManifestCanvasToApprovedFront(characterId: string): Promise<GeneratedCharacterManifest> {
+  const manifest = loadManifest(characterId);
+  const frontAsset = manifest.front_master;
+  if (!frontAsset || !fs.existsSync(frontAsset.file_path)) {
+    return manifest;
+  }
+  const frontMetadata = await sharp(frontAsset.file_path, { failOn: "none" }).metadata();
+  const targetWidth = frontMetadata.width ?? frontAsset.width ?? DEFAULT_IMAGE_WIDTH;
+  const targetHeight = frontMetadata.height ?? frontAsset.height ?? DEFAULT_IMAGE_HEIGHT;
+  let changed = false;
+  const allAssets = collectManifestAssets(manifest);
+  for (const asset of allAssets) {
+    const synced = await synchronizeAssetCanvasToTarget({
+      asset,
+      targetWidth,
+      targetHeight,
+      postprocessTag: asset.stage === "front_master" ? "canvas_metadata_sync" : "canvas_sync_to_front_master"
+    });
+    if (
+      synced.width !== asset.width ||
+      synced.height !== asset.height ||
+      synced.postprocess.length !== (asset.postprocess ?? []).length ||
+      synced.postprocess.some((entry, index) => entry !== (asset.postprocess ?? [])[index])
+    ) {
+      updateManifestWithAsset(manifest, synced);
+      changed = true;
+    }
+  }
+  return changed ? saveManifest(manifest) : manifest;
 }
 
 function isSyntheticSmokeManifest(manifest: GeneratedCharacterManifest): boolean {
@@ -1117,6 +1300,9 @@ async function fetchBuffer(url: string): Promise<{ data: Buffer; contentType: st
 
 function mimeFromPath(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".svg") {
+    return "image/svg+xml";
+  }
   if (ext === ".jpg" || ext === ".jpeg") {
     return "image/jpeg";
   }
@@ -1169,6 +1355,80 @@ function poseGuidePathForView(view: Exclude<GeneratedCharacterView, "front">): s
   return path.join(POSE_GUIDE_ROOT, view === "threeQuarter" ? "threeQuarter.png" : "profile.png");
 }
 
+async function resolveStructureGuideSourceBuffers(sourceBuffer: Buffer): Promise<{
+  edgeSourceBuffer: Buffer;
+  maskSourceBuffer: Buffer;
+}> {
+  const prepared = sharp(sourceBuffer, { limitInputPixels: false }).rotate().ensureAlpha();
+  const { data, info } = await prepared.raw().toBuffer({ resolveWithObject: true });
+  const pixelCount = Math.max(1, info.width * info.height);
+  let transparentPixels = 0;
+  let alphaSignalPixels = 0;
+  for (let index = 3; index < data.length; index += 4) {
+    const alpha = data[index] ?? 255;
+    if (alpha < 12) {
+      transparentPixels += 1;
+    }
+    if (alpha >= 12) {
+      alphaSignalPixels += 1;
+    }
+  }
+
+  const alphaTransparentCoverage = transparentPixels / pixelCount;
+  const alphaSignalCoverage = alphaSignalPixels / pixelCount;
+  const alphaUsable = alphaTransparentCoverage >= 0.01 && alphaSignalCoverage >= 0.015 && alphaSignalCoverage <= 0.985;
+
+  const edgeSourceBuffer = await sharp(sourceBuffer, { limitInputPixels: false })
+    .rotate()
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .grayscale()
+    .normalise()
+    .png()
+    .toBuffer();
+
+  const inkMaskBuffer = await sharp(edgeSourceBuffer, { limitInputPixels: false })
+    .negate()
+    .threshold(24)
+    .png()
+    .toBuffer();
+
+  if (!alphaUsable) {
+    return {
+      edgeSourceBuffer,
+      maskSourceBuffer: inkMaskBuffer
+    };
+  }
+
+  const alphaMaskBuffer = await sharp(sourceBuffer, { limitInputPixels: false })
+    .rotate()
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .threshold(12)
+    .png()
+    .toBuffer();
+  const alphaMask = await sharp(alphaMaskBuffer, { limitInputPixels: false }).raw().toBuffer({ resolveWithObject: true });
+  const inkMask = await sharp(inkMaskBuffer, { limitInputPixels: false }).raw().toBuffer({ resolveWithObject: true });
+  const mergedMask = Buffer.alloc(alphaMask.data.length);
+  for (let index = 0; index < mergedMask.length; index += 1) {
+    mergedMask[index] = Math.max(alphaMask.data[index] ?? 0, inkMask.data[index] ?? 0);
+  }
+
+  const maskSourceBuffer = await sharp(mergedMask, {
+    raw: {
+      width: alphaMask.info.width,
+      height: alphaMask.info.height,
+      channels: alphaMask.info.channels
+    }
+  })
+    .png()
+    .toBuffer();
+
+  return {
+    edgeSourceBuffer,
+    maskSourceBuffer
+  };
+}
+
 async function buildStructureControlsFromReference(
   reference: LocalImageReference,
   kinds: CharacterStructureControlKind[],
@@ -1179,17 +1439,12 @@ async function buildStructureControlsFromReference(
   }
 ): Promise<Partial<Record<CharacterStructureControlKind, CharacterStructureControlImage>>> {
   const sourceBuffer = Buffer.from(reference.imageBase64, "base64");
-  const alphaMaskBuffer = await sharp(sourceBuffer, { limitInputPixels: false })
-    .ensureAlpha()
-    .extractChannel("alpha")
-    .threshold(12)
-    .png()
-    .toBuffer();
+  const { edgeSourceBuffer, maskSourceBuffer } = await resolveStructureGuideSourceBuffers(sourceBuffer);
 
   const controls: Partial<Record<CharacterStructureControlKind, CharacterStructureControlImage>> = {};
 
   if (kinds.includes("lineart")) {
-    const lineart = await sharp(alphaMaskBuffer, { limitInputPixels: false })
+    const lineart = await sharp(edgeSourceBuffer, { limitInputPixels: false })
       .convolve({
         width: 3,
         height: 3,
@@ -1212,7 +1467,7 @@ async function buildStructureControlsFromReference(
   }
 
   if (kinds.includes("canny")) {
-    const canny = await sharp(alphaMaskBuffer, { limitInputPixels: false })
+    const canny = await sharp(edgeSourceBuffer, { limitInputPixels: false })
       .blur(0.6)
       .convolve({
         width: 3,
@@ -1229,6 +1484,24 @@ async function buildStructureControlsFromReference(
       strength: source.sourceView === "profile" ? 0.38 : 0.36,
       endPercent: 0.78,
       note: "single-view edge guide",
+      sourceRole: source.sourceRole,
+      sourceRefId: source.sourceRefId,
+      sourceView: source.sourceView
+    };
+  }
+
+  if (kinds.includes("depth")) {
+    const depth = await sharp(maskSourceBuffer, { limitInputPixels: false })
+      .blur(18)
+      .normalise()
+      .png()
+      .toBuffer();
+    controls.depth = {
+      imageBase64: depth.toString("base64"),
+      mimeType: "image/png",
+      strength: source.sourceView === "profile" ? 0.5 : 0.48,
+      endPercent: 0.72,
+      note: "single-view depth guide",
       sourceRole: source.sourceRole,
       sourceRefId: source.sourceRefId,
       sourceView: source.sourceView
@@ -1671,6 +1944,35 @@ async function normalizeStillToCanvas(rawBuffer: Buffer, width: number, height: 
     .toBuffer();
 }
 
+async function synchronizeAssetCanvasToTarget(input: {
+  asset: CharacterStillAsset;
+  targetWidth: number;
+  targetHeight: number;
+  postprocessTag: string;
+}): Promise<CharacterStillAsset> {
+  if (!fs.existsSync(input.asset.file_path) || !fs.existsSync(input.asset.metadata_path)) {
+    return input.asset;
+  }
+  const metadata = readJson<CharacterStillAsset>(input.asset.metadata_path);
+  const imageMetadata = await sharp(input.asset.file_path, { failOn: "none" }).metadata();
+  const actualWidth = imageMetadata.width ?? metadata.width;
+  const actualHeight = imageMetadata.height ?? metadata.height;
+  const needsResize = actualWidth !== input.targetWidth || actualHeight !== input.targetHeight;
+  const needsMetadataSync = metadata.width !== input.targetWidth || metadata.height !== input.targetHeight;
+  if (!needsResize && !needsMetadataSync) {
+    return metadata;
+  }
+  if (needsResize) {
+    const normalizedBuffer = await normalizeStillToCanvas(fs.readFileSync(input.asset.file_path), input.targetWidth, input.targetHeight);
+    fs.writeFileSync(input.asset.file_path, normalizedBuffer);
+  }
+  metadata.width = input.targetWidth;
+  metadata.height = input.targetHeight;
+  metadata.postprocess = [...new Set([...(metadata.postprocess ?? []), input.postprocessTag])];
+  writeJson(metadata.metadata_path, metadata);
+  return metadata;
+}
+
 async function maybeReturnCachedAsset(input: {
   outputPath: string;
   requestHash: string;
@@ -1824,6 +2126,9 @@ export async function runGenerateCharacterStill(input: RunGenerateCharacterStill
 
 export async function runEditCharacterStill(input: RunEditCharacterStillInput): Promise<CharacterStillAsset> {
   const workflowPath = workflowTemplatePath("edit_kontext");
+  const inputMetadata = await sharp(input.inputImagePath, { failOn: "none" }).metadata();
+  const targetWidth = inputMetadata.width ?? DEFAULT_IMAGE_WIDTH;
+  const targetHeight = inputMetadata.height ?? DEFAULT_IMAGE_HEIGHT;
   const outputPath = stillOutputPath({
     characterId: input.characterId,
     stage: input.stage,
@@ -1863,7 +2168,16 @@ export async function runEditCharacterStill(input: RunEditCharacterStillInput): 
     requestHash
   });
   if (cached) {
-    return cached;
+    const syncedCached = await synchronizeAssetCanvasToTarget({
+      asset: cached,
+      targetWidth,
+      targetHeight,
+      postprocessTag: "edit_canvas_sync"
+    });
+    const manifest = loadManifest(input.characterId);
+    updateManifestWithAsset(manifest, syncedCached);
+    saveManifest(manifest);
+    return syncedCached;
   }
   const parentAsset =
     input.parentAssetId && fs.existsSync(manifestPathForCharacter(input.characterId))
@@ -1880,8 +2194,8 @@ export async function runEditCharacterStill(input: RunEditCharacterStillInput): 
     prompt: editPrompt,
     negativePrompt,
     seed: input.seed,
-    width: DEFAULT_IMAGE_WIDTH,
-    height: DEFAULT_IMAGE_HEIGHT,
+    width: targetWidth,
+    height: targetHeight,
     view: input.view,
     expression: input.expression,
     viseme: input.viseme,
@@ -1889,11 +2203,20 @@ export async function runEditCharacterStill(input: RunEditCharacterStillInput): 
     repairHistory: input.repairHistory
   });
   const image = await submitComfyWorkflow(workflowPrompt);
-  const asset = await persistStillAsset(outputPath, metadata, image);
+  const normalizedImage = await normalizeStillToCanvas(image, targetWidth, targetHeight);
+  const asset = await persistStillAsset(outputPath, metadata, normalizedImage);
   const manifest = loadManifest(input.characterId);
   updateManifestWithAsset(manifest, asset);
   saveManifest(manifest);
-  return asset;
+  const syncedAsset = await synchronizeAssetCanvasToTarget({
+    asset,
+    targetWidth,
+    targetHeight,
+    postprocessTag: "edit_canvas_sync"
+  });
+  updateManifestWithAsset(manifest, syncedAsset);
+  saveManifest(manifest);
+  return syncedAsset;
 }
 
 export async function generateCharacterViewSet(
@@ -1998,12 +2321,12 @@ function legacySpeciesRepairHint(speciesId: MascotSpeciesId, mode: "view" | "exp
       : "mouth opening must stay simple and readable inside the minimal feline muzzle";
 }
 
-function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: MascotSpeciesId): string {
+export function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: MascotSpeciesId): string {
   const speciesProfile = resolveMascotSpeciesProfile(speciesId);
   const frontViewHint = speciesProfile.viewHints.front ?? "";
   if (expression === "happy") {
     return mergePromptWithSuffixes(
-      "same character, front view, happy expression, visibly smiling mouth and cheerful eyes, keep body pose stable, keep silhouette and costume unchanged, make the face clearly different from neutral",
+      "same character, front view, happy expression, broad visible smile, clearly lifted mouth corners, cheerful eye shape, keep body pose stable, keep silhouette and costume unchanged, make the face unmistakably different from neutral",
       [
         frontViewHint,
         ...speciesProfile.identityTokens.slice(0, 2),
@@ -2014,7 +2337,7 @@ function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: 
   }
   if (expression === "surprised") {
     return mergePromptWithSuffixes(
-      "same character, front view, surprised expression, visibly rounded mouth and widened eyes, keep body pose stable and preserve proportions, make the face clearly different from neutral",
+      "same character, front view, surprised expression, very clear rounded open mouth, widened eyes, keep body pose stable and preserve proportions, make the face unmistakably different from neutral",
       [
         frontViewHint,
         ...speciesProfile.identityTokens.slice(0, 2),
@@ -2025,7 +2348,7 @@ function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: 
   }
   if (expression === "blink") {
     return mergePromptWithSuffixes(
-      "same character, front view, blinking eyes fully closed, neutral mouth, keep body pose stable and preserve identity, make the face clearly different from neutral",
+      "same character, front view, blinking eyes fully closed into thick visible lid lines, neutral mouth, keep body pose stable and preserve identity, make the face unmistakably different from neutral",
       [
         frontViewHint,
         ...speciesProfile.identityTokens.slice(0, 2),
@@ -2036,7 +2359,7 @@ function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: 
   }
   if (expression === "angry") {
     return mergePromptWithSuffixes(
-      "same character, front view, angry expression, lowered brows, narrowed eyes, tight frowning mouth, keep body pose stable and preserve proportions, make the face clearly different from neutral",
+      "same character, front view, angry expression, lowered brows, narrowed eyes, tight frowning mouth, keep body pose stable and preserve proportions, make the face unmistakably different from neutral",
       [
         frontViewHint,
         ...speciesProfile.identityTokens.slice(0, 2),
@@ -2047,7 +2370,7 @@ function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: 
   }
   if (expression === "sad") {
     return mergePromptWithSuffixes(
-      "same character, front view, sad expression, softened eyes, drooping brows, small downturned mouth, keep body pose stable and preserve proportions, make the face clearly different from neutral",
+      "same character, front view, sad expression, softened eyes, drooping brows, clearly downturned mouth, keep body pose stable and preserve proportions, make the face unmistakably different from neutral",
       [
         frontViewHint,
         ...speciesProfile.identityTokens.slice(0, 2),
@@ -2058,7 +2381,7 @@ function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: 
   }
   if (expression === "thinking") {
     return mergePromptWithSuffixes(
-      "same character, front view, thinking expression, one brow raised, focused eyes, small pondering mouth, keep body pose stable and preserve proportions, make the face clearly different from neutral",
+      "same character, front view, thinking expression, one brow raised, focused eyes, clear pondering mouth, keep body pose stable and preserve proportions, make the face unmistakably different from neutral",
       [
         frontViewHint,
         ...speciesProfile.identityTokens.slice(0, 2),
@@ -2074,25 +2397,46 @@ function expressionPrompt(expression: GeneratedCharacterExpression, speciesId?: 
   ]);
 }
 
-function visemePrompt(viseme: GeneratedCharacterViseme, speciesId?: MascotSpeciesId): string {
+export function visemePrompt(viseme: GeneratedCharacterViseme, speciesId?: MascotSpeciesId): string {
   const speciesProfile = resolveMascotSpeciesProfile(speciesId);
   const frontViewHint = speciesProfile.viewHints.front ?? "";
   if (viseme === "mouth_open_small") {
     return mergePromptWithSuffixes(
-      "same character, front view, neutral eyes, mouth slightly open for speech, preserve identity and body pose, visibly change only the mouth",
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
+      "same character, front view, neutral eyes, speech mouth with a small but clearly visible dark opening below the nose, preserve identity and body pose, visibly change only the lower mouth, the mouth must not read as closed",
+      [
+        frontViewHint,
+        ...speciesProfile.identityTokens.slice(0, 2),
+        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
+        "the small open mouth must read clearly at thumbnail size",
+        "do not leave the lower mouth loop closed",
+        "do not change only the nose"
+      ]
     );
   }
   if (viseme === "mouth_open_wide") {
     return mergePromptWithSuffixes(
-      "same character, front view, neutral eyes, mouth wide open for speech, preserve identity and body pose, visibly change only the mouth",
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
+      "same character, front view, neutral eyes, speech mouth with a wide clearly visible dark opening below the nose, preserve identity and body pose, visibly change only the lower mouth, the mouth must read as wide open",
+      [
+        frontViewHint,
+        ...speciesProfile.identityTokens.slice(0, 2),
+        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
+        "the wide open mouth must read clearly at thumbnail size",
+        "do not leave the lower mouth loop closed",
+        "do not change only the nose"
+      ]
     );
   }
   if (viseme === "mouth_round_o") {
     return mergePromptWithSuffixes(
-      "same character, front view, neutral eyes, rounded O mouth shape, preserve identity and body pose, visibly change only the mouth",
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
+      "same character, front view, neutral eyes, rounded O mouth shape with a clearly visible dark inner opening below the nose, preserve identity and body pose, visibly change only the lower mouth, the mouth must read as a strong O shape",
+      [
+        frontViewHint,
+        ...speciesProfile.identityTokens.slice(0, 2),
+        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
+        "the O mouth must read clearly at thumbnail size",
+        "do not leave the lower mouth loop closed",
+        "do not change only the nose"
+      ]
     );
   }
   if (viseme === "mouth_smile_open") {
@@ -2369,31 +2713,49 @@ function visemeRepairPrompt(viseme: GeneratedCharacterViseme, round: number, spe
   if (viseme === "mouth_open_small") {
     return mergePromptWithSuffixes(
       pickEscalationPrompt(round, [
-        "same character, front view, neutral eyes, mouth slightly open for speech with a clearly visible opening, preserve identity and body pose, visibly change only the mouth",
-        "same character, front view, speech viseme A-small, neutral eyes, obvious small mouth opening, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a clear small open mouth, neutral eyes, preserve identity and body pose, mouth must read as open at thumbnail size"
+        "same character, front view, neutral eyes, mouth slightly open for speech with a clearly visible opening below the nose, preserve identity and body pose, visibly change only the lower mouth",
+        "same character, front view, speech viseme A-small, neutral eyes, obvious small lower-mouth opening, preserve identity and body pose, mouth change must be unmistakable",
+        "same character, front view, front talking viseme with a clear small open lower mouth below the nose, neutral eyes, preserve identity and body pose, mouth must read as open at thumbnail size"
       ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
+      [
+        frontViewHint,
+        ...speciesProfile.identityTokens.slice(0, 2),
+        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
+        "do not leave the lower mouth loop closed",
+        "do not change only the nose"
+      ]
     );
   }
   if (viseme === "mouth_open_wide") {
     return mergePromptWithSuffixes(
       pickEscalationPrompt(round, [
-        "same character, front view, neutral eyes, mouth wide open for speech with a clearly visible opening, preserve identity and body pose, visibly change only the mouth",
-        "same character, front view, speech viseme A-wide, neutral eyes, obvious wide open mouth, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a very clear wide open mouth, neutral eyes, preserve identity and body pose, mouth must read as wide open at thumbnail size"
+        "same character, front view, neutral eyes, mouth wide open for speech with a clearly visible opening below the nose, preserve identity and body pose, visibly change only the lower mouth",
+        "same character, front view, speech viseme A-wide, neutral eyes, obvious wide open lower mouth, preserve identity and body pose, mouth change must be unmistakable",
+        "same character, front view, front talking viseme with a very clear wide open lower mouth below the nose, neutral eyes, preserve identity and body pose, mouth must read as wide open at thumbnail size"
       ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
+      [
+        frontViewHint,
+        ...speciesProfile.identityTokens.slice(0, 2),
+        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
+        "do not leave the lower mouth loop closed",
+        "do not change only the nose"
+      ]
     );
   }
   if (viseme === "mouth_round_o") {
     return mergePromptWithSuffixes(
       pickEscalationPrompt(round, [
-        "same character, front view, neutral eyes, rounded O mouth shape with a clearly visible opening, preserve identity and body pose, visibly change only the mouth",
-        "same character, front view, speech viseme O, neutral eyes, obvious rounded O mouth, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a very clear rounded O mouth opening, neutral eyes, preserve identity and body pose, mouth must read as O-shaped at thumbnail size"
+        "same character, front view, neutral eyes, rounded O mouth shape with a clearly visible opening below the nose, preserve identity and body pose, visibly change only the lower mouth",
+        "same character, front view, speech viseme O, neutral eyes, obvious rounded O lower mouth, preserve identity and body pose, mouth change must be unmistakable",
+        "same character, front view, front talking viseme with a very clear rounded O lower mouth opening below the nose, neutral eyes, preserve identity and body pose, mouth must read as O-shaped at thumbnail size"
       ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
+      [
+        frontViewHint,
+        ...speciesProfile.identityTokens.slice(0, 2),
+        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
+        "do not leave the lower mouth loop closed",
+        "do not change only the nose"
+      ]
     );
   }
   if (viseme === "mouth_smile_open") {
@@ -2429,8 +2791,19 @@ function viewRepairNegativePrompt(basePrompt: string | undefined, view: Generate
   ]);
 }
 
-function expressionRepairNegativePrompt(basePrompt: string | undefined): string {
+export function expressionGenerationNegativePrompt(basePrompt: string | undefined): string {
   return mergePromptWithSuffixes(basePrompt ?? "", [
+    "neutral expression",
+    "expressionless face",
+    "unchanged face",
+    "subtle expression",
+    "barely changed face",
+    "same face as neutral"
+  ]);
+}
+
+function expressionRepairNegativePrompt(basePrompt: string | undefined): string {
+  return mergePromptWithSuffixes(expressionGenerationNegativePrompt(basePrompt), [
     "neutral expression",
     "expressionless face",
     "unchanged face",
@@ -2439,8 +2812,23 @@ function expressionRepairNegativePrompt(basePrompt: string | undefined): string 
   ]);
 }
 
-function visemeRepairNegativePrompt(basePrompt: string | undefined): string {
+export function visemeGenerationNegativePrompt(basePrompt: string | undefined): string {
   return mergePromptWithSuffixes(basePrompt ?? "", [
+    "closed mouth",
+    "neutral mouth",
+    "unchanged mouth",
+    "tiny mouth slit",
+    "barely open mouth",
+    "mouth barely changed",
+    "same mouth as mouth closed",
+    "closed lower mouth loop",
+    "nose-only edit",
+    "unchanged nose"
+  ]);
+}
+
+function visemeRepairNegativePrompt(basePrompt: string | undefined): string {
+  return mergePromptWithSuffixes(visemeGenerationNegativePrompt(basePrompt), [
     "closed mouth",
     "neutral mouth",
     "unchanged mouth",
@@ -2450,10 +2838,16 @@ function visemeRepairNegativePrompt(basePrompt: string | undefined): string {
   ]);
 }
 
-function resolveRepairDenoise(kind: StageRepairKind, baseDenoise: number | undefined, round: number): number {
+export function resolveInitialEditDenoise(kind: StageRepairKind, baseDenoise: number | undefined): number {
   const baseline = baseDenoise ?? DEFAULT_EDIT_DENOISE;
-  const initialBoost = kind === "view" ? 0.14 : 0.1;
-  const roundBoost = (round - 1) * (kind === "view" ? 0.08 : 0.07);
+  const floor = kind === "viseme" ? 0.48 : kind === "expression" ? 0.38 : DEFAULT_EDIT_DENOISE;
+  return Number(clamp(Math.max(baseline, floor), 0.32, 0.72).toFixed(3));
+}
+
+function resolveRepairDenoise(kind: StageRepairKind, baseDenoise: number | undefined, round: number): number {
+  const baseline = resolveInitialEditDenoise(kind, baseDenoise);
+  const initialBoost = kind === "view" ? 0.14 : kind === "viseme" ? 0.16 : 0.1;
+  const roundBoost = (round - 1) * (kind === "view" ? 0.08 : kind === "viseme" ? 0.09 : 0.07);
   return Number(clamp(baseline + initialBoost + roundBoost, 0.32, 0.72).toFixed(3));
 }
 
@@ -2806,7 +3200,8 @@ async function runCharacterPipelineEditRepairRound(input: {
         `repair_round:${input.round}`,
         "repair_stage:expression",
         `repair_target:${expression}`
-      ]
+      ],
+      speciesId
     });
     changed = true;
   }
@@ -2830,7 +3225,8 @@ async function runCharacterPipelineEditRepairRound(input: {
         `repair_round:${input.round}`,
         "repair_stage:viseme",
         `repair_target:${viseme}`
-      ]
+      ],
+      speciesId
     });
     changed = true;
   }
@@ -2911,9 +3307,9 @@ export async function generateCharacterExpressionPack(
       characterId: input.characterId,
       inputImagePath: frontMaster.file_path,
       editPrompt: expressionPrompt(expression, manifest.species),
-      negativePrompt: input.negativePrompt,
+      negativePrompt: expressionGenerationNegativePrompt(input.negativePrompt),
       seed: input.baseSeed + index * 97 + 11,
-      denoise: input.denoise,
+      denoise: resolveInitialEditDenoise("expression", input.denoise),
       stage: "expression",
       view: "front",
       expression,
@@ -2952,15 +3348,22 @@ export async function generateCharacterVisemePack(
       characterId: input.characterId,
       inputImagePath: frontMaster.file_path,
       editPrompt: visemePrompt(viseme, manifest.species),
-      negativePrompt: input.negativePrompt,
+      negativePrompt: visemeGenerationNegativePrompt(input.negativePrompt),
       seed: input.baseSeed + index * 89 + 17,
-      denoise: input.denoise,
+      denoise: resolveInitialEditDenoise("viseme", input.denoise),
       stage: "viseme",
       view: "front",
       viseme,
       parentAssetId: frontMaster.asset_id
     });
-    updateManifestWithAsset(manifest, asset);
+    const strengthenedAsset = await strengthenVisemeAssetIfNeeded({
+      characterId: input.characterId,
+      baseAsset: closedAsset,
+      visemeAsset: asset,
+      viseme,
+      speciesId: manifest.species
+    });
+    updateManifestWithAsset(manifest, strengthenedAsset);
   }
 
   return saveManifest(manifest);
@@ -3016,6 +3419,72 @@ async function cropNormalizedRegion(input: {
     .toFile(input.targetPath);
 
   return input.targetPath;
+}
+
+async function recenterPackedEyeAsset(slotPath: string): Promise<void> {
+  if (!fs.existsSync(slotPath)) {
+    return;
+  }
+  const raster = await loadImageRaster(slotPath);
+  const candidates = detectInteriorDarkComponents(raster, { cx: 0.5, cy: 0.5, w: 0.78, h: 0.88 });
+  const primary = candidates[0];
+  if (!primary) {
+    return;
+  }
+  const metadata = await sharp(slotPath, { failOn: "none" }).metadata();
+  const targetWidth = metadata.width ?? 60;
+  const targetHeight = metadata.height ?? 36;
+  const crop = clampCropBox({
+    cx: primary.centerX,
+    cy: primary.centerY,
+    w: Math.max(primary.width * 2.4, 0.24),
+    h: Math.max(primary.height * 2.8, 0.46)
+  });
+  const tempPath = path.join(path.dirname(slotPath), `${path.parse(slotPath).name}__recenter.png`);
+  await cropNormalizedRegion({
+    sourcePath: slotPath,
+    crop,
+    targetPath: tempPath,
+    targetWidth,
+    targetHeight
+  });
+  fs.copyFileSync(tempPath, slotPath);
+  fs.unlinkSync(tempPath);
+}
+
+async function ensurePackedEyeSlotContent(
+  slotPath: string,
+  mode: "open" | "closed",
+  speciesId: MascotSpeciesId
+): Promise<void> {
+  if (!fs.existsSync(slotPath)) {
+    return;
+  }
+  const raster = await loadImageRaster(slotPath);
+  if (detectInteriorDarkComponents(raster, FULL_IMAGE_CROP).length > 0) {
+    return;
+  }
+  const metadata = await sharp(slotPath, { failOn: "none" }).metadata();
+  const width = metadata.width ?? 60;
+  const height = metadata.height ?? 36;
+  const openWidth = speciesId === "wolf" ? 12 : speciesId === "dog" ? 14 : 13;
+  const openHeight = speciesId === "wolf" ? 22 : 20;
+  const strokeHeight = speciesId === "wolf" ? 7 : 8;
+  const glyphSvg =
+    mode === "open"
+      ? `<ellipse cx="${Math.round(width * 0.5)}" cy="${Math.round(height * 0.48)}" rx="${Math.round(openWidth / 2)}" ry="${Math.round(openHeight / 2)}" fill="rgba(14,14,14,0.98)" />`
+      : `<rect x="${Math.round(width * 0.26)}" y="${Math.round(height * 0.44)}" width="${Math.round(width * 0.48)}" height="${strokeHeight}" rx="${Math.max(3, Math.round(strokeHeight / 2))}" ry="${Math.max(3, Math.round(strokeHeight / 2))}" fill="rgba(14,14,14,0.98)" />`;
+  const slotBuffer = await sharp(
+    Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  ${glyphSvg}
+</svg>`
+    ),
+    { limitInputPixels: false }
+  )
+    .png()
+    .toBuffer();
+  fs.writeFileSync(slotPath, slotBuffer);
 }
 
 async function writeTransparentPng(targetPath: string, width: number, height: number): Promise<void> {
@@ -3223,6 +3692,225 @@ async function compositeEditedCropOntoBase(input: {
     .toFile(input.outputPath);
 }
 
+type SyntheticVisemeGeometry = {
+  kind: "ellipse" | "roundRect";
+  mouthWidthRatio: number;
+  mouthHeightRatio: number;
+  eraseWidthRatio: number;
+  eraseHeightRatio: number;
+  verticalOffsetRatio: number;
+  cornerRatio: number;
+};
+
+function darkenColor(color: RgbaColor, amount: number): RgbaColor {
+  const factor = clamp(1 - amount, 0, 1);
+  return {
+    r: Math.round(color.r * factor),
+    g: Math.round(color.g * factor),
+    b: Math.round(color.b * factor),
+    alpha: color.alpha
+  };
+}
+
+function rgbaToCss(color: RgbaColor): string {
+  return `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.max(0, Math.min(1, color.alpha / 255)).toFixed(3)})`;
+}
+
+function resolveSyntheticVisemeGeometry(
+  viseme: GeneratedCharacterViseme,
+  speciesId: MascotSpeciesId,
+  scaleBoost: number
+): SyntheticVisemeGeometry | null {
+  const canineWidthBoost = speciesId === "dog" || speciesId === "wolf" ? 1.08 : 1;
+  if (viseme === "mouth_open_small") {
+    return {
+      kind: "ellipse",
+      mouthWidthRatio: 0.74 * canineWidthBoost * scaleBoost,
+      mouthHeightRatio: 0.78 * scaleBoost,
+      eraseWidthRatio: 1.48 * scaleBoost,
+      eraseHeightRatio: 1.82 * scaleBoost,
+      verticalOffsetRatio: 0.12,
+      cornerRatio: 0.5
+    };
+  }
+  if (viseme === "mouth_open_wide") {
+    return {
+      kind: "roundRect",
+      mouthWidthRatio: 1.18 * canineWidthBoost * scaleBoost,
+      mouthHeightRatio: 0.82 * scaleBoost,
+      eraseWidthRatio: 1.72 * scaleBoost,
+      eraseHeightRatio: 1.96 * scaleBoost,
+      verticalOffsetRatio: 0.1,
+      cornerRatio: speciesId === "wolf" ? 0.24 : 0.42
+    };
+  }
+  if (viseme === "mouth_round_o") {
+    return {
+      kind: "ellipse",
+      mouthWidthRatio: 0.76 * scaleBoost,
+      mouthHeightRatio: 1.12 * scaleBoost,
+      eraseWidthRatio: 1.4 * scaleBoost,
+      eraseHeightRatio: 1.96 * scaleBoost,
+      verticalOffsetRatio: 0.12,
+      cornerRatio: 0.5
+    };
+  }
+  return null;
+}
+
+function resolveFrontMouthCrop(image: LoadedImageRaster, cropBoxes: CharacterCropBoxes): CropBox {
+  const bounds = measureForegroundBounds(image, FULL_IMAGE_CROP);
+  const headCrop = bounds ? deriveHeadCropFromBodyBounds(bounds, "front") : cropBoxes.head.front;
+  return detectFrontFaceFeatureCrops(image, headCrop).mouth ?? cropBoxes.mouth;
+}
+
+async function strengthenVisemeAssetIfNeeded(input: {
+  characterId: string;
+  baseAsset: CharacterStillAsset;
+  visemeAsset: CharacterStillAsset;
+  viseme: GeneratedCharacterViseme;
+  speciesId?: MascotSpeciesId;
+}): Promise<CharacterStillAsset> {
+  if (input.viseme === "mouth_closed") {
+    return input.visemeAsset;
+  }
+  const speciesId = resolveManifestSpeciesId(loadManifest(input.characterId), input.speciesId);
+  const geometryAttempts = [1, 1.16, 1.32];
+  const cropBoxes = await resolveRepairCropBoxes(input.characterId);
+  const baseRaster = await loadImageRaster(input.baseAsset.file_path);
+  let workingVisemeBuffer: Buffer = fs.readFileSync(input.visemeAsset.file_path);
+  let visemeRaster = await loadImageRasterFromBuffer(workingVisemeBuffer, input.visemeAsset.file_path);
+  if (visemeRaster.width !== baseRaster.width || visemeRaster.height !== baseRaster.height) {
+    workingVisemeBuffer = Buffer.from(
+      await normalizeStillToCanvas(workingVisemeBuffer, baseRaster.width, baseRaster.height)
+    );
+    visemeRaster = await loadImageRasterFromBuffer(workingVisemeBuffer, input.visemeAsset.file_path);
+  }
+  const mouthCrop = resolveFrontMouthCrop(baseRaster, cropBoxes);
+  const currentDelta = meanRegionDifference(baseRaster, visemeRaster, mouthCrop);
+  const targetDelta = Math.max(resolveAnimationQcThresholds(speciesId).minVisemeFaceVariation * 1.3, 0.01);
+  if (currentDelta >= targetDelta) {
+    return input.visemeAsset;
+  }
+
+  const overlayCrop = expandCropBox(mouthCrop, 1.9, 2.35, 0.03);
+  const overlayRegion = normalizedRegionToPixels(baseRaster, overlayCrop);
+  const mouthRegion = normalizedRegionToPixels(baseRaster, mouthCrop);
+  const overlayWidth = Math.max(1, overlayRegion.right - overlayRegion.left);
+  const overlayHeight = Math.max(1, overlayRegion.bottom - overlayRegion.top);
+  const mouthWidthPx = Math.max(1, mouthRegion.right - mouthRegion.left);
+  const mouthHeightPx = Math.max(1, mouthRegion.bottom - mouthRegion.top);
+  const mouthCenter = measureDarkFeatureCenter(baseRaster, mouthCrop) ?? {
+    x: mouthCrop.cx,
+    y: mouthCrop.cy,
+    density: 0
+  };
+  const muzzleColor =
+    meanVisibleRegionColor(baseRaster, expandCropBox(mouthCrop, 1.6, 1.85, 0), {
+      skipDarkFeatures: true,
+      minLuma: 72
+    }) ??
+    meanVisibleRegionColor(baseRaster, expandCropBox(mouthCrop, 1.4, 1.6, 0), {
+      skipDarkFeatures: true
+    }) ?? {
+      r: 224,
+      g: 214,
+      b: 198,
+      alpha: 255
+    };
+  const mouthFill = darkenColor({ r: 28, g: 20, b: 18, alpha: 245 }, speciesId === "wolf" ? 0.08 : 0);
+  const lipStroke = darkenColor(muzzleColor, speciesId === "wolf" ? 0.5 : 0.42);
+
+  for (const scaleBoost of geometryAttempts) {
+    const geometry = resolveSyntheticVisemeGeometry(input.viseme, speciesId, scaleBoost);
+    if (!geometry) {
+      break;
+    }
+    const mouthWidth = clamp(
+      Math.round(mouthWidthPx * geometry.mouthWidthRatio),
+      Math.max(10, Math.round(overlayWidth * 0.22)),
+      Math.max(12, Math.round(overlayWidth * 0.94))
+    );
+    const mouthHeight = clamp(
+      Math.round(mouthHeightPx * geometry.mouthHeightRatio),
+      Math.max(8, Math.round(overlayHeight * 0.18)),
+      Math.max(10, Math.round(overlayHeight * 0.9))
+    );
+    const eraseWidth = clamp(
+      Math.round(mouthWidthPx * geometry.eraseWidthRatio),
+      mouthWidth + 4,
+      Math.max(14, Math.round(overlayWidth * 0.98))
+    );
+    const eraseHeight = clamp(
+      Math.round(mouthHeightPx * geometry.eraseHeightRatio),
+      mouthHeight + 4,
+      Math.max(14, Math.round(overlayHeight * 0.98))
+    );
+    const anchorX = clamp(
+      Math.round(mouthCenter.x * baseRaster.width) - overlayRegion.left,
+      Math.floor(overlayWidth * 0.2),
+      Math.ceil(overlayWidth * 0.8)
+    );
+    const anchorY = clamp(
+      Math.round((mouthCenter.y + mouthCrop.h * geometry.verticalOffsetRatio) * baseRaster.height) - overlayRegion.top,
+      Math.floor(overlayHeight * 0.24),
+      Math.ceil(overlayHeight * 0.82)
+    );
+    const eraseX = Math.round(anchorX - eraseWidth / 2);
+    const eraseY = Math.round(anchorY - eraseHeight / 2);
+    const mouthX = Math.round(anchorX - mouthWidth / 2);
+    const mouthY = Math.round(anchorY - mouthHeight / 2);
+    const strokeWidth = Math.max(2, Math.round(Math.min(mouthWidth, mouthHeight) * 0.09));
+    const lipY = Math.round(mouthY + mouthHeight * 0.1);
+    const lipStartX = Math.round(mouthX + mouthWidth * 0.14);
+    const lipEndX = Math.round(mouthX + mouthWidth * 0.86);
+    const lipControlY = Math.round(lipY - Math.max(2, mouthHeight * 0.16));
+    const mouthNode =
+      geometry.kind === "roundRect"
+        ? `<rect x="${mouthX}" y="${mouthY}" width="${mouthWidth}" height="${mouthHeight}" rx="${Math.max(4, Math.round(mouthHeight * geometry.cornerRatio))}" ry="${Math.max(4, Math.round(mouthHeight * geometry.cornerRatio))}" fill="${rgbaToCss(mouthFill)}" />`
+        : `<ellipse cx="${anchorX}" cy="${anchorY}" rx="${Math.max(4, Math.round(mouthWidth / 2))}" ry="${Math.max(4, Math.round(mouthHeight / 2))}" fill="${rgbaToCss(mouthFill)}" />`;
+    const overlaySvg = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${overlayWidth}" height="${overlayHeight}" viewBox="0 0 ${overlayWidth} ${overlayHeight}">
+  <ellipse cx="${anchorX}" cy="${anchorY}" rx="${Math.max(6, Math.round(eraseWidth / 2))}" ry="${Math.max(6, Math.round(eraseHeight / 2))}" fill="${rgbaToCss(muzzleColor)}" />
+  ${mouthNode}
+  <path d="M ${lipStartX} ${lipY} Q ${anchorX} ${lipControlY} ${lipEndX} ${lipY}" fill="none" stroke="${rgbaToCss(lipStroke)}" stroke-width="${strokeWidth}" stroke-linecap="round" opacity="0.9" />
+</svg>`
+    );
+    const overlayBuffer = await sharp(overlaySvg, { limitInputPixels: false })
+      .resize({
+        width: overlayWidth,
+        height: overlayHeight,
+        fit: "fill"
+      })
+      .png()
+      .toBuffer();
+    const candidateBuffer = await sharp(workingVisemeBuffer, { limitInputPixels: false })
+      .ensureAlpha()
+      .composite([
+        {
+          input: overlayBuffer,
+          left: overlayRegion.left,
+          top: overlayRegion.top,
+          blend: "over"
+        }
+      ])
+      .png()
+      .toBuffer();
+    const candidateRaster = await loadImageRasterFromBuffer(candidateBuffer, input.visemeAsset.file_path);
+    const candidateDelta = meanRegionDifference(baseRaster, candidateRaster, mouthCrop);
+    if (candidateDelta < targetDelta && scaleBoost !== geometryAttempts[geometryAttempts.length - 1]) {
+      continue;
+    }
+    fs.writeFileSync(input.visemeAsset.file_path, candidateBuffer);
+    const metadata = readJson<CharacterStillAsset>(input.visemeAsset.metadata_path);
+    metadata.postprocess = [...new Set([...(metadata.postprocess ?? []), "viseme_local_strengthen", "viseme_local_composite"])];
+    writeJson(metadata.metadata_path, metadata);
+    return metadata;
+  }
+
+  return input.visemeAsset;
+}
+
 async function runLocalFaceRepairStill(input: {
   characterId: string;
   baseAsset: CharacterStillAsset;
@@ -3234,6 +3922,7 @@ async function runLocalFaceRepairStill(input: {
   seed: number;
   denoise?: number;
   round: number;
+  speciesId?: MascotSpeciesId;
   repairHistory?: string[];
 }): Promise<CharacterStillAsset> {
   const cropBoxes = await resolveRepairCropBoxes(input.characterId);
@@ -3285,16 +3974,27 @@ async function runLocalFaceRepairStill(input: {
   metadata.height = input.baseAsset.height;
   metadata.postprocess = [...new Set([...(metadata.postprocess ?? []), "face_local_crop_edit", "face_local_composite"])];
   writeJson(metadata.metadata_path, metadata);
+  const finalAsset =
+    input.stage === "viseme" && input.viseme && input.viseme !== "mouth_closed"
+      ? await strengthenVisemeAssetIfNeeded({
+          characterId: input.characterId,
+          baseAsset: input.baseAsset,
+          visemeAsset: metadata,
+          viseme: input.viseme,
+          speciesId: input.speciesId
+        })
+      : metadata;
 
   const manifest = loadManifest(input.characterId);
-  updateManifestWithAsset(manifest, metadata);
+  updateManifestWithAsset(manifest, finalAsset);
   saveManifest(manifest);
-  return metadata;
+  return finalAsset;
 }
 
 export async function buildGeneratedCharacterPack(input: {
   characterId: string;
 }): Promise<{ packId: string; packPath: string; proposalPath: string; metaPath: string }> {
+  await synchronizeManifestCanvasToApprovedFront(input.characterId);
   const manifest = loadManifest(input.characterId);
   requireApprovedFrontMaster(input.characterId);
   const referenceBank = resolveManifestReferenceBankStatus(manifest);
@@ -3453,6 +4153,12 @@ export async function buildGeneratedCharacterPack(input: {
     })
   ];
   await Promise.all(cropJobs);
+  const eyeOpenPath = path.join(assetsDir, "eye_open.png");
+  const eyeClosedPath = path.join(assetsDir, "eye_closed.png");
+  await recenterPackedEyeAsset(eyeOpenPath);
+  await recenterPackedEyeAsset(eyeClosedPath);
+  await ensurePackedEyeSlotContent(eyeOpenPath, "open", resolveManifestSpeciesId(manifest));
+  await ensurePackedEyeSlotContent(eyeClosedPath, "closed", resolveManifestSpeciesId(manifest));
 
   const fileUrl = (name: string) => pathToFileURL(path.join(assetsDir, name)).href;
   const pack = {
@@ -3627,6 +4333,7 @@ export async function runCharacterAnimationSafeQc(input: {
   passed: boolean;
   acceptanceStatus: CharacterPipelineAcceptanceStatus;
 }> {
+  await synchronizeManifestCanvasToApprovedFront(input.characterId);
   const manifest = loadManifest(input.characterId);
   const referenceBank = resolveManifestReferenceBankStatus(manifest);
   const animationQc = resolveAnimationQcThresholds(resolveManifestSpeciesId(manifest));
