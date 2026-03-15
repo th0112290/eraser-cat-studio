@@ -36,7 +36,7 @@ const requiredPageHeadings = new Map([
 
 const requiredPageKeywords = new Map([
   ["/ui/assets", ["Selected Asset", "Recent Assets", "선택된 에셋", "최근 에셋"]],
-  ["/ui/studio", ["Quick Start Guide", "Start One-click", "최근 에셋", "최근 에피소드"]],
+  ["/ui/studio", ["Orchestration Hub", "Asset Intake", "Start one-click", "Recent Assets", "Recent Episodes"]],
   ["/ui/character-generator", ["Generation Mode", "Style/Prompt", "Run Character Candidate Generation", "생성 모드", "생성 실행"]],
   ["/ui/characters", ["pack.json", "preview.mp4", "선택된 팩", "최근 캐릭터 팩"]],
   ["/ui/episodes", ["Recent Episodes", "Create episode + enqueue", "Quick Run", "targetDurationSec", "Latest Episodes"]],
@@ -145,7 +145,7 @@ async function checkPage(path) {
     }
   }
   if (path.startsWith("/ui/jobs/") && !requiredPageHeadings.has(path)) {
-    const dynamicHeadings = ["Job Detail"];
+    const dynamicHeadings = ["Job Detail", "Run Detail"];
     const matched = dynamicHeadings.some((heading) => html.includes(heading));
     if (!matched) {
       throw new Error(`${path} missing page heading: ${dynamicHeadings.join(" | ")}`);
@@ -188,7 +188,7 @@ async function checkPage(path) {
     }
   }
   if (path.startsWith("/ui/jobs/") && !requiredPageKeywords.has(path)) {
-    const dynamicKeywords = ["Job Detail", "Job Logs", "Retry"];
+    const dynamicKeywords = ["Job Detail", "Run Detail", "Job Logs", "Retry"];
     const matched = dynamicKeywords.some((keyword) => html.includes(keyword));
     if (!matched) {
       throw new Error(`${path} missing expected keyword: ${dynamicKeywords.join(" | ")}`);
