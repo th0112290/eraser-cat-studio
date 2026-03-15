@@ -191,6 +191,8 @@ type CandidateScoreBreakdown = {
   handRegionDensityScore?: number;
   subjectFillRatio?: number;
   subjectIsolationScore?: number;
+  largestComponentShare?: number;
+  significantComponentCount?: number;
   dogFrontReadabilityScore?: number;
   runtimeQualityScore?: number;
   runtimePenalty?: number;
@@ -891,7 +893,7 @@ function summarizeStageBestCandidateByView(input: {
     if (candidate.rejections.length > 0) {
       failureReasons.push(...candidate.rejections);
     }
-    if (hasConsistencyRecoveryIssue(candidate)) {
+    if (hasBlockingConsistencyRecoveryIssue(candidate, input.speciesId)) {
       failureReasons.push("consistency_recovery_needed");
     }
     if (candidate.score < input.acceptedScoreThreshold) {
@@ -1023,7 +1025,7 @@ function resolveStageInputRequiredReferenceRoles(
   return ["front_master", "composition"];
 }
 
-function resolveStageInputMinimumReferenceWeights(
+export function resolveStageInputMinimumReferenceWeights(
   stage: GenerationStageKey,
   view?: CharacterView
 ): Partial<Record<CharacterReferenceBankEntry["role"], number>> {
@@ -1039,15 +1041,22 @@ function resolveStageInputMinimumReferenceWeights(
       composition: 0.24
     };
   }
+  if (stage === "angles") {
+    return {
+      front_master: view === "profile" ? 0.48 : 0.54,
+      composition: 0.48,
+      view_starter: 0.42
+    };
+  }
   if (stage === "lock") {
     return {
-      front_master: 0.9,
+      front_master: view === "profile" ? 0.64 : 0.66,
       composition: 0.16
     };
   }
   if (stage === "refine") {
     return {
-      front_master: 0.86,
+      front_master: view === "profile" ? 0.68 : 0.7,
       composition: 0.18
     };
   }
@@ -1058,7 +1067,7 @@ function resolveStageInputMinimumReferenceWeights(
       };
     }
     return {
-      front_master: 0.84,
+      front_master: view === "profile" ? 0.68 : 0.7,
       composition: 0.24
     };
   }
@@ -2637,14 +2646,88 @@ const structureControlCache = new Map<
   Partial<Record<CharacterStructureControlKind, CachedStructureControlImage>>
 >();
 
-function defaultStructureControlStrength(kind: CharacterStructureControlKind): number {
+export function defaultStructureControlStrength(kind: CharacterStructureControlKind): number {
   if (kind === "lineart") {
-    return 0.52;
+    return 0.44;
   }
   if (kind === "canny") {
-    return 0.42;
+    return 0.36;
   }
-  return 0.32;
+  return 0.28;
+}
+
+async function resolveStructureGuideSourceBuffers(sourceBuffer: Buffer): Promise<{
+  edgeSourceBuffer: Buffer;
+  maskSourceBuffer: Buffer;
+}> {
+  const prepared = sharp(sourceBuffer, { limitInputPixels: false }).rotate().ensureAlpha();
+  const { data, info } = await prepared.raw().toBuffer({ resolveWithObject: true });
+  const pixelCount = Math.max(1, info.width * info.height);
+  let transparentPixels = 0;
+  let alphaSignalPixels = 0;
+  for (let index = 3; index < data.length; index += 4) {
+    const alpha = data[index] ?? 255;
+    if (alpha < 12) {
+      transparentPixels += 1;
+    }
+    if (alpha >= 12) {
+      alphaSignalPixels += 1;
+    }
+  }
+
+  const alphaTransparentCoverage = transparentPixels / pixelCount;
+  const alphaSignalCoverage = alphaSignalPixels / pixelCount;
+  const alphaUsable = alphaTransparentCoverage >= 0.01 && alphaSignalCoverage >= 0.015 && alphaSignalCoverage <= 0.985;
+
+  const edgeSourceBuffer = await sharp(sourceBuffer, { limitInputPixels: false })
+    .rotate()
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .grayscale()
+    .normalise()
+    .png()
+    .toBuffer();
+
+  const inkMaskBuffer = await sharp(edgeSourceBuffer, { limitInputPixels: false })
+    .negate()
+    .threshold(24)
+    .png()
+    .toBuffer();
+
+  if (!alphaUsable) {
+    return {
+      edgeSourceBuffer,
+      maskSourceBuffer: inkMaskBuffer
+    };
+  }
+
+  const alphaMaskBuffer = await sharp(sourceBuffer, { limitInputPixels: false })
+    .rotate()
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .threshold(12)
+    .png()
+    .toBuffer();
+  const alphaMask = await sharp(alphaMaskBuffer, { limitInputPixels: false }).raw().toBuffer({ resolveWithObject: true });
+  const inkMask = await sharp(inkMaskBuffer, { limitInputPixels: false }).raw().toBuffer({ resolveWithObject: true });
+  const mergedMask = Buffer.alloc(alphaMask.data.length);
+  for (let index = 0; index < mergedMask.length; index += 1) {
+    mergedMask[index] = Math.max(alphaMask.data[index] ?? 0, inkMask.data[index] ?? 0);
+  }
+
+  const maskSourceBuffer = await sharp(mergedMask, {
+    raw: {
+      width: alphaMask.info.width,
+      height: alphaMask.info.height,
+      channels: alphaMask.info.channels
+    }
+  })
+    .png()
+    .toBuffer();
+
+  return {
+    edgeSourceBuffer,
+    maskSourceBuffer
+  };
 }
 
 function withStructureControlSourceTrace(
@@ -2685,16 +2768,11 @@ async function buildStructureControlImagesFromReference(input: {
     return withStructureControlSourceTrace(cached, input.source);
   }
 
-  const alphaMaskBuffer = await sharp(sourceBuffer, { limitInputPixels: false })
-    .ensureAlpha()
-    .extractChannel("alpha")
-    .threshold(12)
-    .png()
-    .toBuffer();
+  const { edgeSourceBuffer, maskSourceBuffer } = await resolveStructureGuideSourceBuffers(sourceBuffer);
 
   const controls: Partial<Record<CharacterStructureControlKind, CachedStructureControlImage>> = {};
   if (kinds.includes("lineart")) {
-    const lineart = await sharp(alphaMaskBuffer, { limitInputPixels: false })
+    const lineart = await sharp(edgeSourceBuffer, { limitInputPixels: false })
       .convolve({
         width: 3,
         height: 3,
@@ -2712,7 +2790,7 @@ async function buildStructureControlImagesFromReference(input: {
     };
   }
   if (kinds.includes("canny")) {
-    const canny = await sharp(alphaMaskBuffer, { limitInputPixels: false })
+    const canny = await sharp(edgeSourceBuffer, { limitInputPixels: false })
       .blur(0.6)
       .convolve({
         width: 3,
@@ -2731,7 +2809,7 @@ async function buildStructureControlImagesFromReference(input: {
     };
   }
   if (kinds.includes("depth")) {
-    const depth = await sharp(alphaMaskBuffer, { limitInputPixels: false })
+    const depth = await sharp(maskSourceBuffer, { limitInputPixels: false })
       .blur(18)
       .normalise()
       .png()
@@ -3071,6 +3149,14 @@ function resolveStageConfig(
   };
 }
 
+export function stageRequiresPoseGuide(stage: GenerationStageKey): boolean {
+  return stage === "angles" || stage === "view_only" || stage === "refine" || stage === "lock";
+}
+
+function isSupportedMascotSpeciesId(speciesId?: string): speciesId is MascotSpecies {
+  return speciesId === "cat" || speciesId === "dog" || speciesId === "wolf";
+}
+
 function resolveStageControlPresetId(stage: GenerationStageKey, views: CharacterView[]): string {
   if (stage === "front") {
     return "front_style_generate_v1";
@@ -3235,6 +3321,71 @@ function loadProductionPoseGuides(views: CharacterView[]): Partial<Record<Charac
     };
   }
 
+  return loaded;
+}
+
+export function loadStagePoseGuides(input: {
+  speciesId?: string;
+  views: CharacterView[];
+}): Partial<Record<CharacterView, InlineImageReference>> {
+  const uniqueViews = [...new Set(input.views)];
+  const productionPoseGuides = loadProductionPoseGuides(uniqueViews);
+  const loaded: Partial<Record<CharacterView, InlineImageReference>> = {};
+  const sideViews = uniqueViews.filter((view) => view !== "front");
+  const useMascotPoseReferences = isSupportedMascotSpeciesId(input.speciesId);
+  const familyPoseReferencesByView = useMascotPoseReferences
+    ? loadMascotFamilyReferencesByView(input.speciesId, sideViews)
+    : {};
+  const starterPoseReferencesByView = useMascotPoseReferences
+    ? loadMascotStarterReferencesByView(input.speciesId, sideViews)
+    : {};
+
+  for (const view of uniqueViews) {
+    if (view === "front") {
+      if (productionPoseGuides.front) {
+        loaded.front = productionPoseGuides.front;
+      }
+      continue;
+    }
+
+    const mascotPoseReference = familyPoseReferencesByView[view] ?? starterPoseReferencesByView[view];
+    if (mascotPoseReference) {
+      loaded[view] = {
+        referenceImageBase64: mascotPoseReference.referenceImageBase64,
+        referenceMimeType: mascotPoseReference.referenceMimeType
+      };
+      continue;
+    }
+
+    const productionPoseGuide = productionPoseGuides[view];
+    if (productionPoseGuide) {
+      loaded[view] = productionPoseGuide;
+    }
+  }
+
+  return loaded;
+}
+
+export function buildPreferredSideReferenceInputByView(input: {
+  views: CharacterView[];
+  familyReferencesByView?: Partial<Record<CharacterView, InlineImageReference>>;
+  starterReferenceByView?: Partial<Record<CharacterView, InlineImageReference>>;
+}): Partial<Record<CharacterView, InlineImageReference>> {
+  const loaded: Partial<Record<CharacterView, InlineImageReference>> = {};
+  for (const view of new Set(input.views)) {
+    if (view === "front") {
+      continue;
+    }
+    const preferredReference =
+      input.starterReferenceByView?.[view] ?? input.familyReferencesByView?.[view];
+    if (!preferredReference?.referenceImageBase64) {
+      continue;
+    }
+    loaded[view] = {
+      referenceImageBase64: preferredReference.referenceImageBase64,
+      referenceMimeType: preferredReference.referenceMimeType
+    };
+  }
   return loaded;
 }
 
@@ -3454,10 +3605,20 @@ function readBankedInlineImageReference(
     return undefined;
   }
 
+  const ext = path.extname(resolvedPath).toLowerCase();
+  const mimeType =
+    ext === ".svg"
+      ? "image/svg+xml"
+      : ext === ".jpg" || ext === ".jpeg"
+        ? "image/jpeg"
+        : ext === ".webp"
+          ? "image/webp"
+          : "image/png";
+
   const loaded: BankedInlineImageReference = {
     sourcePath: resolvedPath,
     referenceImageBase64: data.toString("base64"),
-    referenceMimeType: "image/png",
+    referenceMimeType: mimeType,
     ...(entry.note ? { note: entry.note } : {}),
     ...(typeof entry.weight === "number" ? { declaredWeight: entry.weight } : {})
   };
@@ -3538,6 +3699,20 @@ function loadMascotHeroReference(
   return loadMascotReferenceEntriesByView(speciesId, "heroByView", view)[0];
 }
 
+function loadMascotFrontBootstrapReference(
+  speciesId?: string
+): BankedInlineImageReference | undefined {
+  const normalizedSpecies = normalizeGenerationSpecies(speciesId);
+  if (normalizedSpecies !== "dog" && normalizedSpecies !== "wolf") {
+    return undefined;
+  }
+  return (
+    loadMascotStarterReference(speciesId, "front") ??
+    loadMascotHeroReference(speciesId, "front") ??
+    loadMascotFamilyReferenceCached(speciesId, "front")
+  );
+}
+
 function loadMascotFamilyStyleReferenceCached(speciesId?: string): BankedInlineImageReference | undefined {
   return loadMascotStyleReferenceEntries(speciesId)[0];
 }
@@ -3556,7 +3731,7 @@ function loadMascotFamilyReferencesByView(
   return loaded;
 }
 
-function resolveAdaptiveReferenceWeight(input: {
+export function resolveAdaptiveReferenceWeight(input: {
   stage: GenerationStageKey;
   role: CharacterReferenceBankEntry["role"];
   targetView: CharacterView;
@@ -3601,7 +3776,9 @@ function resolveAdaptiveReferenceWeight(input: {
               ? 0.46
               : input.stage === "refine"
                 ? 0.42
-              : 0.38
+                : input.stage === "angles" && input.targetView !== "front"
+                  ? 0.48
+                  : 0.38
             : input.role === "repair_base"
               ? 0.84
               : input.role === "style"
@@ -3647,6 +3824,9 @@ function resolveAdaptiveReferenceWeight(input: {
     if (input.role === "composition") {
       weight += 0.08;
     }
+    if (input.role === "view_starter") {
+      weight += 0.08;
+    }
     if (input.role === "style") {
       weight += 0.02;
     }
@@ -3656,6 +3836,9 @@ function resolveAdaptiveReferenceWeight(input: {
     }
     if (input.role === "composition") {
       weight += 0.05;
+    }
+    if (input.role === "view_starter") {
+      weight += 0.06;
     }
   } else if (input.targetView === "front") {
     if (input.role === "style") {
@@ -3715,6 +3898,14 @@ function resolveAdaptiveReferenceWeight(input: {
     if (input.role === "composition") {
       weight += 0.08;
     }
+    if (input.targetView === "threeQuarter") {
+      if (input.role === "view_starter") {
+        weight += 0.08;
+      }
+      if (input.role === "front_master" || input.role === "subject" || input.role === "hero") {
+        weight -= 0.05;
+      }
+    }
     if (input.role === "repair_base") {
       weight += 0.03;
     }
@@ -3744,61 +3935,152 @@ function resolveAdaptiveReferenceWeight(input: {
     const sideStage =
       input.stage === "angles" || input.stage === "view_only" || input.stage === "refine" || input.stage === "lock";
     if (sideStage) {
+      if (input.stage === "angles") {
+        if (input.role === "front_master") {
+          weight -= input.hasStarter === true ? 0.14 : 0.08;
+        } else if (input.role === "subject") {
+          weight -= input.hasStarter === true ? 0.1 : 0.05;
+        } else if (input.role === "hero") {
+          weight -= input.hasStarter === true ? 0.08 : 0.04;
+        } else if (input.role === "composition") {
+          weight += input.hasStarter === true ? 0.1 : 0.06;
+        } else if (input.role === "view_starter") {
+          weight += input.hasStarter === true ? 0.06 : 0.02;
+        }
+      }
       if (input.role === "front_master") {
         const cap =
-          input.stage === "lock"
-            ? input.targetView === "profile"
-              ? 0.64
-              : 0.66
-            : input.stage === "refine"
-              ? input.targetView === "profile"
-                ? 0.68
-                : 0.7
-              : input.targetView === "profile"
-                ? 0.72
-                : 0.74;
-        weight = Math.min(weight, cap);
-      } else if (input.role === "hero") {
-        const cap =
-          input.stage === "lock"
-            ? input.targetView === "profile"
-              ? 0.54
-              : 0.58
-            : input.stage === "refine"
+          input.stage === "angles"
+            ? input.hasStarter === true
               ? input.targetView === "profile"
                 ? 0.5
                 : 0.54
               : input.targetView === "profile"
-                ? 0.46
-                : 0.5;
+                ? 0.64
+                : 0.68
+            : input.hasStarter === true
+              ? input.stage === "lock"
+                ? input.targetView === "profile"
+                  ? 0.58
+                  : 0.6
+                : input.stage === "refine"
+                  ? input.targetView === "profile"
+                    ? 0.62
+                    : 0.64
+                  : input.targetView === "profile"
+                    ? 0.62
+                    : 0.64
+              : input.stage === "lock"
+                ? input.targetView === "profile"
+                  ? 0.64
+                  : 0.66
+                : input.stage === "refine"
+                  ? input.targetView === "profile"
+                    ? 0.68
+                    : 0.7
+                  : input.targetView === "profile"
+                    ? 0.72
+                    : 0.74;
+        weight = Math.min(weight, cap);
+      } else if (input.role === "hero") {
+        const cap =
+          input.stage === "angles"
+            ? input.hasStarter === true
+              ? input.targetView === "profile"
+                ? 0.38
+                : 0.42
+              : input.targetView === "profile"
+                ? 0.42
+                : 0.46
+            : input.stage === "lock"
+              ? input.targetView === "profile"
+                ? 0.54
+                : 0.58
+              : input.stage === "refine"
+                ? input.targetView === "profile"
+                  ? 0.5
+                  : 0.54
+                : input.targetView === "profile"
+                  ? 0.46
+                  : 0.5;
         weight = Math.min(weight, cap);
       } else if (input.role === "subject") {
         const cap =
-          input.stage === "lock"
-            ? input.targetView === "profile"
-              ? 0.6
-              : 0.62
-            : input.stage === "refine"
+          input.stage === "angles"
+            ? input.hasStarter === true
               ? input.targetView === "profile"
-                ? 0.64
-                : 0.66
+                ? 0.54
+                : 0.58
               : input.targetView === "profile"
-                ? 0.68
-                : 0.7;
+                ? 0.62
+                : 0.66
+            : input.stage === "lock"
+              ? input.targetView === "profile"
+                ? 0.6
+                : 0.62
+              : input.stage === "refine"
+                ? input.targetView === "profile"
+                  ? 0.64
+                  : 0.66
+                : input.targetView === "profile"
+                  ? 0.68
+                  : 0.7;
         weight = Math.min(weight, cap);
       } else if (input.role === "composition") {
         const floor =
-          input.stage === "lock"
-            ? input.targetView === "profile"
-              ? 0.64
-              : 0.62
-            : input.stage === "refine"
+          input.stage === "angles"
+            ? input.hasStarter === true
               ? input.targetView === "profile"
-                ? 0.58
-                : 0.56
+                ? 0.86
+                : 0.82
               : input.targetView === "profile"
-                ? 0.68
-                : 0.66;
+                ? 0.76
+                : 0.72
+            : input.hasStarter === true
+              ? input.stage === "lock"
+                ? input.targetView === "profile"
+                  ? 0.72
+                  : 0.7
+                : input.stage === "refine"
+                  ? input.targetView === "profile"
+                    ? 0.66
+                    : 0.64
+                  : input.targetView === "profile"
+                    ? 0.76
+                    : 0.74
+              : input.stage === "lock"
+                ? input.targetView === "profile"
+                  ? 0.64
+                  : 0.62
+                : input.stage === "refine"
+                  ? input.targetView === "profile"
+                    ? 0.58
+                    : 0.56
+                  : input.targetView === "profile"
+                    ? 0.68
+                    : 0.66;
+        weight = Math.max(weight, floor);
+      } else if (input.role === "view_starter") {
+        const floor =
+          input.stage === "angles"
+            ? input.hasStarter === true
+              ? input.targetView === "profile"
+                ? 0.56
+                : 0.52
+              : input.targetView === "profile"
+                ? 0.44
+                : 0.42
+            : input.stage === "lock"
+              ? input.targetView === "profile"
+                ? 0.36
+                : 0.34
+              : input.stage === "refine"
+                ? input.targetView === "profile"
+                  ? 0.32
+                  : 0.3
+                : input.targetView === "profile"
+                  ? 0.34
+                  : 0.32;
         weight = Math.max(weight, floor);
       } else if (input.role === "style") {
         const cap = input.stage === "lock" ? 0.08 : input.stage === "refine" ? 0.1 : 0.12;
@@ -3984,9 +4266,13 @@ export function buildMascotFamilyReferenceEntries(input: {
 }
 
 function excludePoseGuidesCoveredByStarter(
+  stage: GenerationStageKey,
   poseGuidesByView: Partial<Record<CharacterView, InlineImageReference>>,
   starterReferenceByView: Partial<Record<CharacterView, InlineImageReference & { sourcePath: string }>>
 ): Partial<Record<CharacterView, InlineImageReference>> {
+  if (stage === "angles" || stage === "view_only" || stage === "refine" || stage === "lock") {
+    return { ...poseGuidesByView };
+  }
   const filtered: Partial<Record<CharacterView, InlineImageReference>> = {};
   for (const [view, guide] of Object.entries(poseGuidesByView) as [CharacterView, InlineImageReference][]) {
     if (starterReferenceByView[view]) {
@@ -4678,6 +4964,7 @@ type RetryAdjustment = {
   extraNegativeTokens: string[];
   viewPromptHints: string[];
   disablePose: boolean;
+  enforceSideTurnBalance: boolean;
   referenceWeightDeltas: Partial<Record<CharacterReferenceBankEntry["role"], number>>;
   notes: string[];
 };
@@ -4699,6 +4986,7 @@ function hasRetryAdjustmentContent(adjustment: RetryAdjustment | undefined): boo
     adjustment.extraNegativeTokens.length > 0 ||
     adjustment.viewPromptHints.length > 0 ||
     adjustment.disablePose ||
+    adjustment.enforceSideTurnBalance ||
     adjustment.notes.length > 0 ||
     Object.keys(adjustment.referenceWeightDeltas).length > 0
   );
@@ -4712,6 +5000,7 @@ function mergeRetryAdjustments(
   const referenceWeightDeltas: Partial<Record<CharacterReferenceBankEntry["role"], number>> = {};
   const notes = new Set<string>();
   let disablePose = false;
+  let enforceSideTurnBalance = false;
 
   for (const adjustment of adjustments) {
     if (!adjustment) {
@@ -4732,12 +5021,14 @@ function mergeRetryAdjustments(
       notes.add(note);
     }
     disablePose = disablePose || adjustment.disablePose;
+    enforceSideTurnBalance = enforceSideTurnBalance || adjustment.enforceSideTurnBalance;
   }
 
   const merged: RetryAdjustment = {
     extraNegativeTokens: [...extraNegativeTokens],
     viewPromptHints: [...viewPromptHints],
     disablePose,
+    enforceSideTurnBalance,
     referenceWeightDeltas,
     notes: [...notes]
   };
@@ -4797,7 +5088,126 @@ function adjustReferenceBankWeights(
   });
 }
 
-function deriveRetryAdjustmentForCandidate(input: {
+export function rebalanceReferenceBankForRetry(input: {
+  entries: CharacterReferenceBankEntry[] | undefined;
+  stage: GenerationStageKey;
+  view: CharacterView;
+  adjustment: RetryAdjustment | undefined;
+}): CharacterReferenceBankEntry[] | undefined {
+  if (!Array.isArray(input.entries) || input.entries.length === 0) {
+    return input.entries;
+  }
+  if (!input.adjustment?.enforceSideTurnBalance || input.view === "front") {
+    return input.entries;
+  }
+
+  const frontMasterCap =
+    input.stage === "lock"
+      ? input.view === "profile"
+        ? 0.56
+        : 0.58
+      : input.stage === "refine"
+        ? input.view === "profile"
+          ? 0.58
+          : 0.6
+        : input.view === "profile"
+          ? 0.58
+          : 0.6;
+  const subjectCap =
+    input.stage === "lock"
+      ? input.view === "profile"
+        ? 0.5
+        : 0.52
+      : input.stage === "refine"
+        ? input.view === "profile"
+          ? 0.54
+          : 0.56
+        : input.view === "profile"
+          ? 0.54
+          : 0.56;
+  const heroCap =
+    input.stage === "lock"
+      ? input.view === "profile"
+        ? 0.4
+        : 0.42
+      : input.stage === "refine"
+        ? input.view === "profile"
+          ? 0.38
+          : 0.4
+        : input.view === "profile"
+          ? 0.34
+          : 0.36;
+  const compositionFloor =
+    input.stage === "lock"
+      ? input.view === "profile"
+        ? 0.82
+        : 0.8
+      : input.stage === "refine"
+        ? input.view === "profile"
+          ? 0.8
+          : 0.78
+      : input.view === "profile"
+        ? 0.84
+        : 0.82;
+  const viewStarterFloor =
+    input.view === "profile"
+      ? input.stage === "lock"
+        ? 0.58
+        : input.stage === "refine"
+          ? 0.6
+          : 0.62
+      : input.stage === "lock"
+        ? 0.62
+        : input.stage === "refine"
+          ? 0.64
+          : 0.66;
+  const styleCap = input.stage === "lock" ? 0.12 : input.stage === "refine" ? 0.14 : 0.16;
+
+  return input.entries.map((entry) => {
+    let weight = typeof entry.weight === "number" ? entry.weight : 0.58;
+    if (entry.role === "front_master") {
+      weight = Math.min(weight, frontMasterCap);
+    } else if (entry.role === "subject") {
+      weight = Math.min(weight, subjectCap);
+    } else if (entry.role === "hero") {
+      weight = Math.min(weight, heroCap);
+    } else if (entry.role === "composition") {
+      weight = Math.max(weight, compositionFloor);
+    } else if (entry.role === "style") {
+      weight = Math.min(weight, styleCap);
+    } else if (entry.role === "view_starter") {
+      weight = Math.max(weight, viewStarterFloor);
+    }
+    return {
+      ...entry,
+      weight: Number(clamp01(weight).toFixed(3))
+    };
+  });
+}
+
+function pickReferenceImageFromBankRole(
+  entries: CharacterReferenceBankEntry[] | undefined,
+  role: CharacterReferenceBankEntry["role"]
+): InlineImageReference | undefined {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return undefined;
+  }
+  const match = entries.find(
+    (entry) =>
+      entry.role === role &&
+      typeof entry.imageBase64 === "string" &&
+      entry.imageBase64.length > 0
+  );
+  if (!match?.imageBase64) {
+    return undefined;
+  }
+  return {
+    referenceImageBase64: match.imageBase64,
+    referenceMimeType: match.mimeType ?? "image/png"
+  };
+}
+
+export function deriveRetryAdjustmentForCandidate(input: {
   stage: GenerationStageKey;
   view: CharacterView;
   candidate: ScoredCandidate | undefined;
@@ -4811,6 +5221,7 @@ function deriveRetryAdjustmentForCandidate(input: {
   const referenceWeightDeltas: Partial<Record<CharacterReferenceBankEntry["role"], number>> = {};
   const notes: string[] = [];
   let disablePose = false;
+  let enforceSideTurnBalance = false;
 
   const addDelta = (role: CharacterReferenceBankEntry["role"], amount: number) => {
     referenceWeightDeltas[role] = Number(((referenceWeightDeltas[role] ?? 0) + amount).toFixed(3));
@@ -4831,10 +5242,18 @@ function deriveRetryAdjustmentForCandidate(input: {
       "match the approved front identity, preserve head ratio, preserve mascot silhouette, keep a strict turned three-quarter angle",
       "match the approved front identity, preserve head ratio, preserve mascot silhouette, keep a strict true profile angle"
     );
-    addDelta("front_master", 0.08);
-    addDelta("subject", 0.06);
-    addDelta("composition", -0.05);
-    notes.push("boosted front identity anchor");
+    if (input.view === "front") {
+      addDelta("front_master", 0.08);
+      addDelta("subject", 0.06);
+      addDelta("composition", -0.05);
+      notes.push("boosted front identity anchor");
+    } else {
+      addDelta("front_master", 0.02);
+      addDelta("subject", 0.02);
+      addDelta("view_starter", 0.08);
+      addDelta("composition", 0.03);
+      notes.push("boosted side identity anchor");
+    }
   }
 
   if (defect.paws) {
@@ -4851,8 +5270,24 @@ function deriveRetryAdjustmentForCandidate(input: {
     );
     addDelta("view_starter", 0.08);
     addDelta("starter", 0.08);
-    disablePose = true;
-    notes.push("disabled pose guide for paw recovery");
+    if (!stageRequiresPoseGuide(input.stage)) {
+      disablePose = true;
+      notes.push("disabled pose guide for paw recovery");
+    }
+    if (input.view === "front" && input.speciesId === "dog") {
+      extraNegativeTokens.add("arms fused into torso");
+      extraNegativeTokens.add("hidden paw");
+      viewPromptHints.add(
+        "both short dog arms must sit outside the torso silhouette, one on each side, with two readable mitten paws and a clear gap from the body"
+      );
+      notes.push("reinforced dog front paw separation");
+    } else if (input.view === "front" && input.speciesId === "wolf") {
+      extraNegativeTokens.add("hidden paw");
+      viewPromptHints.add(
+        "both short wolf arms must stay attached and readable at the body sides with compact mitten paws, no detached limb stubs"
+      );
+      notes.push("reinforced wolf front paw visibility");
+    }
   }
 
   if (defect.face) {
@@ -4865,19 +5300,66 @@ function deriveRetryAdjustmentForCandidate(input: {
       extraNegativeTokens.add("front view");
       extraNegativeTokens.add("straight-on face");
       extraNegativeTokens.add("perfect bilateral symmetry");
+      extraNegativeTokens.add("near-front cheat");
+      extraNegativeTokens.add("front collapse");
+      enforceSideTurnBalance = true;
       viewPromptHints.add(
         "strict three-quarter face, near eye slightly larger than far eye, muzzle rotated off center, keep asymmetry and do not drift back to front symmetry"
       );
+      addDelta("composition", 0.08);
+      addDelta("front_master", -0.05);
     } else {
       extraNegativeTokens.add("front view");
       extraNegativeTokens.add("two visible eyes");
       extraNegativeTokens.add("frontal muzzle");
+      extraNegativeTokens.add("near-front cheat");
+      extraNegativeTokens.add("front collapse");
+      enforceSideTurnBalance = true;
       viewPromptHints.add(
         "strict side face, one visible eye only, nose and mouth placed on the outer contour, avoid any front-facing symmetry"
       );
+      addDelta("composition", 0.08);
+      addDelta("front_master", -0.06);
     }
     addDelta("style", 0.04);
-    notes.push("reinforced facial symmetry");
+    notes.push(input.view === "front" ? "reinforced facial symmetry" : "reinforced facial turn readability");
+    if (input.view !== "front") {
+      notes.push("reinforced side-view turn");
+    } else if (input.speciesId === "dog") {
+      extraNegativeTokens.add("tiny face");
+      extraNegativeTokens.add("face too low");
+      viewPromptHints.add(
+        "dog face should occupy the upper middle of the head, with eyes above the muzzle, a centered button nose, and a readable mouth"
+      );
+      notes.push("reinforced dog front face placement");
+    } else if (input.speciesId === "wolf") {
+      extraNegativeTokens.add("tiny face");
+      extraNegativeTokens.add("fox sly face");
+      viewPromptHints.add(
+        "wolf face should stay broad and upright in the upper head, with taller ears, a centered wedge muzzle, and no narrow fox grin"
+      );
+      notes.push("reinforced wolf front face placement");
+    }
+  }
+
+  if (
+    input.view === "threeQuarter" &&
+    (reasons.has("threequarter_front_collapse") || reasons.has("inconsistent_with_front_baseline"))
+  ) {
+    extraNegativeTokens.add("front torso");
+    extraNegativeTokens.add("square shoulders");
+    extraNegativeTokens.add("flat front chest");
+    extraNegativeTokens.add("straight-on body");
+    viewPromptHints.add(
+      "torso and hips must rotate with the head, near shoulder and near hip forward, far shoulder and far hip pulled back, chest opening angled away from camera, near body contour visibly wider than the far side"
+    );
+    addDelta("composition", 0.17);
+    addDelta("view_starter", 0.12);
+    addDelta("front_master", -0.18);
+    addDelta("subject", -0.1);
+    addDelta("hero", -0.08);
+    enforceSideTurnBalance = true;
+    notes.push("reinforced three-quarter torso yaw");
   }
 
   if (defect.head || reasons.has("head_shape_not_square_enough")) {
@@ -4912,11 +5394,11 @@ function deriveRetryAdjustmentForCandidate(input: {
     const speciesHint =
       input.speciesId === "dog"
         ? input.view === "front"
-          ? "preserve dog muzzle and rounded dog ear silhouette, keep both short front arms visible, keep the dog cute and domestic"
+          ? "preserve dog muzzle and rounded dog ear silhouette, keep both short front arms visible, keep the dog cute and domestic, keep the face large enough to read, and keep each paw outside the torso edge"
           : "preserve dog muzzle and rounded dog ear silhouette, keep the body clearly turned, no fox face and no front-facing symmetry"
         : input.speciesId === "wolf"
           ? input.view === "front"
-            ? "preserve wolf muzzle length and wolf ear silhouette, wolf first not fox, keep the head broad and upright"
+            ? "preserve wolf muzzle length and wolf ear silhouette, wolf first not fox, keep the head broad and upright, keep the face high and readable, and keep both short arms attached"
             : "preserve wolf muzzle length and wolf ear silhouette, wolf first not fox, keep a turned wolf wedge muzzle and no front-facing symmetry"
           : "preserve cat ear silhouette and short feline muzzle";
     viewPromptHints.add(speciesHint);
@@ -4943,6 +5425,7 @@ function deriveRetryAdjustmentForCandidate(input: {
     extraNegativeTokens: [...extraNegativeTokens],
     viewPromptHints: [...viewPromptHints],
     disablePose,
+    enforceSideTurnBalance,
     referenceWeightDeltas,
     notes
   };
@@ -4964,8 +5447,13 @@ function buildRepairDirectiveProfile(input: {
   const reasons = defect.reasons;
   const families = new Set<RepairDirectiveFamily>();
   const notes = new Set<string>(adjustment.notes);
+  const sideCollapse =
+    input.view !== "front" &&
+    (reasons.has("threequarter_front_collapse") ||
+      reasons.has("inconsistent_with_front_baseline") ||
+      reasons.has("consistency_shape_drift"));
 
-  if (defect.identity || defect.consistency) {
+  if ((defect.identity || defect.consistency) && !sideCollapse) {
     families.add("identity_lock");
     notes.add("identity lock rescue");
   }
@@ -4983,6 +5471,11 @@ function buildRepairDirectiveProfile(input: {
   if (defect.paws) {
     families.add("paw_cleanup");
     notes.add("paw cleanup rescue");
+  }
+
+  if (input.view === "threeQuarter" && reasons.has("threequarter_front_collapse")) {
+    families.add("body_silhouette");
+    notes.add("three-quarter yaw rescue");
   }
 
   if (defect.silhouette) {
@@ -5037,7 +5530,7 @@ function buildRepairDirectiveProfile(input: {
   };
 }
 
-function shouldRunSideRefineForCandidate(input: {
+export function shouldRunSideRefineForCandidate(input: {
   candidate: ScoredCandidate | undefined;
   view: CharacterView;
   acceptedScoreThreshold: number;
@@ -5049,16 +5542,15 @@ function shouldRunSideRefineForCandidate(input: {
   if (isUnrecoverableRepairCandidate(candidate)) {
     return false;
   }
-  if (candidate.rejections.length > 0) {
-    return false;
-  }
 
   const defect = classifyRepairDefectFamilies(candidate);
   const consistencyFloor = input.view === "profile" ? 0.5 : 0.55;
   const consistencyNeedsHelp =
     typeof candidate.consistencyScore === "number" && candidate.consistencyScore < consistencyFloor;
+  const recoverableRejectionsPresent = candidate.rejections.length > 0;
   const nearThreshold = candidate.score < input.acceptedScoreThreshold + 0.05;
   const softDefect =
+    recoverableRejectionsPresent ||
     consistencyNeedsHelp ||
     defect.consistency ||
     defect.style ||
@@ -5072,10 +5564,10 @@ function shouldRunSideRefineForCandidate(input: {
     return false;
   }
 
-  return candidate.score >= minimumRefineScore && nearThreshold;
+  return candidate.score >= minimumRefineScore && (nearThreshold || recoverableRejectionsPresent);
 }
 
-function shouldRunIdentityLockForCandidate(input: {
+export function shouldRunIdentityLockForCandidate(input: {
   candidate: ScoredCandidate | undefined;
   view: CharacterView;
   acceptedScoreThreshold: number;
@@ -5087,15 +5579,14 @@ function shouldRunIdentityLockForCandidate(input: {
   if (isUnrecoverableRepairCandidate(candidate)) {
     return false;
   }
-  if (candidate.rejections.length > 0) {
-    return false;
-  }
 
   const defect = classifyRepairDefectFamilies(candidate);
   const consistencyFloor = input.view === "profile" ? 0.58 : 0.62;
   const consistencyWeak =
     typeof candidate.consistencyScore === "number" && candidate.consistencyScore < consistencyFloor;
+  const recoverableRejectionsPresent = candidate.rejections.length > 0;
   const identityNeedsHelp =
+    recoverableRejectionsPresent ||
     consistencyWeak ||
     defect.identity ||
     defect.consistency ||
@@ -5106,6 +5597,7 @@ function shouldRunIdentityLockForCandidate(input: {
     defect.style;
   const alreadyStable =
     candidate.score >= input.acceptedScoreThreshold + 0.08 &&
+    candidate.rejections.length === 0 &&
     !consistencyWeak &&
     candidate.warnings.length === 0 &&
     !defect.identity &&
@@ -6116,13 +6608,17 @@ function scoreMascotSpeciesIdentity(
   };
 } {
   if (speciesId === "dog" && view === "front") {
-    const earCue = scoreTargetMetric(analysis.upperAlphaRatio, 0.46, 0.18);
+    const earCue = scoreTargetMetric(analysis.upperFaceCoverage, 0.18, 0.1);
     const muzzleCue = scoreTargetMetric(analysis.bboxAspectRatio, 1.02, 0.34);
     const headShapeCue = scoreTargetMetric(analysis.upperAlphaRatio, 0.46, 0.16);
     const silhouetteCue = scoreTargetMetric(analysis.bboxAspectRatio, 0.98, 0.38);
+    const weightedScore = clamp01(earCue * 0.26 + muzzleCue * 0.36 + headShapeCue * 0.24 + silhouetteCue * 0.14);
+    const supportScore = clamp01(
+      earCue * 0.42 + headShapeCue * 0.34 + Math.min(muzzleCue, silhouetteCue) * 0.24
+    );
 
     return {
-      score: clamp01(earCue * 0.18 + muzzleCue * 0.42 + headShapeCue * 0.24 + silhouetteCue * 0.16),
+      score: Math.min(weightedScore, supportScore),
       parts: {
         earCue,
         muzzleCue,
@@ -6198,11 +6694,24 @@ function applyMascotSpeciesWarnings(input: {
       warnings.push("cat_threequarter_species_readability_low");
     }
   } else if (speciesId === "dog") {
-    if (analysis.upperFaceCoverage > (view === "front" ? 0.94 : 0.24)) {
+    if (analysis.upperFaceCoverage > (view === "front" ? 0.26 : 0.24)) {
       warnings.push("dog_ears_too_pointed");
+    }
+    if (view === "front" && analysis.upperFaceCoverage < 0.055) {
+      rejections.push("dog_front_face_too_small");
+    } else if (view === "front" && analysis.upperFaceCoverage < 0.085) {
+      warnings.push("dog_front_face_readability_low");
+    }
+    if (view === "front" && analysis.upperFaceCoverage > 0.3) {
+      rejections.push("dog_front_rabbit_ear_risk");
     }
     if (view === "profile" && analysis.bboxAspectRatio < 0.7) {
       warnings.push("dog_muzzle_too_short");
+    }
+    if (view === "front" && speciesScore < 0.28) {
+      rejections.push("dog_front_species_breakdown");
+    } else if (view === "front" && speciesScore < 0.36) {
+      warnings.push("dog_front_species_readability_low");
     }
   } else {
     if (view !== "front" && analysis.bboxAspectRatio < 0.78) {
@@ -6369,7 +6878,63 @@ export function mergePreferredSelectionByViewForSelection(input: {
 }
 
 function resolveMascotQcThresholds(speciesId?: string) {
-  return resolveMascotSpeciesProfile(speciesId).qcThresholds;
+  const profile = resolveMascotSpeciesProfile(speciesId).qcThresholds;
+  if (normalizeGenerationSpecies(speciesId) === "dog") {
+    return {
+      ...profile,
+      frontMasterMinHeadSquarenessScore: Math.min(profile.frontMasterMinHeadSquarenessScore, 0.18)
+    };
+  }
+  return profile;
+}
+
+function removeReason(reasons: string[], target: string): void {
+  let index = reasons.indexOf(target);
+  while (index >= 0) {
+    reasons.splice(index, 1);
+    index = reasons.indexOf(target);
+  }
+}
+
+export function shouldDowngradeCanineFrontFragmentationRisk(input: {
+  speciesId?: string;
+  view: CharacterView;
+  subjectFillRatio?: number;
+  subjectIsolationScore?: number;
+  largestComponentShare?: number;
+  significantComponentCount?: number;
+  speciesScore?: number;
+  speciesMuzzleScore?: number;
+  speciesSilhouetteScore?: number;
+  targetStyleScore?: number;
+  frontSymmetryScore?: number;
+  headSquarenessScore?: number;
+  handRegionDensityScore?: number;
+}): boolean {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if ((species !== "dog" && species !== "wolf") || input.view !== "front") {
+    return false;
+  }
+
+  const profileThresholds = resolveMascotQcThresholds(species);
+  const speciesFloor = species === "wolf" ? 0.48 : 0.42;
+  const handDensityFloor = species === "wolf" ? 0.16 : 0.12;
+  const fillFloor = species === "wolf" ? 0.22 : 0.2;
+  const isolationFloor = Math.max(0.32, profileThresholds.minSubjectIsolationFront - 0.18);
+  const geometryCue = Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0);
+
+  return (
+    (input.subjectFillRatio ?? 0) >= fillFloor &&
+    (input.subjectIsolationScore ?? 0) >= isolationFloor &&
+    (input.largestComponentShare ?? 0) >= 0.66 &&
+    (input.significantComponentCount ?? Number.POSITIVE_INFINITY) <= 6 &&
+    (input.speciesScore ?? 0) >= speciesFloor &&
+    geometryCue >= 0.24 &&
+    (input.targetStyleScore ?? 0) >= 0.76 &&
+    (input.frontSymmetryScore ?? 0) >= profileThresholds.minFrontSymmetryScore &&
+    (input.headSquarenessScore ?? 0) >= Math.max(0.18, profileThresholds.frontMasterMinHeadSquarenessScore - 0.08) &&
+    (input.handRegionDensityScore ?? 0) >= handDensityFloor
+  );
 }
 
 function computeMascotGeometryCue(candidate: ScoredCandidate | undefined): number | null {
@@ -6422,7 +6987,7 @@ function resolveMascotSelectionRiskThresholds(speciesId?: string) {
   };
 }
 
-function isStrongFrontMasterCandidate(
+export function isStrongFrontMasterCandidate(
   candidate: ScoredCandidate | undefined,
   targetStyle: string | undefined,
   acceptedScoreThreshold: number,
@@ -6431,6 +6996,7 @@ function isStrongFrontMasterCandidate(
   if (!candidate || candidate.candidate.view !== "front") {
     return false;
   }
+  const mascotSpecies = normalizeGenerationSpecies(speciesId);
   const profileThresholds = resolveMascotQcThresholds(speciesId);
   const minimumFrontScore = Math.max(acceptedScoreThreshold, profileThresholds.frontMasterMinScore);
   if (candidate.rejections.length > 0 || candidate.score < minimumFrontScore) {
@@ -6440,12 +7006,87 @@ function isStrongFrontMasterCandidate(
     return true;
   }
 
+  const dogFrontSupportStrong =
+    mascotSpecies !== "dog" ||
+    ((candidate.breakdown.speciesEarScore ?? 0) >= 0.12 && (candidate.breakdown.handRegionDensityScore ?? 0) >= 0.12);
+  const wolfFrontSupportStrong =
+    mascotSpecies !== "wolf" ||
+    ((candidate.breakdown.speciesEarScore ?? 0) >= 0.1 &&
+      (
+        (candidate.breakdown.speciesHeadShapeScore ?? 0) >= 0.18 ||
+        (
+          (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+          (candidate.breakdown.targetStyleScore ?? 0) >= 0.82 &&
+          Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.34
+        )
+      ));
+
   return (
     (candidate.breakdown.frontSymmetryScore ?? 0) >= profileThresholds.minFrontSymmetryScore &&
     (candidate.breakdown.headSquarenessScore ?? 0) >= profileThresholds.frontMasterMinHeadSquarenessScore &&
     (candidate.breakdown.speciesScore ?? 0) >= profileThresholds.frontMasterMinSpeciesScore &&
-    (candidate.breakdown.targetStyleScore ?? 0) >= profileThresholds.frontMasterMinStyleScore
+    (candidate.breakdown.targetStyleScore ?? 0) >= profileThresholds.frontMasterMinStyleScore &&
+    dogFrontSupportStrong &&
+    wolfFrontSupportStrong
   );
+}
+
+function summarizeRetryGateDiagnosticsByView(input: {
+  views: CharacterView[];
+  bestByView: Partial<Record<CharacterView, ScoredCandidate>>;
+  targetStyle?: string;
+  acceptedScoreThreshold: number;
+  speciesId?: string;
+}): Partial<Record<CharacterView, Record<string, unknown>>> {
+  const round = (value: number | null | undefined): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? Number(value.toFixed(4)) : null;
+  return Object.fromEntries(
+    input.views.map((view) => {
+      const candidate = input.bestByView[view];
+      if (!candidate) {
+        return [view, { missingCandidate: true }];
+      }
+      const strongFrontGate =
+        view !== "front"
+          ? true
+          : isStrongFrontMasterCandidate(
+              candidate,
+              input.targetStyle,
+              input.acceptedScoreThreshold,
+              input.speciesId
+            );
+      return [
+        view,
+        {
+          candidateId: candidate.candidate.id,
+          score: round(candidate.score),
+          warnings: [...candidate.warnings],
+          rejections: [...candidate.rejections],
+          strongFrontGate,
+          consistencyRecoveryIssue: hasBlockingConsistencyRecoveryIssue(candidate, input.speciesId),
+          breakdown: {
+            frontSymmetryScore: round(candidate.breakdown.frontSymmetryScore),
+            headSquarenessScore: round(candidate.breakdown.headSquarenessScore),
+            speciesScore: round(candidate.breakdown.speciesScore),
+            targetStyleScore: round(candidate.breakdown.targetStyleScore),
+            speciesEarScore: round(candidate.breakdown.speciesEarScore),
+            speciesMuzzleScore: round(candidate.breakdown.speciesMuzzleScore),
+            speciesHeadShapeScore: round(candidate.breakdown.speciesHeadShapeScore),
+            speciesSilhouetteScore: round(candidate.breakdown.speciesSilhouetteScore),
+            handRegionDensityScore: round(candidate.breakdown.handRegionDensityScore),
+            subjectFillRatio: round(candidate.breakdown.subjectFillRatio),
+            subjectIsolationScore: round(candidate.breakdown.subjectIsolationScore),
+            largestComponentShare: round(candidate.breakdown.largestComponentShare),
+            significantComponentCount:
+              typeof candidate.breakdown.significantComponentCount === "number"
+                ? candidate.breakdown.significantComponentCount
+                : null,
+            dogFrontReadabilityScore: round(candidate.breakdown.dogFrontReadabilityScore)
+          }
+        }
+      ];
+    })
+  ) as Partial<Record<CharacterView, Record<string, unknown>>>;
 }
 
 function evaluatePackCoherenceIssues(input: {
@@ -8036,7 +8677,116 @@ function isTransientProviderFailure(error: unknown): boolean {
   );
 }
 
-function scoreCandidate(input: {
+export function isThreeQuarterFrontCollapseRisk(input: {
+  rawSymmetryScore: number;
+  frontSymmetryScore?: number;
+  headSquarenessScore?: number;
+  pawSymmetryScore?: number;
+}): boolean {
+  if (input.rawSymmetryScore <= 0.94) {
+    return false;
+  }
+  if (input.rawSymmetryScore >= 0.975) {
+    return true;
+  }
+
+  const frontCueScore = clamp01(
+    (input.frontSymmetryScore ?? input.rawSymmetryScore) * 0.52 +
+      (input.headSquarenessScore ?? 0.5) * 0.28 +
+      (input.pawSymmetryScore ?? 0.5) * 0.2
+  );
+  return frontCueScore >= 0.74;
+}
+
+export function isConsistencyCriticalShapeDrift(input: {
+  speciesId?: string;
+  view?: CharacterView;
+  upperAlpha: number;
+  headAspect: number;
+  upperFace: number;
+}): boolean {
+  const normalizedSpecies = normalizeGenerationSpecies(input.speciesId);
+  const canineSideView =
+    (input.view === "threeQuarter" || input.view === "profile") &&
+    (normalizedSpecies === "dog" || normalizedSpecies === "wolf");
+  const canineThreeQuarter = input.view === "threeQuarter" && canineSideView;
+  const minUpperAlpha =
+    input.view === "profile" ? 0.28 : canineThreeQuarter ? 0.24 : input.view === "threeQuarter" ? 0.28 : 0.28;
+  const minHeadAspect =
+    input.view === "profile" ? 0.24 : canineThreeQuarter ? 0.22 : input.view === "threeQuarter" ? 0.3 : 0.3;
+  const minUpperFace =
+    input.view === "profile" ? null : canineThreeQuarter ? 0.18 : input.view === "threeQuarter" ? 0.24 : 0.24;
+  const severeMargin = input.view === "profile" ? 0.08 : canineThreeQuarter ? 0.06 : 0;
+  let failedMetricCount = 0;
+  let severeFailure = false;
+  if (input.upperAlpha < minUpperAlpha) {
+    failedMetricCount += 1;
+    if (canineSideView && input.upperAlpha < minUpperAlpha - severeMargin) {
+      severeFailure = true;
+    }
+  }
+  if (input.headAspect < minHeadAspect) {
+    failedMetricCount += 1;
+    if (canineSideView && input.headAspect < minHeadAspect - severeMargin) {
+      severeFailure = true;
+    }
+  }
+  if (typeof minUpperFace === "number" && input.upperFace < minUpperFace) {
+    failedMetricCount += 1;
+    if (canineSideView && input.upperFace < minUpperFace - severeMargin) {
+      severeFailure = true;
+    }
+  }
+  if (canineSideView) {
+    if (severeFailure) {
+      return true;
+    }
+    return failedMetricCount >= 2;
+  }
+  return failedMetricCount >= 1;
+}
+
+export function shouldDowngradeCanineSideCriticalShapeDrift(input: {
+  speciesId?: string;
+  view?: CharacterView;
+  consistencyScore: number | null | undefined;
+  warningThreshold: number;
+  speciesScore?: number | null;
+  frontSymmetryScore?: number | null;
+  hasFrontCollapse?: boolean;
+  hasSpeciesReadabilityWarning?: boolean;
+}): boolean {
+  const normalizedSpecies = normalizeGenerationSpecies(input.speciesId);
+  const canineSideView =
+    (input.view === "threeQuarter" || input.view === "profile") &&
+    (normalizedSpecies === "dog" || normalizedSpecies === "wolf");
+  if (!canineSideView) {
+    return false;
+  }
+  if (typeof input.consistencyScore !== "number" || !Number.isFinite(input.consistencyScore)) {
+    return false;
+  }
+  if (input.consistencyScore < input.warningThreshold) {
+    return false;
+  }
+  if (input.hasFrontCollapse) {
+    return false;
+  }
+  if (typeof input.frontSymmetryScore === "number" && input.frontSymmetryScore > 0.93) {
+    return false;
+  }
+  if (input.hasSpeciesReadabilityWarning) {
+    return false;
+  }
+  const speciesFloor = normalizedSpecies === "wolf" ? 0.32 : 0.29;
+  return (
+    typeof input.speciesScore === "number" &&
+    Number.isFinite(input.speciesScore) &&
+    input.speciesScore >= speciesFloor
+  );
+}
+
+export function scoreCandidate(input: {
   candidate: CharacterGenerationCandidate;
   analysis: ImageAnalysis;
   mode: string;
@@ -8260,7 +9010,14 @@ function scoreCandidate(input: {
       warnings.push("front_symmetry_low");
     }
     if (input.candidate.view === "threeQuarter") {
-      if (input.analysis.symmetryScore > 0.94) {
+      if (
+        isThreeQuarterFrontCollapseRisk({
+          rawSymmetryScore: input.analysis.symmetryScore,
+          frontSymmetryScore,
+          headSquarenessScore,
+          pawSymmetryScore
+        })
+      ) {
         rejections.push("threequarter_front_collapse");
       } else if (input.analysis.symmetryScore > 0.88) {
         warnings.push("threequarter_frontality_risk");
@@ -8272,7 +9029,10 @@ function scoreCandidate(input: {
     if (pawSymmetryScore < 0.38 && input.candidate.view !== "profile") {
       warnings.push("paw_symmetry_low");
     }
-    if (input.candidate.view !== "profile" && pawSymmetryScore < 0.24) {
+    const armVisibilityWarningFloor =
+      normalizeGenerationSpecies(input.speciesId) === "dog" && input.candidate.view === "front" ? 0.3 : 0.24;
+    const frontArmMissingRiskFloor = normalizeGenerationSpecies(input.speciesId) === "dog" ? 0.26 : 0.18;
+    if (input.candidate.view !== "profile" && pawSymmetryScore < armVisibilityWarningFloor) {
       warnings.push("arm_visibility_low");
     }
     if (fingerSafetyScore < 0.54) {
@@ -8281,7 +9041,14 @@ function scoreCandidate(input: {
     if (handRegionDensityScore < (input.candidate.view === "front" ? 0.1 : 0.18)) {
       warnings.push("hand_region_structure_noisy");
     }
-    if (input.candidate.view === "front" && pawSymmetryScore < 0.18) {
+    if (normalizeGenerationSpecies(input.speciesId) === "dog" && input.candidate.view === "front") {
+      if (handRegionDensityScore < 0.12) {
+        rejections.push("dog_front_arm_zone_empty");
+      } else if (handRegionDensityScore < 0.18) {
+        warnings.push("dog_front_arm_zone_weak");
+      }
+    }
+    if (input.candidate.view === "front" && pawSymmetryScore < frontArmMissingRiskFloor) {
       rejections.push("front_arm_missing_risk");
     }
     if (pawStabilityScore < 0.22) {
@@ -8320,6 +9087,31 @@ function scoreCandidate(input: {
       warnings.push("subject_isolation_low");
     }
 
+    if (
+      mascotFrontView &&
+      rejections.includes("fragmented_or_multi_object_front") &&
+      shouldDowngradeCanineFrontFragmentationRisk({
+        speciesId: input.speciesId,
+        view: input.candidate.view,
+        subjectFillRatio,
+        subjectIsolationScore,
+        largestComponentShare: input.analysis.largestComponentShare,
+        significantComponentCount: input.analysis.significantComponentCount,
+        speciesScore,
+        speciesMuzzleScore,
+        speciesSilhouetteScore,
+        targetStyleScore,
+        frontSymmetryScore,
+        headSquarenessScore,
+        handRegionDensityScore
+      })
+    ) {
+      removeReason(rejections, "fragmented_or_multi_object_front");
+      if (!warnings.includes("subject_isolation_low")) {
+        warnings.push("subject_isolation_low");
+      }
+    }
+
     if (normalizeGenerationSpecies(input.speciesId) === "dog" && input.candidate.view === "front") {
       dogFrontReadabilityScore = clamp01(
         (frontSymmetryScore ?? 0.5) * 0.22 +
@@ -8328,7 +9120,9 @@ function scoreCandidate(input: {
           (monochromeScore ?? 0.5) * 0.14 +
           (headRatioScore ?? 0.35) * 0.12
       );
-      if (dogFrontReadabilityScore < 0.34) {
+      if (dogFrontReadabilityScore < 0.38) {
+        rejections.push("dog_front_readability_breakdown");
+      } else if (dogFrontReadabilityScore < 0.48) {
         warnings.push("dog_front_readability_low");
       }
     }
@@ -8400,6 +9194,8 @@ function scoreCandidate(input: {
       ...(typeof handRegionDensityScore === "number" ? { handRegionDensityScore } : {}),
       ...(mascotFrontView ? { subjectFillRatio } : {}),
       ...(typeof subjectIsolationScore === "number" ? { subjectIsolationScore } : {}),
+      ...(mascotFrontView ? { largestComponentShare: input.analysis.largestComponentShare } : {}),
+      ...(mascotFrontView ? { significantComponentCount: input.analysis.significantComponentCount } : {}),
       ...(typeof dogFrontReadabilityScore === "number" ? { dogFrontReadabilityScore } : {}),
       runtimeQualityScore: runtimeDiagnostics.qualityScore,
       runtimePenalty: runtimeDiagnostics.penalty,
@@ -8535,6 +9331,38 @@ function hasConsistencyRecoveryIssue(candidate: ScoredCandidate | undefined): bo
   );
 }
 
+export function hasBlockingConsistencyRecoveryIssue(
+  candidate: ScoredCandidate | undefined,
+  speciesId?: string
+): boolean {
+  if (!candidate || !hasConsistencyRecoveryIssue(candidate)) {
+    return false;
+  }
+  const reasons = new Set<string>([...candidate.rejections, ...candidate.warnings]);
+  const onlyShapeDriftRecoveryIssue =
+    !reasons.has("inconsistent_with_front_baseline") &&
+    !reasons.has("consistency_low") &&
+    !reasons.has("consistency_style_drift") &&
+    reasons.has("consistency_shape_drift");
+  if (!onlyShapeDriftRecoveryIssue) {
+    return true;
+  }
+  const warningThreshold =
+    resolveMascotQcThresholds(speciesId).minConsistencyByView[candidate.candidate.view] ?? 0.48;
+  return !shouldDowngradeCanineSideCriticalShapeDrift({
+    speciesId,
+    view: candidate.candidate.view,
+    consistencyScore: candidate.consistencyScore,
+    warningThreshold,
+    speciesScore: candidate.breakdown.speciesScore,
+    frontSymmetryScore: candidate.breakdown.frontSymmetryScore,
+    hasFrontCollapse: candidate.rejections.includes("threequarter_front_collapse"),
+    hasSpeciesReadabilityWarning: candidate.warnings.some(
+      (warning) => warning === "species_readability_low" || warning === "species_identity_too_weak"
+    )
+  });
+}
+
 function applyConsistencyScoring(
   scored: ScoredCandidate[],
   targetStyle?: string,
@@ -8601,16 +9429,34 @@ function applyConsistencyScoring(
     const warningThreshold = mascotTarget ? profileConsistencyFloor : 0.48;
     const criticalShapeDrift =
       mascotTarget &&
-      (consistency.parts.upperAlpha < 0.28 ||
-        consistency.parts.headAspect < (entry.candidate.view === "profile" ? 0.24 : 0.3) ||
-        (entry.candidate.view !== "profile" && consistency.parts.upperFace < 0.24));
+      isConsistencyCriticalShapeDrift({
+        speciesId,
+        view: entry.candidate.view,
+        upperAlpha: consistency.parts.upperAlpha,
+        headAspect: consistency.parts.headAspect,
+        upperFace: consistency.parts.upperFace
+      });
+    const downgradeCanineSideCriticalShapeDrift =
+      criticalShapeDrift &&
+      shouldDowngradeCanineSideCriticalShapeDrift({
+        speciesId,
+        view: entry.candidate.view,
+        consistencyScore: consistency.score,
+        warningThreshold,
+        speciesScore: entry.breakdown.speciesScore,
+        frontSymmetryScore: entry.breakdown.frontSymmetryScore,
+        hasFrontCollapse: entry.rejections.includes("threequarter_front_collapse"),
+        hasSpeciesReadabilityWarning: entry.warnings.some(
+          (warning) => warning === "species_readability_low" || warning === "species_identity_too_weak"
+        )
+      });
     const styleDrift =
       mascotTarget &&
       (consistency.parts.palette < 0.34 ||
         consistency.parts.monochrome < 0.38 ||
         consistency.parts.paletteComplexity < 0.34);
 
-    if (consistency.score < rejectThreshold || criticalShapeDrift) {
+    if (consistency.score < rejectThreshold || (criticalShapeDrift && !downgradeCanineSideCriticalShapeDrift)) {
       if (!entry.rejections.includes("inconsistent_with_front_baseline")) {
         entry.rejections.push("inconsistent_with_front_baseline");
       }
@@ -8769,6 +9615,10 @@ function normalizeGenerationConfig(generation: CharacterGenerationPayload | unde
     requireHitlPick: generation?.requireHitlPick === true,
     seed: generation?.seed ?? 101,
     manifestPath: generation?.manifestPath,
+    sourceManifestPath:
+      typeof generation?.sourceManifestPath === "string" && generation.sourceManifestPath.trim().length > 0
+        ? generation.sourceManifestPath.trim()
+        : undefined,
     ...(normalizedSelection &&
     normalizedSelection.front.length > 0 &&
     normalizedSelection.threeQuarter.length > 0 &&
@@ -9014,6 +9864,20 @@ function manifestBasePath(jobDbId: string, manifestPath?: string): string {
   }
 
   return path.join(REPO_ROOT, "out", "characters", "generations", jobDbId, "generation_manifest.json");
+}
+
+export function resolveManifestReadPath(
+  jobDbId: string,
+  paths: {
+    manifestPath?: string;
+    sourceManifestPath?: string;
+  }
+): string {
+  if (typeof paths.sourceManifestPath === "string" && paths.sourceManifestPath.trim().length > 0) {
+    return path.resolve(paths.sourceManifestPath);
+  }
+
+  return manifestBasePath(jobDbId, paths.manifestPath);
 }
 
 function getComfyUiUrl(): string | undefined {
@@ -10351,6 +11215,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const earlyViews = generation.viewToGenerate ? [generation.viewToGenerate] : CHARACTER_VIEWS;
   const earlyClamped = clampGenerationRequest(generation, earlyViews.length, earlyLimits);
   const manifestPath = manifestBasePath(jobDbId, generation.manifestPath);
+  const referenceSourceManifestPath = resolveManifestReadPath(jobDbId, {
+    manifestPath: generation.manifestPath,
+    sourceManifestPath: generation.sourceManifestPath
+  });
   const progressPath = path.join(path.dirname(manifestPath), "generation_progress.json");
   const writeGenerationProgress = async (progress: number, stage: string, details?: Record<string, unknown>) => {
     const progressPayload = {
@@ -11523,21 +12391,15 @@ export async function handleGenerateCharacterAssetsJob(input: {
           )
         ])
       ) as Record<CharacterView, string>;
+      const poseRequiredForStage = stageRequiresPoseGuide(input.stage);
       const poseGuideBase64ByView = Object.fromEntries(
         Object.entries(input.poseGuidesByView ?? {})
           .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
-          .filter(([view]) => activeRetryAdjustments[view as CharacterView]?.disablePose !== true)
+          .filter(
+            ([view]) =>
+              poseRequiredForStage || activeRetryAdjustments[view as CharacterView]?.disablePose !== true
+          )
           .map(([view, guide]) => [view, guide.referenceImageBase64])
-      ) as Partial<Record<CharacterView, string>>;
-      const referenceBase64ByView = Object.fromEntries(
-        Object.entries(input.referenceInputByView ?? {})
-          .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
-          .map(([view, guide]) => [view, guide.referenceImageBase64])
-      ) as Partial<Record<CharacterView, string>>;
-      const referenceMimeTypeByView = Object.fromEntries(
-        Object.entries(input.referenceInputByView ?? {})
-          .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
-          .map(([view, guide]) => [view, guide.referenceMimeType ?? "image/png"])
       ) as Partial<Record<CharacterView, string>>;
       const repairMaskBase64ByView = Object.fromEntries(
         Object.entries(input.repairMaskByView ?? {})
@@ -11555,10 +12417,15 @@ export async function handleGenerateCharacterAssetsJob(input: {
           .map(([view, bank]) => [
             view,
             dedupeReferenceBank(
-              adjustReferenceBankWeights(
-                bank ?? [],
-                activeRetryAdjustments[view as CharacterView]?.referenceWeightDeltas ?? {}
-              ) ?? []
+              rebalanceReferenceBankForRetry({
+                entries: adjustReferenceBankWeights(
+                  bank ?? [],
+                  activeRetryAdjustments[view as CharacterView]?.referenceWeightDeltas ?? {}
+                ) ?? [],
+                stage: input.stage,
+                view: view as CharacterView,
+                adjustment: activeRetryAdjustments[view as CharacterView]
+              }) ?? []
             )
           ])
       ) as Partial<Record<CharacterView, CharacterReferenceBankEntry[]>>;
@@ -11583,6 +12450,48 @@ export async function handleGenerateCharacterAssetsJob(input: {
             ) ?? []
           )
         : undefined;
+      const effectiveReferenceInputByView = Object.fromEntries(
+        executionViews.flatMap((view) => {
+          const explicitReference = input.referenceInputByView?.[view];
+          if (
+            typeof explicitReference?.referenceImageBase64 === "string" &&
+            explicitReference.referenceImageBase64.length > 0
+          ) {
+            return [[view, explicitReference]];
+          }
+          if (activeRetryAdjustments[view]?.enforceSideTurnBalance) {
+            const sideStarterReference =
+              pickReferenceImageFromBankRole(referenceBankByView[view], "view_starter") ??
+              pickReferenceImageFromBankRole(adjustedReferenceBank, "view_starter");
+            const compositionReference =
+              pickReferenceImageFromBankRole(referenceBankByView[view], "composition") ??
+              pickReferenceImageFromBankRole(adjustedReferenceBank, "composition");
+            if (sideStarterReference || compositionReference) {
+              return [[view, sideStarterReference ?? compositionReference]];
+            }
+          }
+          if (
+            Object.keys(activeRetryAdjustments).length > 0 &&
+            typeof input.referenceInput?.referenceImageBase64 === "string" &&
+            input.referenceInput.referenceImageBase64.length > 0
+          ) {
+            return [[view, input.referenceInput]];
+          }
+          return [];
+        })
+      ) as Partial<Record<CharacterView, InlineImageReference>>;
+      const referenceBase64ByView = Object.fromEntries(
+        Object.entries(effectiveReferenceInputByView)
+          .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
+          .map(([view, guide]) => [view, guide.referenceImageBase64])
+      ) as Partial<Record<CharacterView, string>>;
+      const referenceMimeTypeByView = Object.fromEntries(
+        Object.entries(effectiveReferenceInputByView)
+          .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
+          .map(([view, guide]) => [view, guide.referenceMimeType ?? "image/png"])
+      ) as Partial<Record<CharacterView, string>>;
+      const useSharedReferenceInput =
+        Object.keys(activeRetryAdjustments).length === 0 || Object.keys(referenceBase64ByView).length === 0;
       latestReferenceMixByView = summarizeReferenceMixByView({
         views: executionViews,
         sharedReferenceBank: adjustedReferenceBank,
@@ -11591,7 +12500,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
       const poseGuideMimeTypeByView = Object.fromEntries(
         Object.entries(input.poseGuidesByView ?? {})
           .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
-          .filter(([view]) => activeRetryAdjustments[view as CharacterView]?.disablePose !== true)
+          .filter(
+            ([view]) =>
+              poseRequiredForStage || activeRetryAdjustments[view as CharacterView]?.disablePose !== true
+          )
           .map(([view, guide]) => [view, guide.referenceMimeType ?? "image/png"])
       ) as Partial<Record<CharacterView, string>>;
       const generatedCandidates = await runProviderGenerate({
@@ -11674,8 +12586,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
               }
             }
           : {}),
-        ...(input.referenceInput || Object.keys(referenceBase64ByView).length > 0 ? { referenceMode: "img2img" as const } : {}),
-        ...(input.referenceInput
+        ...(useSharedReferenceInput || Object.keys(referenceBase64ByView).length > 0
+          ? { referenceMode: "img2img" as const }
+          : {}),
+        ...(useSharedReferenceInput && input.referenceInput
           ? {
               referenceImageBase64: input.referenceInput.referenceImageBase64,
               referenceMimeType: input.referenceInput.referenceMimeType ?? "image/png"
@@ -11793,7 +12707,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         if (candidate.rejections.length > 0) {
           return true;
         }
-        if (hasConsistencyRecoveryIssue(candidate)) {
+        if (hasBlockingConsistencyRecoveryIssue(candidate, promptBundle.speciesId)) {
           return true;
         }
         return candidate.score < stageAcceptedScoreThreshold;
@@ -11819,6 +12733,13 @@ export async function handleGenerateCharacterAssetsJob(input: {
           .filter(([, adjustment]) => adjustment && adjustment.notes.length > 0)
           .map(([view, adjustment]) => [view, adjustment?.notes ?? []])
       );
+      const gateDiagnosticsByView = summarizeRetryGateDiagnosticsByView({
+        views: belowThresholdViews,
+        bestByView: bestByViewNow,
+        targetStyle: promptBundle.qualityProfile.targetStyle,
+        acceptedScoreThreshold: stageAcceptedScoreThreshold,
+        speciesId: promptBundle.speciesId
+      });
 
       if (round < autoRetryRounds) {
         const retryMessage = `Auto-regenerate round ${round + 1} for ${belowThresholdViews.join(", ")}`;
@@ -11829,6 +12750,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           belowThresholdViews,
           acceptedScoreThreshold: Number(stageAcceptedScoreThreshold.toFixed(4)),
           retryAdjustments: nextRetryAdjustmentNotes,
+          gateDiagnosticsByView,
           bestScores: summarizeBestScores(executionViews)
         });
       }
@@ -12014,7 +12936,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
 
     let frontReferenceInput = input.frontReferenceInput;
     if (!frontReferenceInput) {
-      frontReferenceInput = await resolveFrontReferenceFromManifest(manifestPath);
+      frontReferenceInput = await resolveFrontReferenceFromManifest(referenceSourceManifestPath);
     }
     if (!frontReferenceInput && sessionId) {
       frontReferenceInput = await resolveFrontReferenceFromSession(prisma, sessionId, continuityConfig);
@@ -12035,7 +12957,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
     }
     const refineFrontAnchorScore = input.bestByView.front?.score;
 
-    const filteredPoseGuidesByView = loadProductionPoseGuides(refineViews);
+    const filteredPoseGuidesByView = loadStagePoseGuides({
+      speciesId: promptBundle.speciesId,
+      views: refineViews
+    });
 
     const refineReferenceInputByView: Partial<Record<CharacterView, InlineImageReference>> = {};
     const refineReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
@@ -12221,7 +13146,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
 
     let frontReferenceInput = input.frontReferenceInput;
     if (!frontReferenceInput) {
-      frontReferenceInput = await resolveFrontReferenceFromManifest(manifestPath);
+      frontReferenceInput = await resolveFrontReferenceFromManifest(referenceSourceManifestPath);
     }
     if (!frontReferenceInput && sessionId) {
       frontReferenceInput = await resolveFrontReferenceFromSession(prisma, sessionId, continuityConfig);
@@ -12242,7 +13167,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
     }
     const lockFrontAnchorScore = input.bestByView.front?.score;
 
-    const filteredPoseGuidesByView = loadProductionPoseGuides(lockViews);
+    const filteredPoseGuidesByView = loadStagePoseGuides({
+      speciesId: promptBundle.speciesId,
+      views: lockViews
+    });
 
     const lockReferenceInputByView: Partial<Record<CharacterView, InlineImageReference>> = {};
     const lockReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
@@ -12409,10 +13337,23 @@ export async function handleGenerateCharacterAssetsJob(input: {
       Math.floor(promptBundle.selectionHints.frontMasterCandidateCount ?? clamped.candidateCount)
     );
     const frontReferenceBank: CharacterReferenceBankEntry[] = [];
-    // For new multi-view mascot generation, keep front_master style-led so we do not clone the canon sample.
+    // Dog and wolf still need a stronger front bootstrap to keep species identity readable
+    // while staying on the worker's actual front_master -> side_view_* -> repair chain.
     const frontStarterReference = referenceImageBase64
       ? loadMascotStarterReference(promptBundle.speciesId, "front")
-      : undefined;
+      : loadMascotFrontBootstrapReference(promptBundle.speciesId);
+    const frontReferenceInput =
+      typeof referenceImageBase64 === "string" && referenceImageBase64.length > 0
+        ? {
+            referenceImageBase64,
+            referenceMimeType
+          }
+        : frontStarterReference
+          ? {
+              referenceImageBase64: frontStarterReference.referenceImageBase64,
+              referenceMimeType: frontStarterReference.referenceMimeType
+            }
+          : undefined;
     if (referenceImageBase64) {
       frontReferenceBank.push(
         createReferenceBankEntry({
@@ -12477,14 +13418,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           ? promptBundle.selectionHints.frontMasterMinAcceptedScore
           : acceptedScoreThreshold,
       budgetViewCount: requestedViews.length,
-      ...(referenceImageBase64
-        ? {
-            referenceInput: {
-              referenceImageBase64,
-              referenceMimeType
-            }
-          }
-        : {}),
+      ...(frontReferenceInput ? { referenceInput: frontReferenceInput } : {}),
       ...(frontReferenceBank.length > 0 ? { referenceBank: dedupeReferenceBank(frontReferenceBank) } : {})
     });
 
@@ -12710,7 +13644,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
         continuityReferenceSessionId
       });
     }
-    const anglePoseGuides = loadProductionPoseGuides(remainingViews);
+    const anglePoseGuides = loadStagePoseGuides({
+      speciesId: promptBundle.speciesId,
+      views: remainingViews
+    });
 
     let sideReference: InlineImageReference | undefined;
 
@@ -12728,17 +13665,25 @@ export async function handleGenerateCharacterAssetsJob(input: {
 
     if (remainingViews.length > 0 && allowAngleGeneration) {
       const starterReferenceByView = loadMascotStarterReferencesByView(promptBundle.speciesId, remainingViews);
-      const filteredAnglePoseGuides = excludePoseGuidesCoveredByStarter(anglePoseGuides, starterReferenceByView);
+      const preferredAngleReferenceInputByView = buildPreferredSideReferenceInputByView({
+        views: remainingViews,
+        familyReferencesByView: mascotFamilyReferencesByView,
+        starterReferenceByView
+      });
+      const filteredAnglePoseGuides = excludePoseGuidesCoveredByStarter(
+        "angles",
+        anglePoseGuides,
+        starterReferenceByView
+      );
       const angleReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
       const angleReferenceInputByView: Partial<Record<CharacterView, InlineImageReference>> = {};
       for (const view of remainingViews) {
         const bank: CharacterReferenceBankEntry[] = [];
         const starterReference = starterReferenceByView[view];
-        const familyCompositionReference = mascotFamilyReferencesByView[view];
-        if (familyCompositionReference) {
-          angleReferenceInputByView[view] = familyCompositionReference;
-        } else if (starterReference) {
-          angleReferenceInputByView[view] = starterReference;
+        const preferredSideReference = preferredAngleReferenceInputByView[view];
+        const sideStarterLikeReference = starterReference ?? preferredSideReference;
+        if (preferredSideReference) {
+          angleReferenceInputByView[view] = preferredSideReference;
         }
         if (frontBaseline) {
           bank.push(
@@ -12750,7 +13695,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 stage: "angles",
                 role: "front_master",
                 targetView: view,
-                hasStarter: Boolean(starterReference)
+                hasStarter: Boolean(sideStarterLikeReference)
               }),
               note: "approved front master anchor",
               image: inlineReferenceFromCandidate(frontBaseline.candidate)
@@ -12766,17 +13711,17 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 stage: "angles",
                 role: "subject",
                 targetView: view,
-                hasStarter: Boolean(starterReference)
+                hasStarter: Boolean(sideStarterLikeReference)
               }),
               note: "external fallback identity anchor",
               image: sideReference
             })
           );
         }
-        if (starterReference) {
+        if (sideStarterLikeReference) {
           bank.push(
             createReferenceBankEntry({
-              id: `${view}_starter`,
+              id: starterReference ? `${view}_starter` : `${view}_preferred_side_starter`,
               role: "view_starter",
               view,
               weight: resolveAdaptiveReferenceWeight({
@@ -12785,8 +13730,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 targetView: view,
                 hasStarter: true
               }),
-              note: starterReference.sourcePath,
-              image: starterReference
+              note:
+                starterReference && "sourcePath" in starterReference
+                  ? starterReference.sourcePath
+                  : "preferred side reference starter anchor",
+              image: sideStarterLikeReference
             })
           );
         }
@@ -12796,7 +13744,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
             stage: "angles",
             targetView: view,
             familyReferencesByView: mascotFamilyReferencesByView,
-            hasStarter: Boolean(starterReference),
+            hasStarter: Boolean(sideStarterLikeReference),
             preferMultiReference: promptBundle.selectionHints.preferMultiReference,
             heroModeEnabled: shouldEnableMascotHeroMode({
               stage: "angles",
@@ -12830,11 +13778,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
               : "external_anchor_fallback"
         ],
         triggerViews: remainingViews,
-        ...(Object.keys(angleReferenceInputByView).length > 0
-          ? { referenceInputByView: angleReferenceInputByView }
-          : sideReference
-            ? { referenceInput: sideReference }
-            : {}),
+        ...(sideReference ? { referenceInput: sideReference } : {}),
+        ...(Object.keys(angleReferenceInputByView).length > 0 ? { referenceInputByView: angleReferenceInputByView } : {}),
         ...(Object.keys(angleReferenceBankByView).length > 0 ? { referenceBankByView: angleReferenceBankByView } : {}),
         ...(Object.keys(filteredAnglePoseGuides).length > 0 ? { poseGuidesByView: filteredAnglePoseGuides } : {})
       });
@@ -12842,7 +13787,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
   } else {
     let perViewReference: InlineImageReference | undefined;
     if (generation.viewToGenerate && generation.viewToGenerate !== "front") {
-      perViewReference = await resolveFrontReferenceFromManifest(manifestPath);
+      perViewReference = await resolveFrontReferenceFromManifest(referenceSourceManifestPath);
       if (!perViewReference && sessionId) {
         perViewReference = await resolveFrontReferenceFromSession(prisma, sessionId, continuityConfig);
       }
@@ -12853,21 +13798,30 @@ export async function handleGenerateCharacterAssetsJob(input: {
       };
     }
     const requestedPoseViews = requestedViews.filter((view) => view !== "front");
-    const poseGuidesByView = loadProductionPoseGuides(requestedPoseViews);
+    const poseGuidesByView = loadStagePoseGuides({
+      speciesId: promptBundle.speciesId,
+      views: requestedPoseViews
+    });
     const starterReferenceByView = loadMascotStarterReferencesByView(promptBundle.speciesId, requestedViews);
-    const filteredPoseGuidesByView = excludePoseGuidesCoveredByStarter(poseGuidesByView, starterReferenceByView);
+    const filteredPoseGuidesByView = excludePoseGuidesCoveredByStarter(
+      requestedBaseStage,
+      poseGuidesByView,
+      starterReferenceByView
+    );
+    const preferredSideReferenceInputByView = buildPreferredSideReferenceInputByView({
+      views: requestedViews,
+      familyReferencesByView: mascotFamilyReferencesByView,
+      starterReferenceByView
+    });
     const perViewReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
     const perViewReferenceInputByView: Partial<Record<CharacterView, InlineImageReference>> = {};
     for (const view of requestedViews) {
       const bank: CharacterReferenceBankEntry[] = [];
       const starterReference = starterReferenceByView[view];
-      if (view !== "front") {
-        const familyCompositionReference = mascotFamilyReferencesByView[view];
-        if (familyCompositionReference) {
-          perViewReferenceInputByView[view] = familyCompositionReference;
-        } else if (starterReference) {
-          perViewReferenceInputByView[view] = starterReference;
-        }
+      const preferredSideReference = preferredSideReferenceInputByView[view];
+      const sideStarterLikeReference = starterReference ?? preferredSideReference;
+      if (preferredSideReference) {
+        perViewReferenceInputByView[view] = preferredSideReference;
       }
       if (perViewReference) {
         bank.push(
@@ -12879,17 +13833,17 @@ export async function handleGenerateCharacterAssetsJob(input: {
               stage: requestedBaseStage,
               role: generation.viewToGenerate ? "front_master" : "subject",
               targetView: view,
-              hasStarter: Boolean(starterReference)
+              hasStarter: Boolean(sideStarterLikeReference)
             }),
             note: generation.viewToGenerate ? "front continuity reference" : "shared external reference",
             image: perViewReference
           })
         );
       }
-      if (starterReference) {
+      if (sideStarterLikeReference) {
         bank.push(
           createReferenceBankEntry({
-            id: `${view}_starter`,
+            id: starterReference ? `${view}_starter` : `${view}_preferred_side_starter`,
             role: "view_starter",
             view,
             weight: resolveAdaptiveReferenceWeight({
@@ -12898,8 +13852,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
               targetView: view,
               hasStarter: true
             }),
-            note: starterReference.sourcePath,
-            image: starterReference
+            note:
+              starterReference && "sourcePath" in starterReference
+                ? starterReference.sourcePath
+                : "preferred side reference starter anchor",
+            image: sideStarterLikeReference
           })
         );
       }
@@ -12909,7 +13866,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           stage: requestedBaseStage,
           targetView: view,
           familyReferencesByView: mascotFamilyReferencesByView,
-          hasStarter: Boolean(starterReference),
+          hasStarter: Boolean(sideStarterLikeReference),
           preferMultiReference: promptBundle.selectionHints.preferMultiReference,
           heroModeEnabled: shouldEnableMascotHeroMode({
             stage: requestedBaseStage,
@@ -12936,16 +13893,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
       origin: generation.viewToGenerate ? "view_regen" : "initial",
       passLabel: generation.viewToGenerate ? `${requestedBasePassPrefix}.regen` : "angles.initial_nonseq",
       reasonCodes: [generation.viewToGenerate ? "manual_view_request" : "non_sequential_base_pass"],
-      triggerViews: requestedViews,
-      ...(perViewReference ? { referenceInput: perViewReference } : {}),
-      ...(Object.keys(perViewReferenceInputByView).length > 0
-        ? { referenceInputByView: perViewReferenceInputByView }
-        : Object.keys(starterReferenceByView).length > 0
-          ? { referenceInputByView: starterReferenceByView }
-          : {}),
-      ...(Object.keys(perViewReferenceBankByView).length > 0 ? { referenceBankByView: perViewReferenceBankByView } : {}),
-      ...(Object.keys(filteredPoseGuidesByView).length > 0 ? { poseGuidesByView: filteredPoseGuidesByView } : {})
-    });
+        triggerViews: requestedViews,
+        ...(perViewReference ? { referenceInput: perViewReference } : {}),
+        ...(Object.keys(perViewReferenceInputByView).length > 0 ? { referenceInputByView: perViewReferenceInputByView } : {}),
+        ...(Object.keys(perViewReferenceBankByView).length > 0 ? { referenceBankByView: perViewReferenceBankByView } : {}),
+        ...(Object.keys(filteredPoseGuidesByView).length > 0 ? { poseGuidesByView: filteredPoseGuidesByView } : {})
+      });
   }
 
   applyConsistencyScoring(
@@ -13601,8 +14554,17 @@ export async function handleGenerateCharacterAssetsJob(input: {
           promptBundle.speciesId,
           autoRerouteSideViews
         );
+        const autoRerouteReferenceInputByView = buildPreferredSideReferenceInputByView({
+          views: autoRerouteSideViews,
+          familyReferencesByView: mascotFamilyReferencesByView,
+          starterReferenceByView: autoRerouteStarterReferenceByView
+        });
         const autoReroutePoseGuidesByView = excludePoseGuidesCoveredByStarter(
-          loadProductionPoseGuides(autoRerouteSideViews),
+          "angles",
+          loadStagePoseGuides({
+            speciesId: promptBundle.speciesId,
+            views: autoRerouteSideViews
+          }),
           autoRerouteStarterReferenceByView
         );
         if (Object.keys(autoRerouteStarterReferenceByView).length > 0) {
@@ -13616,6 +14578,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
         const autoRerouteReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
         for (const view of autoRerouteSideViews) {
           const starterReference = autoRerouteStarterReferenceByView[view];
+          const preferredSideReference = autoRerouteReferenceInputByView[view];
+          const sideStarterLikeReference = starterReference ?? preferredSideReference;
           const bank: CharacterReferenceBankEntry[] = [];
           if (autoRerouteFrontBaseline) {
             bank.push(
@@ -13627,7 +14591,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                   stage: "angles",
                   role: "front_master",
                   targetView: view,
-                  hasStarter: Boolean(starterReference)
+                  hasStarter: Boolean(sideStarterLikeReference)
                 }),
                 note: "auto reroute front anchor",
                 image: inlineReferenceFromCandidate(autoRerouteFrontBaseline.candidate)
@@ -13643,17 +14607,19 @@ export async function handleGenerateCharacterAssetsJob(input: {
                   stage: "angles",
                   role: "subject",
                   targetView: view,
-                  hasStarter: Boolean(starterReference)
+                  hasStarter: Boolean(sideStarterLikeReference)
                 }),
                 note: "auto reroute external subject anchor",
                 image: autoRerouteSideReference
               })
             );
           }
-          if (starterReference) {
+          if (sideStarterLikeReference) {
             bank.push(
               createReferenceBankEntry({
-                id: `${view}_auto_reroute_starter`,
+                id: starterReference
+                  ? `${view}_auto_reroute_starter`
+                  : `${view}_auto_reroute_preferred_side_starter`,
                 role: "view_starter",
                 view,
                 weight: resolveAdaptiveReferenceWeight({
@@ -13662,8 +14628,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
                   targetView: view,
                   hasStarter: true
                 }),
-                note: starterReference.sourcePath,
-                image: starterReference
+                note:
+                  starterReference && "sourcePath" in starterReference
+                    ? starterReference.sourcePath
+                    : "auto reroute preferred side reference starter anchor",
+                image: sideStarterLikeReference
               })
             );
           }
@@ -13673,7 +14642,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
               stage: "angles",
               targetView: view,
               familyReferencesByView: mascotFamilyReferencesByView,
-              hasStarter: Boolean(starterReference),
+              hasStarter: Boolean(sideStarterLikeReference),
               preferMultiReference: promptBundle.selectionHints.preferMultiReference,
               heroModeEnabled: shouldEnableMascotHeroMode({
                 stage: "angles",
@@ -13694,8 +14663,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
           reasonCodes: autoRerouteDecision.triggers,
           triggerViews: autoRerouteDecision.targetViews,
           referenceInput: autoRerouteSideReference,
-          ...(Object.keys(autoRerouteStarterReferenceByView).length > 0
-            ? { referenceInputByView: autoRerouteStarterReferenceByView }
+          ...(Object.keys(autoRerouteReferenceInputByView).length > 0
+            ? { referenceInputByView: autoRerouteReferenceInputByView }
             : {}),
           ...(Object.keys(autoRerouteReferenceBankByView).length > 0
             ? { referenceBankByView: autoRerouteReferenceBankByView }
@@ -14077,12 +15046,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
 
   let retainedManifestCandidates: GenerationManifest["candidates"] = [];
   let retainedSelectedByView: GenerationManifest["selectedByView"] = {};
-  if (generation.viewToGenerate && fs.existsSync(manifestPath)) {
-    const previousRaw = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as unknown;
+  if (generation.viewToGenerate && fs.existsSync(referenceSourceManifestPath)) {
+    const previousRaw = JSON.parse(fs.readFileSync(referenceSourceManifestPath, "utf8")) as unknown;
     if (isRecord(previousRaw)) {
       const previousCandidates = Array.isArray(previousRaw.candidates)
         ? previousRaw.candidates
-            .map((candidate) => parseManifestCandidate(manifestPath, candidate))
+            .map((candidate) => parseManifestCandidate(referenceSourceManifestPath, candidate))
             .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
         : [];
 

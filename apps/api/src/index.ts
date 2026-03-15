@@ -34,7 +34,11 @@ const API_PORT = Number.parseInt(process.env.API_PORT ?? "3000", 10);
 const API_KEY = process.env.API_KEY?.trim() ?? "";
 const DEFAULT_REDIS_URL = "redis://127.0.0.1:6379";
 const DATABASE_URL = process.env.DATABASE_URL;
-const QUEUE_NAME = "episode-jobs";
+const QUEUE_NAME =
+  process.env.API_EPISODE_QUEUE_NAME?.trim() ||
+  process.env.EPISODE_QUEUE_NAME?.trim() ||
+  process.env.WORKER_EPISODE_QUEUE_NAME?.trim() ||
+  "episode-jobs";
 const CHANNEL_BIBLE_SCHEMA_ID = "channel_bible.schema.json";
 
 if (!Number.isInteger(API_PORT) || API_PORT <= 0) {

@@ -4991,7 +4991,8 @@ async function createCharacterGenerationRegenerateView(
         seed,
         viewToGenerate: input.viewToGenerate,
         regenerateSameSeed: input.regenerateSameSeed,
-        manifestPath
+        manifestPath,
+        sourceManifestPath
       }
     }
   } as unknown as EpisodeJobPayload;

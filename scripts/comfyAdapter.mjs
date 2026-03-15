@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
+const DEFAULT_LOCAL_COMFY_INPUT_DIR =
+  "C:\\Users\\th011\\AppData\\Local\\Programs\\ComfyUI\\resources\\ComfyUI\\input";
 
 function loadRootEnvFile() {
   const envPath = path.join(REPO_ROOT, ".env");
@@ -44,7 +46,7 @@ loadRootEnvFile();
 const ADAPTER_HOST = process.env.COMFY_ADAPTER_HOST?.trim() || "127.0.0.1";
 const ADAPTER_PORT = Number.parseInt(process.env.COMFY_ADAPTER_PORT ?? "8010", 10);
 const COMFY_SERVER_URL = (process.env.COMFY_SERVER_URL?.trim() || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const COMFY_TIMEOUT_MS = Number.parseInt(process.env.COMFY_TIMEOUT_MS ?? "120000", 10);
+const COMFY_TIMEOUT_MS = Number.parseInt(process.env.COMFY_TIMEOUT_MS ?? "300000", 10);
 const COMFY_STEPS = Number.parseInt(process.env.COMFY_STEPS ?? "20", 10);
 const COMFY_CFG = Number.parseFloat(process.env.COMFY_CFG ?? "7");
 const COMFY_SAMPLER = process.env.COMFY_SAMPLER?.trim() || "euler";
@@ -52,7 +54,9 @@ const COMFY_SCHEDULER = process.env.COMFY_SCHEDULER?.trim() || "normal";
 const COMFY_WIDTH = Number.parseInt(process.env.COMFY_WIDTH ?? "1024", 10);
 const COMFY_HEIGHT = Number.parseInt(process.env.COMFY_HEIGHT ?? "1024", 10);
 const COMFY_FILENAME_PREFIX = process.env.COMFY_FILENAME_PREFIX?.trim() || "ec_adapter";
-const COMFY_INPUT_DIR = process.env.COMFY_INPUT_DIR?.trim() || "C:\\input";
+const COMFY_INPUT_DIR =
+  process.env.COMFY_INPUT_DIR?.trim() ||
+  (existsSync(DEFAULT_LOCAL_COMFY_INPUT_DIR) ? DEFAULT_LOCAL_COMFY_INPUT_DIR : "C:\\input");
 const COMFY_CHECKPOINT_NAME = process.env.COMFY_CHECKPOINT_NAME?.trim() || "";
 const COMFY_ADAPTER_MODE = (process.env.COMFY_ADAPTER_MODE?.trim() || "auto").toLowerCase();
 const COMFY_UNET_NAME = process.env.COMFY_UNET_NAME?.trim() || "flux-2-klein-base-4b-fp8.safetensors";
@@ -2077,7 +2081,8 @@ function buildCheckpointUltraWorkflow(input) {
         class_type: "ImageToMask",
         inputs: {
           image: [scaleMaskImageId, 0],
-          channel: "alpha"
+          // MaskToImage emits a 3-channel image, so alpha reads crash on RGB-only inputs.
+          channel: "red"
         }
       };
       const invertMaskId = next();
@@ -3350,6 +3355,26 @@ async function waitForPromptResult(promptId) {
   while (Date.now() < deadline) {
     const history = await fetchJson(`${COMFY_SERVER_URL}/history/${encodeURIComponent(promptId)}`);
     const item = history?.[promptId];
+    const status = asString(item?.status?.status_str).toLowerCase();
+    const messages = Array.isArray(item?.status?.messages) ? item.status.messages : [];
+    if (status === "error") {
+      const failureEvent = messages
+        .map((entry) => Array.isArray(entry?.value) ? entry.value : null)
+        .find((entry) => Array.isArray(entry) && (entry[0] === "execution_error" || entry[0] === "execution_interrupted"));
+      const failureDetails = isObject(failureEvent?.[1]) ? failureEvent[1] : null;
+      const failureKind = typeof failureEvent?.[0] === "string" ? failureEvent[0] : "execution_error";
+      const nodeId = asString(failureDetails?.node_id);
+      const nodeType = asString(failureDetails?.node_type);
+      const exceptionMessage = asString(failureDetails?.exception_message);
+      const summaryParts = [
+        `ComfyUI prompt failed: ${promptId}`,
+        failureKind,
+        nodeId ? `node=${nodeId}` : "",
+        nodeType ? `type=${nodeType}` : "",
+        exceptionMessage
+      ].filter((part) => part.length > 0);
+      throw new Error(summaryParts.join(" "));
+    }
     const outputs = item?.outputs;
     if (isObject(outputs)) {
       for (const candidate of Object.values(outputs)) {
@@ -4044,6 +4069,7 @@ const server = createServer(async (req, res) => {
       status: "ok",
       adapter: "comfy",
       comfyServerUrl: COMFY_SERVER_URL,
+      timeoutMs: COMFY_TIMEOUT_MS,
       generatedAt: nowIso()
     });
     return;

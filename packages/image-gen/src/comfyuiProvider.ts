@@ -21,6 +21,11 @@ type ComfyUiResponse = {
   meta?: CharacterCandidateProviderMeta;
 };
 
+const DEFAULT_COMFY_ADAPTER_TIMEOUT_MS = Number.parseInt(
+  process.env.COMFY_ADAPTER_TIMEOUT_MS ?? "360000",
+  10
+);
+
 function assertComfyUrl(value: string | undefined): string {
   if (!value || value.trim().length === 0) {
     throw new Error("COMFYUI_URL is required for comfyui provider");
@@ -89,20 +94,36 @@ function summarizeStructureControls(
 }
 
 async function postComfyRequest(url: string, payload: Record<string, unknown>): Promise<ComfyUiResponse> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  const timeoutMs =
+    Number.isInteger(DEFAULT_COMFY_ADAPTER_TIMEOUT_MS) && DEFAULT_COMFY_ADAPTER_TIMEOUT_MS > 0
+      ? DEFAULT_COMFY_ADAPTER_TIMEOUT_MS
+      : 360000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`ComfyUI request failed (${response.status}): ${body.slice(0, 300)}`);
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`ComfyUI request failed (${response.status}): ${body.slice(0, 300)}`);
+    }
+
+    return (await response.json()) as ComfyUiResponse;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`ComfyUI request timed out after ${timeoutMs}ms: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return (await response.json()) as ComfyUiResponse;
 }
 
 export class ComfyUiCharacterGenerationProvider implements CharacterGenerationProvider {
