@@ -1,7 +1,9 @@
 import { UI_SHELL_CLIENT } from "./uiShellClient";
 import {
+  UI_SHELL_DENSITY_MODES,
   UI_SHELL_FLAT_NAV,
   UI_SHELL_HELPER_CONTRACT,
+  UI_SHELL_HELP_LAYER_CONTRACT,
   UI_SHELL_JUMP_TARGETS,
   UI_SHELL_NAV_GROUPS,
   UI_SHELL_PALETTE_ACTIONS,
@@ -44,6 +46,18 @@ function renderShortcutRows(): string {
   ).join("");
 }
 
+function renderDensityControls(): string {
+  return UI_SHELL_DENSITY_MODES.map((mode) => {
+    const label = mode === "compact" ? "Compact" : "Comfortable";
+    return `<button
+      type="button"
+      class="secondary shell-density-button"
+      data-shell-density-mode="${esc(mode)}"
+      aria-pressed="${mode === "comfortable" ? "true" : "false"}"
+    >${esc(label)}</button>`;
+  }).join("");
+}
+
 export function renderUiPage(title: string, body: string): string {
   return `<!doctype html>
 <html lang="ko">
@@ -55,13 +69,15 @@ export function renderUiPage(title: string, body: string): string {
 </head>
 <body
   data-page-title="${esc(title)}"
-  data-shell-grammar="phase-3"
+  data-shell-grammar="phase-4"
   data-shell-nav='${esc(JSON.stringify(UI_SHELL_FLAT_NAV))}'
   data-shell-palette-actions='${esc(JSON.stringify(UI_SHELL_PALETTE_ACTIONS))}'
   data-shell-jump-targets='${esc(JSON.stringify(UI_SHELL_JUMP_TARGETS))}'
   data-shell-storage-keys='${esc(JSON.stringify(UI_SHELL_STORAGE_KEYS))}'
   data-shell-helper-contract='${esc(JSON.stringify(UI_SHELL_HELPER_CONTRACT))}'
+  data-shell-help-contract='${esc(JSON.stringify(UI_SHELL_HELP_LAYER_CONTRACT))}'
   data-shell-palette-shortcuts='${esc(JSON.stringify(UI_SHELL_PALETTE_SHORTCUTS))}'
+  data-shell-density-modes='${esc(JSON.stringify(UI_SHELL_DENSITY_MODES))}'
 >
   <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
   <header class="shell-header top-shell">
@@ -89,6 +105,7 @@ export function renderUiPage(title: string, body: string): string {
           <div class="shell-shortcuts">
             <span class="muted-text shell-shortcut-copy">단축키: <span class="kbd">Ctrl/Cmd + K</span> palette, <span class="kbd">/</span> 필터, <span class="kbd">r</span> 기본 액션</span>
             <button id="shell-nav-toggle" type="button" class="secondary shell-nav-toggle" aria-expanded="false" aria-controls="shell-primary-nav">메뉴</button>
+            <button id="shell-help-open" type="button" class="secondary" data-shell-help-open="1" aria-haspopup="dialog" aria-expanded="false" aria-controls="shell-help-drawer">도움말</button>
             <button id="shortcut-open" type="button" class="secondary" aria-haspopup="dialog" aria-expanded="false" aria-controls="shortcut-help">단축키</button>
           </div>
         </div>
@@ -140,7 +157,27 @@ export function renderUiPage(title: string, body: string): string {
         <button id="shell-pin-current" type="button" class="secondary" hidden>Pin</button>
         <button id="shell-return-link" type="button" class="secondary shell-return-link" hidden><span id="shell-return-label">돌아가기</span></button>
         <button id="shell-copy-link" type="button" class="secondary">딥링크 복사</button>
+        <div class="shell-density-group" role="group" aria-label="화면 밀도">
+          ${renderDensityControls()}
+        </div>
       </div>
+    </section>
+    <section
+      class="inline-help-summary help-panel how-to-panel"
+      data-shell-help-panel="inline-summary"
+      data-shell-help-owned="1"
+      data-surface-role="metadata"
+      data-surface-kicker="빠른 도움말"
+      aria-label="현재 페이지 도움말"
+    >
+      <div class="inline-help-summary-copy">
+        <span class="muted-text shell-page-kicker">현재 페이지 문법</span>
+        <strong id="shell-help-inline-title" data-shell-help-title>현재 페이지 사용 힌트</strong>
+        <p id="shell-help-inline-summary" class="section-intro" data-shell-help-summary aria-live="polite">
+          현재 오브젝트, 복귀 경로, evidence 진입 우선순위를 shell이 요약합니다.
+        </p>
+      </div>
+      <div id="shell-help-inline-context" class="inline-help-context quick-links" data-shell-help-context></div>
     </section>
     ${body}
   </main>
@@ -209,6 +246,46 @@ export function renderUiPage(title: string, body: string): string {
             </div>
             <div id="shell-palette-recents" class="shell-palette-side-list"></div>
           </section>
+        </aside>
+      </div>
+    </div>
+  </div>
+  <div id="shell-help-drawer" class="shell-help-drawer" data-shell-help-owned="1" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="shell-help-title">
+    <div class="shell-help-drawer-card">
+      <div class="shell-help-drawer-head">
+        <div class="stack">
+          <span class="muted-text">Global Help Layer</span>
+          <h2 id="shell-help-title">현재 페이지 도움말</h2>
+          <p id="shell-help-summary" class="section-intro" data-shell-help-body aria-live="polite">
+            페이지별 장식보다 현재 오브젝트, 복귀 경로, evidence 읽는 순서를 먼저 정리합니다.
+          </p>
+        </div>
+        <div class="shell-help-drawer-actions">
+          <span id="shell-help-density-state" class="shell-chip shell-chip-state" data-severity="muted">Comfortable</span>
+          <button id="shell-help-close" type="button" class="secondary">닫기</button>
+        </div>
+      </div>
+      <div class="shell-help-drawer-layout">
+        <section class="help-panel how-to-panel" data-shell-help-panel="how-to" data-shell-help-owned="1" aria-labelledby="shell-help-howto-title">
+          <div class="shell-help-panel-head">
+            <strong id="shell-help-howto-title">빠른 사용 순서</strong>
+            <span class="muted-text">how-to</span>
+          </div>
+          <ol id="shell-help-howto" class="help-step-list"></ol>
+        </section>
+        <section class="help-panel" data-shell-help-panel="context" data-shell-help-owned="1" aria-labelledby="shell-help-context-title">
+          <div class="shell-help-panel-head">
+            <strong id="shell-help-context-title">현재 맥락</strong>
+            <span class="muted-text">context</span>
+          </div>
+          <div id="shell-help-context" class="help-context-list"></div>
+        </section>
+        <aside class="help-panel" data-shell-help-panel="contracts" data-shell-help-owned="1" aria-labelledby="shell-help-contracts-title">
+          <div class="shell-help-panel-head">
+            <strong id="shell-help-contracts-title">공통 문법</strong>
+            <span class="muted-text">shell contract</span>
+          </div>
+          <div id="shell-help-panels" class="help-panel-list"></div>
         </aside>
       </div>
     </div>

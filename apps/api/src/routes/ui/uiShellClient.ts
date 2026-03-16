@@ -15,8 +15,13 @@
   const storageKeys = parseJsonDataset("shellStorageKeys", {
     recentObjects: "ecs.ui.shell.recentObjects.v1",
     pinnedObjects: "ecs.ui.shell.pinnedObjects.v1",
-    paletteState: "ecs.ui.shell.paletteState.v1"
+    paletteState: "ecs.ui.shell.paletteState.v1",
+    densityMode: "ecs.ui.shell.densityMode.v1"
   });
+  const densityModeConfig = parseJsonDataset("shellDensityModes", ["comfortable", "compact"]);
+  const densityModes = (Array.isArray(densityModeConfig) ? densityModeConfig : ["comfortable", "compact"]).map((mode) =>
+    String(mode || "").toLowerCase()
+  );
   const helperContract = parseJsonDataset("shellHelperContract", {
     currentObject: "data-shell-current-object",
     objectKind: "data-shell-object-kind",
@@ -33,18 +38,30 @@
     deepLinkLabel: "data-shell-deep-link-label",
     recentIgnore: "data-shell-recent-ignore"
   });
+  const helpContract = parseJsonDataset("shellHelpContract", {
+    title: "data-shell-help-title",
+    summary: "data-shell-help-summary",
+    body: "data-shell-help-body",
+    panel: "data-shell-help-panel",
+    step: "data-shell-help-step",
+    context: "data-shell-help-context",
+    open: "data-shell-help-open"
+  });
   const toastWrap = document.getElementById("toast-wrap");
   const live = document.getElementById("global-live");
   const shortcut = document.getElementById("shortcut-help");
   const shortcutCard = shortcut instanceof HTMLElement ? shortcut.querySelector(".shortcut-card") : null;
   const palette = document.getElementById("shell-palette");
   const paletteCard = palette instanceof HTMLElement ? palette.querySelector(".shell-palette-card") : null;
+  const helpDrawer = document.getElementById("shell-help-drawer");
+  const helpDrawerCard = helpDrawer instanceof HTMLElement ? helpDrawer.querySelector(".shell-help-drawer-card") : null;
   const shellNav = document.getElementById("shell-primary-nav");
   const shellNavToggle = document.getElementById("shell-nav-toggle");
   const openShortcut = document.getElementById("shortcut-open");
   const closeShortcut = document.getElementById("shortcut-close");
   const openPaletteButton = document.getElementById("shell-palette-open");
   const closePaletteButton = document.getElementById("shell-palette-close");
+  const closeHelpButton = document.getElementById("shell-help-close");
   const shellCurrentObject = document.getElementById("shell-current-object");
   const shellCurrentState = document.getElementById("shell-current-state");
   const shellLiveClock = document.getElementById("shell-live-clock");
@@ -65,20 +82,32 @@
   const shellCopyLink = document.getElementById("shell-copy-link");
   const shellFilterChip = document.getElementById("shell-filter-chip");
   const shellAlertChip = document.getElementById("shell-alert-chip");
+  const densityButtons = Array.from(document.querySelectorAll("[data-shell-density-mode]"));
   const paletteQueryInput = document.getElementById("shell-palette-query");
   const paletteResults = document.getElementById("shell-palette-results");
   const paletteCurrent = document.getElementById("shell-palette-current");
   const palettePins = document.getElementById("shell-palette-pins");
   const paletteRecents = document.getElementById("shell-palette-recents");
+  const shellHelpTitle = document.getElementById("shell-help-title");
+  const shellHelpSummary = document.getElementById("shell-help-summary");
+  const shellHelpDensityState = document.getElementById("shell-help-density-state");
+  const shellHelpInlineTitle = document.getElementById("shell-help-inline-title");
+  const shellHelpInlineSummary = document.getElementById("shell-help-inline-summary");
+  const shellHelpInlineContext = document.getElementById("shell-help-inline-context");
+  const shellHelpContext = document.getElementById("shell-help-context");
+  const shellHelpHowTo = document.getElementById("shell-help-howto");
+  const shellHelpPanels = document.getElementById("shell-help-panels");
   const filterBindings = [];
   const focusableSelector = "a[href],button:not([disabled]),textarea:not([disabled]),input:not([type='hidden']):not([disabled]),select:not([disabled]),[tabindex]:not([tabindex='-1'])";
   let lastShortcutFocus = null;
   let lastPaletteFocus = null;
+  let lastHelpFocus = null;
   let liveTimer = null;
   let pendingGo = "";
   let pendingGoTimer = null;
   let currentObjectRecord = null;
   let currentReturnTarget = null;
+  let currentDensityMode = "comfortable";
   let lastRecordedObjectKey = "";
   let paletteItems = [];
   let paletteActiveIndex = 0;
@@ -179,6 +208,32 @@
     return state && typeof state === "object" ? state : {};
   };
   const writePaletteState = (patch) => storageSet(storageKeys.paletteState, { ...readPaletteState(), ...patch });
+  const normalizeDensityMode = (value) => {
+    const normalized = cleanText(value).toLowerCase();
+    return densityModes.includes(normalized) ? normalized : "comfortable";
+  };
+  const densityLabel = (mode) => (normalizeDensityMode(mode) === "compact" ? "Compact" : "Comfortable");
+  const readDensityMode = () => normalizeDensityMode(storageGet(storageKeys.densityMode, "comfortable"));
+  const writeDensityMode = (mode) => storageSet(storageKeys.densityMode, normalizeDensityMode(mode));
+  const helpOpenButtons = () => Array.from(document.querySelectorAll("[" + helpContract.open + "]"));
+  const syncDensityButtons = () => {
+    densityButtons.forEach((node) => {
+      if (!(node instanceof HTMLButtonElement)) return;
+      const mode = normalizeDensityMode(node.dataset.shellDensityMode || "");
+      const active = mode === currentDensityMode;
+      node.dataset.active = active ? "1" : "0";
+      node.setAttribute("aria-pressed", String(active));
+      node.removeAttribute("aria-disabled");
+    });
+    setText(shellHelpDensityState, densityLabel(currentDensityMode));
+    setSeverity(shellHelpDensityState, currentDensityMode === "compact" ? "info" : "muted");
+  };
+  const applyDensityMode = (mode, persist = false) => {
+    currentDensityMode = normalizeDensityMode(mode);
+    document.body.dataset.densityMode = currentDensityMode;
+    if (persist) writeDensityMode(currentDensityMode);
+    syncDensityButtons();
+  };
   const isRecentTrackingDisabled = () => {
     if (document.body.getAttribute(helperContract.recentIgnore) === "1") return true;
     return !!document.querySelector("[" + helperContract.recentIgnore + "='1']");
@@ -575,9 +630,23 @@
     collectMatches(scope, ".ops-rail-grid").forEach((node) => node.classList.add("compare-shell"));
     collectMatches(scope, ".summary-grid,.ops-kpi-grid").forEach((node) => node.classList.add("metadata-grid"));
   };
+  const normalizeHelpLayouts = (root) => {
+    const scope = root instanceof HTMLElement ? root : document.body;
+    collectMatches(scope, "[" + helpContract.panel + "]").forEach((node) => {
+      if (!(node instanceof HTMLElement) || node.closest("[data-shell-help-owned='1']")) return;
+      node.classList.add("help-panel");
+      if (!node.dataset.surfaceRole) {
+        node.classList.add("surface-panel");
+        node.dataset.surfaceRole = "metadata";
+        node.dataset.surfaceKicker = "도움말";
+        node.dataset.surfacePriority = "secondary";
+      }
+    });
+  };
   const applyShellGrammar = (root) => {
     const scope = root instanceof HTMLElement ? root : document.body;
     normalizeShellLayouts(scope);
+    normalizeHelpLayouts(scope);
     collectMatches(scope, grammarSelector).forEach(classifySurface);
     normalizeSeverityNodes(scope);
     document.body.dataset.shellGrammarReady = "1";
@@ -633,8 +702,9 @@
   const getFocusable = (scope) => Array.from(scope.querySelectorAll(focusableSelector)).filter((node) => node instanceof HTMLElement && !node.hidden && window.getComputedStyle(node).display !== "none");
   const isShortcutOpen = () => shortcut instanceof HTMLElement && shortcut.classList.contains("open");
   const isPaletteOpen = () => palette instanceof HTMLElement && palette.classList.contains("open");
+  const isHelpOpen = () => helpDrawer instanceof HTMLElement && helpDrawer.classList.contains("open");
   const syncDialogState = () => {
-    if (isShortcutOpen() || isPaletteOpen()) document.body.dataset.dialogOpen = "1";
+    if (isShortcutOpen() || isPaletteOpen() || isHelpOpen()) document.body.dataset.dialogOpen = "1";
     else delete document.body.dataset.dialogOpen;
   };
   const trapFocus = (event, scope, onEscape) => {
@@ -659,6 +729,7 @@
   const openDialog = () => {
     if (!(shortcut instanceof HTMLElement)) return;
     if (isPaletteOpen()) closePalette();
+    if (isHelpOpen()) closeHelp();
     lastShortcutFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     shortcut.classList.add("open");
     shortcut.style.display = "flex";
@@ -681,6 +752,7 @@
   const openPalette = (initialQuery = "") => {
     if (!(palette instanceof HTMLElement)) return;
     if (isShortcutOpen()) closeDialog();
+    if (isHelpOpen()) closeHelp();
     lastPaletteFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     palette.classList.add("open");
     palette.style.display = "flex";
@@ -708,9 +780,52 @@
     syncDialogState();
     if (lastPaletteFocus instanceof HTMLElement) lastPaletteFocus.focus();
   };
+  const openHelp = () => {
+    if (!(helpDrawer instanceof HTMLElement)) return;
+    if (isShortcutOpen()) closeDialog();
+    if (isPaletteOpen()) closePalette();
+    lastHelpFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    helpDrawer.classList.add("open");
+    helpDrawer.style.display = "flex";
+    helpDrawer.setAttribute("aria-hidden", "false");
+    helpOpenButtons().forEach((node) => {
+      if (node instanceof HTMLElement) node.setAttribute("aria-expanded", "true");
+    });
+    syncDialogState();
+    const focusTarget = helpDrawerCard instanceof HTMLElement ? getFocusable(helpDrawerCard)[0] : null;
+    if (focusTarget instanceof HTMLElement) focusTarget.focus();
+    else if (helpDrawerCard instanceof HTMLElement) helpDrawerCard.focus();
+  };
+  const closeHelp = () => {
+    if (!(helpDrawer instanceof HTMLElement)) return;
+    helpDrawer.classList.remove("open");
+    helpDrawer.style.display = "";
+    helpDrawer.setAttribute("aria-hidden", "true");
+    helpOpenButtons().forEach((node) => {
+      if (node instanceof HTMLElement) node.setAttribute("aria-expanded", "false");
+    });
+    syncDialogState();
+    if (lastHelpFocus instanceof HTMLElement) lastHelpFocus.focus();
+  };
+  const setDensityMode = (mode, options = {}) => {
+    const nextMode = normalizeDensityMode(mode);
+    const persist = options.persist !== false;
+    const silent = options.silent === true;
+    applyDensityMode(nextMode, persist);
+    updateHelpLayer(activeNav(new URL(window.location.href).pathname));
+    normalizeSeverityNodes(document.body);
+    if (!silent) {
+      speak("화면 밀도를 " + densityLabel(nextMode) + " 모드로 전환했습니다.");
+    }
+    return nextMode;
+  };
   window.__ecsShell = {
     openPalette,
     closePalette,
+    openHelp,
+    closeHelp,
+    getDensityMode: () => currentDensityMode,
+    setDensityMode: (mode) => setDensityMode(mode, { persist: true, silent: true }),
     buildObjectHref,
     appendReturnContext,
     copyDeepLink,
@@ -738,6 +853,7 @@
     });
   }
   if (closePaletteButton instanceof HTMLButtonElement) closePaletteButton.addEventListener("click", closePalette);
+  if (closeHelpButton instanceof HTMLButtonElement) closeHelpButton.addEventListener("click", closeHelp);
   if (palette instanceof HTMLElement) {
     palette.addEventListener("click", (event) => {
       if (event.target === palette) closePalette();
@@ -746,6 +862,15 @@
   if (paletteCard instanceof HTMLElement) {
     paletteCard.setAttribute("tabindex", "-1");
     paletteCard.addEventListener("keydown", (event) => trapFocus(event, paletteCard, closePalette));
+  }
+  if (helpDrawer instanceof HTMLElement) {
+    helpDrawer.addEventListener("click", (event) => {
+      if (event.target === helpDrawer) closeHelp();
+    });
+  }
+  if (helpDrawerCard instanceof HTMLElement) {
+    helpDrawerCard.setAttribute("tabindex", "-1");
+    helpDrawerCard.addEventListener("keydown", (event) => trapFocus(event, helpDrawerCard, closeHelp));
   }
   if (paletteQueryInput instanceof HTMLInputElement) {
     paletteQueryInput.addEventListener("input", () => {
@@ -920,6 +1045,146 @@
       tone: "info"
     };
   };
+  const helpTextFromNode = (node, attr) => {
+    if (!(node instanceof HTMLElement)) return "";
+    return attrValue(node, attr) || cleanText(node.textContent);
+  };
+  const queryDeclaredHelpNode = (attr) =>
+    Array.from(document.querySelectorAll("[" + attr + "]")).find(
+      (node) => node instanceof HTMLElement && !node.closest("[data-shell-help-owned='1']")
+    ) || null;
+  const collectDeclaredHelpPanels = () =>
+    Array.from(document.querySelectorAll("[" + helpContract.panel + "]"))
+      .filter((node) => node instanceof HTMLElement && !node.closest("[data-shell-help-owned='1']"))
+      .map((node) => {
+        if (!(node instanceof HTMLElement)) return null;
+        const titleNode = node.querySelector("[" + helpContract.title + "],h1,h2,h3,strong");
+        const bodyNode = node.querySelector("[" + helpContract.body + "],p,li");
+        const steps = Array.from(node.querySelectorAll("[" + helpContract.step + "]"))
+          .map((stepNode) => helpTextFromNode(stepNode, helpContract.step))
+          .filter(Boolean)
+          .slice(0, 4);
+        const title = attrValue(node, helpContract.panel) || helpTextFromNode(titleNode, helpContract.title) || "현재 패널";
+        const body = helpTextFromNode(bodyNode, helpContract.body) || shorten(cleanText(node.textContent), 180);
+        if (!title && !body && !steps.length) return null;
+        return { title, body, steps };
+      })
+      .filter(Boolean);
+  const renderHelpContextItems = (target, items, variant = "drawer") => {
+    if (!(target instanceof HTMLElement)) return;
+    target.textContent = "";
+    items.forEach((item) => {
+      const node = document.createElement(variant === "inline" ? "span" : item.href ? "a" : "div");
+      node.className = variant === "inline" ? "shell-chip" : "help-context-item";
+      if (item.href && node instanceof HTMLAnchorElement) node.href = item.href;
+      if (variant === "inline") {
+        const strong = document.createElement("strong");
+        strong.textContent = item.label;
+        const span = document.createElement("span");
+        span.textContent = item.value;
+        node.append(strong, span);
+      } else {
+        const label = document.createElement("span");
+        const value = document.createElement("strong");
+        label.className = "help-context-label";
+        value.className = "help-context-value";
+        label.textContent = item.label;
+        value.textContent = item.value;
+        node.append(label, value);
+      }
+      node.dataset.severity = item.tone || "muted";
+      target.appendChild(node);
+    });
+  };
+  const renderHelpSteps = (steps) => {
+    if (!(shellHelpHowTo instanceof HTMLOListElement)) return;
+    shellHelpHowTo.textContent = "";
+    steps.forEach((step) => {
+      const item = document.createElement("li");
+      item.textContent = step;
+      shellHelpHowTo.appendChild(item);
+    });
+  };
+  const renderHelpPanels = (panels) => {
+    if (!(shellHelpPanels instanceof HTMLElement)) return;
+    shellHelpPanels.textContent = "";
+    panels.forEach((panel) => {
+      const article = document.createElement("article");
+      const head = document.createElement("strong");
+      const body = document.createElement("p");
+      article.className = "help-contract-card";
+      head.textContent = panel.title;
+      body.textContent = panel.body;
+      article.append(head, body);
+      if (Array.isArray(panel.steps) && panel.steps.length) {
+        const list = document.createElement("ul");
+        list.className = "help-contract-steps";
+        panel.steps.forEach((step) => {
+          const item = document.createElement("li");
+          item.textContent = step;
+          list.appendChild(item);
+        });
+        article.appendChild(list);
+      }
+      shellHelpPanels.appendChild(article);
+    });
+  };
+  const updateHelpLayer = (nav) => {
+    const declaredTitle = helpTextFromNode(queryDeclaredHelpNode(helpContract.title), helpContract.title);
+    const declaredSummary = helpTextFromNode(queryDeclaredHelpNode(helpContract.summary), helpContract.summary);
+    const declaredBody = helpTextFromNode(queryDeclaredHelpNode(helpContract.body), helpContract.body);
+    const declaredPanels = collectDeclaredHelpPanels();
+    const title = declaredTitle || (nav ? nav.label + " 빠른 가이드" : currentPageLabel() + " 도움말");
+    const summary =
+      declaredSummary ||
+      declaredBody ||
+      (nav ? nav.description : "현재 오브젝트, 복귀 경로, evidence 진입 순서를 먼저 읽도록 돕는 공통 help layer입니다.");
+    const contextItems = [
+      {
+        label: "현재 오브젝트",
+        value: currentObjectRecord ? shorten(currentObjectRecord.label, 42) : "추론 대기",
+        tone: currentObjectRecord ? "info" : "muted",
+        href: currentObjectRecord ? appendReturnContext(currentObjectRecord.href) : ""
+      },
+      {
+        label: "복귀 경로",
+        value: currentReturnTarget ? shorten(currentReturnTarget.label, 42) : "현재 페이지 기준",
+        tone: currentReturnTarget ? "info" : "muted",
+        href: currentReturnTarget ? currentReturnTarget.href : ""
+      },
+      { label: "Density", value: densityLabel(currentDensityMode), tone: currentDensityMode === "compact" ? "info" : "muted" },
+      { label: "Evidence", value: "raw JSON/log/artifact는 두 번째 확인 지점", tone: "warn" }
+    ];
+    const steps = [
+      currentObjectRecord ? "먼저 현재 오브젝트와 상태 배지를 읽고 판단 레일로 진입합니다." : "먼저 헤더와 sticky bar에서 현재 상태와 필터 상태를 읽습니다.",
+      "Ctrl/Cmd + K palette 또는 복귀 링크로 이동 맥락을 잃지 않고 라우팅합니다.",
+      currentDensityMode === "compact" ? "Compact density에서 테이블 리듬을 빠르게 훑고 필요한 경우에만 evidence 섹션으로 내려갑니다." : "Comfortable density에서 판단/복구/메타데이터 블록을 먼저 훑고 evidence 섹션으로 내려갑니다."
+    ];
+    const panels = declaredPanels.length
+      ? declaredPanels
+      : [
+          {
+            title: "공통 help contract",
+            body: "data-shell-help-title, data-shell-help-summary, data-shell-help-body, data-shell-help-panel, data-shell-help-step을 붙이면 shell help layer가 재사용됩니다."
+          },
+          {
+            title: "복귀와 공유",
+            body: "returnTo / returnLabel URL과 딥링크 복사를 같이 유지해 현재 오브젝트 문맥을 잃지 않습니다."
+          },
+          {
+            title: "Evidence 우선순위",
+            body: "table/detail/decision/recovery surface를 먼저 읽고 raw JSON, log, artifact는 두 번째 근거로 내립니다."
+          }
+        ];
+    setText(shellHelpTitle, title);
+    setText(shellHelpSummary, summary);
+    setText(shellHelpInlineTitle, title);
+    setText(shellHelpInlineSummary, summary);
+    renderHelpContextItems(shellHelpInlineContext, contextItems.slice(0, 3), "inline");
+    renderHelpContextItems(shellHelpContext, contextItems);
+    renderHelpSteps(steps);
+    renderHelpPanels(panels);
+  };
   const primaryActionNode = () => document.querySelector("[data-primary-action='1']:not([disabled]):not([aria-disabled='true'])");
   const searchFieldNode = () =>
     document.querySelector("input[type='search']:not([disabled]):not([data-shell-palette-input='1']), input[data-table-filter]:not([disabled])");
@@ -985,6 +1250,16 @@
     }
     if (action === "open-shortcuts") {
       openDialog();
+      return true;
+    }
+    if (action === "open-help") {
+      openHelp();
+      return true;
+    }
+    if (action === "set-density-comfortable" || action === "set-density-compact") {
+      const mode = action === "set-density-compact" ? "compact" : "comfortable";
+      setDensityMode(mode);
+      toast("Density 변경", densityLabel(mode) + " 모드로 전환했습니다.", "info", 2200);
       return true;
     }
     const node = context.node || paletteCommandNodes.get(context.id);
@@ -1289,7 +1564,9 @@
     syncCurrentObjectControls();
     if (currentObjectRecord) recordRecentObject(currentObjectRecord);
     syncNavCollapse();
+    updateHelpLayer(nav);
     normalizeSeverityNodes(document.body);
+    setSeverity(shellHelpDensityState, currentDensityMode === "compact" ? "info" : "muted");
     if (isPaletteOpen()) renderPalette();
   };
   if (shellNavToggle instanceof HTMLButtonElement) {
@@ -1299,6 +1576,23 @@
       speak(document.body.dataset.shellNavCollapsed === "1" ? "탐색 메뉴를 접었습니다." : "탐색 메뉴를 펼쳤습니다.");
     });
   }
+  densityButtons.forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) return;
+    node.addEventListener("click", () => {
+      const mode = normalizeDensityMode(node.dataset.shellDensityMode || "");
+      if (mode === currentDensityMode) return;
+      setDensityMode(mode);
+      toast("Density 변경", densityLabel(mode) + " 모드로 전환했습니다.", "info", 2200);
+    });
+  });
+  document.addEventListener("click", (event) => {
+    const trigger = event.target instanceof Element ? event.target.closest("[" + helpContract.open + "]") : null;
+    if (!(trigger instanceof HTMLElement)) return;
+    if (trigger.id === "shell-help-close") return;
+    event.preventDefault();
+    if (isHelpOpen()) closeHelp();
+    else openHelp();
+  });
   document.querySelectorAll("#shell-primary-nav a[href]").forEach((node) => {
     if (!(node instanceof HTMLAnchorElement)) return;
     node.addEventListener("click", () => {
@@ -1547,6 +1841,7 @@
   };
   updateClock();
   window.setInterval(updateClock, 1000);
+  setDensityMode(readDensityMode(), { persist: false, silent: true });
   translateSubtree(document.body);
   const translatedTitle = translateValue(document.title);
   if (translatedTitle !== document.title) document.title = translatedTitle;
@@ -1580,7 +1875,13 @@
       "data-shell-object-id",
       "data-shell-command",
       "data-shell-command-action",
-      "data-shell-command-href"
+      "data-shell-command-href",
+      "data-shell-help-title",
+      "data-shell-help-summary",
+      "data-shell-help-body",
+      "data-shell-help-panel",
+      "data-shell-help-step",
+      "data-shell-help-context"
     ]
   });
   window.addEventListener("keydown", (event) => {
@@ -1618,6 +1919,13 @@
       if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
         executePaletteItem(paletteItems[paletteActiveIndex]);
+      }
+      return;
+    }
+    if (isHelpOpen()) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeHelp();
       }
       return;
     }

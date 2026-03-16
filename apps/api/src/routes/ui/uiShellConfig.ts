@@ -37,6 +37,8 @@ export type UiShellJumpTarget = {
   mode: "path" | "query" | "segment";
 };
 
+export type UiShellDensityMode = "comfortable" | "compact";
+
 export const UI_SHELL_NAV_GROUPS: UiShellNavGroup[] = [
   {
     key: "observe",
@@ -229,6 +231,27 @@ export const UI_SHELL_PALETTE_ACTIONS: UiShellPaletteAction[] = [
     keywords: ["shortcut", "keyboard", "help", "?"],
     action: "open-shortcuts",
     hotkey: "?"
+  },
+  {
+    id: "open-help",
+    label: "도움말 drawer 열기",
+    description: "현재 페이지의 빠른 사용 흐름과 shell 문법 도움말을 엽니다.",
+    keywords: ["help", "drawer", "guide", "how to", "assist"],
+    action: "open-help"
+  },
+  {
+    id: "set-density-comfortable",
+    label: "Comfortable density",
+    description: "여백과 줄 간격을 넉넉하게 둔 기본 밀도로 전환합니다.",
+    keywords: ["density", "comfortable", "spacing", "default"],
+    action: "set-density-comfortable"
+  },
+  {
+    id: "set-density-compact",
+    label: "Compact density",
+    description: "테이블과 셸 간격을 촘촘하게 줄인 compact 밀도로 전환합니다.",
+    keywords: ["density", "compact", "tight", "table"],
+    action: "set-density-compact"
   }
 ];
 
@@ -298,12 +321,15 @@ export const UI_SHELL_JUMP_TARGETS: UiShellJumpTarget[] = [
 export const UI_SHELL_STORAGE_KEYS = {
   recentObjects: "ecs.ui.shell.recentObjects.v1",
   pinnedObjects: "ecs.ui.shell.pinnedObjects.v1",
-  paletteState: "ecs.ui.shell.paletteState.v1"
+  paletteState: "ecs.ui.shell.paletteState.v1",
+  densityMode: "ecs.ui.shell.densityMode.v1"
 } as const;
 
 export const UI_SHELL_PALETTE_SHORTCUTS = {
   open: "Mod+K"
 } as const;
+
+export const UI_SHELL_DENSITY_MODES: UiShellDensityMode[] = ["comfortable", "compact"];
 
 export const UI_SHELL_HELPER_CONTRACT = {
   currentObject: "data-shell-current-object",
@@ -320,6 +346,16 @@ export const UI_SHELL_HELPER_CONTRACT = {
   returnLabel: "data-shell-return-label",
   deepLinkLabel: "data-shell-deep-link-label",
   recentIgnore: "data-shell-recent-ignore"
+} as const;
+
+export const UI_SHELL_HELP_LAYER_CONTRACT = {
+  title: "data-shell-help-title",
+  summary: "data-shell-help-summary",
+  body: "data-shell-help-body",
+  panel: "data-shell-help-panel",
+  step: "data-shell-help-step",
+  context: "data-shell-help-context",
+  open: "data-shell-help-open"
 } as const;
 
 export const UI_SHELL_FLAT_NAV = UI_SHELL_NAV_GROUPS.flatMap((group) =>
