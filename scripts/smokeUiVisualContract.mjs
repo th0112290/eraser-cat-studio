@@ -37,17 +37,17 @@ const requiredPageHeadings = new Map([
 const requiredPageKeywords = new Map([
   ["/ui/assets", ["Selected Asset", "Recent Assets", "선택된 에셋", "최근 에셋"]],
   ["/ui/studio", ["Orchestration Hub", "Asset Intake", "Start one-click", "Recent Assets", "Recent Episodes"]],
-  ["/ui/character-generator", ["Generation Mode", "Style/Prompt", "Run Character Candidate Generation", "생성 모드", "생성 실행"]],
+  ["/ui/character-generator", ["Workflow Policy", "Candidates", "Approve / Rollback", "Recent Generation Runs", "Stage Rail"]],
   ["/ui/characters", ["pack.json", "preview.mp4", "선택된 팩", "최근 캐릭터 팩"]],
   ["/ui/episodes", ["Recent Episodes", "Create episode + enqueue", "Quick Run", "targetDurationSec", "Latest Episodes"]],
   ["/ui/jobs", ["Latest 100 jobs", "Jobs", "최근 작업"]],
-  ["/ui/hitl", ["HITL Rerender", "Failed Jobs"]],
+  ["/ui/hitl", ["failed job -> preflight -> rerender -> handoff", "recover preflight + next safe action", "Run HITL rerender"]],
   ["/ui/publish", ["episodeId", "Run publish"]],
   ["/ui/health", ["Service Status"]],
-  ["/ui/rollouts", ["Rollout Signals", "Artifact Sources", "Detail"]],
-  ["/ui/benchmarks", ["Backend Benchmark Matrix", "Episode Regression Reports", "Render Modes"]],
+  ["/ui/rollouts", ["Signal Queue", "Decision Rail", "Recovery / Linked Objects", "Artifact Evidence Drawer"]],
+  ["/ui/benchmarks", ["Backend Review Objects", "Regression Review Objects", "Render Modes", "Decision Rail", "Artifact Evidence Drawer"]],
   ["/ui/profiles", ["Active Channel Bibles", "Runtime Profile Bundles", "Profile Runtime Evidence"]],
-  ["/ui/artifacts", ["out/ index"]]
+  ["/ui/artifacts", ["Saved views + path compare", "Raw artifact index", "Next safe action"]]
 ]);
 
 const requiredNavLabelCandidates = [

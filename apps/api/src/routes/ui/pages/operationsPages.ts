@@ -429,7 +429,7 @@ export function renderListPowerScript(): string {
   const slugify = (value) => cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'saved-view';
   const storageKey = (pageKey) => 'ecs-ui:list-power:v1:' + pageKey;
   const parseKoreanDate = (value) => {
-    const match = cleanText(value).match(/^(\\d{4})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})??\s*(\\d{1,2})遺?\s*(\\d{1,2})珥?/);
+    const match = cleanText(value).match(/^(\\d{4})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})??\s*(\\d{1,2})??\s*(\\d{1,2})??/);
     if (!match) return null;
     const [, year, month, day, hour, minute, second] = match;
     return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
@@ -813,7 +813,7 @@ function renderRailItems(items: OpsRailItem[]): string {
 function renderRailCard(input: OpsRailCardInput): string {
   const tone = input.tone ?? "muted";
   const bodyHtml =
-    input.bodyHtml ?? ((input.items?.length ?? 0) > 0 ? renderRailItems(input.items ?? []) : '<div class="notice">?쒖떆????ぉ???놁뒿?덈떎.</div>');
+    input.bodyHtml ?? ((input.items?.length ?? 0) > 0 ? renderRailItems(input.items ?? []) : '<div class="notice">Nothing to show yet.</div>');
   return `<div class="ops-rail-card tone-${tone}"><div class="stack"><h3>${input.title}</h3><p>${input.intro}</p></div>${bodyHtml}${
     input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""
   }</div>`;
@@ -967,7 +967,7 @@ function dedupeLinks(links: Array<TableCellLink | null | undefined>): TableCellL
   });
 }
 
-function renderActionLinks(links: Array<TableCellLink | null | undefined>, empty = "異붽? 留곹겕 ?놁쓬"): string {
+function renderActionLinks(links: Array<TableCellLink | null | undefined>, empty = "No quick links available."): string {
   const deduped = dedupeLinks(links);
   if (deduped.length === 0) return `<span class="muted-text">${empty}</span>`;
   return `<div class="ops-link-row">${deduped.map((link) => `<a href="${link.href}">${link.label}</a>`).join("")}</div>`;
@@ -1000,7 +1000,7 @@ function renderObjectSummaryHeader(input: OpsObjectSummaryHeaderInput): string {
     input.lifecycleSteps?.length
       ? renderLifecycleStrip({
           title: input.lifecycleTitle ?? "object lifecycle",
-          intro: input.lifecycleIntro ?? "?곹깭? ?덉쟾 ?≪뀡???꾩뿉??怨좎젙?⑸땲??",
+          intro: input.lifecycleIntro ?? "Track the object lifecycle before opening deeper evidence.",
           steps: input.lifecycleSteps
         })
       : ""
@@ -1010,10 +1010,10 @@ function renderObjectSummaryHeader(input: OpsObjectSummaryHeaderInput): string {
 function extractLastErrorText(errorStackHtml: string): string {
   const preMatch = errorStackHtml.match(/<pre>([\s\S]*?)<\/pre>/i);
   const raw = stripHtml(preMatch?.[1] ?? errorStackHtml)
-    .replace(/^lastError ?ㅽ깮 ?닿린\/?リ린\s*/i, "")
     .replace(/^lastError:\s*/i, "");
-  return summarizeText(raw || "湲곕줉??lastError ?놁쓬", 160);
+  return summarizeText(raw || "No lastError was captured.", 160);
 }
+
 
 function parseLogEntries(logRowsHtml: string): ParsedLogEntry[] {
   return parseTableRows(logRowsHtml)
@@ -1021,7 +1021,7 @@ function parseLogEntries(logRowsHtml: string): ParsedLogEntry[] {
     .map((row) => ({
       createdAt: stripHtml(row.cells[0]) || "-",
       level: stripHtml(row.cells[1]) || "-",
-      message: stripHtml(row.cells[2]) || "(硫붿떆吏 ?놁쓬)",
+      message: stripHtml(row.cells[2]) || "(no message)",
       detailsHtml: row.cells[3] ?? ""
     }));
 }
@@ -1093,15 +1093,15 @@ function describeJobLifecycle(statusText: string, progressText: string, latestMe
       shouldInspectHealth: true
     };
   }
-  if (/(CANCELLED|痍⑥냼)/.test(normalized)) {
+  if (/(CANCELLED|CANCELED)/.test(normalized)) {
     return {
       tone: "warn",
       stageLabel: "inspect",
-      latestResult: latestMessage || "?묒뾽??痍⑥냼?섏뼱 醫낅즺?섏뿀?듬땲??",
+      latestResult: latestMessage || "The job ended in a cancelled state.",
       retryLabel: "inspect first",
-      retryDetail: "??痍⑥냼?섏뿀?붿? ?뺤씤???ㅼ뿉留?retry ?먮뒗 ?泥?寃쎈줈瑜?怨좊쫭?덈떎.",
+      retryDetail: "Review the cancellation reason before choosing retry or an alternate path.",
       safeActionLabel: "detail -> episode",
-      safeActionDetail: "痍⑥냼 ?먯씤怨?owning episode 臾몃㎘??癒쇱? ?뺤씤?⑸땲??",
+      safeActionDetail: "Check the cancellation context and owning episode before taking action.",
       shouldRecover: false,
       shouldPublish: false,
       shouldInspectHealth: false
@@ -1110,11 +1110,11 @@ function describeJobLifecycle(statusText: string, progressText: string, latestMe
   return {
     tone: "muted",
     stageLabel: "inspect",
-    latestResult: latestMessage || `?곹깭 ${statusText || "-"} ?먯꽌 異붽? ?먮떒???꾩슂?⑸땲??`,
+    latestResult: latestMessage || `More inspection is required while status is ${statusText || "-"}.`,
     retryLabel: "inspect first",
-    retryDetail: "retryability? blockers瑜?detail?먯꽌 癒쇱? ?뺤씤?⑸땲??",
+    retryDetail: "Check retryability and blockers from detail first.",
     safeActionLabel: "detail",
-    safeActionDetail: "?먯떆 evidence蹂대떎 癒쇱? object summary? linked objects瑜??쎌뒿?덈떎.",
+    safeActionDetail: "Read the object summary and linked objects before raw evidence.",
     shouldRecover: false,
     shouldPublish: false,
     shouldInspectHealth: false
@@ -1142,7 +1142,7 @@ function renderJobsTableRows(rowsHtml: string): string {
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null,
           episodeId && lifecycle.shouldPublish ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "linked object ?놁쓬"
+        "No linked object"
       );
       const nextActionLinks = renderActionLinks(
         [
@@ -1152,15 +1152,15 @@ function renderJobsTableRows(rowsHtml: string): string {
           episodeLink ? { href: episodeLink.href, label: "episode" } : null,
           episodeId && lifecycle.shouldPublish ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "detail?먯꽌 ?ㅼ쓬 ?≪뀡???뺤씤?섏꽭??"
+        "Open detail to confirm the next action."
       );
 
       return `<tr><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         jobLink ? `<a href="${jobLink.href}">${jobLink.label}</a>` : stripHtml(row.cells[0]) || "-"
-      }</strong>${renderToneBadge(lifecycle.stageLabel, lifecycle.tone)}</div><span class="ops-cell-meta">list -> detail -> recover ?먮쫫??anchor job object?낅땲??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
+      }</strong>${renderToneBadge(lifecycle.stageLabel, lifecycle.tone)}</div><span class="ops-cell-meta">Anchor job object for the list -> detail -> recover flow.</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : "-"
       }</strong></div><span class="ops-cell-meta">${
-        episodeId ? `owner episode ${episodeId}` : "?곌껐??owner episode ?뺣낫媛 ?놁뒿?덈떎."
+        episodeId ? `owner episode ${episodeId}` : "No linked owner episode is recorded."
       }</span>${linkedObjectLinks}</div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${typeText}</strong></div><span class="ops-cell-meta">${lifecycle.latestResult}</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title">${statusMarkup}${renderToneBadge(
         lifecycle.retryLabel,
         lifecycle.shouldRecover ? "bad" : lifecycle.tone
@@ -1214,7 +1214,7 @@ function renderPoweredJobsTableRows(rowsHtml: string): string {
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null,
           episodeId && lifecycle.shouldPublish ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "linked object ??곸벉"
+        "No linked object"
       );
       const followupLinks = renderActionLinks(
         [
@@ -1222,7 +1222,7 @@ function renderPoweredJobsTableRows(rowsHtml: string): string {
           lifecycle.shouldInspectHealth ? { href: "/ui/health", label: "health" } : null,
           episodeLink ? { href: episodeLink.href, label: "episode" } : null
         ],
-        "detail?癒?퐣 ??쇱벉 ??る???類ㅼ뵥??뤾쉭??"
+        "Open detail to confirm the next action."
       );
       const rowActions: ListPowerActionInput[] = [];
       if (jobLink?.href) rowActions.push({ kind: "link", label: "View", href: jobLink.href });
@@ -1250,10 +1250,10 @@ function renderPoweredJobsTableRows(rowsHtml: string): string {
       )}<strong>${jobLink ? `<a href="${jobLink.href}">${jobLink.label}</a>` : jobId}</strong>${renderToneBadge(
         lifecycle.stageLabel,
         lifecycle.tone
-      )}</div><span class="ops-cell-meta">list -> detail -> recover ?癒?カ??anchor job object??낅빍??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
+      )}</div><span class="ops-cell-meta">Anchor job object for the list -> detail -> recover flow.</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : "-"
       }</strong></div><span class="ops-cell-meta">${
-        episodeId ? `owner episode ${episodeId}` : "?怨뚭퍙??owner episode ?類ｋ궖揶쎛 ??곷뮸??덈뼄."
+        episodeId ? `owner episode ${episodeId}` : "No linked owner episode is recorded."
       }</span>${linkedObjectLinks}</div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${typeText}</strong></div><span class="ops-cell-meta">${lifecycle.latestResult}</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title">${statusMarkup}${renderToneBadge(
         lifecycle.retryLabel,
         lifecycle.shouldRecover ? "bad" : lifecycle.tone
@@ -1276,36 +1276,36 @@ function renderHitlTableRows(rowsHtml: string): string {
       const topicText = stripHtml(row.cells[2]) || "-";
       const typeText = stripHtml(row.cells[3]) || "-";
       const createdText = stripHtml(row.cells[4]) || "-";
-      const blockerText = summarizeText(stripHtml(row.cells[5]) || "湲곕줉??lastError ?놁쓬", 140);
+      const blockerText = summarizeText(stripHtml(row.cells[5]) || "No lastError is recorded.", 140);
       const preflightLinks = renderActionLinks(
         [
           jobLink ? { href: jobLink.href, label: "detail" } : null,
           episodeLink ? { href: episodeLink.href, label: "episode" } : null,
           episodeId ? { href: `/ui/hitl?episodeId=${encodeURIComponent(episodeId)}`, label: "recover" } : null
         ],
-        "detail?먯꽌 blocker瑜?癒쇱? ?뺤씤?섏꽭??"
+        "Open detail to inspect the blocker."
       );
       const handoffLinks = renderActionLinks(
         [
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null,
           episodeId ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "recover ??linked outputs瑜??뺤씤?섏꽭??"
+        "Check linked outputs after recovery."
       );
 
       return `<tr><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         jobLink ? `<a href="${jobLink.href}">${jobLink.label}</a>` : stripHtml(row.cells[0]) || "-"
-      }</strong>${renderToneBadge("recover", "bad")}</div><span class="ops-cell-meta">?ㅽ뙣 job object?먯꽌 recover ?먮쫫???쒖옉?⑸땲??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
+      }</strong>${renderToneBadge("recover", "bad")}</div><span class="ops-cell-meta">Start the recovery path from the failed job object.</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : "-"
       }</strong></div><span class="ops-cell-meta">${
-        episodeId ? `owner episode ${episodeId}` : "?곌껐 episode ?뺣낫媛 ?놁뒿?덈떎."
+        episodeId ? `owner episode ${episodeId}` : "No linked episode is recorded."
       }</span>${renderActionLinks(
         [
           episodeLink ? { href: episodeLink.href, label: "episode" } : null,
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null
         ],
-        "linked object ?놁쓬"
-      )}</div></td><td><div class="ops-cell-stack"><strong>${topicText}</strong><span class="ops-cell-meta">${typeText}</span></div></td><td><div class="ops-cell-stack"><strong>preflight blocker</strong><span class="ops-cell-meta">${blockerText}</span></div></td><td><div class="ops-cell-stack"><strong>detail -> dryRun recover</strong><span class="ops-cell-meta">root cause瑜?detail?먯꽌 ?뺤씤????episodeId? failedShotIds濡?dryRun遺??寃利앺빀?덈떎.</span>${preflightLinks}</div></td><td><div class="ops-cell-stack"><strong>artifacts -> publish handoff</strong><span class="ops-cell-meta">${createdText}</span>${handoffLinks}</div></td></tr>`;
+        "No linked object"
+      )}</div></td><td><div class="ops-cell-stack"><strong>${topicText}</strong><span class="ops-cell-meta">${typeText}</span></div></td><td><div class="ops-cell-stack"><strong>preflight blocker</strong><span class="ops-cell-meta">${blockerText}</span></div></td><td><div class="ops-cell-stack"><strong>detail -> dryRun recover</strong><span class="ops-cell-meta">Review the root cause in detail, then validate episodeId and failedShotIds with dryRun first.</span>${preflightLinks}</div></td><td><div class="ops-cell-stack"><strong>artifacts -> publish handoff</strong><span class="ops-cell-meta">${createdText}</span>${handoffLinks}</div></td></tr>`;
     })
     .join("");
 }
@@ -1319,22 +1319,22 @@ ${renderOpsStyle()}
 ${renderObjectSummaryHeader({
   eyebrow: "job lifecycle",
   title: t.title,
-  intro: "list -> detail -> recover -> handoff ?먮쫫??Job object 湲곗??쇰줈 ?쎌뒿?덈떎. row action grammar??媛숈? ?⑥뼱(detail, recover, episode, artifacts, publish)濡?留욎땅?덈떎.",
+  intro: "Read the flow as list -> detail -> recover -> handoff around the Job object. Keep row-action grammar in the order detail, recover, episode, artifacts, publish.",
   flash: input.flash,
   quickLinksHtml: '<a href="/ui">Dashboard</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">Publish</a>',
   summaryCards: [
-    { label: "踰붿쐞", valueHtml: "<strong>理쒓렐 100媛?job object</strong>", hint: "理쒖떊 ?ㅽ뙣? 硫덉텣 ?ㅽ뻾???꾩そ?먯꽌 癒쇱? ?≪뒿?덈떎.", tone: "muted" },
-    { label: "latest result", valueHtml: "<strong>failed / stuck running ?곗꽑</strong>", hint: "?깃났 寃쎈줈蹂대떎 recover ?꾨낫瑜?癒쇱? ?щ뒗 由ъ뒪?몄엯?덈떎.", tone: "warn" },
-    { label: "row grammar", valueHtml: "<strong>detail -> recover -> handoff</strong>", hint: "媛??됱? detail, retryability, linked objects瑜?媛숈? ?쒖꽌濡?蹂댁뿬以띾땲??", tone: "ok" },
-    { label: "linked objects", valueHtml: "<strong>episode -> artifacts -> publish</strong>", hint: "job?먯꽌 ?앸궡吏 ?딄퀬 owner episode? handoff 寃쎈줈源뚯? 媛숈씠 遊낅땲??", tone: "ok" }
+    { label: "scope", valueHtml: "<strong>Latest 100 job objects</strong>", hint: "Read recent failures and stalled runs first.", tone: "muted" },
+    { label: "latest result", valueHtml: "<strong>failed / stuck running first</strong>", hint: "This list prioritizes recovery candidates over success paths.", tone: "warn" },
+    { label: "row grammar", valueHtml: "<strong>detail -> recover -> handoff</strong>", hint: "Show detail, retryability, and linked objects in the same order for every row.", tone: "ok" },
+    { label: "linked objects", valueHtml: "<strong>episode -> artifacts -> publish</strong>", hint: "Do not stop at the job object; open the owner episode and handoff path together.", tone: "ok" }
   ],
   lifecycleTitle: "list -> detail -> recover -> handoff",
-  lifecycleIntro: "由ъ뒪?몃뒗 Job object lifecycle???낃뎄?낅땲?? ?ㅽ뙣? ?뺤껜瑜?癒쇱? ?↔퀬, ?밴꺽? 留덉?留??④퀎?먯꽌留??쎈땲??",
+  lifecycleIntro: "This list is the entry surface for the Job object lifecycle. Read failure and stalling first, and leave promotion for the last step.",
   lifecycleSteps: [
-    { label: "list", detail: "status? latest result濡?failed / stuck job??癒쇱? 怨좊쫭?덈떎.", tone: "muted" },
-    { label: "detail", detail: "status, retryability, blockers, linked objects瑜??곷떒?먯꽌 ?쎌뒿?덈떎.", tone: "warn" },
-    { label: "recover", detail: "retry, HITL, health 以??ㅼ쓬 ?덉쟾 ?≪뀡??怨좊쫭?덈떎.", tone: "bad" },
-    { label: "handoff", detail: "owner episode? artifacts媛 ?뺥빀???뚮쭔 publish瑜??쎈땲??", tone: "ok" }
+    { label: "list", detail: "Use status and latest result to pick failed or stuck jobs first.", tone: "muted" },
+    { label: "detail", detail: "Read status, retryability, blockers, and linked objects from the top.", tone: "warn" },
+    { label: "recover", detail: "Choose the next safe action from retry, HITL, or health.", tone: "bad" },
+    { label: "handoff", detail: "Only hand off to publish when the owner episode and artifacts are coherent.", tone: "ok" }
   ]
 })}
 
@@ -1365,42 +1365,42 @@ ${renderListPowerSurface({
 })}
 
 ${renderRailSection({
-  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
-  intro: "?꾪꽣, retryability, linked objects瑜?癒쇱? 怨좎젙???ㅼ뿉留?row detail濡??대젮媛묐땲??",
+  title: "Next safe action",
+  intro: "Read filters, retryability, and linked objects first, and push raw evidence down into row detail.",
   linksHtml: '<a href="/ui/health">Health</a><a href="/ui/episodes">Episodes</a><a href="/ui/artifacts">Artifacts</a>',
   cards: [
     {
-      title: "?꾪꽣 + row ?ㅽ뵂",
-      intro: "job id, owner episode, status濡?醫곹엺 ?ㅼ쓬 detail?먯꽌 lifecycle???쎈땲??",
+      title: "Filter + row scan",
+      intro: "Use job id, owner episode, and status to scan lifecycle before opening detail.",
       tone: "muted",
       bodyHtml: renderSearchCluster({
         id: "jobs-filter",
         targetId: "jobs-table",
-        label: "?묒뾽 ?꾪꽣",
+        label: "Jobs filter",
         placeholder: t.filterPlaceholder,
         urlParam: "jobsFilter",
-        hint: "??由ъ뒪?몄뿉 濡쒖뺄濡??곸슜?⑸땲?? / 濡??꾩뿭 寃?됱쑝濡?諛붾줈 ?대룞?????덉뒿?덈떎."
+        hint: "Apply this locally to the list. You can also jump here through the URL search state."
       })
     },
     {
-      title: "蹂듦뎄 ?곗꽑?쒖쐞",
-      intro: "FAILED? 硫덉텣 RUNNING??癒쇱? ?뺣━?섍퀬, publish??latest result媛 ?뺥빀???뚮쭔 留덉?留됱뿉 ?쎈땲??",
+      title: "Recovery priority",
+      intro: "Read FAILED and stalled RUNNING rows first. Only inspect publish when latest result and linked artifacts are coherent.",
       tone: "warn",
       items: [
-        { label: "FAILED??detail -> retry / recover", detail: "job detail?먯꽌 lastError, retryability, blocker瑜??뺤씤????HITL ?щ?瑜??먮떒?⑸땲??" },
-        { label: "RUNNING ?뺤껜??detail -> health", detail: "?ъ떆???꾩뿉 health, queue, 理쒓렐 jobs瑜??④퍡 ?뺤씤??以묐났 ?ㅽ뻾???쇳빀?덈떎." },
-        { label: "publish hold", detail: "latest result? linked artifacts媛 留욎븘?쇰쭔 ?밴꺽?쇰줈 ?섍퉩?덈떎." }
+        { label: "FAILED -> detail -> retry / recover", detail: "Read lastError, retryability, and blockers in job detail before moving into HITL or retry." },
+        { label: "RUNNING stall -> detail -> health", detail: "Review health, queue state, and recent jobs together before assuming the run is healthy." },
+        { label: "publish hold", detail: "Only inspect publish after latest result and linked artifacts agree with the current object state." }
       ],
-      linksHtml: '<a href="/ui/hitl">HITL</a><a href="/ui/health">?곹깭</a>'
+      linksHtml: '<a href="/ui/hitl">HITL</a><a href="/ui/health">Health</a>'
     },
     {
-      title: "怨듯넻 row 臾몃쾿",
-      intro: "紐⑤뱺 row??detail, owner episode, linked objects, next safe action??媛숈? 臾몃쾿?쇰줈 蹂댁뿬以띾땲??",
+      title: "Shared row grammar",
+      intro: "Every row should read detail, owner episode, linked objects, and next safe action in the same order.",
       tone: "ok",
       items: [
-        { label: "detail", detail: "status, latest result, retryability瑜?癒쇱? ?쎌뒿?덈떎." },
-        { label: "episode / artifacts", detail: "owner object? linked outputs瑜?媛숈? row?먯꽌 諛붾줈 ?쎈땲??" },
-        { label: "recover / publish", detail: "?ㅽ뙣??recover濡? ?깃났? publish handoff濡??댁뼱吏묐땲??" }
+        { label: "detail", detail: "Read status, latest result, and retryability first." },
+        { label: "episode / artifacts", detail: "Open the owner object and linked outputs directly from the row." },
+        { label: "recover / publish", detail: "Failures go to recover, healthy outputs go to publish handoff." }
       ],
       linksHtml: '<a href="/ui/episodes">Episodes</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/publish">Publish</a>'
     },
@@ -1421,8 +1421,8 @@ ${renderRailSection({
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>?묒뾽 ?ㅻ툕?앺듃</h2>
-      <p class="section-intro">媛??됱? job object -> owner episode -> latest result -> retryability -> next safe action ?쒖꽌濡??쎌뒿?덈떎. raw evidence??detail ?붾㈃?쇰줈 ?대┰?덈떎.</p>
+      <h2>Job objects</h2>
+      <p class="section-intro">Read each row as job object -> owner episode -> latest result -> retryability -> next safe action. Push raw evidence down into detail.</p>
     </div>
     <span class="badge muted">${t.latestBadge}</span>
   </div>
@@ -1441,68 +1441,68 @@ export function buildPublishPageBody(input: PublishPageBodyInput): string {
   const episodeHref = hasEpisodeId ? `/ui/episodes/${encodeURIComponent(episodeId)}` : "/ui/episodes";
   const artifactsHref = hasEpisodeId ? `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}` : "/ui/artifacts";
   const folderHref = hasEpisodeId ? `/artifacts/${encodeURIComponent(episodeId)}/` : "/artifacts/";
-  const episodeLabel = hasEpisodeId ? `<strong class="mono">${episodeId}</strong>` : "<strong>episode id瑜??낅젰?섏꽭??</strong>";
+  const episodeLabel = hasEpisodeId ? `<strong class="mono">${episodeId}</strong>` : "<strong>Enter an episode id first.</strong>";
 
   return `
 ${renderOpsStyle()}
 ${renderObjectSummaryHeader({
   eyebrow: "publish preflight",
   title: t.title,
-  intro: "publish??page action???꾨땲??episode object handoff?낅땲?? episode -> latest job -> artifacts -> publish ?쒖꽌濡??좉툑???由??뚮쭔 ?덉쟾?⑸땲??",
+  intro: "Publish is not a page action. It is an episode-object handoff that should only run after episode -> latest job -> artifacts -> publish has been unlocked in order.",
   flash: input.flash,
   quickLinksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a><a href="/ui/artifacts">Artifacts</a>',
   summaryCards: [
-    { label: "target object", valueHtml: episodeLabel, hint: "媛숈? episode id濡?jobs, artifacts, publish瑜??앷퉴吏 ?댁뼱媛묐땲??", tone: hasEpisodeId ? "ok" : "warn" },
-    { label: "latest job gate", valueHtml: "<strong>COMPLETED / PREVIEW_READY</strong>", hint: "FAILED, stuck RUNNING, retry pending?대㈃ publish蹂대떎 recover媛 癒쇱??낅땲??", tone: "warn" },
-    { label: "linked artifacts", valueHtml: "<strong>preview / final / manifest</strong>", hint: "raw folder蹂대떎 QC? output presence ?뺥빀??癒쇱? ?뺤씤?⑸땲??", tone: hasEpisodeId ? "ok" : "muted" },
+    { label: "target object", valueHtml: episodeLabel, hint: "Keep jobs, artifacts, and publish aligned on the same episode id.", tone: hasEpisodeId ? "ok" : "warn" },
+    { label: "latest job gate", valueHtml: "<strong>COMPLETED / PREVIEW_READY</strong>", hint: "If the latest job is FAILED, stalled, or pending retry, recover before publish.", tone: "warn" },
+    { label: "linked artifacts", valueHtml: "<strong>preview / final / manifest</strong>", hint: "Confirm QC and output presence before trusting the raw folder.", tone: hasEpisodeId ? "ok" : "muted" },
     {
       label: "next safe action",
-      valueHtml: `<strong>${hasEpisodeId ? "jobs -> artifacts -> publish" : "episode ?좏깮"}</strong>`,
-      hint: hasEpisodeId ? "latest result? linked outputs瑜??뺤씤???ㅼ뿉留?publish request瑜?蹂대깄?덈떎." : "?먰뵾?뚮뱶 ?곸꽭??job detail?먯꽌 媛숈? id瑜?蹂듭궗???ㅼ꽭??",
+      valueHtml: `<strong>${hasEpisodeId ? "jobs -> artifacts -> publish" : "check episode first"}</strong>`,
+      hint: hasEpisodeId ? "Open publish only after latest result and linked outputs are coherent." : "Confirm the same episode id from episode detail or job detail first.",
       tone: hasEpisodeId ? "ok" : "warn"
     }
   ],
   lifecycleTitle: "episode -> latest job -> artifacts -> publish",
-  lifecycleIntro: "publish??留덉?留??④퀎?낅땲?? preflight媛 源⑥?硫??ㅼ떆 jobs ?먮뒗 recover 寃쎈줈濡??섎룎?꾧컩?덈떎.",
+  lifecycleIntro: "Publish is the last handoff step. If preflight looks unstable, reopen the recovery path from jobs first.",
   lifecycleSteps: [
-    { label: "episode", detail: hasEpisodeId ? `target object ${episodeId}瑜?怨좎젙?⑸땲??` : "癒쇱? target episode瑜?怨좊쫭?덈떎.", tone: hasEpisodeId ? "ok" : "warn" },
-    { label: "latest job", detail: "理쒓렐 job???깃났 寃쎈줈?몄?, retry / recover媛 癒쇱??몄? ?뺤씤?⑸땲??", tone: "warn" },
-    { label: "artifacts", detail: "preview, final, QC, upload manifest ?뺥빀??留욎땅?덈떎.", tone: hasEpisodeId ? "ok" : "muted" },
-    { label: "publish", detail: "preflight媛 紐⑤몢 ?듦낵???뚮쭔 handoff瑜??ㅽ뻾?⑸땲??", tone: hasEpisodeId ? "ok" : "muted" }
+    { label: "episode", detail: hasEpisodeId ? `Lock target object ${episodeId} first.` : "Pick the target episode first.", tone: hasEpisodeId ? "ok" : "warn" },
+    { label: "latest job", detail: "Check the most recent job result and retry / recover state first.", tone: "warn" },
+    { label: "artifacts", detail: "Verify preview, final, QC, and upload manifest.", tone: hasEpisodeId ? "ok" : "muted" },
+    { label: "publish", detail: "Run handoff only when the full preflight is aligned.", tone: hasEpisodeId ? "ok" : "muted" }
   ]
 })}
 
 ${renderRailSection({
   title: "preflight + next safe action",
-  intro: "?쇰툝由ъ떆 踰꾪듉蹂대떎 癒쇱? target episode, latest result gate, linked outputs, blocked path瑜??곷떒?먯꽌 怨좎젙?⑸땲??",
+  intro: "Read the target episode, latest-result gate, linked outputs, and blocked path before trusting the input form.",
   cards: [
     {
       title: "episode object + latest result",
       intro: hasEpisodeId
-        ? `?밴꺽 ???episode id??${episodeId} ?낅땲?? 癒쇱? episode detail?먯꽌 ?곹깭? latest job result瑜??뺤씤?⑸땲??`
-        : "?밴꺽???ㅻ툕?앺듃媛 ?꾩쭅 ?뺥빐吏吏 ?딆븯?듬땲?? episode id瑜?癒쇱? ?뺥븯?몄슂.",
+        ? `With episode id ${episodeId}, inspect episode detail and latest job result first.`
+        : "Choose the target episode first, then keep the same episode id through the full handoff flow.",
       tone: hasEpisodeId ? "ok" : "warn",
       items: [
-        { label: "episode detail", detail: "???ㅻ툕?앺듃???꾩옱 ?곹깭? owner context瑜?癒쇱? ?뺤씤?⑸땲??" },
-        { label: "latest job", detail: "publish??理쒖떊 ?묒뾽???깃났 寃쎈줈???덈뒗 寃쎌슦?먮쭔 ?덉쟾?⑸땲??" },
-        { label: "retryability", detail: "FAILED ?먮뒗 stuck RUNNING?대㈃ publish ???recover ?먮떒??癒쇱? ?대┰?덈떎." }
+        { label: "episode detail", detail: "Read owner context before deciding whether publish is safe." },
+        { label: "latest job", detail: "Confirm the last job result and next safe action before publish." },
+        { label: "retryability", detail: "If the latest run is FAILED or stalled, choose recover before publish." }
       ],
-      linksHtml: `<a href="${episodeHref}">${hasEpisodeId ? "?먰뵾?뚮뱶 ?곸꽭" : "?먰뵾?뚮뱶 紐⑸줉"}</a>`
+      linksHtml: `<a href="${episodeHref}">${hasEpisodeId ? "Episode detail" : "Episodes"}</a>`
     },
     {
       title: "artifacts gate",
-      intro: "preview, final, QC, upload manifest媛 紐⑤몢 媛숈? episode object瑜?媛由ы궎?붿? 癒쇱? 留욎땅?덈떎.",
+      intro: "Check preview, final, QC, and upload manifest on the same episode-object surface.",
       tone: hasEpisodeId ? "ok" : "muted",
       items: [
-        { label: "preview / final", detail: "?밴꺽 ??異쒕젰 ?뚯씪???ㅼ젣濡?議댁옱?섎뒗吏 ?뺤씤?⑸땲??" },
-        { label: "QC / manifest", detail: "?먯떆 evidence蹂대떎 癒쇱? QC? upload manifest瑜??뺤씤?⑸땲??" },
-        { label: "publish handoff", detail: "linked outputs媛 ?뺥빀??寃쎌슦?먮쭔 publish request瑜??쎈땲??" }
+        { label: "preview / final", detail: "Confirm the rendered outputs are current before promotion." },
+        { label: "QC / manifest", detail: "Read QC and upload manifest before raw evidence." },
+        { label: "publish handoff", detail: "Only move into publish request when linked outputs are coherent." }
       ],
       linksHtml: `<a href="${artifactsHref}">Artifacts</a><a href="${folderHref}">Raw folder</a>`
     },
     {
       title: "blocked path",
-      intro: "publish媛 留됲엳硫?raw folder ?먯깋蹂대떎 jobs, health, artifacts 以??대뒓 ?ㅻ툕?앺듃?먯꽌 ?섎룎?꾧컝吏 癒쇱? 怨좊쫭?덈떎.",
+      intro: "If publish is blocked, go back to jobs, health, or artifacts before digging through the raw folder.",
       tone: "warn",
       items: [
         { label: "jobs first", detail: "Confirm the latest job failure, blocker, and retryability before forcing publish." },
@@ -1515,33 +1515,33 @@ ${renderRailSection({
 })}
 
 ${renderRailSection({
-  title: "?쇰툝由ъ떆 ?ㅽ뻾",
-  intro: "?붿껌 ?낅젰? 媛꾨떒?섍쾶 ?먮릺, next safe action怨?rollback anchor??媛숈? ?덉씪 ?덉뿉 ?좎??⑸땲??",
+  title: "Publish action",
+  intro: "Keep the request input simple, but hold next safe action and rollback anchor in the same rail.",
   cards: [
     {
-      title: "?쇰툝由ъ떆 ?붿껌",
-      intro: "episode id ?섎굹濡?handoff瑜??ㅽ뻾?⑸땲??",
+      title: "Publish request",
+      intro: "Run the handoff from a single episode id.",
       tone: hasEpisodeId ? "ok" : "muted",
-      bodyHtml: `<form method="post" action="/ui/publish" class="ops-form-shell"><div class="field"><label for="publish-episode-id">episodeId <span class="hint" data-tooltip="${t.episodeHelp}">?</span></label><input id="publish-episode-id" name="episodeId" value="${input.episodeId}" placeholder="clx..." required/><small>?먰뵾?뚮뱶 ?곸꽭, ?묒뾽 ?곸꽭, ?곗텧臾?留곹겕?먯꽌 媛숈? id瑜?蹂듭궗???ъ슜?⑸땲??</small></div><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="?쇰툝由ъ떆 ?ㅽ뻾">${t.runAction}</button></div></form>`
+      bodyHtml: `<form method="post" action="/ui/publish" class="ops-form-shell"><div class="field"><label for="publish-episode-id">episodeId <span class="hint" data-tooltip="${t.episodeHelp}">?</span></label><input id="publish-episode-id" name="episodeId" value="${input.episodeId}" placeholder="clx..." required/><small>Reuse the same id from episode detail, job detail, or artifact links.</small></div><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="Run publish">${t.runAction}</button></div></form>`
     },
     {
       title: "submit preflight",
-      intro: "?낅젰媛믩낫??latest result? linked outputs ?뺥빀????以묒슂?⑸땲??",
+      intro: "Latest result and linked-output coherence matter more than the input field itself.",
       tone: "ok",
       items: [
-        { label: "episode ?곹깭", detail: "COMPLETED ?먮뒗 PREVIEW_READY?몄? ?뺤씤?⑸땲??" },
-        { label: "latest job", detail: "諛⑷툑 ?ㅽ뙣???묒뾽???덉쑝硫??밴꺽蹂대떎 recover瑜?癒쇱? 吏꾪뻾?⑸땲??" },
-        { label: "output manifest", detail: "upload manifest? output presence媛 留욌뒗吏 ?뺤씤?⑸땲??" }
+        { label: "episode state", detail: "Confirm COMPLETED or PREVIEW_READY first." },
+        { label: "latest job", detail: "If a failed or stalled job is still open, recover before publish." },
+        { label: "output manifest", detail: "Confirm upload manifest and output presence together." }
       ]
     },
     {
-      title: "李⑤떒 ??蹂듦?",
-      intro: "publish媛 留됲엳硫?raw folder蹂대떎 owner episode? linked job 履쎌쑝濡??섎룎?꾧????⑸땲??",
+      title: "Blocked-path recovery",
+      intro: "If publish is blocked, return to the owner episode and linked job before raw folder inspection.",
       tone: "warn",
       items: [
-        { label: "jobs", detail: "?ㅽ뙣??理쒖떊 ?묒뾽怨?retryability瑜??뺤씤?⑸땲??" },
-        { label: "artifacts", detail: "異쒕젰??鍮꾨㈃ render / compile ?④퀎遺???ㅼ떆 遊낅땲??" },
-        { label: "health", detail: "?쒕퉬????섍? ?덉쑝硫??밴꺽??硫덉텛怨?蹂듦뎄 紐낅졊??癒쇱? 怨좊쫭?덈떎." }
+        { label: "jobs", detail: "Review failed jobs and retryability first." },
+        { label: "artifacts", detail: "Confirm outputs were actually refreshed by render or compile." },
+        { label: "health", detail: "If queue or storage health is degraded, repair the platform first." }
       ],
       linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/health">Health</a>'
     },
@@ -1565,17 +1565,17 @@ export function buildJobDetailPageBody(input: JobDetailPageBodyInput): string {
   const statusText = stripHtml(input.statusBadge) || "unknown";
   const logs = parseLogEntries(input.logRows);
   const latestLog = logs.at(-1) ?? null;
-  const latestResultText = latestLog ? summarizeText(latestLog.message, 140) : "湲곕줉??理쒖떊 濡쒓렇媛 ?놁뒿?덈떎.";
+  const latestResultText = latestLog ? summarizeText(latestLog.message, 140) : "No latest log is recorded.";
   const blockerText = extractLastErrorText(input.errorStack);
-  const hasBlocker = !/(湲곕줉??lastError ?놁쓬|\(?놁쓬\))/.test(blockerText);
+  const hasBlocker = !/(No lastError is recorded.|\(none\)|none)/i.test(blockerText);
   const canRetry = input.retryAction.includes("<form") && !input.retryAction.includes("disabled");
   const lifecycle = describeJobLifecycle(statusText, `${input.progress}%`, latestResultText);
   const retryTone: OpsRailTone = canRetry ? "bad" : lifecycle.shouldPublish ? "ok" : statusTone;
   const nextSafeActionLabel = canRetry ? "retry -> artifacts recheck" : lifecycle.safeActionLabel;
   const nextSafeActionDetail = canRetry
-    ? "??job object?먯꽌 retry????owner episode? linked outputs瑜??ㅼ떆 ?뺤씤?⑸땲??"
+    ? "Retry this job object first, then recheck the owner episode and linked outputs."
     : lifecycle.safeActionDetail;
-  const actionGrammarHtml = `<div class="stack"><span class="muted-text">detail -> retry / recover -> episode -> artifacts -> publish 臾몃쾿??媛숈? ?쒖꽌濡??좎??⑸땲??</span><div class="ops-link-row">${input.retryAction}<a href="/ui/hitl">recover</a>${
+  const actionGrammarHtml = `<div class="stack"><span class="muted-text">Keep the same order: detail -> retry / recover -> episode -> artifacts -> publish.</span><div class="ops-link-row">${input.retryAction}<a href="/ui/hitl">recover</a>${
     lifecycle.shouldInspectHealth ? '<a href="/ui/health">health</a>' : ""
   }<a href="/ui/episodes/${input.episodeId}">episode</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(
     input.episodeId
@@ -1587,17 +1587,17 @@ ${renderObjectSummaryHeader({
   eyebrow: "job object summary",
   title: "Job object summary",
   titleTag: "h2",
-  intro: "status, owner episode, latest result, retryability, blockers, next safe action, linked objects瑜?raw logs ?꾩뿉 怨좎젙?⑸땲??",
+  intro: "Pin status, owner episode, latest result, retryability, blockers, next safe action, and linked objects above the raw logs.",
   flash: input.flash,
   quickLinksHtml: `<a href="/ui/jobs">Jobs list</a><a href="/ui/episodes/${input.episodeId}">Episode</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(
     input.episodeId
   )}">Artifacts</a>`,
   summaryCards: [
-    { label: "status", valueHtml: input.statusBadge, hint: "status badge媛 retry / recover / publish hold ?먮떒??寃곗젙?⑸땲??", tone: statusTone },
+    { label: "status", valueHtml: input.statusBadge, hint: "The status badge should clarify retry, recover, and publish-hold decisions.", tone: statusTone },
     {
       label: "owner episode",
       valueHtml: `<a href="/ui/episodes/${input.episodeId}">${input.episodeId}</a>`,
-      hint: "紐⑸줉?쇰줈 ?뚯븘媛吏 ?딄퀬 owner object濡?諛붾줈 handoff ?⑸땲??",
+      hint: "Handoff directly to the owner object without going back to the list.",
       tone: "muted"
     },
     {
@@ -1614,8 +1614,8 @@ ${renderObjectSummaryHeader({
     },
     {
       label: "blockers",
-      valueHtml: `<strong>${hasBlocker ? "?덉쓬" : "?놁쓬"}</strong>`,
-      hint: hasBlocker ? blockerText : "?꾩옱 lastError blocker??蹂댁씠吏 ?딆뒿?덈떎.",
+      valueHtml: `<strong>${hasBlocker ? "present" : "none"}</strong>`,
+      hint: hasBlocker ? blockerText : "No current lastError blocker is visible.",
       tone: hasBlocker ? "bad" : "ok"
     },
     {
@@ -1626,36 +1626,36 @@ ${renderObjectSummaryHeader({
     }
   ],
   lifecycleTitle: "list -> detail -> recover -> handoff",
-  lifecycleIntro: "??detail? page媛 ?꾨땲??Job object ?쒖뼱硫댁엯?덈떎. latest result? blockers瑜??쎌? ???ㅼ쓬 ?④퀎濡쒕쭔 ?대룞?⑸땲??",
+  lifecycleIntro: "This is not a page surface; it is a Job object surface. Read latest result and blockers before moving forward.",
   lifecycleSteps: [
-    { label: "list", detail: "job list?먯꽌 ?ㅽ뙣 ?먮뒗 ?뺤껜 job??怨좊쫭?덈떎.", tone: "muted" },
-    { label: "detail", detail: "status, owner, latest result, retryability瑜??꾩뿉???쎌뒿?덈떎.", tone: statusTone },
+    { label: "list", detail: "Use the job list to pick failed or stalled jobs first.", tone: "muted" },
+    { label: "detail", detail: "Read status, owner, latest result, and retryability first.", tone: statusTone },
     {
       label: lifecycle.shouldRecover || canRetry ? "recover" : lifecycle.shouldInspectHealth ? "health" : "inspect",
-      detail: canRetry ? "retry ?먮뒗 recover 寃쎈줈瑜?怨좊쫭?덈떎." : lifecycle.safeActionDetail,
+      detail: canRetry ? "Choose retry or recover before reading deeper evidence." : lifecycle.safeActionDetail,
       tone: retryTone
     },
     {
       label: lifecycle.shouldPublish ? "handoff" : "linked objects",
-      detail: lifecycle.shouldPublish ? "owner episode? artifacts ?뺥빀 ??publish濡??섍퉩?덈떎." : "owner episode? artifacts瑜?癒쇱? 留욎땅?덈떎.",
+      detail: lifecycle.shouldPublish ? "If owner episode and artifacts are coherent, hand off to publish." : "Inspect owner episode and artifacts first.",
       tone: lifecycle.shouldPublish ? "ok" : "muted"
     }
   ],
   panels: [
     {
-      title: "怨듯넻 ?≪뀡 臾몃쾿",
-      intro: "retry / recover / episode / artifacts / publish handoff瑜?媛숈? 臾몃쾿?쇰줈 ?좎??⑸땲??",
+      title: "Common action grammar",
+      intro: "Keep detail -> retry / recover -> episode -> artifacts -> publish in the same order.",
       tone: retryTone,
       bodyHtml: actionGrammarHtml
     },
     {
       title: "linked objects",
-      intro: "detail?먯꽌 諛붾줈 owner episode, artifacts, publish 寃쎈줈濡?handoff ?⑸땲??",
+      intro: "Handoff directly from detail into owner episode, artifacts, and publish routes.",
       tone: "ok",
       items: [
-        { label: "owner episode", detail: "?뚯쑀 object ?곹깭? ?꾩냽 ?뚮뜑 寃쎈줈瑜??뺤씤?⑸땲??" },
-        { label: "artifacts", detail: "output presence ?뺤씤???꾩슂???뚮쭔 raw folder濡??대젮媛묐땲??" },
-        { label: "publish handoff", detail: "?깃났 寃곌낵瑜??밴꺽????媛숈? episode id濡??섍퉩?덈떎." }
+        { label: "owner episode", detail: "Check owner-object context first." },
+        { label: "artifacts", detail: "Verify output presence before opening the raw folder." },
+        { label: "publish handoff", detail: "Only hand off with the same episode id when the latest result looks stable." }
       ],
       linksHtml: `<a href="/ui/episodes/${input.episodeId}">episode</a><a href="/artifacts/${input.episodeId}/">artifacts folder</a><a href="/ui/publish?episodeId=${encodeURIComponent(
         input.episodeId
@@ -1663,12 +1663,12 @@ ${renderObjectSummaryHeader({
     },
     {
       title: "raw evidence discipline",
-      intro: "?먯떆 evidence?????먮떒硫??ㅼ뿉留??〓땲?? latest result? blockers瑜?癒쇱? ?붿빟?댁꽌 ?쎌뒿?덈떎.",
+      intro: "Raw evidence belongs at the end. Summarize latest result and blockers first.",
       tone: hasBlocker ? "warn" : "muted",
       items: [
-        { label: "latest result", detail: latestLog ? `${latestLog.createdAt} 쨌 ${latestResultText}` : lifecycle.latestResult },
+        { label: "latest result", detail: latestLog ? `${latestLog.createdAt} @ ${latestResultText}` : lifecycle.latestResult },
         { label: "blocker snapshot", detail: blockerText },
-        { label: "raw logs", detail: "retry? recover 寃쎈줈瑜??뺥븳 ?ㅼ뿉留?2李?evidence濡??대젮媛묐땲??" }
+        { label: "raw logs", detail: "Only drop into secondary evidence after choosing retry or recover." }
       ]
     }
   ]
@@ -1678,7 +1678,7 @@ ${renderObjectSummaryHeader({
   <div class="section-head">
     <div>
       <h2>Blocker snapshot</h2>
-      <p class="section-intro">媛??以묒슂??failure context留??④퉩?덈떎. raw logs蹂대떎 ?꾩뿉 ?먮뒗 留덉?留??먮떒??evidence?낅땲??</p>
+      <p class="section-intro">Pin failure context here first. This is primary evidence that should sit above the raw logs.</p>
     </div>
   </div>
   <div class="ops-resource-card">${input.errorStack}</div>
@@ -1687,13 +1687,13 @@ ${renderObjectSummaryHeader({
 <section class="card ops-table-shell ops-log-table" data-surface-role="evidence" data-surface-priority="secondary">
   <div class="ops-table-meta">
     <div>
-      <h2>?먯떆 濡쒓렇 / 2李?evidence</h2>
-      <p class="section-intro">retry? recovery 寃쎈줈媛 ?꾩뿉???뺣━???ㅼ뿉留?raw log evidence瑜??뺤씤?⑸땲??</p>
+      <h2>Raw logs / secondary evidence</h2>
+      <p class="section-intro">Only inspect raw log evidence after the retry or recovery path is decided.</p>
     </div>
     <input id="job-log-filter" type="search" data-table-filter="job-log-table" data-url-param="jobLogFilter" aria-label="Job log filter" aria-controls="job-log-table" placeholder="Search logs"/>
   </div>
-  <div class="table-wrap"><table id="job-log-table" aria-label="Job log evidence">${renderSrOnlyCaption("Job log evidence table with timestamp, level, message, and details.")}<thead><tr><th>?앹꽦 ?쒓컖</th><th>?덈꺼</th><th>硫붿떆吏</th><th>?곸꽭</th></tr></thead><tbody>${
-    input.logRows || renderTableEmptyRow(4, "濡쒓렇媛 ?놁뒿?덈떎.")
+  <div class="table-wrap"><table id="job-log-table" aria-label="Job log evidence">${renderSrOnlyCaption("Job log evidence table with timestamp, level, message, and details.")}<thead><tr><th>Created at</th><th>Level</th><th>Message</th><th>Details</th></tr></thead><tbody>${
+    input.logRows || renderTableEmptyRow(4, "No logs found.")
   }</tbody></table></div>
 </section>`;
 }
@@ -1707,28 +1707,28 @@ ${renderOpsStyle()}
 ${renderObjectSummaryHeader({
   eyebrow: "recover preflight",
   title: t.title,
-  intro: "?ㅽ뙣 job object?먯꽌 recover濡??섏뼱媛???쒖뼱硫댁엯?덈떎. failed detail, dryRun preflight, artifacts handoff, publish hold瑜?媛숈? ?먮쫫?쇰줈 ?좎??⑸땲??",
+  intro: "Use the failed job object to anchor recover, then read failed detail, dry-run preflight, artifact handoff, and publish hold in the same order.",
   flash: input.flash,
   quickLinksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/publish">Publish</a><a href="/ui/artifacts">Artifacts</a>',
   summaryCards: [
-    { label: "failure anchor", valueHtml: "<strong>failed job detail</strong>", hint: "?먯씤 ?뺤씤? ??긽 failed job object?먯꽌 ?쒖옉?⑸땲??", tone: "bad" },
-    { label: "recover input", valueHtml: "<strong>episodeId + failedShotIds</strong>", hint: "蹂듦뎄 ???object瑜?紐낆떆?곸쑝濡?醫곹???rerender ?⑸땲??", tone: "warn" },
-    { label: "preflight", valueHtml: "<strong>dryRun first</strong>", hint: "?ㅽ뻾 ??寃쎈줈 寃利앹쓣 癒쇱? ?듦낵?쒗궎??寃껋씠 ?덉쟾?⑸땲??", tone: "warn" },
-    { label: "handoff", valueHtml: "<strong>artifacts -> publish</strong>", hint: "蹂듦뎄 ?깃났 ??諛붾줈 ?밴꺽?섏? 留먭퀬 linked outputs ?뺥빀??癒쇱? 留욎땅?덈떎.", tone: "ok" }
+    { label: "failure anchor", valueHtml: "<strong>failed job detail</strong>", hint: "Start by checking blockers on the failed job object.", tone: "bad" },
+    { label: "recover input", valueHtml: "<strong>episodeId + failedShotIds</strong>", hint: "Keep the recovery target aligned on the same object axis.", tone: "warn" },
+    { label: "preflight", valueHtml: "<strong>dryRun first</strong>", hint: "Validate the route with dryRun before execution.", tone: "warn" },
+    { label: "handoff", valueHtml: "<strong>artifacts -> publish</strong>", hint: "Confirm linked outputs after recovery before handoff to publish.", tone: "ok" }
   ],
   lifecycleTitle: "failed job -> preflight -> rerender -> handoff",
-  lifecycleIntro: "HITL? raw rerender 踰꾪듉???꾨땲??recover preflight?낅땲?? failed detail怨?linked outputs瑜??딆? ?딄퀬 ?댁뼱???⑸땲??",
+  lifecycleIntro: "HITL is not a raw rerender button. It is a recovery preflight surface that should read failed detail and linked outputs first.",
   lifecycleSteps: [
-    { label: "failed job", detail: "?ㅽ뙣 job detail?먯꽌 blocker? root cause瑜??쎌뒿?덈떎.", tone: "bad" },
-    { label: "preflight", detail: "episodeId, failedShotIds, dryRun?쇰줈 recover 寃쎈줈瑜?寃利앺빀?덈떎.", tone: "warn" },
-    { label: "rerender", detail: "??job object瑜??앹꽦?섎릺 recover 臾몃㎘???좎??⑸땲??", tone: "warn" },
-    { label: "handoff", detail: "artifacts ?뺥빀 ?ㅼ뿉留?publish handoff濡??섍퉩?덈떎.", tone: "ok" }
+    { label: "failed job", detail: "Read blockers and root cause from failed job detail first.", tone: "bad" },
+    { label: "preflight", detail: "Validate the recover route with episodeId, failedShotIds, and dryRun first.", tone: "warn" },
+    { label: "rerender", detail: "Continue recovery execution on the same job-object axis.", tone: "warn" },
+    { label: "handoff", detail: "Only move to publish handoff after artifact verification.", tone: "ok" }
   ]
 })}
 
 ${renderRailSection({
   title: "recover preflight + next safe action",
-  intro: "failed row瑜?怨좊Ⅴ怨?rerender瑜??ㅽ뻾???? artifacts? publish hold源뚯? 媛숈? ?덉씪?먯꽌 ?뺤씤?⑸땲??",
+  intro: "Read rerender request, artifacts, and publish hold from the same failed-row surface.",
   cards: [
     {
       title: "failed row intake",
@@ -1744,9 +1744,9 @@ ${renderRailSection({
     },
     {
       title: "recover request",
-      intro: "蹂듦뎄 ???shot id瑜?紐낆떆?섍퀬 dryRun?쇰줈 寃쎈줈瑜?癒쇱? 寃利앺븷 ???덉뒿?덈떎.",
+      intro: "Specify the recovery shot ids explicitly and validate the route with dryRun first.",
       tone: "warn",
-      bodyHtml: `<form method="post" action="/ui/hitl/rerender" class="ops-form-shell"><div class="field"><label for="hitl-episode-id">episodeId</label><input id="hitl-episode-id" name="episodeId" value="${input.episodeIdValue}" required/></div><div class="field"><label for="hitl-shot-ids">failedShotIds <span class="hint" data-tooltip="${t.failedShotHelp}">?</span></label><input id="hitl-shot-ids" name="failedShotIds" value="${input.failedShotIdsValue}" placeholder="shot_1,shot_2" required/><small>${t.failedShotHint}</small></div><label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun (?ㅽ뻾 ??寃利?</label><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="HITL rerender ?ㅽ뻾">${t.runAction}</button></div></form>`
+      bodyHtml: `<form method="post" action="/ui/hitl/rerender" class="ops-form-shell"><div class="field"><label for="hitl-episode-id">episodeId</label><input id="hitl-episode-id" name="episodeId" value="${input.episodeIdValue}" required/></div><div class="field"><label for="hitl-shot-ids">failedShotIds <span class="hint" data-tooltip="${t.failedShotHelp}">?</span></label><input id="hitl-shot-ids" name="failedShotIds" value="${input.failedShotIdsValue}" placeholder="shot_1,shot_2" required/><small>${t.failedShotHint}</small></div><label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun (validate before run)</label><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="Run HITL rerender">${t.runAction}</button></div></form>`
     },
     {
       title: "recover -> handoff",
@@ -1764,9 +1764,9 @@ ${renderRailSection({
       intro: "Use this surface to validate the rerender request, not to bypass the failed-job diagnosis.",
       tone: "muted",
       items: [
-        { label: "Dry run first", detail: "failure mode媛 ?룰컝由щ㈃ episodeId? failedShotIds瑜?癒쇱? 寃利앺븳 ???ㅼ젣 rerender瑜??ㅽ뻾?⑸땲??" },
-        { label: "Keep the failed row nearby", detail: "?꾪꽣濡????row瑜?醫곹? owner episode? blocker瑜????놁뿉 ??梨꾨줈 蹂듦뎄瑜?吏꾪뻾?⑸땲??" },
-        { label: "Return from the same object", detail: "rerender ?ㅼ뿉??媛숈? episode object?먯꽌 artifacts? publish瑜??ㅼ떆 ?щ뒗 ?몄씠 ?덉쟾?⑸땲??" }
+        { label: "Dry run first", detail: "Narrow the failure mode by validating episodeId and failedShotIds with dryRun before rerender." },
+        { label: "Keep the failed row nearby", detail: "Keep owner episode and blocker context visible from the same row while recovering." },
+        { label: "Return from the same object", detail: "After rerender, reopen artifacts and publish from the same episode object." }
       ],
       linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/artifacts">Artifacts</a>'
     }
@@ -1777,10 +1777,10 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.failedJobs}</h2>
-      <p class="section-intro">row action grammar瑜?failed job object -> owner episode -> preflight blocker -> recover -> handoff ?쒖꽌濡??듭씪?⑸땲??</p>
+      <p class="section-intro">Normalize row-action grammar to failed job object -> owner episode -> preflight blocker -> recover -> handoff.</p>
     </div>
   </div>
-  <div class="table-wrap"><table id="hitl-failed-table" aria-label="?ㅽ뙣 ?묒뾽 蹂듦뎄 ?뚯씠釉?>${renderSrOnlyCaption(
+  <div class="table-wrap"><table id="hitl-failed-table" aria-label="Failed job recovery table">${renderSrOnlyCaption(
     "Failed job recovery table with owner episode, preflight blocker, next safe action, and handoff."
   )}<thead><tr><th>failed job object / lifecycle</th><th>owner episode / linked objects</th><th>topic / type</th><th>preflight blocker</th><th>next safe action</th><th>recover -> handoff</th></tr></thead><tbody>${
     rowsHtml || renderTableEmptyRow(6, t.noFailedJobs)
@@ -1853,7 +1853,7 @@ export function buildArtifactsPageBody(input: ArtifactsPageBodyInput): string {
   const t = UI_TEXT.artifacts;
   const hasEpisodeLinks = input.episodeLinks.trim().length > 0;
   const rowsHtml = input.rows ? renderPoweredArtifactsTableRows(input.rows, input.episodeId.trim()) : "";
-  const linkedOutputsHtml = hasEpisodeLinks ? input.episodeLinks : '<div class="notice">?꾩쭅 ?먰뵾?뚮뱶 鍮좊Ⅸ 留곹겕瑜?遺덈윭?ㅼ? ?딆븯?듬땲??</div>';
+  const linkedOutputsHtml = hasEpisodeLinks ? input.episodeLinks : '<div class="notice">Episode-linked outputs are not available yet.</div>';
 
   return `
 ${renderOpsStyle()}
@@ -1862,7 +1862,7 @@ ${renderOpsStyle()}
     <div class="ops-titleblock">
       <span class="eyebrow">linked outputs</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">?곗텧臾??붾㈃? raw directory 釉뚮씪?곗?媛 ?꾨땲??linked object view?낅땲?? episode id瑜?以묒떖?쇰줈 output presence? recovery anchor瑜??④퍡 遊낅땲??</p>
+      <p class="section-intro">This surface is not a raw directory browser. Treat artifacts as a linked-object view anchored on episode id, output presence, and recovery anchors.</p>
     </div>
     <div class="quick-links"><a href="/artifacts/">${t.openArtifacts}</a><a href="/ui/episodes">${t.openEpisodes}</a><a href="/ui/jobs">Jobs</a></div>
   </div>
@@ -1895,31 +1895,31 @@ ${renderListPowerSurface({
 })}
 
 ${renderRailSection({
-  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
-  intro: "episode lookup, linked outputs, recovery anchor瑜?媛숈? ?붾㈃ ?꾩そ???좎??⑸땲??",
+  title: "Next safe action",
+  intro: "Pin episode lookup, linked outputs, and recovery anchors at the top of the surface.",
   cards: [
     {
       title: "episode lookup",
-      intro: "媛숈? object id濡?output set??鍮좊Ⅴ寃??щ뒗 吏꾩엯?먯엯?덈떎.",
+      intro: "Use the same object id as a fast entry point into the output set.",
       tone: "muted",
-      bodyHtml: `<form method="get" action="/ui/artifacts" class="ops-form-shell"><div class="field"><label for="artifact-episode-id">episodeId</label><input id="artifact-episode-id" name="episodeId" value="${input.episodeId}"/><small>${t.episodeHelp}</small></div><div class="actions"><button type="submit" class="secondary" data-primary-action="1" data-primary-label="?먰뵾?뚮뱶 ?곗텧臾??닿린">${t.quickLinkAction}</button></div></form>`
+      bodyHtml: `<form method="get" action="/ui/artifacts" class="ops-form-shell"><div class="field"><label for="artifact-episode-id">episodeId</label><input id="artifact-episode-id" name="episodeId" value="${input.episodeId}"/><small>${t.episodeHelp}</small></div><div class="actions"><button type="submit" class="secondary" data-primary-action="1" data-primary-label="Open episode artifacts">${t.quickLinkAction}</button></div></form>`
     },
     {
       title: "linked outputs",
       intro: hasEpisodeLinks
-        ? "???ㅻ툕?앺듃? 吏곸젒 ?곌껐??outputs瑜??꾩뿉??諛붾줈 ?뺤씤?⑸땲??"
-        : "episode id瑜??낅젰?섎㈃ ???ㅻ툕?앺듃??linked outputs瑜?癒쇱? ?꾩썎?덈떎.",
+        ? "Read linked outputs first from the same episode object."
+        : "Enter an episode id to inspect linked outputs on the same axis.",
       tone: hasEpisodeLinks ? "ok" : "muted",
       bodyHtml: `<div class="ops-resource-card"><div class="ops-resource-list">${linkedOutputsHtml}</div></div>`
     },
     {
-      title: "蹂듦뎄 ?듭빱",
-      intro: "?꾨씫 output? ?遺遺??곸쐞 ?뚯씠?꾨씪???④퀎?먯꽌 ?닿껐?⑸땲??",
+      title: "Recovery entry",
+      intro: "If linked outputs are missing, decide which upstream stage to reopen first.",
       tone: "warn",
       items: [
-        { label: "shots.json ?놁쓬", detail: "compile_shots ?먮뒗 beats ?앹꽦 ?묒뾽遺???ㅼ떆 ?뺤씤?⑸땲??" },
-        { label: "preview / final ?놁쓬", detail: "愿??render job ?먮뒗 HITL rerender 寃쎈줈濡??섎룎?꾧컩?덈떎." },
-        { label: "upload manifest ?놁쓬", detail: "publish瑜?硫덉텛怨?linked outputs ?뺥빀遺??留욎땅?덈떎." }
+        { label: "Check shots.json", detail: "Confirm compile_shots and beats generation completed successfully." },
+        { label: "Check preview / final", detail: "Confirm render job or HITL rerender outputs were truly refreshed." },
+        { label: "Check upload manifest", detail: "Confirm linked outputs before publish." }
       ],
       linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a><a href="/ui/publish">Publish</a>'
     },
@@ -1940,8 +1940,8 @@ ${renderRailSection({
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>?먯떆 ?곗텧臾??몃뜳??/h2>
-      <p class="section-intro">???쒕뒗 2李?evidence?낅땲?? linked outputs? recovery anchor瑜?蹂??ㅼ뿉留?raw index瑜??뺤씤?⑸땲??</p>
+      <h2>Raw artifact index</h2>
+      <p class="section-intro">This is secondary evidence. Read linked outputs and recovery anchors before opening the raw index.</p>
     </div>
     <input id="artifact-index-filter" type="search" data-table-filter="artifact-index-table" data-url-param="artifactsFilter" aria-label="Artifact index filter" aria-controls="artifact-index-table" placeholder="${t.indexFilterPlaceholder}"/>
   </div>
@@ -1959,50 +1959,50 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">?먯젙 surface</span>
+      <span class="eyebrow">decision surface</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">rollout怨?compare ?좏샇瑜?raw JSON???꾨땲??decision surface濡??쎌뒿?덈떎. ?먮떒, recovery, linked evidence瑜?媛숈? ?꾧퀎濡?留욎땅?덈떎.</p>
+      <p class="section-intro">Read rollout and compare signals as a decision surface rather than raw JSON. Keep judgement, recovery, and linked evidence on the same level.</p>
     </div>
-    <div class="quick-links"><a href="/ui/benchmarks">踰ㅼ튂留덊겕</a><a href="/ui/health">${t.openHealth}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+    <div class="quick-links"><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/health">${t.openHealth}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
   </div>
   ${input.flash}
   <div class="summary-grid">${input.summaryCards}</div>
 </section>
 
 ${renderRailSection({
-  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
-  intro: "filter, compare read order, recovery anchor瑜????꾩뿉 怨좎젙???먮떒 ?쇰줈?꾨? 以꾩엯?덈떎.",
+  title: "Next safe action",
+  intro: "Fix the filter, compare read order, and recovery anchor before making the decision.",
   cards: [
     {
-      title: "?좏샇 ?꾪꽣",
-      intro: "signal, status, verdict, reason, source瑜?湲곗??쇰줈 臾몄젣 臾띠쓬??癒쇱? 醫곹옓?덈떎.",
+      title: "Signal filter",
+      intro: "Read signal, status, verdict, reason, and source in the same order.",
       tone: "muted",
       bodyHtml: renderSearchCluster({
         id: "rollouts-filter",
         targetId: "rollouts-table",
-        label: "濡ㅼ븘???좏샇 ?꾪꽣",
+        label: "Rollout signal filter",
         placeholder: t.filterPlaceholder,
-        hint: "?좏샇 醫낅쪟, ?곹깭, ?먯젙, ?ъ쑀, ?뚯뒪濡?諛붾줈 以꾩엯?덈떎."
+        hint: "Search signal name, state, verdict, and reason together."
       })
     },
     {
-      title: "鍮꾧탳 ?쎈뒗 ?쒖꽌",
-      intro: "?곹깭蹂대떎 ?먯젙怨??ъ쑀瑜?癒쇱? ?쎄퀬, compare action? 洹??ㅼ쓬???쎈땲??",
+      title: "Compare read order",
+      intro: "Read status and verdict first, then move into compare action.",
       tone: "warn",
       items: [
-        { label: "status", detail: "blocked? below-min? 利됱떆 李⑤떒 ?좏샇濡?痍④툒?⑸땲??" },
-        { label: "verdict / reason", detail: "?섏튂留?蹂댁? 留먭퀬 ??留됲삍?붿? reason??癒쇱? ?쎌뒿?덈떎." },
-        { label: "compare action", detail: "?곸꽭? ?먯떆 JSON? ?먮떒???쒖? ?딆쓣 ?뚮쭔 ?쎈땲??" }
+        { label: "status", detail: "Read blocked and below-min signals first." },
+        { label: "verdict / reason", detail: "Keep verdict and reason legible on the same line." },
+        { label: "compare action", detail: "Choose the next compare action before opening raw JSON." }
       ]
     },
     {
-      title: "蹂듦뎄 / linked evidence",
-      intro: "rollout signal? benchmark, artifacts, health? 媛숈씠 臾띠뼱??遊먯빞 ?⑸땲??",
+      title: "Recovery / linked evidence",
+      intro: "Keep the path from rollout signal into benchmarks, artifacts, and health visible together.",
       tone: "ok",
       items: [
-        { label: "benchmark? 鍮꾧탳", detail: "?숈씪 踰덈뱾??upstream benchmark 寃곌낵瑜??④퍡 ?뺤씤?⑸땲??" },
-        { label: "artifacts handoff", detail: "?먯젙 洹쇨굅媛 ?꾩슂??寃쎌슦?먮쭔 linked outputs濡??대룞?⑸땲??" },
-        { label: "health ?뺤씤", detail: "?쒕퉬????섍? 蹂댁씠硫?signal ?먯껜蹂대떎 ?명봽??蹂듦뎄瑜?癒쇱? ?⑸땲??" }
+        { label: "Benchmark compare", detail: "Inspect the matching upstream benchmark first." },
+        { label: "Artifacts handoff", detail: "After a rollout verdict, drop only into linked outputs." },
+        { label: "Health check", detail: "Confirm whether platform health influenced the signal." }
       ],
       linksHtml: '<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/health">Health</a>'
     },
@@ -2024,10 +2024,10 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.tableTitle}</h2>
-      <p class="section-intro">媛??됱? signal -> verdict -> reason -> next compare action ?쒖꽌濡??쎌뒿?덈떎.</p>
+      <p class="section-intro">Read each signal as signal -> verdict -> reason -> next compare action.</p>
     </div>
   </div>
-  <div class="table-wrap"><table id="rollouts-table" aria-label="Rollout signal table">${renderSrOnlyCaption("Rollout signal table with object, decision state, reason, and source links.")}<thead><tr><th>?ㅻ툕?앺듃 / 鍮꾧탳 ?≪뀡</th><th>?곹깭</th><th>?먯닔</th><th>?먯젙</th><th>?ъ쑀</th><th>?앹꽦 ?쒓컖</th><th>?뚯뒪</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="rollouts-table" aria-label="Rollout signal table">${renderSrOnlyCaption("Rollout signal table with object, decision state, reason, and source links.")}<thead><tr><th>Object / compare action</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th><th>Created at</th><th>Source</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(7, t.noSignals)
   }</tbody></table></div>
 </section>
@@ -2035,7 +2035,7 @@ ${renderRailSection({
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>2李?evidence / sources</h2>
+      <h2>Secondary evidence / sources</h2>
       <p class="section-intro">${t.sourcesHint}</p>
     </div>
   </div>
@@ -2053,7 +2053,7 @@ ${renderOpsStyle()}
     <div class="ops-titleblock">
       <span class="eyebrow">compare surface</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">benchmark??scenario compare? regression recover瑜??④퍡 蹂대뒗 ?붾㈃?낅땲?? heavy evidence蹂대떎 鍮꾧탳 ?먮떒怨?next action??癒쇱? ?щ┰?덈떎.</p>
+      <p class="section-intro">Benchmarks combine scenario compare with regression recovery. Put compare judgement and next action above heavy evidence.</p>
     </div>
     <div class="quick-links"><a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
   </div>
@@ -2062,8 +2062,8 @@ ${renderOpsStyle()}
 </section>
 
 ${renderRailSection({
-  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
-  intro: "backend matrix? regression queue瑜?媛숈? compare grammar濡??쎄퀬, sources??留덉?留됱뿉 ?대┰?덈떎.",
+  title: "Next safe action",
+  intro: "Read the backend matrix and regression queue with the same compare grammar, and push sources to the end.",
   cards: [
     {
       title: "backend matrix read order",
@@ -2076,13 +2076,13 @@ ${renderRailSection({
       ]
     },
     {
-      title: "regression queue ?쎄린",
-      intro: "warning怨?error瑜?癒쇱? 蹂닿퀬 drift? issue瑜?洹??ㅼ쓬???댁꽍?⑸땲??",
+      title: "Regression queue read order",
+      intro: "Read warnings and errors first, then attach drift and issues behind them.",
       tone: "warn",
       items: [
-        { label: "寃쎄퀬 / ?ㅻ쪟", detail: "李⑤떒 ?щ?瑜?媛??癒쇱? ?먮떒?⑸땲??" },
-        { label: "?뚮뜑 ?쒕━?꾪듃", detail: "鍮꾧탳 湲곗???踰쀬뼱????쓣 鍮좊Ⅴ寃??쎌뒿?덈떎." },
-        { label: "?댁뒋 ?붿빟", detail: "?몃? evidence瑜??닿린 ?꾩뿉 ?ㅼ쓬 議곗튂瑜??뺥빀?덈떎." }
+        { label: "warning / error", detail: "Inspect risk signals first." },
+        { label: "Drift review", detail: "Read how far the compare result moved only after risk is clear." },
+        { label: "Issue separation", detail: "Choose the next action before dropping into raw evidence." }
       ]
     },
     {
@@ -2114,11 +2114,11 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.backendTitle}</h2>
-      <p class="section-intro">backend compare??1李??쒖엯?덈떎. row蹂?next action??癒쇱? ?쎄퀬 ?꾩슂???뚮쭔 source evidence濡??대젮媛묐땲??</p>
+      <p class="section-intro">Backend compare is the first entry point. Read row-level next action first and only descend into source evidence when needed.</p>
     </div>
     <input id="benchmark-backend-filter" type="search" data-table-filter="benchmark-backend-table" data-url-param="benchmarkBackendFilter" aria-label="Backend benchmark filter" aria-controls="benchmark-backend-table" placeholder="${t.backendFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="benchmark-backend-table" aria-label="Backend benchmark table">${renderSrOnlyCaption("Backend benchmark table with scenario status, latency, failure rate, notes, and sources.")}<thead><tr><th>?쒕굹由ъ삤 / ?ㅼ쓬 ?≪뀡</th><th>?곹깭</th><th>吏???쒓컙</th><th>?덉슜瑜?/th><th>?ㅽ뙣??/th><th>硫붾え</th><th>?뚯뒪</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="benchmark-backend-table" aria-label="Backend benchmark table">${renderSrOnlyCaption("Backend benchmark table with scenario status, latency, failure rate, notes, and sources.")}<thead><tr><th>Scenario / next action</th><th>Status</th><th>Latency</th><th>Cost rate</th><th>Failure rate</th><th>Notes</th><th>Source</th></tr></thead><tbody>${
     input.backendRows || renderTableEmptyRow(7, t.noBackendRows)
   }</tbody></table></div>
 </section>
@@ -2127,11 +2127,11 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.regressionTitle}</h2>
-      <p class="section-intro">regression queue??1李??쒖엯?덈떎. warning / error瑜?癒쇱? ?쎄퀬 drift? issue瑜??ㅼ뿉 遺숈엯?덈떎.</p>
+      <p class="section-intro">Regression queue is the first entry point. Read warnings and errors first, then drift and issues after them.</p>
     </div>
     <input id="benchmark-regression-filter" type="search" data-table-filter="benchmark-regression-table" data-url-param="benchmarkRegressionFilter" aria-label="Regression report filter" aria-controls="benchmark-regression-table" placeholder="${t.regressionFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="benchmark-regression-table" aria-label="Regression report table">${renderSrOnlyCaption("Regression report table with bundle status, warnings, profile, drift, issues, and sources.")}<thead><tr><th>踰덈뱾 / ?ㅼ쓬 ?≪뀡</th><th>?곹깭</th><th>寃쎄퀬 / ?ㅻ쪟</th><th>?꾨줈??/th><th>?뚮뜑 ?쒕━?꾪듃</th><th>?댁뒋</th><th>?뚯뒪</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="benchmark-regression-table" aria-label="Regression report table">${renderSrOnlyCaption("Regression report table with bundle status, warnings, profile, drift, issues, and sources.")}<thead><tr><th>Bundle / next action</th><th>Status</th><th>Warnings / errors</th><th>Profile</th><th>Drift</th><th>Issues</th><th>Source</th></tr></thead><tbody>${
     input.regressionRows || renderTableEmptyRow(7, t.noRegressionRows)
   }</tbody></table></div>
 </section>
@@ -2139,7 +2139,7 @@ ${renderRailSection({
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>2李?evidence / sources</h2>
+      <h2>Secondary evidence / sources</h2>
       <p class="section-intro">${t.sourcesHint}</p>
     </div>
   </div>
