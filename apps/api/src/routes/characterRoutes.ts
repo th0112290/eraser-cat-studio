@@ -1595,8 +1595,8 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
     addAction({
       id: `regenerate-${view}`,
       action: "regenerate-view",
-      label: `Regenerate ${view}`,
-      description: `${repairAcceptanceLead}${mode === "blocking" ? "Coherence is blocked on this view." : "This view is weakening the pack."} Re-run ${view} with ${candidateCount} candidates using ${regenerateSameSeed ? "the same seed" : "a new seed"}.${directiveSummary}${triageSummary}${repairAcceptanceSummary}${rerouteSummary}`,
+      label: `Candidate set / regenerate ${view}`,
+      description: `${repairAcceptanceLead}${mode === "blocking" ? "Coherence is blocked on this view." : "This view is weakening the pack."} Re-run the ${view} candidate set with ${candidateCount} candidates using ${regenerateSameSeed ? "the same seed" : "a new seed"}.${directiveSummary}${triageSummary}${repairAcceptanceSummary}${rerouteSummary}`,
       priority,
       view,
       candidateCount,
@@ -1729,8 +1729,8 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
     addAction({
       id: "recreate-pack",
       action: "recreate",
-      label: "Recreate full pack",
-      description: `Run a fresh full-pack pass with ${recreateCandidateCount} candidates${regenerateSameSeed ? " on the same seed" : " on a new seed"} to rebuild the front anchor and all linked angles.${autoRerouteFailed ? " Auto-reroute already failed once, so this is the safest reset." : ""}${selectionRisk?.suggestedAction === "recreate" ? ` Selection gate marked this pack as ${selectionRisk.level}.` : ""}${qualityEmbargo?.suggestedAction === "recreate" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.suggestedAction === "recreate" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
+      label: "Character Pack / recreate",
+      description: `Run a fresh Character Pack recreate pass with ${recreateCandidateCount} candidates${regenerateSameSeed ? " on the same seed" : " on a new seed"} to rebuild the front anchor and all linked angles.${autoRerouteFailed ? " Auto-reroute already failed once, so this is the safest reset." : ""}${selectionRisk?.suggestedAction === "recreate" ? ` Selection gate marked this pack as ${selectionRisk.level}.` : ""}${qualityEmbargo?.suggestedAction === "recreate" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.suggestedAction === "recreate" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
       priority:
         frontBlocked ||
         multiBlock ||
@@ -1774,11 +1774,11 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
     addAction({
       id: "pick-manually",
       action: "pick-manually",
-      label: "Review candidates manually",
+      label: "Candidate set / manual compare",
       description:
         manifest.status === "PENDING_HITL"
-          ? `Open the HITL picker and choose a tighter front/threeQuarter/profile combination.${autoReroute?.attempted ? ` Auto-reroute ${autoReroute.recovered ? "already recovered the pack once" : "already tried a recovery pass"} first.` : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`
-          : `Manual review is recommended before building the pack.${autoRerouteRecovered ? " Auto-reroute recovered the pack, but a human pass is still useful." : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
+          ? `Open the HITL compare surface and choose a tighter front/threeQuarter/profile combination for the Character Pack handoff.${autoReroute?.attempted ? ` Auto-reroute ${autoReroute.recovered ? "already recovered the pack once" : "already tried a recovery pass"} first.` : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`
+          : `Manual compare is recommended before building the Character Pack.${autoRerouteRecovered ? " Auto-reroute recovered the pack, but a human pass is still useful." : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
       priority: manifest.status === "PENDING_HITL" ? "high" : "medium",
       anchorId: "pick-candidates",
       reasonCodes: [
@@ -6530,88 +6530,233 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         : "";
     };
 
+    const renderGeneratorObjectCard = (title: string, value: string, detail: string): string =>
+      `<article class="cg-context-card"><h3>${escHtml(title)}</h3><p><strong>${escHtml(value)}</strong></p><p>${escHtml(
+        detail
+      )}</p></article>`;
+    const selectedWorkflowArtifactsSection =
+      workflowArtifactRows.length > 0
+        ? `<div class="asset-table-wrap"><table><thead><tr><th>View</th><th>Candidate</th><th>Workflow Exports</th></tr></thead><tbody>${workflowArtifactRows
+            .map(
+              ({ candidate, workflowFiles }) =>
+                `<tr><td>${escHtml(candidate.view)}</td><td>${escHtml(candidate.id)}</td><td>${renderArtifactLink(
+                  "api",
+                  workflowFiles?.apiPromptPath
+                )} | ${renderArtifactLink("summary", workflowFiles?.summaryPath)}${
+                  workflowFiles?.guiWorkflowPath ? ` | ${renderArtifactLink("gui", workflowFiles.guiWorkflowPath)}` : ""
+                }</td></tr>`
+            )
+            .join("")}</tbody></table></div>`
+        : `<div class="notice">No workflow export files were found in this manifest yet.</div>`;
+    const selectedPrimaryAction = selectedRecommendedActions[0] ?? null;
+    const selectedPrimaryActionTitle = selectedPrimaryAction
+      ? selectedPrimaryAction.action === "regenerate-view"
+        ? "Candidate set / regenerate one view"
+        : selectedPrimaryAction.action === "recreate"
+          ? "Character Pack / recreate from current run"
+          : "Candidate set / manual compare"
+      : selectedManifest?.characterPackId
+        ? "Character Pack object / handoff"
+        : "Candidate set / compare";
+    const selectedPrimaryActionScope = selectedPrimaryAction
+      ? selectedPrimaryAction.action === "recreate"
+        ? "Character Pack object"
+        : selectedPrimaryAction.action === "regenerate-view"
+          ? `Candidate set / ${selectedPrimaryAction.view ?? "view"}`
+          : "Candidate set / compare"
+      : selectedManifest?.characterPackId
+        ? "Character Pack object"
+        : "Generation Run object";
+    const selectedPrimaryActionDetail = selectedPrimaryAction
+      ? selectedPrimaryAction.description
+      : selectedManifest?.characterPackId
+        ? "Candidate compare is already closed. Move this Character Pack into review or active-baseline approval."
+        : "Read the candidate set first, then close the Compare stage before opening approval or rollback actions.";
+    const selectedPrimaryActionSurfaceHref = selectedPrimaryAction
+      ? selectedPrimaryAction.action === "regenerate-view"
+        ? "#regenerate-view"
+        : selectedPrimaryAction.action === "recreate"
+          ? "#recreate-pack"
+          : `#${selectedPrimaryAction.anchorId ?? "pick-candidates"}`
+      : selectedManifest?.characterPackId
+        ? "#pack-preview-handoff"
+        : "#pick-candidates";
+    const selectedPrimaryActionSurfaceLabel = selectedPrimaryAction
+      ? selectedPrimaryAction.action === "regenerate-view"
+        ? "Regenerate surface"
+        : selectedPrimaryAction.action === "recreate"
+          ? "Recreate surface"
+          : "Compare surface"
+      : selectedManifest?.characterPackId
+        ? "Pack handoff"
+        : "Candidate compare";
+    const selectedPrimaryActionControl =
+      selectedJob && selectedPrimaryAction?.action === "regenerate-view" && selectedPrimaryAction.view
+        ? `<div class="cg-inline-links"><a href="${escHtml(selectedPrimaryActionSurfaceHref)}">${escHtml(
+            selectedPrimaryActionSurfaceLabel
+          )}</a></div><div class="actions"><form method="post" action="/ui/character-generator/regenerate-view" class="inline"><input type="hidden" name="generateJobId" value="${escHtml(
+            selectedJob.id
+          )}"/><input type="hidden" name="viewToGenerate" value="${escHtml(
+            selectedPrimaryAction.view
+          )}"/><input type="hidden" name="candidateCount" value="${escHtml(
+            selectedPrimaryAction.candidateCount ?? 4
+          )}"/><input type="hidden" name="seed" value="${escHtml(
+            selectedPrimaryAction.seed ?? DEFAULT_GENERATION_SEED
+          )}"/><input type="hidden" name="regenerateSameSeed" value="${escHtml(
+            selectedPrimaryAction.regenerateSameSeed ?? true
+          )}"/><input type="hidden" name="boostNegativePrompt" value="${escHtml(
+            selectedPrimaryAction.boostNegativePrompt ?? false
+          )}"/><button type="submit"${
+            selectedPrimaryAction.priority === "high" ? "" : ' class="secondary"'
+          }>${escHtml(selectedPrimaryAction.label)}</button></form></div>`
+        : selectedJob && selectedPrimaryAction?.action === "recreate"
+          ? `<div class="cg-inline-links"><a href="${escHtml(selectedPrimaryActionSurfaceHref)}">${escHtml(
+              selectedPrimaryActionSurfaceLabel
+            )}</a></div><div class="actions"><form method="post" action="/ui/character-generator/recreate" class="inline"><input type="hidden" name="generateJobId" value="${escHtml(
+              selectedJob.id
+            )}"/><input type="hidden" name="candidateCount" value="${escHtml(
+              selectedPrimaryAction.candidateCount ?? 6
+            )}"/><input type="hidden" name="seed" value="${escHtml(
+              selectedPrimaryAction.seed ?? DEFAULT_GENERATION_SEED
+            )}"/><input type="hidden" name="regenerateSameSeed" value="${escHtml(
+              selectedPrimaryAction.regenerateSameSeed ?? false
+            )}"/><input type="hidden" name="boostNegativePrompt" value="${escHtml(
+              selectedPrimaryAction.boostNegativePrompt ?? false
+            )}"/><button type="submit"${
+              selectedPrimaryAction.priority === "high" ? "" : ' class="secondary"'
+            }>${escHtml(selectedPrimaryAction.label)}</button></form></div>`
+          : `<div class="cg-inline-links"><a href="${escHtml(selectedPrimaryActionSurfaceHref)}">${escHtml(
+              selectedPrimaryActionSurfaceLabel
+            )}</a>${
+              selectedManifest?.characterPackId
+                ? `<a href="/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}">Characters</a>`
+                : ""
+            }</div>`;
+    const selectedPrimaryActionReasonSummary =
+      selectedPrimaryAction?.reasonCodes.length ? selectedPrimaryAction.reasonCodes.join(", ") : "No escalation signals recorded.";
+    const selectedLinkedRoutes: Array<{ href: string; label: string }> = [
+      { href: "#pick-candidates", label: "Candidate compare" },
+      { href: "#recommended-actions", label: "Next safe actions" },
+      { href: "#regenerate-view", label: "Candidate regenerate" },
+      { href: "#recreate-pack", label: "Pack recreate" },
+      { href: "#compare-approved-packs", label: "Approved compare" },
+      { href: "/ui/studio", label: "Studio" }
+    ];
+    if (selectedManifest?.characterPackId) {
+      selectedLinkedRoutes.push(
+        { href: "#pack-preview-handoff", label: "Pack handoff" },
+        {
+          href: `/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}`,
+          label: "Characters"
+        }
+      );
+    }
+    if (selectedJob?.episode) {
+      selectedLinkedRoutes.push({
+        href: `/ui/episodes/${encodeURIComponent(selectedJob.episode.id)}`,
+        label: "Episode detail"
+      });
+    }
+    const selectedArtifactLinks: Array<{ href: string; label: string }> = [];
+    if (selectedManifest?.characterPackId) {
+      selectedArtifactLinks.push(
+        {
+          href: `/artifacts/characters/${encodeURIComponent(selectedManifest.characterPackId)}/pack.json`,
+          label: "pack.json"
+        },
+        {
+          href: `/artifacts/characters/${encodeURIComponent(selectedManifest.characterPackId)}/preview.mp4`,
+          label: "preview.mp4"
+        },
+        {
+          href: `/artifacts/characters/${encodeURIComponent(selectedManifest.characterPackId)}/qc_report.json`,
+          label: "qc_report.json"
+        }
+      );
+    }
+    const selectedDecisionEvidenceSection = selectedManifest
+      ? `${selectedPackCoherenceSection}${selectedDecisionOutcomeSection}${selectedFinalQualityFirewallSection}${selectedQualityEmbargoSection}${selectedPackDefectSummarySection}${selectedSelectionRiskSection}${selectedAutoRerouteSection}${selectedCandidateSummarySection}${selectedViewDecisionMatrixSection}`
+      : `<div class="notice">Manifest not available yet for this job.</div>`;
+    const selectedRouteEvidenceSection = selectedManifest
+      ? `${selectedReferenceSection}${selectedWorkflowRuntimeSection}${selectedWorkflowArtifactsSection}${selectedWorkflowStageSection}`
+      : `<div class="notice">Workflow route evidence is not available yet.</div>`;
     const selectedSection = selectedJob
-      ? `<section class="card"><h2>Candidates Ready for Comparison</h2><p>Stage 04에서 생성된 후보 workset이다. 여기서 입력, reference, policy, workflow diagnostics를 읽고 compare lane으로 넘깁니다.</p><div class="quick-links"><a href="#pick-candidates">HITL pick</a><a href="#recommended-actions">Approve / Recover</a>${
-          selectedManifest?.characterPackId
-            ? `<a href="/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}">Characters review</a>`
-            : ""
-        }</div><p>jobId: <strong>${escHtml(selectedJob.id)}</strong></p><p>status: <span class="badge ${uiBadge(
-          selectedJob.status
-        )}">${escHtml(selectedJob.status)}</span> / progress: ${escHtml(selectedJob.progress)}%</p><p>episode: ${
-          selectedJob.episode
-            ? `<a href="/ui/episodes/${escHtml(selectedJob.episode.id)}">${escHtml(selectedJob.episode.id)}</a> (${escHtml(
-                selectedJob.episode.topic ?? "-"
-              )})`
-            : "-"
-        }</p>${
-          selectedManifest
-            ? `<div class="notice">preset=${escHtml(selectedManifest.promptPreset)} / qualityProfile=${escHtml(
-                selectedManifest.qualityProfileId ?? selectedManifest.qualityProfile?.id ?? "-"
-              )} / provider=${escHtml(selectedManifest.provider)}</div><div class="grid two"><div><p>workflowHash: <code>${escHtml(
-              selectedManifest.workflowHash
-              )}</code></p><p>generatedAt: ${escHtml(selectedManifest.generatedAt || "-")}</p><p>templateVersion=${escHtml(
-                selectedManifest.templateVersion ?? selectedManifest.providerMeta?.workflowTemplateVersion ?? "-"
-              )} / workflowStage=${escHtml(selectedManifest.providerMeta?.workflowStage ?? "-")}</p><p>selection: minScore=${escHtml(
-                typeof selectedManifest.selectionHints?.minAcceptedScore === "number"
-                  ? selectedManifest.selectionHints.minAcceptedScore.toFixed(2)
-                  : "-"
-              )} / frontMinScore=${escHtml(
-                typeof selectedManifest.selectionHints?.frontMasterMinAcceptedScore === "number"
-                  ? selectedManifest.selectionHints.frontMasterMinAcceptedScore.toFixed(2)
-                  : "-"
-              )} / retries=${escHtml(
-                selectedManifest.selectionHints?.autoRetryRounds ?? "-"
-              )} / frontCandidates=${escHtml(
-                selectedManifest.selectionHints?.frontMasterCandidateCount ?? "-"
-              )} / repairCandidates=${escHtml(
-                selectedManifest.selectionHints?.repairCandidateCount ?? "-"
-              )} / repairFloor=${escHtml(
-                typeof selectedManifest.selectionHints?.repairScoreFloor === "number"
-                  ? selectedManifest.selectionHints.repairScoreFloor.toFixed(2)
-                  : "-"
-              )} / sequentialReference=${escHtml(
-                selectedManifest.selectionHints?.sequentialReference ?? "-"
-              )} / preferMultiReference=${escHtml(
-                selectedManifest.selectionHints?.preferMultiReference ?? "-"
-              )}</p></div><div><p>run: sampler=${escHtml(runSettings?.sampler ?? "-")} / scheduler=${escHtml(
-                runSettings?.scheduler ?? "-"
-              )} / steps=${escHtml(runSettings?.steps ?? "-")} / cfg=${escHtml(
-                runSettings?.cfg ?? "-"
-              )}</p><p>resolution=${escHtml(runSettings?.width ?? "-")}x${escHtml(
-                runSettings?.height ?? "-"
-              )}</p><p>postprocess=${escHtml(
-                Array.isArray(selectedManifest.qualityProfile?.postprocessPlan) &&
-                  selectedManifest.qualityProfile.postprocessPlan.length > 0
-                  ? selectedManifest.qualityProfile.postprocessPlan.join(", ")
-                  : "none"
-              )}</p><p>selectionSource=${escHtml(
-                selectedSelectionDiagnostics?.finalSelectionSource ?? "-"
-              )} / stageCount=${escHtml(selectedWorkflowStages.length)} / runtime=${escHtml(
-                summarizeSelectedWorkflowRuntimeDiagnostics(selectedWorkflowRuntimeDiagnostics)
-              )}</p></div></div>${selectedReferenceSection}${selectedWorkflowRuntimeSection}${selectedPackCoherenceSection}${selectedDecisionOutcomeSection}${selectedFinalQualityFirewallSection}${selectedQualityEmbargoSection}${selectedPackDefectSummarySection}${selectedSelectionRiskSection}${selectedAutoRerouteSection}${selectedCandidateSummarySection}${selectedViewDecisionMatrixSection}${selectedWorkflowStageSection}${
-                workflowArtifactRows.length > 0
-                  ? `<div class="asset-table-wrap"><table><thead><tr><th>View</th><th>Candidate</th><th>Workflow Exports</th></tr></thead><tbody>${workflowArtifactRows
-                      .map(
-                        ({ candidate, workflowFiles }) =>
-                          `<tr><td>${escHtml(candidate.view)}</td><td>${escHtml(candidate.id)}</td><td>${renderArtifactLink(
-                            "api",
-                            workflowFiles?.apiPromptPath
-                          )} | ${renderArtifactLink("summary", workflowFiles?.summaryPath)}${
-                            workflowFiles?.guiWorkflowPath
-                              ? ` | ${renderArtifactLink("gui", workflowFiles.guiWorkflowPath)}`
-                              : ""
-                          }</td></tr>`
-                      )
-                      .join("")}</tbody></table></div>`
-                  : `<div class="notice">No workflow export files were found in this manifest yet.</div>`
+      ? `<section class="card" id="cg-active-job"><h2>Generation Run object</h2><p>Stage 04에서 열린 Generation Run object입니다. 상태와 위험을 먼저 읽고, next safe action과 linked routes를 고정한 뒤 Compare와 Approve/Rollback 레인으로 넘기세요.</p><div class="cg-context-grid">${renderGeneratorObjectCard(
+          "Generation Run",
+          `${selectedJob.status} / ${selectedJob.progress}%`,
+          `jobId=${selectedJob.id} / episode=${
+            selectedJob.episode ? `${selectedJob.episode.id} / ${selectedJob.episode.topic ?? "-"}` : "not linked"
+          }`
+        )}${renderGeneratorObjectCard(
+          "Character Pack",
+          selectedManifest?.characterPackId ?? "pending handoff",
+          `manifest=${selectedManifest?.status ?? "missing"} / selectionSource=${
+            selectedSelectionDiagnostics?.finalSelectionSource ?? "-"
+          } / qualityProfile=${selectedManifest?.qualityProfileId ?? selectedManifest?.qualityProfile?.id ?? "-"}`
+        )}${renderGeneratorObjectCard(
+          "Workflow Policy",
+          `${selectedManifest?.promptPreset ?? "-"} / ${selectedManifest?.provider ?? "-"}`,
+          `minScore=${
+            typeof selectedManifest?.selectionHints?.minAcceptedScore === "number"
+              ? selectedManifest.selectionHints.minAcceptedScore.toFixed(2)
+              : "-"
+          } / frontCandidates=${selectedManifest?.selectionHints?.frontMasterCandidateCount ?? "-"} / repairCandidates=${
+            selectedManifest?.selectionHints?.repairCandidateCount ?? "-"
+          } / multiReference=${selectedManifest?.selectionHints?.preferMultiReference ?? "-"}`
+        )}${renderGeneratorObjectCard(
+          "Runtime Route",
+          `${runSettings?.sampler ?? "-"} / ${runSettings?.scheduler ?? "-"} / ${selectedManifest?.providerMeta?.workflowStage ?? "-"}`,
+          `template=${selectedManifest?.templateVersion ?? selectedManifest?.providerMeta?.workflowTemplateVersion ?? "-"} / runtime=${summarizeSelectedWorkflowRuntimeDiagnostics(
+            selectedWorkflowRuntimeDiagnostics
+          )} / stages=${selectedWorkflowStages.length}`
+        )}</div><div class="cg-guardrail-grid" style="margin-top:12px"><div class="cg-guardrail"><strong>Pack Coherence</strong><span>${escHtml(
+          summarizePackCoherence(selectedPackCoherence)
+        )}</span></div><div class="cg-guardrail"><strong>Decision Gate</strong><span>${escHtml(
+          selectedDecisionOutcome
+            ? `${selectedDecisionOutcome.status} / ${selectedDecisionOutcome.kind} / ${selectedDecisionOutcome.escalatedAction ?? "observe"}`
+            : selectedSelectionRisk
+              ? `${selectedSelectionRisk.level} / ${selectedSelectionRisk.suggestedAction ?? "observe"}`
+              : "not recorded"
+        )}</span></div><div class="cg-guardrail"><strong>Final Guardrails</strong><span>${escHtml(
+          `firewall=${selectedFinalQualityFirewall?.level ?? "none"} / embargo=${selectedQualityEmbargo?.level ?? "none"} / defects=${summarizePackDefectSummary(
+            selectedPackDefectSummary
+          )}`
+        )}</span></div><div class="cg-guardrail"><strong>Reference Continuity</strong><span>${escHtml(
+          selectedContinuity
+            ? `${selectedContinuity.applied ? "applied" : selectedContinuity.attempted ? "attempted" : "idle"} / ${
+                selectedContinuity.reason
               }`
-            : `<div class="notice">Manifest not available yet for this job.</div>`
-        }<div id="generation-status" class="notice" data-job-id="${escHtml(selectedJob.id)}">Polling latest status...</div><div class="actions"><button id="generation-retry" type="button" class="secondary" style="display:none">Retry now</button></div></section>`
-      : `<section class="card"><h2>Selected Generation Job</h2><div class="notice">Select a job from the list below.</div></section>`;
+            : "not recorded"
+        )}</span></div></div><div class="cg-context-grid" style="margin-top:12px"><article class="cg-context-card"><h3>Next safe action</h3><p><strong>${escHtml(
+          selectedPrimaryActionTitle
+        )}</strong></p><p>${escHtml(selectedPrimaryActionScope)}</p><p>${escHtml(selectedPrimaryActionDetail)}</p><p>reasons: ${escHtml(
+          selectedPrimaryActionReasonSummary
+        )}</p>${selectedPrimaryActionControl}</article><article class="cg-context-card"><h3>Linked routes</h3><p><strong>Follow the object, not the page.</strong></p><p>Studio는 빠른 라우팅만 맡고, compare/approve/rollback은 아래 전용 surface에서 닫습니다.</p><div class="cg-link-list">${selectedLinkedRoutes
+          .map((link) => `<a href="${escHtml(link.href)}">${escHtml(link.label)}</a>`)
+          .join("")}</div></article><article class="cg-context-card"><h3>Artifact handoff</h3><p><strong>${escHtml(
+          selectedManifest?.characterPackId ?? "Generation Run only"
+        )}</strong></p><p>${
+          selectedManifest?.characterPackId
+            ? "Character Pack object is ready for review handoff. Use the linked artifacts first, then move to Characters or baseline approval."
+            : "Character Pack object has not been materialized yet. Stay on Candidate compare and keep the evidence chain attached to this run."
+        }</p>${
+          selectedArtifactLinks.length > 0
+            ? `<div class="cg-inline-links">${selectedArtifactLinks
+                .map((link) => `<a href="${escHtml(link.href)}">${escHtml(link.label)}</a>`)
+                .join("")}</div>`
+            : `<div class="notice">No Character Pack artifacts are linked yet.</div>`
+        }<p>${escHtml(
+          workflowArtifactRows.length > 0
+            ? `${workflowArtifactRows.length} workflow export groups are attached to this run.`
+            : "Workflow export files are not attached yet."
+        )}</p></article></div><details class="card" style="margin-top:12px"><summary><strong>Decision evidence</strong></summary><div style="margin-top:10px">${selectedDecisionEvidenceSection}</div></details><details class="card" style="margin-top:10px"><summary><strong>Input / route evidence</strong></summary><div style="margin-top:10px">${selectedRouteEvidenceSection}</div></details><div id="generation-status" class="notice" data-job-id="${escHtml(
+          selectedJob.id
+        )}">Polling latest status...</div><div class="actions"><button id="generation-retry" type="button" class="secondary" style="display:none">Retry now</button></div></section>`
+      : `<section class="card" id="cg-active-job"><h2>Generation Run object</h2><div class="notice">Select a generation run from the list below.</div></section>`;
 
     const recommendedActionsSection =
       selectedJob && selectedManifest
-        ? `<section class="card" id="recommended-actions"><h2>Approve / Recover Decision</h2><p>compare 결과 뒤에만 노출되는 다음 수순이다. rollback, regenerate, recreate 패턴을 현재 팩 상태와 함께 읽으세요.</p>${
+        ? `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><p>이 레인은 compare 이후에만 읽는 안전한 다음 수순이다. Candidate set과 Character Pack object 중 무엇을 움직일지 먼저 드러내고, 깊은 preview/QC/lineage 판단은 Characters surface로 넘깁니다.</p>${
             selectedDecisionOutcome || selectedSelectionRisk || selectedAutoReroute || selectedFinalQualityFirewall
               ? `<div class="notice">decision: outcome=${escHtml(
                   selectedDecisionOutcome?.status ?? "unknown"
@@ -6632,10 +6777,28 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
               : ""
           }${
             selectedRecommendedActions.length > 0
-              ? `<div class="grid">${
+              ? `<div class="cg-context-grid">${
                   selectedRecommendedActions
                     .map((action) => {
                       const reasonSummary = action.reasonCodes.length > 0 ? action.reasonCodes.join(", ") : "-";
+                      const objectScope =
+                        action.action === "recreate"
+                          ? "Character Pack object"
+                          : action.action === "regenerate-view"
+                            ? `Candidate set / ${action.view ?? "view"}`
+                            : "Candidate set / compare";
+                      const routeHref =
+                        action.action === "recreate"
+                          ? "#recreate-pack"
+                          : action.action === "regenerate-view"
+                            ? "#regenerate-view"
+                            : `#${action.anchorId ?? "pick-candidates"}`;
+                      const routeLabel =
+                        action.action === "recreate"
+                          ? "Recreate surface"
+                          : action.action === "regenerate-view"
+                            ? "Regenerate surface"
+                            : "Compare surface";
                       const controls =
                         action.action === "regenerate-view" && action.view
                           ? `<form method="post" action="/ui/character-generator/regenerate-view" class="inline"><input type="hidden" name="generateJobId" value="${escHtml(
@@ -6668,28 +6831,32 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                                 action.label
                               )}</button></form>`
                             : `<a href="#${escHtml(action.anchorId ?? "pick-candidates")}">${escHtml(action.label)}</a>`;
-                      return `<div class="card"><p><span class="badge ${recommendedPriorityBadge(
+                      return `<article class="cg-context-card"><p><span class="badge ${recommendedPriorityBadge(
                         action.priority
-                      )}">${escHtml(action.priority)}</span> ${escHtml(action.label)}</p><p>${escHtml(
+                      )}">${escHtml(action.priority)}</span> ${escHtml(action.label)}</p><p><strong>${escHtml(
+                        objectScope
+                      )}</strong></p><p>${escHtml(
                         action.description
-                      )}</p><p>reasons: ${escHtml(reasonSummary)}</p><div class="actions">${controls}</div></div>`;
+                      )}</p><p>reasons: ${escHtml(reasonSummary)}</p><div class="cg-inline-links"><a href="${escHtml(
+                        routeHref
+                      )}">${escHtml(routeLabel)}</a></div><div class="actions">${controls}</div></article>`;
                     })
                     .join("")
                 }</div>`
-              : `<div class="notice">No immediate follow-up action is recommended for this job.</div>`
+              : `<div class="notice">No immediate follow-up action is recommended for this run.</div>`
           }</section>`
-        : `<section class="card"><h2>Approve / Recover Decision</h2><div class="notice">Select a generation job to see targeted regenerate/recreate suggestions.</div></section>`;
+        : `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><div class="notice">Select a generation run to see targeted candidate-regenerate, pack-recreate, or compare actions.</div></section>`;
 
     const regenerateSection = selectedJob
-      ? `<section class="card" id="regenerate-view"><h2>Regenerate Single View</h2><p>한 뷰만 다시 생성해 compare lane으로 되돌릴 때 사용합니다.</p><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="regenerate-view"><h2>Candidate Set / regenerate one view</h2><p>한 뷰의 candidate set만 다시 생성해 Compare lane으로 되돌릴 때 사용합니다. Pack 전체를 다시 닫아야 한다면 recreate를 사용하세요.</p><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
-        )}"/><label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Regenerate with same seed</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Strengthen negative prompt</label><div class="actions" style="grid-column:1/-1"><button type="submit">Run View Regeneration</button></div></form></section>`
+        )}"/><label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Same seed 유지</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 강화</label><div class="actions" style="grid-column:1/-1"><button type="submit">Candidate set 다시 생성</button></div></form></section>`
       : "";
 
     const recreateSection = selectedJob
-      ? `<section class="card" id="recreate-pack"><h2>Recreate Full Pack</h2><p>전체 팩을 새 기준으로 다시 올려 compare와 approval을 처음부터 다시 닫을 때 사용합니다.</p><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="recreate-pack"><h2>Character Pack / recreate from current run</h2><p>현재 Generation Run의 policy와 reference 문법을 유지한 채 Character Pack object를 처음부터 다시 올립니다. compare와 approval을 새 기준으로 다시 닫고 싶을 때 사용합니다.</p><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
-        )}"/><label>Candidate Count<input name="candidateCount" value="6"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true"/> Recreate with same seed</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Strengthen negative prompt</label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Run Full Pack Recreation</button></div></form></section>`
+        )}"/><label>Candidate Count<input name="candidateCount" value="6"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true"/> Same seed 유지</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 강화</label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Character Pack 재생성</button></div></form></section>`
       : "";
 
     const candidateOptions = (view: CharacterGenerationView): string => {
@@ -6711,7 +6878,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         ? (() => {
             const pickBlocked =
               selectedFinalQualityFirewall?.level === "block" || selectedDecisionOutcome?.status === "blocked";
-            return `<section class="card" id="pick-candidates"><h2>Pick Candidates (HITL)</h2><p>세 뷰의 후보를 비교한 뒤, pack build에 들어갈 조합을 명시적으로 선택합니다.</p>${
+            return `<section class="card" id="pick-candidates"><h2>Candidate Set / HITL compare</h2><p>세 뷰의 candidate set을 비교한 뒤 Character Pack build에 들어갈 조합을 명시적으로 선택합니다. 여기서 Compare를 닫고 나면 approval lane으로 이동합니다.</p>${
               pickBlocked
                 ? `<div class="notice">Direct pick is blocked because the selected pack still fails the final gate. Use regenerate/recreate first, or replace blocked views.</div>`
                 : ""
@@ -6721,11 +6888,13 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             "threeQuarter"
           )}</select></label><label>Profile Candidate<select name="profileCandidateId">${candidateOptions(
             "profile"
-          )}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit"${pickBlocked ? " disabled" : ""}>Apply HITL Selection + Build Pack</button></div></form>${candidateCardsForView(
+          )}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit"${
+            pickBlocked ? " disabled" : ""
+          }>선택 적용 + Character Pack build</button></div></form>${candidateCardsForView(
             "front"
           )}${candidateCardsForView("threeQuarter")}${candidateCardsForView("profile")}</section>`;
           })()
-        : `<section class="card"><h2>Pick Candidates (HITL)</h2><div class="notice">A selected generation job is required.</div></section>`;
+        : `<section class="card" id="pick-candidates"><h2>Candidate Set / HITL compare</h2><div class="notice">A selected generation run is required.</div></section>`;
 
     const previewSection =
       selectedManifest && selectedManifest.characterPackId
@@ -6733,7 +6902,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             const artifacts = getCharacterArtifacts(selectedManifest.characterPackId);
             const previewExists = fs.existsSync(artifacts.previewPath);
             const qcExists = fs.existsSync(artifacts.qcReportPath);
-            return `<section class="card"><h2>Pack Preview / Review Handoff</h2><p>compare에서 고른 pack이 review surface로 어떻게 이어지는지 보여줍니다. 더 깊은 preview/QC/lineage/jobs inspection은 Characters에서 닫습니다.</p><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
+            return `<section class="card" id="pack-preview-handoff"><h2>Character Pack object / handoff</h2><p>compare에서 닫은 Character Pack object를 review와 active-baseline approval로 넘기는 handoff surface입니다. 더 깊은 preview/QC/lineage/jobs inspection은 Characters에서 닫습니다.</p><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
               selectedManifest.characterPackId
             )}">${escHtml(selectedManifest.characterPackId)}</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
               selectedManifest.characterPackId
@@ -6759,32 +6928,32 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                 : ""
             }<div class="quick-links"><a href="/ui/characters?characterPackId=${encodeURIComponent(
               selectedManifest.characterPackId
-            )}">Characters review</a><a href="/ui/studio">Studio fast flow</a></div><form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
+            )}">Characters review</a><a href="#compare-approved-packs">Approved compare</a><a href="/ui/studio">Studio fast flow</a></div><form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
               selectedManifest.characterPackId
-            )}"/><button type="submit" class="secondary">Set Pack Active</button></form></section>`;
+            )}"/><button type="submit" class="secondary">이 팩을 active baseline으로 승인</button></form></section>`;
           })()
         : "";
 
     const rollbackSection =
       approvedPacks.length > 0
-        ? `<section class="card"><h2>Rollback Active Pack</h2><p>현재 active pack을 이전 approved baseline으로 되돌립니다. compare와 review를 끝낸 뒤에만 사용하세요.</p><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>Target Pack<select name="targetCharacterPackId">${approvedPacks
+        ? `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><p>현재 active baseline을 이전 approved Character Pack으로 되돌립니다. compare와 review를 끝낸 뒤, 현재 active pack보다 안전한 이전 기준이 분명할 때만 사용하세요.</p><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>Target Pack<select name="targetCharacterPackId">${approvedPacks
             .map(
               (pack) =>
                 `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
             )
-            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Rollback Active Pack</button></div></form></section>`
-        : `<section class="card"><h2>Rollback Active Pack</h2><div class="notice">No approved packs available.</div></section>`;
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Active baseline 롤백</button></div></form></section>`
+        : `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><div class="notice">No approved packs available.</div></section>`;
 
     const compareSection =
       approvedPacks.length >= 2
-        ? `<section class="card"><h2>Compare Approved Packs</h2><p>승인된 pack끼리 preview/QC/lineage/jobs 관계를 읽는 dedicated compare surface를 엽니다.</p><form method="get" action="/ui/character-generator/compare" class="grid two"><label>Left Pack<select name="leftPackId">${approvedPacks
+        ? `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><p>승인된 Character Pack baseline끼리 preview/QC/lineage/jobs 관계를 읽는 dedicated compare surface를 엽니다.</p><form method="get" action="/ui/character-generator/compare" class="grid two"><label>Left Pack<select name="leftPackId">${approvedPacks
             .map((pack) => `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)})</option>`)
             .join("")}</select></label><label>Right Pack<select name="rightPackId">${approvedPacks
             .map((pack, index) => `<option value="${escHtml(pack.id)}"${index === 1 ? " selected" : ""}>${escHtml(
               pack.id
             )} (v${escHtml(pack.version)})</option>`)
-            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Open A/B Compare</button></div></form></section>`
-        : `<section class="card"><h2>Compare Approved Packs</h2><div class="notice">At least two approved packs are required.</div></section>`;
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Approved Pack A/B compare 열기</button></div></form></section>`
+        : `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><div class="notice">At least two approved packs are required.</div></section>`;
 
     const rows = recentJobs
       .map((job) => {
@@ -6890,7 +7059,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          "HITL selection applied. BUILD_CHARACTER_PACK has been queued."
+          "Candidate set selection applied. Character Pack build has been queued."
         )}`
       );
     } catch (routeError) {
@@ -6923,7 +7092,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          `View regeneration queued: ${created.view} (${regenerateSameSeed ? "same seed" : "new seed"})`
+          `Candidate set regenerate queued: ${created.view} (${regenerateSameSeed ? "same seed" : "new seed"})`
         )}`
       );
     } catch (routeError) {
@@ -6954,7 +7123,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
       return reply.redirect(
         `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          `Full pack recreation queued (${regenerateSameSeed ? "same seed" : "new seed"}, seed=${created.seed})`
+          `Character Pack recreate queued from current run (${regenerateSameSeed ? "same seed" : "new seed"}, seed=${created.seed})`
         )}`
       );
     } catch (routeError) {
@@ -7002,7 +7171,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`Character pack ${characterPackId} is now active with APPROVED status.`)}`
+        `/ui/character-generator?message=${encodeURIComponent(`Character Pack ${characterPackId} approved as the active baseline.`)}`
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
@@ -7048,7 +7217,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`Active pack rollback complete: ${targetCharacterPackId}`)}`
+        `/ui/character-generator?message=${encodeURIComponent(`Character Pack rollback complete. Active baseline -> ${targetCharacterPackId}`)}`
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);

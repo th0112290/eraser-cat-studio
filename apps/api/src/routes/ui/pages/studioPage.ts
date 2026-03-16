@@ -173,9 +173,14 @@ export function buildStudioBody(input: StudioBodyInput): string {
     .studio-meta{display:grid;gap:8px}
     .studio-meta-row{display:grid;gap:4px;padding:10px 12px;border:1px solid #d8e1ec;border-radius:14px;background:#fff}
     .studio-meta-row span{color:#5b6b82;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
-    .studio-meta-row strong{font-size:13px;color:#142033}
-    .studio-selection-empty{padding:12px;border:1px dashed #bfd4e8;border-radius:14px;background:#f8fbff;color:#5b6b82;font-size:13px}
-    .studio-section{background:linear-gradient(180deg,#fff,#f9fbff)}
+     .studio-meta-row strong{font-size:13px;color:#142033}
+     .studio-selection-empty{padding:12px;border:1px dashed #bfd4e8;border-radius:14px;background:#f8fbff;color:#5b6b82;font-size:13px}
+     .studio-selection-grid{display:grid;gap:10px}
+     .studio-selection-block{display:grid;gap:8px;padding:12px;border:1px solid #d8e1ec;border-radius:14px;background:#fff}
+     .studio-selection-block>span{color:#5b6b82;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+     .studio-selection-copy{margin:0;color:#5b6b82;font-size:13px;line-height:1.55}
+     .studio-selection-links{display:flex;gap:8px;flex-wrap:wrap}
+     .studio-section{background:linear-gradient(180deg,#fff,#f9fbff)}
     .studio-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
     .studio-head-copy{max-width:58ch}
     .studio-step{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:10px;border:1px solid #c8d9fb;background:#ebf3ff;color:#1257c7;font-size:13px;font-weight:700}
@@ -437,10 +442,17 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     </section>
   </div>
   <aside class="studio-ops-rail">
+    <section class="studio-ops-card">
+      <p class="studio-ops-kicker">선택된 오브젝트</p>
+      <h2 id="studio-selection-title" style="margin:0">오브젝트를 고르세요</h2>
+      <p id="studio-selection-meta" class="studio-monitor-note">최근 오브젝트 활동에서 팩이나 에피소드를 고르면 object summary, next safe action, linked routes, evidence가 여기에 고정됩니다.</p>
+      <div id="studio-selection-fields" class="studio-selection-grid"><div class="studio-selection-empty">아직 고정된 오브젝트가 없습니다.</div></div>
+      <div id="studio-selection-links" class="studio-links" style="margin-top:12px"></div>
+    </section>
     <section class="studio-ops-card" id="studio-dispatch">
       <p class="studio-ops-kicker">디스패치 레일</p>
       <h2 style="margin:0">팩을 바인딩하고 에피소드를 전진</h2>
-      <p class="studio-monitor-note">스튜디오에 남겨둔 유일한 활성 입력면입니다. 승인, 비교, 롤백 판단은 Generator/Characters에 남기고 여기서는 fast flow binding만 수행하세요.</p>
+      <p class="studio-monitor-note">위 오브젝트 요약에서 다음 surface를 확인한 뒤, 이 레일에서는 fast flow binding만 수행하세요. 승인, 비교, 롤백 판단은 Generator/Characters에 남깁니다.</p>
       <div class="studio-links"><a href="/ui/character-generator" class="studio-link">Generator로 가기</a><a href="/ui/characters" class="studio-link">Characters로 가기</a></div>
       <div class="studio-binding-grid">
         <label class="studio-binding"><span>에피소드 주제</span><input id="studio-topic" placeholder="예: 캐릭터 소개 영상"/></label>
@@ -460,13 +472,6 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           <button type="button" id="studio-open-publish" class="secondary">퍼블리시 인계 열기</button>
         </div>
       </div>
-    </section>
-    <section class="studio-ops-card">
-      <p class="studio-ops-kicker">현재 선택</p>
-      <h2 id="studio-selection-title" style="margin:0">선택 없음</h2>
-      <p id="studio-selection-meta" class="studio-monitor-note">최근 오브젝트 활동에서 팩이나 에피소드를 선택해 라우팅 준비 메타데이터와 다음 surface를 점검하세요.</p>
-      <div id="studio-selection-fields" class="studio-meta"><div class="studio-selection-empty">아직 선택된 팩이나 에피소드가 없습니다.</div></div>
-      <div id="studio-selection-links" class="studio-links" style="margin-top:12px"></div>
     </section>
     <details class="studio-ops-card studio-ops-details" id="studio-intake">
       <summary class="studio-ops-summary"><span>빠른 입력</span><span class="studio-guide-note">기본 접힘 상태</span></summary>
@@ -548,6 +553,8 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   const selectionMeta = q("studio-selection-meta");
   const selectionFields = q("studio-selection-fields");
   const selectionLinks = q("studio-selection-links");
+  const compareHref = ${JSON.stringify(seed.compareHref)};
+  const activePackId = ${JSON.stringify(seed.activePackId)};
   let refreshTimer = null;
 
   const safe = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\\"", "&quot;").replaceAll("'", "&#39;");
@@ -605,18 +612,28 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       return fallback;
     }
   };
-  const renderSelection = (title, metaText, fields, links) => {
+  const renderSelection = (title, metaText, summaryFields, nextAction, routeLinks, evidenceLinks = []) => {
     if (selectionTitle instanceof HTMLElement) selectionTitle.textContent = title;
     if (selectionMeta instanceof HTMLElement) selectionMeta.textContent = metaText;
     if (selectionFields instanceof HTMLElement) {
-      if (!fields.length) {
-        selectionFields.innerHTML = "<div class=\\"studio-selection-empty\\">이 선택에 대해 기록된 상세 정보가 없습니다.</div>";
-      } else {
-        selectionFields.innerHTML = fields.map((field) => "<div class=\\"studio-meta-row\\"><span>" + safe(field.label) + "</span><strong>" + safe(field.value) + "</strong></div>").join("");
-      }
+      const summaryHtml = Array.isArray(summaryFields) && summaryFields.length
+        ? summaryFields.map((field) => "<div class=\\"studio-meta-row\\"><span>" + safe(field.label) + "</span><strong>" + safe(field.value) + "</strong></div>").join("")
+        : "<div class=\\"studio-selection-empty\\">세부 요약을 준비하는 중입니다.</div>";
+      const nextActionHtml =
+        nextAction && (nextAction.title || nextAction.detail)
+          ? "<section class=\\"studio-selection-block\\"><span>Next Safe Action</span><strong>" + safe(nextAction.title || "-") + "</strong><p class=\\"studio-selection-copy\\">" + safe(nextAction.detail || "-") + "</p></section>"
+          : "";
+      const evidenceHtml =
+        Array.isArray(evidenceLinks) && evidenceLinks.length
+          ? "<section class=\\"studio-selection-block\\"><span>Evidence</span><div class=\\"studio-selection-links\\">" + evidenceLinks.map((link) => "<a href=\\"" + safe(link.href) + "\\" class=\\"studio-link\\">" + safe(link.label) + "</a>").join("") + "</div></section>"
+          : "";
+      selectionFields.innerHTML = "<section class=\\"studio-selection-block\\"><span>Object Summary</span>" + summaryHtml + "</section>" + nextActionHtml + evidenceHtml;
     }
     if (selectionLinks instanceof HTMLElement) {
-      selectionLinks.innerHTML = (links || []).map((link) => "<a href=\\"" + safe(link.href) + "\\" class=\\"studio-link\\">" + safe(link.label) + "</a>").join("");
+      const linkedRoutes = Array.isArray(routeLinks)
+        ? routeLinks.map((link) => "<a href=\\"" + safe(link.href) + "\\" class=\\"studio-link\\">" + safe(link.label) + "</a>").join("")
+        : "";
+      selectionLinks.innerHTML = linkedRoutes ? "<span class=\\"studio-cluster-label\\">Linked Routes</span>" + linkedRoutes : "";
     }
   };
   const summarizePackJson = (packJson) => {
@@ -630,7 +647,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   };
   const loadPackInspector = async (packId) => {
     if (!packId) return;
-    renderSelection("팩 불러오는 중...", "API에서 팩 메타데이터를 읽는 중입니다...", [], []);
+    renderSelection("팩 불러오는 중...", "API에서 팩 메타데이터를 읽는 중입니다...", [], null, [], []);
     try {
       const res = await fetch("/api/character-packs/" + encodeURIComponent(packId));
       if (!res.ok) throw new Error("팩 상세 조회 실패: " + res.status);
@@ -640,12 +657,10 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       const summary = summarizePackJson(pack.json);
       const latestEpisode = Array.isArray(pack.episodes) && pack.episodes.length > 0 ? pack.episodes[0] : null;
       const rollbackState = String(pack.status || "").toUpperCase() === "APPROVED" ? "활성" : "롤백 후보";
-      const nextSurface = String(pack.status || "").toUpperCase() === "APPROVED"
-        ? "Characters에서 깊은 리뷰 / Generator에서 rollback"
-        : "Generator에서 compare·approve / Characters에서 수동 리뷰";
+      const approvedPack = String(pack.status || "").toUpperCase() === "APPROVED";
       renderSelection(
         "팩 " + readText(pack.id),
-        "Studio에서 다음 surface를 고르기 위한 팩 요약입니다. 깊은 비교와 수동 리뷰는 허브 밖에서 계속 진행합니다.",
+        "Studio에서 다음 surface를 고르기 위한 Character Pack object 요약입니다. 깊은 비교와 수동 리뷰는 허브 밖에서 계속 진행합니다.",
         [
           { label: "채널", value: readText(pack.channelId) },
           { label: "버전", value: "v" + readText(pack.version) },
@@ -654,24 +669,33 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           { label: "선택된 뷰", value: summary.selectedViews },
           { label: "계보", value: summary.lineage },
           { label: "최신 에피소드", value: latestEpisode ? readText(latestEpisode.id) + " / " + readText(latestEpisode.topic) : "-" },
-          { label: "롤백 상태", value: rollbackState },
-          { label: "다음 surface", value: nextSurface }
+          { label: "롤백 상태", value: rollbackState }
         ],
+        [
+          title: approvedPack ? "Characters에서 깊은 팩 리뷰 후 필요하면 rollback" : "Character Generator에서 compare / approve 닫기",
+          detail: approvedPack
+            ? "이 팩은 이미 승인 상태입니다. preview/QC/lineage/jobs는 Characters에서 읽고, 교체나 rollback 판단만 Generator로 넘기세요."
+            : "아직 승인 전 팩이므로 compare, pick, regenerate/recreate, approve는 Character Generator에서 마무리하세요."
+        },
         [
           { label: "팩 리뷰", href: "/ui/characters?characterPackId=" + encodeURIComponent(packId) },
           { label: "생성 허브", href: "/ui/character-generator" },
-          { label: "QC 리포트", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/qc_report.json" },
+          latestEpisode ? { label: "최신 에피소드", href: "/ui/episodes/" + encodeURIComponent(readText(latestEpisode.id)) } : null,
           summary.mascotProfile && summary.mascotProfile !== "(기록 없음)" ? { label: "프로필", href: "/ui/profiles?q=" + encodeURIComponent(summary.mascotProfile) } : null,
-          ${seed.compareHref ? `{ label: "비교", href: ${JSON.stringify(seed.compareHref)} }` : "null"}
-        ].filter(Boolean)
+          compareHref ? { label: "비교", href: compareHref } : null
+        ].filter(Boolean),
+        [
+          { label: "pack.json", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/pack.json" },
+          { label: "QC 리포트", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/qc_report.json" }
+        ]
       );
     } catch (error) {
-      renderSelection("팩 조회 실패", String(error), [], [{ label: "캐릭터 열기", href: "/ui/characters" }]);
+      renderSelection("팩 조회 실패", String(error), [], null, [{ label: "캐릭터 열기", href: "/ui/characters" }], []);
     }
   };
   const loadEpisodeInspector = async (episodeId) => {
     if (!episodeId) return;
-    renderSelection("에피소드 불러오는 중...", "API에서 에피소드 메타데이터를 읽는 중입니다...", [], []);
+    renderSelection("에피소드 불러오는 중...", "API에서 에피소드 메타데이터를 읽는 중입니다...", [], null, [], []);
     try {
       const res = await fetch("/api/episodes/" + encodeURIComponent(episodeId));
       if (!res.ok) throw new Error("에피소드 상세 조회 실패: " + res.status);
@@ -681,9 +705,11 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       if (!episode) throw new Error("에피소드 상세 응답에 데이터가 없습니다.");
       const style = readPath(episode, ["datasetVersionSnapshot", "style"]) || {};
       const latestJob = Array.isArray(data.jobs) && data.jobs.length > 0 ? data.jobs[0] : null;
+      const previewExists = Boolean(data?.artifacts?.previewExists);
+      const finalExists = Boolean(data?.artifacts?.finalExists);
       renderSelection(
         "에피소드 " + readText(episode.id),
-        "선택한 에피소드의 최신 실행 맥락, 스타일 프로필, 산출물 준비 상태입니다.",
+        "선택한 Episode object의 최신 실행 맥락, 스타일 프로필, 산출물 준비 상태입니다.",
         [
           { label: "채널", value: readText(readPath(episode, ["channel", "name"]) || readPath(episode, ["channelId"])) },
           { label: "주제", value: readText(episode.topic) },
@@ -692,17 +718,31 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           { label: "스타일 프리셋", value: readText(readPath(style, ["stylePresetId"]), "(자동)") },
           { label: "후킹 부스트", value: readText(readPath(style, ["hookBoost"]), "-") },
           { label: "최신 작업", value: latestJob ? readText(latestJob.type) + " / " + readText(latestJob.status) : "(없음)" },
-          { label: "산출물", value: "프리뷰=" + (data?.artifacts?.previewExists ? "예" : "아니오") + " / 최종=" + (data?.artifacts?.finalExists ? "예" : "아니오") }
+          { label: "산출물", value: "프리뷰=" + (previewExists ? "예" : "아니오") + " / 최종=" + (finalExists ? "예" : "아니오") }
         ],
+        [
+          title: !previewExists
+            ? "프리뷰 렌더를 큐에 등록"
+            : !finalExists
+              ? "에디터와 퍼블리시 surface로 넘기기"
+              : "퍼블리시 또는 후속 검토로 넘기기",
+          detail: !previewExists
+            ? "프리뷰가 아직 없으므로 dispatch rail 또는 episode detail에서 preview job을 enqueue하세요."
+            : !finalExists
+              ? "프리뷰는 준비되었습니다. 샷 편집이나 publish handoff를 계속 진행하세요."
+              : "핵심 산출물이 준비되었습니다. publish나 linked outputs 검토 surface로 넘기면 됩니다."
+        },
         [
           { label: "에피소드 상세", href: "/ui/episodes/" + encodeURIComponent(episodeId) },
           { label: "샷 에디터", href: "/ui/episodes/" + encodeURIComponent(episodeId) + "/editor" },
           { label: "프로필", href: "/ui/profiles" },
-          { label: "퍼블리시", href: "/ui/publish?episodeId=" + encodeURIComponent(episodeId) }
-        ]
+          { label: "퍼블리시", href: "/ui/publish?episodeId=" + encodeURIComponent(episodeId) },
+          episode.characterPackId ? { label: "팩 리뷰", href: "/ui/characters?characterPackId=" + encodeURIComponent(readText(episode.characterPackId)) } : null
+        ].filter(Boolean),
+        []
       );
     } catch (error) {
-      renderSelection("에피소드 조회 실패", String(error), [], [{ label: "에피소드 열기", href: "/ui/episodes" }]);
+      renderSelection("에피소드 조회 실패", String(error), [], null, [{ label: "에피소드 열기", href: "/ui/episodes" }], []);
     }
   };
 
@@ -966,10 +1006,10 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   });
 
   updateSelectionSummary();
-  if (${JSON.stringify(seed.activePackId)}) {
-    if (selectedPack instanceof HTMLInputElement && !selectedPack.value.trim()) selectedPack.value = ${JSON.stringify(seed.activePackId)};
-    markSelectedRows(packsBody, "pack", ${JSON.stringify(seed.activePackId)});
-    void loadPackInspector(${JSON.stringify(seed.activePackId)});
+  if (activePackId) {
+    if (selectedPack instanceof HTMLInputElement && !selectedPack.value.trim()) selectedPack.value = activePackId;
+    markSelectedRows(packsBody, "pack", activePackId);
+    void loadPackInspector(activePackId);
   }
   void loadAssets();
   void loadPacks();
