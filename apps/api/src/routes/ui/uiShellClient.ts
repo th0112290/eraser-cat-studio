@@ -1,14 +1,50 @@
-export const UI_SHELL_CLIENT = `
+﻿export const UI_SHELL_CLIENT = `
 (() => {
-  const flatNav = JSON.parse(document.body.dataset.shellNav || "[]");
+  const parseJsonDataset = (key, fallback) => {
+    try {
+      const raw = document.body.dataset[key];
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (error) {
+      console.warn("[ecs-shell] dataset parse failed", key, error);
+      return fallback;
+    }
+  };
+  const flatNav = parseJsonDataset("shellNav", []);
+  const paletteActions = parseJsonDataset("shellPaletteActions", []);
+  const jumpTargets = parseJsonDataset("shellJumpTargets", []);
+  const storageKeys = parseJsonDataset("shellStorageKeys", {
+    recentObjects: "ecs.ui.shell.recentObjects.v1",
+    pinnedObjects: "ecs.ui.shell.pinnedObjects.v1",
+    paletteState: "ecs.ui.shell.paletteState.v1"
+  });
+  const helperContract = parseJsonDataset("shellHelperContract", {
+    currentObject: "data-shell-current-object",
+    objectKind: "data-shell-object-kind",
+    objectId: "data-shell-object-id",
+    objectLabel: "data-shell-object-label",
+    objectHref: "data-shell-object-href",
+    command: "data-shell-command",
+    commandLabel: "data-shell-command-label",
+    commandKeywords: "data-shell-command-keywords",
+    commandHref: "data-shell-command-href",
+    commandAction: "data-shell-command-action",
+    returnTo: "data-shell-return-to",
+    returnLabel: "data-shell-return-label",
+    deepLinkLabel: "data-shell-deep-link-label",
+    recentIgnore: "data-shell-recent-ignore"
+  });
   const toastWrap = document.getElementById("toast-wrap");
   const live = document.getElementById("global-live");
   const shortcut = document.getElementById("shortcut-help");
   const shortcutCard = shortcut instanceof HTMLElement ? shortcut.querySelector(".shortcut-card") : null;
+  const palette = document.getElementById("shell-palette");
+  const paletteCard = palette instanceof HTMLElement ? palette.querySelector(".shell-palette-card") : null;
   const shellNav = document.getElementById("shell-primary-nav");
   const shellNavToggle = document.getElementById("shell-nav-toggle");
   const openShortcut = document.getElementById("shortcut-open");
   const closeShortcut = document.getElementById("shortcut-close");
+  const openPaletteButton = document.getElementById("shell-palette-open");
+  const closePaletteButton = document.getElementById("shell-palette-close");
   const shellCurrentObject = document.getElementById("shell-current-object");
   const shellCurrentState = document.getElementById("shell-current-state");
   const shellLiveClock = document.getElementById("shell-live-clock");
@@ -22,19 +58,130 @@ export const UI_SHELL_CLIENT = `
   const shellPrimaryAction = document.getElementById("shell-primary-action");
   const shellPrimaryLabel = document.getElementById("shell-primary-label");
   const shellFilterAction = document.getElementById("shell-filter-action");
+  const shellOpenCurrent = document.getElementById("shell-open-current");
+  const shellPinCurrent = document.getElementById("shell-pin-current");
+  const shellReturnLink = document.getElementById("shell-return-link");
+  const shellReturnLabel = document.getElementById("shell-return-label");
   const shellCopyLink = document.getElementById("shell-copy-link");
   const shellFilterChip = document.getElementById("shell-filter-chip");
   const shellAlertChip = document.getElementById("shell-alert-chip");
+  const paletteQueryInput = document.getElementById("shell-palette-query");
+  const paletteResults = document.getElementById("shell-palette-results");
+  const paletteCurrent = document.getElementById("shell-palette-current");
+  const palettePins = document.getElementById("shell-palette-pins");
+  const paletteRecents = document.getElementById("shell-palette-recents");
   const filterBindings = [];
   const focusableSelector = "a[href],button:not([disabled]),textarea:not([disabled]),input:not([type='hidden']):not([disabled]),select:not([disabled]),[tabindex]:not([tabindex='-1'])";
   let lastShortcutFocus = null;
+  let lastPaletteFocus = null;
   let liveTimer = null;
   let pendingGo = "";
+  let pendingGoTimer = null;
+  let currentObjectRecord = null;
+  let currentReturnTarget = null;
+  let lastRecordedObjectKey = "";
+  let paletteItems = [];
+  let paletteActiveIndex = 0;
+  const paletteCommandNodes = new Map();
+  const jumpTargetMap = new Map(jumpTargets.map((target) => [String(target.key || ""), target]));
   const compactNavQuery = window.matchMedia("(max-width: 900px)");
   const cleanText = (value) => String(value || "").replace(/\\s+/g, " ").trim();
   const shorten = (value, max = 40) => {
     const text = cleanText(value);
     return text.length > max ? text.slice(0, Math.max(0, max - 3)).trimEnd() + "..." : text;
+  };
+  const attrValue = (node, attr) => (node instanceof HTMLElement ? cleanText(node.getAttribute(attr)) : "");
+  const toRelativeHref = (value) => {
+    const raw = cleanText(value);
+    if (!raw) return "";
+    try {
+      const url = new URL(raw, window.location.origin);
+      return url.origin === window.location.origin ? url.pathname + url.search + url.hash : url.toString();
+    } catch (error) {
+      return raw;
+    }
+  };
+  const isUiHref = (value) => {
+    try {
+      const url = new URL(String(value || ""), window.location.origin);
+      return url.origin === window.location.origin && url.pathname.startsWith("/ui");
+    } catch (error) {
+      return false;
+    }
+  };
+  const buildObjectHref = (kind, id) => {
+    const target = jumpTargetMap.get(cleanText(kind));
+    const value = cleanText(id);
+    if (!target || !value) return "";
+    if (target.mode === "segment") return target.hrefBase.replace(/\\/$/, "") + "/" + encodeURIComponent(value);
+    if (target.mode === "path") {
+      return target.hrefBase.replace(/\\/$/, "") + "/" + value.split("/").filter(Boolean).map((segment) => encodeURIComponent(segment)).join("/");
+    }
+    const url = new URL(target.hrefBase, window.location.origin);
+    url.searchParams.set(target.queryKey, value);
+    return url.pathname + "?" + url.searchParams.toString();
+  };
+  const normalizeObjectRecord = (record, source = "shell") => {
+    if (!record || typeof record !== "object") return null;
+    const kind = cleanText(record.kind || record.key);
+    const id = cleanText(record.id);
+    const href = toRelativeHref(record.href || buildObjectHref(kind, id));
+    if (!kind || !id || !href) return null;
+    return {
+      kind,
+      id,
+      href,
+      label: cleanText(record.label) || kind + " " + shorten(id, 56),
+      description: cleanText(record.description),
+      source,
+      updatedAt: Number(record.updatedAt) || Date.now()
+    };
+  };
+  const objectRecordKey = (record) => {
+    const normalized = normalizeObjectRecord(record);
+    return normalized ? [normalized.kind, normalized.id, normalized.href].join("::") : "";
+  };
+  const dedupeObjectRecords = (records, source = "shell") => {
+    const seen = new Set();
+    return records
+      .map((record) => normalizeObjectRecord(record, source))
+      .filter((record) => {
+        if (!record) return false;
+        const key = objectRecordKey(record);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+  const storageGet = (key, fallback) => {
+    try {
+      if (!key || !window.localStorage) return fallback;
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  };
+  const storageSet = (key, value) => {
+    try {
+      if (!key || !window.localStorage) return;
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.warn("[ecs-shell] storage write failed", key, error);
+    }
+  };
+  const readRecentObjects = () => dedupeObjectRecords(storageGet(storageKeys.recentObjects, []), "recent").slice(0, 10);
+  const writeRecentObjects = (records) => storageSet(storageKeys.recentObjects, dedupeObjectRecords(records, "recent").slice(0, 10));
+  const readPinnedObjects = () => dedupeObjectRecords(storageGet(storageKeys.pinnedObjects, []), "pin").slice(0, 12);
+  const writePinnedObjects = (records) => storageSet(storageKeys.pinnedObjects, dedupeObjectRecords(records, "pin").slice(0, 12));
+  const readPaletteState = () => {
+    const state = storageGet(storageKeys.paletteState, {});
+    return state && typeof state === "object" ? state : {};
+  };
+  const writePaletteState = (patch) => storageSet(storageKeys.paletteState, { ...readPaletteState(), ...patch });
+  const isRecentTrackingDisabled = () => {
+    if (document.body.getAttribute(helperContract.recentIgnore) === "1") return true;
+    return !!document.querySelector("[" + helperContract.recentIgnore + "='1']");
   };
   const globalKoreanReplacements = [
     ["Object-centered browser for ChannelBible state and runtime profile evidence captured by benchmark and smoke runs.", "벤치마크와 스모크 실행에서 수집된 ChannelBible 상태 및 런타임 프로필 근거를 오브젝트 중심으로 탐색합니다."],
@@ -484,14 +631,40 @@ export const UI_SHELL_CLIENT = `
     return { label: "액션 실행 실패", tone: "bad", recovery: "작업과 상태 화면에서 실패한 의존성 또는 payload를 추적하세요." };
   };
   const getFocusable = (scope) => Array.from(scope.querySelectorAll(focusableSelector)).filter((node) => node instanceof HTMLElement && !node.hidden && window.getComputedStyle(node).display !== "none");
+  const isShortcutOpen = () => shortcut instanceof HTMLElement && shortcut.classList.contains("open");
+  const isPaletteOpen = () => palette instanceof HTMLElement && palette.classList.contains("open");
+  const syncDialogState = () => {
+    if (isShortcutOpen() || isPaletteOpen()) document.body.dataset.dialogOpen = "1";
+    else delete document.body.dataset.dialogOpen;
+  };
+  const trapFocus = (event, scope, onEscape) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onEscape();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = getFocusable(scope);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
   const openDialog = () => {
     if (!(shortcut instanceof HTMLElement)) return;
+    if (isPaletteOpen()) closePalette();
     lastShortcutFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     shortcut.classList.add("open");
     shortcut.style.display = "flex";
     shortcut.setAttribute("aria-hidden", "false");
     if (openShortcut instanceof HTMLButtonElement) openShortcut.setAttribute("aria-expanded", "true");
-    document.body.dataset.dialogOpen = "1";
+    syncDialogState();
     const focusTarget = shortcutCard instanceof HTMLElement ? getFocusable(shortcutCard)[0] : null;
     if (focusTarget instanceof HTMLElement) focusTarget.focus();
     else if (shortcutCard instanceof HTMLElement) shortcutCard.focus();
@@ -502,8 +675,47 @@ export const UI_SHELL_CLIENT = `
     shortcut.style.display = "";
     shortcut.setAttribute("aria-hidden", "true");
     if (openShortcut instanceof HTMLButtonElement) openShortcut.setAttribute("aria-expanded", "false");
-    delete document.body.dataset.dialogOpen;
+    syncDialogState();
     if (lastShortcutFocus instanceof HTMLElement) lastShortcutFocus.focus();
+  };
+  const openPalette = (initialQuery = "") => {
+    if (!(palette instanceof HTMLElement)) return;
+    if (isShortcutOpen()) closeDialog();
+    lastPaletteFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    palette.classList.add("open");
+    palette.style.display = "flex";
+    palette.setAttribute("aria-hidden", "false");
+    if (openPaletteButton instanceof HTMLButtonElement) openPaletteButton.setAttribute("aria-expanded", "true");
+    syncDialogState();
+    if (paletteQueryInput instanceof HTMLInputElement) {
+      paletteQueryInput.value = cleanText(initialQuery || paletteQueryInput.value || cleanText(readPaletteState().query));
+      renderPalette(paletteQueryInput.value);
+      window.requestAnimationFrame(() => {
+        paletteQueryInput.focus();
+        paletteQueryInput.select();
+      });
+    } else {
+      renderPalette(cleanText(readPaletteState().query));
+    }
+  };
+  const closePalette = () => {
+    if (!(palette instanceof HTMLElement)) return;
+    palette.classList.remove("open");
+    palette.style.display = "";
+    palette.setAttribute("aria-hidden", "true");
+    if (openPaletteButton instanceof HTMLButtonElement) openPaletteButton.setAttribute("aria-expanded", "false");
+    if (paletteQueryInput instanceof HTMLInputElement) writePaletteState({ query: paletteQueryInput.value });
+    syncDialogState();
+    if (lastPaletteFocus instanceof HTMLElement) lastPaletteFocus.focus();
+  };
+  window.__ecsShell = {
+    openPalette,
+    closePalette,
+    buildObjectHref,
+    appendReturnContext,
+    copyDeepLink,
+    recordRecentObject,
+    togglePinnedObject
   };
   if (openShortcut instanceof HTMLButtonElement) {
     openShortcut.addEventListener("click", () => {
@@ -517,24 +729,29 @@ export const UI_SHELL_CLIENT = `
   });
   if (shortcutCard instanceof HTMLElement) {
     shortcutCard.setAttribute("tabindex", "-1");
-    shortcutCard.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeDialog();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = getFocusable(shortcutCard);
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+    shortcutCard.addEventListener("keydown", (event) => trapFocus(event, shortcutCard, closeDialog));
+  }
+  if (openPaletteButton instanceof HTMLButtonElement) {
+    openPaletteButton.addEventListener("click", () => {
+      if (isPaletteOpen()) closePalette();
+      else openPalette();
+    });
+  }
+  if (closePaletteButton instanceof HTMLButtonElement) closePaletteButton.addEventListener("click", closePalette);
+  if (palette instanceof HTMLElement) {
+    palette.addEventListener("click", (event) => {
+      if (event.target === palette) closePalette();
+    });
+  }
+  if (paletteCard instanceof HTMLElement) {
+    paletteCard.setAttribute("tabindex", "-1");
+    paletteCard.addEventListener("keydown", (event) => trapFocus(event, paletteCard, closePalette));
+  }
+  if (paletteQueryInput instanceof HTMLInputElement) {
+    paletteQueryInput.addEventListener("input", () => {
+      paletteActiveIndex = 0;
+      writePaletteState({ query: paletteQueryInput.value });
+      renderPalette(paletteQueryInput.value);
     });
   }
   const activeNav = (pathname) => flatNav
@@ -558,6 +775,117 @@ export const UI_SHELL_CLIENT = `
     if (segments[1] === "rollouts" && segments[2]) return "산출물 근거";
     if (segments[1] === "benchmarks" && segments[2]) return "벤치마크 근거";
     return "현재 오브젝트 없음";
+  };
+  const resolveCurrentObject = (url = new URL(window.location.href)) => {
+    const selector = "[" + helperContract.objectKind + "][" + helperContract.objectId + "]";
+    const marked = document.querySelector("[" + helperContract.currentObject + "]" + selector);
+    const node = marked || document.querySelector(selector);
+    if (node instanceof HTMLElement) {
+      return normalizeObjectRecord(
+        {
+          kind: attrValue(node, helperContract.objectKind),
+          id: attrValue(node, helperContract.objectId),
+          href: attrValue(node, helperContract.objectHref) || (node instanceof HTMLAnchorElement ? node.getAttribute("href") || "" : ""),
+          label: attrValue(node, helperContract.objectLabel) || cleanText(node.getAttribute("aria-label")) || cleanText(node.textContent),
+          description: cleanText(node.getAttribute("title") || node.dataset.tooltip || "")
+        },
+        "declared"
+      );
+    }
+    const queryPairs = [
+      ["characterPackId", "character-pack"],
+      ["assetId", "asset"],
+      ["jobId", "job"],
+      ["episodeId", url.pathname.startsWith("/ui/artifacts") ? "artifact-episode" : "episode"],
+      ["path", "artifact-path"]
+    ];
+    for (const [key, kind] of queryPairs) {
+      const value = cleanText(url.searchParams.get(key));
+      if (value) return normalizeObjectRecord({ kind, id: value, label: kind + " " + shorten(value, 56) }, "url");
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments[1] === "episodes" && segments[2]) return normalizeObjectRecord({ kind: "episode", id: segments[2], label: "에피소드 " + shorten(segments[2], 56) }, "url");
+    if (segments[1] === "jobs" && segments[2]) return normalizeObjectRecord({ kind: "job", id: segments[2], label: "작업 " + shorten(segments[2], 56) }, "url");
+    return null;
+  };
+  const currentPageHref = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("returnTo");
+    url.searchParams.delete("returnLabel");
+    url.searchParams.delete("deepLinkLabel");
+    const query = url.searchParams.toString();
+    return url.pathname + (query ? "?" + query : "") + url.hash;
+  };
+  const currentPageLabel = () => {
+    const override = document.querySelector("[" + helperContract.deepLinkLabel + "]");
+    return attrValue(override, helperContract.deepLinkLabel) || cleanText(document.body.dataset.pageTitle) || cleanText(document.title) || "현재 페이지";
+  };
+  const appendReturnContext = (href) => {
+    const raw = cleanText(href);
+    if (!raw) return "";
+    try {
+      const target = new URL(raw, window.location.origin);
+      if (target.origin !== window.location.origin || !target.pathname.startsWith("/ui")) return target.toString();
+      const label = (currentObjectRecord && currentObjectRecord.label) || currentPageLabel();
+      if (!target.searchParams.get("returnTo")) target.searchParams.set("returnTo", currentPageHref());
+      if (!target.searchParams.get("returnLabel")) target.searchParams.set("returnLabel", label);
+      return target.pathname + target.search + target.hash;
+    } catch (error) {
+      return raw;
+    }
+  };
+  const resolveReturnTarget = () => {
+    const override = document.querySelector("[" + helperContract.returnTo + "]");
+    const url = new URL(window.location.href);
+    const href = attrValue(override, helperContract.returnTo) || cleanText(url.searchParams.get("returnTo"));
+    if (!href || !isUiHref(href)) return null;
+    return {
+      href: toRelativeHref(href),
+      label: attrValue(override, helperContract.returnLabel) || cleanText(url.searchParams.get("returnLabel")) || "돌아가기"
+    };
+  };
+  const focusSearchField = () => {
+    const search = searchFieldNode();
+    if (!(search instanceof HTMLElement)) return false;
+    search.focus();
+    if (search instanceof HTMLInputElement) search.select();
+    return true;
+  };
+  const navigateTo = (href, keepReturn = true) => {
+    const target = keepReturn ? appendReturnContext(href) : toRelativeHref(href);
+    if (target) window.location.href = target;
+  };
+  const copyDeepLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast("딥링크 복사됨", currentPageLabel(), "ok", 2200);
+      return true;
+    } catch (error) {
+      toast("복사 실패", String(error), "bad", 4000);
+      return false;
+    }
+  };
+  const isPinnedObject = (record) => {
+    const key = objectRecordKey(record);
+    return !!key && readPinnedObjects().some((item) => objectRecordKey(item) === key);
+  };
+  const recordRecentObject = (record) => {
+    const normalized = normalizeObjectRecord(record, "recent");
+    if (!normalized || isRecentTrackingDisabled()) return;
+    const key = objectRecordKey(normalized);
+    if (!key || key === lastRecordedObjectKey) return;
+    lastRecordedObjectKey = key;
+    writeRecentObjects([{ ...normalized, updatedAt: Date.now() }, ...readRecentObjects()]);
+  };
+  const togglePinnedObject = (record) => {
+    const normalized = normalizeObjectRecord(record, "pin");
+    if (!normalized) return false;
+    const key = objectRecordKey(normalized);
+    const next = isPinnedObject(normalized)
+      ? readPinnedObjects().filter((item) => objectRecordKey(item) !== key)
+      : [{ ...normalized, updatedAt: Date.now() }, ...readPinnedObjects()];
+    writePinnedObjects(next);
+    return next.some((item) => objectRecordKey(item) === key);
   };
   const hasInlineFlash = (selector, message) => Array.from(document.querySelectorAll(selector)).some((node) => cleanText(node.textContent).includes(message));
   const persistQueryState = (key, value) => {
@@ -593,7 +921,305 @@ export const UI_SHELL_CLIENT = `
     };
   };
   const primaryActionNode = () => document.querySelector("[data-primary-action='1']:not([disabled]):not([aria-disabled='true'])");
-  const searchFieldNode = () => document.querySelector("input[type='search']:not([disabled]), input[data-table-filter]:not([disabled])");
+  const searchFieldNode = () =>
+    document.querySelector("input[type='search']:not([disabled]):not([data-shell-palette-input='1']), input[data-table-filter]:not([disabled])");
+  const syncCurrentObjectControls = () => {
+    const pinned = !!currentObjectRecord && isPinnedObject(currentObjectRecord);
+    if (shellOpenCurrent instanceof HTMLButtonElement) {
+      shellOpenCurrent.hidden = !currentObjectRecord;
+      shellOpenCurrent.disabled = !currentObjectRecord;
+      shellOpenCurrent.textContent = currentObjectRecord ? shorten(currentObjectRecord.label, 28) : "현재 오브젝트";
+    }
+    if (shellPinCurrent instanceof HTMLButtonElement) {
+      shellPinCurrent.hidden = !currentObjectRecord;
+      shellPinCurrent.disabled = !currentObjectRecord;
+      shellPinCurrent.dataset.pinned = pinned ? "1" : "0";
+      shellPinCurrent.textContent = pinned ? "Unpin" : "Pin";
+    }
+    if (shellReturnLink instanceof HTMLButtonElement) {
+      shellReturnLink.hidden = !currentReturnTarget;
+      shellReturnLink.disabled = !currentReturnTarget;
+    }
+    setText(shellReturnLabel, currentReturnTarget ? shorten(currentReturnTarget.label, 34) : "돌아가기");
+  };
+  const runPaletteAction = (action, context = {}) => {
+    if (action === "focus-filter") {
+      if (focusSearchField()) {
+        speak("필터 입력으로 이동했습니다.");
+        return true;
+      }
+      toast("필터 없음", "이 페이지에는 검색 또는 필터 입력이 없습니다.", "muted", 2200);
+      return false;
+    }
+    if (action === "run-primary") {
+      const primary = primaryActionNode();
+      if (primary instanceof HTMLElement) {
+        primary.focus();
+        primary.click();
+        return true;
+      }
+      toast("기본 액션 없음", "이 페이지에는 기본 액션이 없습니다.", "muted", 2200);
+      return false;
+    }
+    if (action === "open-current-object") {
+      if (!currentObjectRecord) return false;
+      navigateTo(currentObjectRecord.href, true);
+      return true;
+    }
+    if (action === "copy-deep-link") {
+      void copyDeepLink();
+      return true;
+    }
+    if (action === "open-return-link") {
+      if (!currentReturnTarget) return false;
+      navigateTo(currentReturnTarget.href, false);
+      return true;
+    }
+    if (action === "toggle-pin-current") {
+      if (!currentObjectRecord) return false;
+      const pinned = togglePinnedObject(currentObjectRecord);
+      syncCurrentObjectControls();
+      renderPalette();
+      toast(pinned ? "Pin 추가" : "Pin 해제", currentObjectRecord.label, "ok", 2200);
+      return true;
+    }
+    if (action === "open-shortcuts") {
+      openDialog();
+      return true;
+    }
+    const node = context.node || paletteCommandNodes.get(context.id);
+    if (node instanceof HTMLElement) {
+      node.focus();
+      node.click();
+      return true;
+    }
+    return false;
+  };
+  const collectPaletteItems = (query = "") => {
+    const navItems = flatNav.map((item) => ({
+      id: "nav:" + item.href,
+      type: "nav",
+      label: item.label,
+      description: item.description,
+      href: item.href,
+      hotkey: item.hotkey,
+      meta: item.groupLabel,
+      keywords: [item.label, item.description, item.groupLabel, item.hotkey, item.href].join(" ")
+    }));
+    const actionItems = paletteActions.map((item) => ({
+      id: "action:" + item.id,
+      type: "action",
+      label: item.label,
+      description: item.description,
+      action: item.action,
+      hotkey: item.hotkey,
+      meta: "shell action",
+      keywords: [item.label, item.description, ...(Array.isArray(item.keywords) ? item.keywords : [])].join(" ")
+    }));
+    const pinItems = readPinnedObjects().map((record) => ({
+      id: "pin:" + objectRecordKey(record),
+      type: "pin",
+      label: record.label,
+      description: record.description || record.id,
+      href: record.href,
+      meta: "pin",
+      keywords: [record.kind, record.id, record.label, "pin"].join(" ")
+    }));
+    const recentItems = readRecentObjects().map((record) => ({
+      id: "recent:" + objectRecordKey(record),
+      type: "recent",
+      label: record.label,
+      description: record.description || record.id,
+      href: record.href,
+      meta: "recent",
+      keywords: [record.kind, record.id, record.label, "recent"].join(" ")
+    }));
+    paletteCommandNodes.clear();
+    const commandNodes = Array.from(new Set(Array.from(document.querySelectorAll("[" + helperContract.command + "],[" + helperContract.commandHref + "],[" + helperContract.commandAction + "]"))));
+    const commandItems = commandNodes
+      .map((node, index) => {
+        if (!(node instanceof HTMLElement) || node.hidden || window.getComputedStyle(node).display === "none") return null;
+        const label = attrValue(node, helperContract.commandLabel) || cleanText(node.getAttribute("aria-label")) || cleanText(node.textContent);
+        if (!label) return null;
+        const id = "command:" + (attrValue(node, helperContract.command) || String(index));
+        paletteCommandNodes.set(id, node);
+        return {
+          id,
+          type: "command",
+          label,
+          description: cleanText(node.getAttribute("title") || node.dataset.tooltip || ""),
+          href: toRelativeHref(attrValue(node, helperContract.commandHref) || (node instanceof HTMLAnchorElement ? node.getAttribute("href") || "" : "")),
+          action: attrValue(node, helperContract.commandAction),
+          meta: "page action",
+          keywords: [attrValue(node, helperContract.commandKeywords), label].join(" ")
+        };
+      })
+      .filter(Boolean);
+    const objectItems = dedupeObjectRecords(
+      Array.from(document.querySelectorAll("[" + helperContract.objectKind + "][" + helperContract.objectId + "]")).map((node) =>
+        node instanceof HTMLElement
+          ? {
+              kind: attrValue(node, helperContract.objectKind),
+              id: attrValue(node, helperContract.objectId),
+              href: attrValue(node, helperContract.objectHref) || (node instanceof HTMLAnchorElement ? node.getAttribute("href") || "" : ""),
+              label: attrValue(node, helperContract.objectLabel) || cleanText(node.getAttribute("aria-label")) || cleanText(node.textContent),
+              description: cleanText(node.getAttribute("title") || node.dataset.tooltip || "")
+            }
+          : null
+      ),
+      "declared"
+    ).map((record) => ({
+      id: "object:" + objectRecordKey(record),
+      type: "object",
+      label: record.label,
+      description: record.description || record.id,
+      href: record.href,
+      meta: record.kind,
+      keywords: [record.kind, record.id, record.label, record.description].join(" ")
+    }));
+    const jumpQuery = cleanText(query);
+    let jumpItem = null;
+    if (jumpQuery) {
+      const colonIndex = jumpQuery.indexOf(":");
+      let prefix = "";
+      let value = jumpQuery;
+      if (colonIndex > 0) {
+        prefix = jumpQuery.slice(0, colonIndex).toLowerCase();
+        value = cleanText(jumpQuery.slice(colonIndex + 1));
+      } else if (/^ep[_-]/i.test(jumpQuery)) prefix = "ep";
+      else if (/^job[_-]|^clx_job_/i.test(jumpQuery)) prefix = "job";
+      else if (/^pack[_-]|^clx_pack_/i.test(jumpQuery)) prefix = "pack";
+      else if (/^asset[_-]/i.test(jumpQuery)) prefix = "asset";
+      else if (jumpQuery.includes("/") || /\\.(json|log|txt|mp4)$/i.test(jumpQuery)) prefix = "path";
+      const target = jumpTargets.find((item) => cleanText(item.key).toLowerCase() === prefix || (Array.isArray(item.prefixes) && item.prefixes.some((name) => cleanText(name).toLowerCase() === prefix)));
+      if (target && value) {
+        const href = buildObjectHref(target.key, value);
+        if (href) {
+          jumpItem = {
+            id: "jump:" + target.key + ":" + value,
+            type: "jump",
+            label: target.label + " " + value,
+            description: target.description,
+            href,
+            meta: "jump",
+            keywords: [target.key, ...(target.prefixes || []), value, target.example].join(" ")
+          };
+        }
+      }
+    }
+    return [...(jumpItem ? [jumpItem] : []), ...actionItems, ...pinItems, ...recentItems, ...objectItems, ...commandItems, ...navItems];
+  };
+  const renderPaletteSideList = (root, entries, emptyText) => {
+    if (!(root instanceof HTMLElement)) return;
+    root.textContent = "";
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "shell-palette-empty";
+      empty.textContent = emptyText;
+      root.appendChild(empty);
+      return;
+    }
+    entries.forEach((entry) => {
+      const button = document.createElement("button");
+      const strong = document.createElement("strong");
+      const meta = document.createElement("span");
+      button.type = "button";
+      button.className = "secondary shell-palette-side-item";
+      strong.textContent = entry.label;
+      meta.textContent = shorten(entry.description || entry.meta || entry.href || "", 56);
+      button.append(strong, meta);
+      button.addEventListener("click", () => executePaletteItem(entry));
+      root.appendChild(button);
+    });
+  };
+  const executePaletteItem = (item) => {
+    if (!item) return;
+    if (item.action && runPaletteAction(item.action, { id: item.id, node: paletteCommandNodes.get(item.id) })) {
+      closePalette();
+      return;
+    }
+    if (item.href) {
+      closePalette();
+      navigateTo(item.href, true);
+      return;
+    }
+    const node = paletteCommandNodes.get(item.id);
+    if (node instanceof HTMLElement) {
+      closePalette();
+      node.focus();
+      node.click();
+    }
+  };
+  const renderPalette = (query = paletteQueryInput instanceof HTMLInputElement ? paletteQueryInput.value : "") => {
+    const q = cleanText(query).toLowerCase();
+    const ranked = collectPaletteItems(query)
+      .map((item) => {
+        if (!q) return { item, score: { jump: 140, action: 110, pin: 104, recent: 100, object: 96, command: 92, nav: 76 }[item.type] || 60 };
+        const haystack = cleanText([item.label, item.description, item.meta, item.keywords, item.href].join(" ")).toLowerCase();
+        const label = cleanText(item.label).toLowerCase();
+        const tokens = q.split(/\\s+/).filter(Boolean);
+        if (!tokens.every((token) => haystack.includes(token))) return null;
+        return { item, score: tokens.reduce((sum, token) => sum + (label.startsWith(token) ? 40 : label.includes(token) ? 24 : 10), { jump: 140, action: 110, pin: 104, recent: 100, object: 96, command: 92, nav: 76 }[item.type] || 60) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score || cleanText(a.item.label).localeCompare(cleanText(b.item.label), "ko"));
+    paletteItems = ranked.map((entry) => entry.item).slice(0, q ? 16 : 12);
+    paletteActiveIndex = Math.min(Math.max(paletteActiveIndex, 0), Math.max(0, paletteItems.length - 1));
+    if (paletteResults instanceof HTMLElement) {
+      paletteResults.textContent = "";
+      if (!paletteItems.length) {
+        const empty = document.createElement("div");
+        empty.className = "shell-palette-empty";
+        empty.textContent = "검색 결과가 없습니다. prefix jump 예시는 episode:, job:, pack:, asset:, path: 입니다.";
+        paletteResults.appendChild(empty);
+      } else {
+        paletteItems.forEach((item, index) => {
+          const button = document.createElement("button");
+          const main = document.createElement("span");
+          const title = document.createElement("strong");
+          const desc = document.createElement("span");
+          const meta = document.createElement("span");
+          button.type = "button";
+          button.className = "shell-palette-item" + (index === paletteActiveIndex ? " active" : "");
+          button.setAttribute("role", "option");
+          button.setAttribute("aria-selected", String(index === paletteActiveIndex));
+          main.className = "shell-palette-item-main";
+          meta.className = "shell-palette-item-meta";
+          title.textContent = item.label;
+          desc.textContent = shorten(item.description || item.href || "", 90);
+          meta.textContent = cleanText(item.meta || "");
+          main.append(title, desc);
+          button.append(main, meta);
+          button.addEventListener("mouseenter", () => {
+            paletteActiveIndex = index;
+            renderPalette(query);
+          });
+          button.addEventListener("click", () => executePaletteItem(item));
+          paletteResults.appendChild(button);
+        });
+      }
+    }
+    renderPaletteSideList(
+      paletteCurrent,
+      currentObjectRecord
+        ? [
+            { label: currentObjectRecord.label, description: currentObjectRecord.id, href: currentObjectRecord.href },
+            { label: isPinnedObject(currentObjectRecord) ? "현재 오브젝트 unpin" : "현재 오브젝트 pin", description: currentObjectRecord.label, action: "toggle-pin-current" }
+          ]
+        : [],
+      "현재 오브젝트를 아직 추론하지 못했습니다."
+    );
+    renderPaletteSideList(
+      palettePins,
+      readPinnedObjects().map((record) => ({ label: record.label, description: record.id, href: record.href, meta: "pin" })),
+      "고정된 오브젝트가 없습니다."
+    );
+    renderPaletteSideList(
+      paletteRecents,
+      readRecentObjects().map((record) => ({ label: record.label, description: record.id, href: record.href, meta: "recent" })),
+      "최근 오브젝트가 없습니다."
+    );
+  };
   const syncPrimaryAction = () => {
     const primary = primaryActionNode();
     const searchField = searchFieldNode();
@@ -620,6 +1246,8 @@ export const UI_SHELL_CLIENT = `
     const url = new URL(window.location.href);
     const pathname = url.pathname;
     const nav = activeNav(pathname);
+    currentObjectRecord = resolveCurrentObject(url);
+    currentReturnTarget = resolveReturnTarget();
     document.querySelectorAll("header nav a[href]").forEach((node) => {
       if (!(node instanceof HTMLAnchorElement)) return;
       const href = node.getAttribute("href");
@@ -635,9 +1263,9 @@ export const UI_SHELL_CLIENT = `
     const errorState = error ? classifyError(error) : null;
     const alertLabel = errorState ? errorState.label : message ? "성공" : "정상";
     const alertTone = errorState ? errorState.tone : message ? "ok" : "ok";
-    const recovery = errorState ? errorState.recovery : nav ? nav.description : "작업 / 상태 / 비교";
-    const recoveryTone = errorState ? errorState.tone : nav ? "info" : "muted";
-    const objectText = describeObject(url);
+    const recovery = currentReturnTarget ? currentReturnTarget.label : errorState ? errorState.recovery : nav ? nav.description : "현재 페이지 기준 복귀 링크 준비";
+    const recoveryTone = currentReturnTarget ? "info" : errorState ? errorState.tone : nav ? "info" : "muted";
+    const objectText = currentObjectRecord ? currentObjectRecord.label : describeObject(url);
     document.body.dataset.shellAlertTone = alertTone;
     document.body.dataset.shellFilterTone = filterSummary.tone;
     setText(shellCurrentObject, objectText);
@@ -658,8 +1286,11 @@ export const UI_SHELL_CLIENT = `
     setSeverity(shellFilterChip, filterSummary.tone);
     setSeverity(shellRecoveryState, recoveryTone);
     syncPrimaryAction();
+    syncCurrentObjectControls();
+    if (currentObjectRecord) recordRecentObject(currentObjectRecord);
     syncNavCollapse();
     normalizeSeverityNodes(document.body);
+    if (isPaletteOpen()) renderPalette();
   };
   if (shellNavToggle instanceof HTMLButtonElement) {
     shellNavToggle.addEventListener("click", () => {
@@ -722,7 +1353,7 @@ export const UI_SHELL_CLIENT = `
     applyFilter();
   });
   document.querySelectorAll("input[type='search']").forEach((node) => {
-    if (!(node instanceof HTMLInputElement) || node.dataset.tableFilter) return;
+    if (!(node instanceof HTMLInputElement) || node.dataset.tableFilter || node.dataset.shellPaletteInput === "1") return;
     const syncSearchAffordance = () => markSearchActivity(node, node.value.trim().length > 0);
     node.addEventListener("input", syncSearchAffordance);
     syncSearchAffordance();
@@ -882,21 +1513,31 @@ export const UI_SHELL_CLIENT = `
   }
   if (shellFilterAction instanceof HTMLButtonElement) {
     shellFilterAction.addEventListener("click", () => {
-      const search = searchFieldNode();
-      if (!(search instanceof HTMLElement)) return;
-      search.focus();
-      if (search instanceof HTMLInputElement) search.select();
-      speak("필터 입력으로 이동했습니다.");
+      if (focusSearchField()) speak("필터 입력으로 이동했습니다.");
+    });
+  }
+  if (shellOpenCurrent instanceof HTMLButtonElement) {
+    shellOpenCurrent.addEventListener("click", () => {
+      if (currentObjectRecord) navigateTo(currentObjectRecord.href, true);
+    });
+  }
+  if (shellPinCurrent instanceof HTMLButtonElement) {
+    shellPinCurrent.addEventListener("click", () => {
+      if (!currentObjectRecord) return;
+      const pinned = togglePinnedObject(currentObjectRecord);
+      syncCurrentObjectControls();
+      renderPalette();
+      toast(pinned ? "Pin 추가" : "Pin 해제", currentObjectRecord.label, "ok", 2200);
+    });
+  }
+  if (shellReturnLink instanceof HTMLButtonElement) {
+    shellReturnLink.addEventListener("click", () => {
+      if (currentReturnTarget) navigateTo(currentReturnTarget.href, false);
     });
   }
   if (shellCopyLink instanceof HTMLButtonElement) {
-    shellCopyLink.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        toast("링크 복사됨", window.location.pathname, "ok", 2000);
-      } catch (err) {
-        toast("복사 실패", String(err), "bad", 4000);
-      }
+    shellCopyLink.addEventListener("click", () => {
+      void copyDeepLink();
     });
   }
   const updateClock = () => {
@@ -911,6 +1552,7 @@ export const UI_SHELL_CLIENT = `
   if (translatedTitle !== document.title) document.title = translatedTitle;
   applyShellGrammar(document.body);
   syncShellState();
+  renderPalette(cleanText(readPaletteState().query));
   const observer = new MutationObserver((mutations) => {
     const dirtyRoots = [];
     mutations.forEach((mutation) => {
@@ -929,11 +1571,56 @@ export const UI_SHELL_CLIENT = `
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["disabled", "aria-disabled", "data-primary-action"]
+    attributeFilter: [
+      "disabled",
+      "aria-disabled",
+      "data-primary-action",
+      "data-shell-current-object",
+      "data-shell-object-kind",
+      "data-shell-object-id",
+      "data-shell-command",
+      "data-shell-command-action",
+      "data-shell-command-href"
+    ]
   });
   window.addEventListener("keydown", (event) => {
     const target = event.target;
     const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
+    const lowerKey = event.key.toLowerCase();
+    if (lowerKey === "k" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+      event.preventDefault();
+      if (isPaletteOpen()) closePalette();
+      else openPalette();
+      return;
+    }
+    if (isPaletteOpen()) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePalette();
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (paletteItems.length) {
+          paletteActiveIndex = (paletteActiveIndex + 1) % paletteItems.length;
+          renderPalette();
+        }
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (paletteItems.length) {
+          paletteActiveIndex = (paletteActiveIndex - 1 + paletteItems.length) % paletteItems.length;
+          renderPalette();
+        }
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        executePaletteItem(paletteItems[paletteActiveIndex]);
+      }
+      return;
+    }
     if (shortcut instanceof HTMLElement && shortcut.classList.contains("open") && event.key !== "Escape" && event.key !== "Tab" && event.key !== "?") return;
     if (editing) return;
     if (event.key === "?") {
@@ -948,16 +1635,20 @@ export const UI_SHELL_CLIENT = `
         closeDialog();
       }
       pendingGo = "";
+      if (pendingGoTimer !== null) window.clearTimeout(pendingGoTimer);
       return;
     }
-    if (event.key.toLowerCase() === "g") {
+    if (lowerKey === "g") {
       pendingGo = "g";
-      window.setTimeout(() => { pendingGo = ""; }, 1500);
+      if (pendingGoTimer !== null) window.clearTimeout(pendingGoTimer);
+      pendingGoTimer = window.setTimeout(() => {
+        pendingGo = "";
+      }, 1500);
       speak("이동 모드입니다. d 대시보드, s 스튜디오, e 에피소드, j 작업, h 상태, a 에셋, c 캐릭터, n 생성기, p 퍼블리시를 누르세요.");
       return;
     }
     if (pendingGo === "g") {
-      const chord = "g " + event.key.toLowerCase();
+      const chord = "g " + lowerKey;
       pendingGo = "";
       const match = flatNav.find((item) => String(item.hotkey || "").toLowerCase() === chord);
       if (match) {
@@ -966,7 +1657,7 @@ export const UI_SHELL_CLIENT = `
       }
       return;
     }
-    if (event.key.toLowerCase() === "r") {
+    if (lowerKey === "r") {
       const primary = primaryActionNode();
       if (primary instanceof HTMLElement) {
         event.preventDefault();
@@ -975,12 +1666,7 @@ export const UI_SHELL_CLIENT = `
       return;
     }
     if (event.key === "/") {
-      const search = searchFieldNode();
-      if (search instanceof HTMLElement) {
-        event.preventDefault();
-        search.focus();
-        if (search instanceof HTMLInputElement) search.select();
-      }
+      if (focusSearchField()) event.preventDefault();
     }
   });
   window.addEventListener("beforeunload", () => {
