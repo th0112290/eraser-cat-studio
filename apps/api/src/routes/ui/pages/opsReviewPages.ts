@@ -7,6 +7,13 @@ type ExplorerPageInput = {
   filters: string;
   summaryCards: string;
   notes?: string;
+  linksHtml?: string;
+  railTitle?: string;
+  railIntro?: string;
+  railCards?: ExplorerRailCard[];
+  factsTitle?: string;
+  factsIntro?: string;
+  facts?: ExplorerFact[];
   tableId: string;
   tableTitle: string;
   tableSubtitle: string;
@@ -17,15 +24,85 @@ type ExplorerPageInput = {
   emptyText: string;
 };
 
+type ExplorerRailCard = {
+  title: string;
+  detail: string;
+  tone?: "ok" | "warn" | "bad" | "muted";
+  badge?: string;
+  html?: string;
+};
+
+type ExplorerFact = {
+  label: string;
+  value: string;
+  hint?: string;
+};
+
+function explorerTone(value: ExplorerRailCard["tone"]): "ok" | "warn" | "bad" | "muted" {
+  return value ?? "muted";
+}
+
+function renderExplorerRailCards(cards: ExplorerRailCard[]): string {
+  if (cards.length === 0) {
+    return '<div class="ops-review-empty">No review actions are available for this explorer yet.</div>';
+  }
+
+  return `<div class="ops-review-card-list">${cards
+    .map((card) => {
+      const tone = explorerTone(card.tone);
+      return `<article class="ops-review-card tone-${tone}">
+        <div class="ops-review-card-head">
+          <div class="ops-review-card-title">${card.title}</div>
+          ${card.badge ? `<span class="badge ${tone}">${card.badge}</span>` : ""}
+        </div>
+        <p>${card.detail}</p>
+        ${card.html ? `<div class="ops-review-card-actions">${card.html}</div>` : ""}
+      </article>`;
+    })
+    .join("")}</div>`;
+}
+
+function renderExplorerFacts(facts: ExplorerFact[]): string {
+  if (facts.length === 0) {
+    return '<div class="ops-review-empty">No recovery snapshot facts are available for this explorer yet.</div>';
+  }
+
+  return `<div class="ops-review-fact-grid">${facts
+    .map(
+      (fact) => `<article class="ops-review-fact">
+        <span class="ops-review-fact-label">${fact.label}</span>
+        <strong>${fact.value}</strong>
+        ${fact.hint ? `<span class="muted-text">${fact.hint}</span>` : ""}
+      </article>`
+    )
+    .join("")}</div>`;
+}
+
 function buildExplorerPageBody(input: ExplorerPageInput): string {
   return `
 <section class="card dashboard-shell">
   <style>
     .ops-review-shell{display:grid;gap:12px}
-    .ops-review-strip{display:grid;gap:10px;grid-template-columns:minmax(240px,1.3fr) minmax(240px,.9fr);align-items:start}
+    .ops-review-strip{display:grid;gap:12px;grid-template-columns:minmax(260px,1.2fr) minmax(280px,.95fr);align-items:start}
     .ops-review-rail{display:grid;gap:10px}
-    .ops-review-note{padding:11px 12px;border:1px dashed #bed3e6;border-radius:14px;background:linear-gradient(180deg,#fcfefe,#f4f9fd)}
+    .ops-review-note,.ops-review-panel{padding:12px;border:1px solid #d9e5ef;border-radius:16px;background:linear-gradient(180deg,#fcfefe,#f4f9fd)}
     .ops-review-note strong{display:block;margin-bottom:4px}
+    .ops-review-panel{display:grid;gap:10px}
+    .ops-review-panel-head{display:grid;gap:4px}
+    .ops-review-panel-head h2,.ops-review-panel-head h3{margin:0}
+    .ops-review-card-list{display:grid;gap:8px}
+    .ops-review-card{display:grid;gap:6px;padding:11px;border-radius:14px;border:1px solid #d9e5ef;background:#fff}
+    .ops-review-card.tone-ok{border-color:#cbe6d7;background:#f3fbf7}
+    .ops-review-card.tone-warn{border-color:#ecd9ad;background:#fffaf0}
+    .ops-review-card.tone-bad{border-color:#efc4c4;background:#fff6f6}
+    .ops-review-card-head{display:flex;gap:8px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+    .ops-review-card-title{font-size:14px;font-weight:800;color:#12344d}
+    .ops-review-card p{margin:0;color:#425466;line-height:1.45}
+    .ops-review-card-actions{display:flex;flex-wrap:wrap;gap:8px}
+    .ops-review-fact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+    .ops-review-fact{display:grid;gap:4px;padding:10px;border:1px solid #d8e5ee;border-radius:14px;background:#f8fbff}
+    .ops-review-fact-label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#557083}
+    .ops-review-empty{padding:11px;border:1px dashed #c8d7e7;border-radius:14px;background:#f8fbff;color:#536475}
     .ops-chip-grid{display:flex;flex-wrap:wrap;gap:8px}
     .ops-chip-grid a{display:inline-flex;align-items:center;padding:7px 11px;border-radius:999px;border:1px solid #c7d9eb;background:#fff;color:#0f4e6a;font-size:12px;font-weight:700}
     .ops-chip-grid a:hover{text-decoration:none;background:#eef7ff}
@@ -38,15 +115,35 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
       <h1>${input.title}</h1>
       <p class="section-intro">${input.subtitle}</p>
     </div>
-    <div class="quick-links"><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollouts</a><a href="/ui/artifacts">Artifacts</a></div>
+    <div class="quick-links">${input.linksHtml ?? '<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollouts</a><a href="/ui/artifacts">Artifacts</a>'}</div>
   </div>
   ${input.flash}
+  <div class="summary-grid">${input.summaryCards}</div>
   <div class="ops-review-strip">
     <div class="ops-review-shell">
-      <div class="summary-grid">${input.summaryCards}</div>
-      <div class="ops-filter-card">${input.filters}</div>
+      <div class="ops-review-panel">
+        <div class="ops-review-panel-head">
+          <h2>Explorer filters</h2>
+          <p class="section-intro">Narrow the queue first, then inspect detail surfaces only for the rows that still need a decision.</p>
+        </div>
+        <div class="ops-filter-card">${input.filters}</div>
+      </div>
     </div>
     <div class="ops-review-rail">
+      <div class="ops-review-panel">
+        <div class="ops-review-panel-head">
+          <h2>${input.railTitle ?? "Decision rail"}</h2>
+          <p class="section-intro">${input.railIntro ?? "Keep compare-before-promote and recovery actions above the table scan."}</p>
+        </div>
+        ${renderExplorerRailCards(input.railCards ?? [])}
+      </div>
+      <div class="ops-review-panel">
+        <div class="ops-review-panel-head">
+          <h3>${input.factsTitle ?? "Recovery snapshot"}</h3>
+          <p class="section-intro">${input.factsIntro ?? "Keep scope, blockers, and rollback anchors visible while scanning the queue."}</p>
+        </div>
+        ${renderExplorerFacts(input.facts ?? [])}
+      </div>
       ${input.notes ?? '<div class="ops-review-note"><strong>Artifact-backed view</strong><span class="muted-text">This screen only reads existing benchmark or episode artifacts. It does not re-run worker or renderer logic.</span></div>'}
     </div>
   </div>
@@ -62,6 +159,9 @@ type RepairAcceptancePageBodyInput = {
   filters: string;
   summaryCards: string;
   notes?: string;
+  linksHtml?: string;
+  railCards?: ExplorerRailCard[];
+  facts?: ExplorerFact[];
   rows: string;
 };
 
@@ -73,6 +173,13 @@ export function buildRepairAcceptancePageBody(input: RepairAcceptancePageBodyInp
     filters: input.filters,
     summaryCards: input.summaryCards,
     notes: input.notes,
+    linksHtml: input.linksHtml,
+    railTitle: "Decision rail",
+    railIntro: "Review blocked acceptance states first, compare candidate evidence before promote, then move to recovery paths.",
+    railCards: input.railCards,
+    factsTitle: "Acceptance snapshot",
+    factsIntro: "Keep the current queue shape and rollback anchors above the table scan.",
+    facts: input.facts,
     tableId: "repair-acceptance-table",
     tableTitle: "Acceptance Queue",
     tableSubtitle: "Review shots where provider, policy, QC run issues, or fallback state need operator attention.",
@@ -89,6 +196,9 @@ type RouteReasonPageBodyInput = {
   filters: string;
   summaryCards: string;
   notes?: string;
+  linksHtml?: string;
+  railCards?: ExplorerRailCard[];
+  facts?: ExplorerFact[];
   rows: string;
 };
 
@@ -100,6 +210,13 @@ export function buildRouteReasonPageBody(input: RouteReasonPageBodyInput): strin
     filters: input.filters,
     summaryCards: input.summaryCards,
     notes: input.notes,
+    linksHtml: input.linksHtml,
+    railTitle: "Decision rail",
+    railIntro: "Trace route decisions first, compare candidate evidence before promote, then open the artifact chain only for rows that still diverge.",
+    railCards: input.railCards,
+    factsTitle: "Route snapshot",
+    factsIntro: "Keep route drift, filters, and fallback anchors visible while scanning routed shots.",
+    facts: input.facts,
     tableId: "route-reason-table",
     tableTitle: "Route Reason Matrix",
     tableSubtitle: "Tie each `route_reason` to concrete runtime shots, selected candidates, and QC-backed artifact trails.",
@@ -116,6 +233,9 @@ type DatasetLineagePageBodyInput = {
   filters: string;
   summaryCards: string;
   notes?: string;
+  linksHtml?: string;
+  railCards?: ExplorerRailCard[];
+  facts?: ExplorerFact[];
   rows: string;
 };
 
@@ -127,6 +247,13 @@ export function buildDatasetLineagePageBody(input: DatasetLineagePageBodyInput):
     filters: input.filters,
     summaryCards: input.summaryCards,
     notes: input.notes,
+    linksHtml: input.linksHtml,
+    railTitle: "Decision rail",
+    railIntro: "Verify lineage before promote, trace the artifact chain, and surface schema gaps before opening low-level payloads.",
+    railCards: input.railCards,
+    factsTitle: "Lineage snapshot",
+    factsIntro: "Keep dataset, pack, and schema-gap scope visible while verifying provenance.",
+    facts: input.facts,
     tableId: "dataset-lineage-table",
     tableTitle: "Lineage Rows",
     tableSubtitle: "Use this when an ops reviewer needs to confirm which dataset and character sources produced a benchmark bundle.",
