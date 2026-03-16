@@ -44,16 +44,16 @@ export function renderUiPage(title: string, body: string): string {
   <title>${esc(title)}</title>
   <style>${UI_SHELL_STYLES}</style>
 </head>
-<body data-page-title="${esc(title)}" data-shell-nav='${esc(JSON.stringify(UI_SHELL_FLAT_NAV))}'>
+<body data-page-title="${esc(title)}" data-shell-nav='${esc(JSON.stringify(UI_SHELL_FLAT_NAV))}' data-shell-grammar="phase-2">
   <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
   <header class="shell-header top-shell">
     <div class="shell-inner">
       <div class="shell-top">
         <div class="shell-brand shell-brand-block">
-          <div class="shell-brand-mark"><strong>EC</strong><span>Eraser Cat 컨트롤 플레인</span></div>
+          <div class="shell-brand-mark"><strong>EC</strong><span>Eraser Cat Control Plane</span></div>
           <div class="shell-brand-copy">
             <h1>오브젝트 중심 운영 콘솔</h1>
-            <p>대시보드, 목록, 상세, 워크벤치, 비교 화면을 하나의 공통 셸로 묶었습니다. 목록은 진입점이고, 실제 결정은 상세, 비교, 복구 패널에서 이뤄집니다.</p>
+            <p>목록, 상세, 비교, 복구, 산출물 확인을 같은 제품 문법으로 묶습니다. 페이지별 장식보다 상태, 판단, 다음 액션이 먼저 보이도록 유지합니다.</p>
           </div>
         </div>
         <div class="shell-meta shell-meta-panel" aria-label="현재 컨트롤 상태">
@@ -63,9 +63,9 @@ export function renderUiPage(title: string, body: string): string {
             <span class="shell-chip shell-chip-state" id="shell-current-state" data-severity="muted">정상</span>
           </div>
           <div class="shell-status-row shell-status-lane">
-            <span class="shell-status"><strong>상태</strong><span>상태 우선 라우팅</span></span>
-            <span class="shell-status"><strong>비교</strong><span>비교 검토를 기본 경로로 유지</span></span>
-            <span class="shell-status"><strong>복구</strong><span>복구 경로를 항상 노출</span></span>
+            <span class="shell-status"><strong>상태</strong><span>오브젝트 상태를 먼저 읽습니다.</span></span>
+            <span class="shell-status"><strong>비교</strong><span>비교와 판정 경로를 위쪽에 고정합니다.</span></span>
+            <span class="shell-status"><strong>복구</strong><span>실패 이후 경로를 계속 노출합니다.</span></span>
             <span class="shell-status"><strong>시계</strong><span id="shell-live-clock">--:--:--</span></span>
           </div>
           <div class="shell-shortcuts">
@@ -79,37 +79,40 @@ export function renderUiPage(title: string, body: string): string {
     </div>
   </header>
   <main id="main-content">
-    <section class="page-intro page-header object-header-shell" aria-label="페이지 소개">
+    <section class="page-intro page-header object-header-shell shell-surface shell-surface-hero" data-surface-role="object-header" aria-label="페이지 소개">
       <div class="hero-grid page-header-grid">
         <div class="page-intro-head page-header-main">
           <div class="stack page-title-stack">
             <span class="muted-text shell-page-kicker header-kicker" id="shell-page-group">관찰</span>
-            <div class="object-header">
-              <div class="object-header-main">
+            <div class="object-header object-header-identity">
+              <div class="object-header-main object-header-copy-block">
                 <h2 id="shell-page-title" class="page-title">${esc(title)}</h2>
                 <p class="section-intro shell-page-copy object-header-copy" id="shell-page-summary">오브젝트 중심 제어면에서 빠른 라우팅, 상세 작업, 비교 검토, 복구 대응을 진행합니다.</p>
               </div>
-              <div class="quick-links object-header-meta">
+              <div class="quick-links object-header-meta object-header-meta-grid">
                 <span class="shell-chip shell-chip-path"><strong>경로</strong><span id="shell-page-path">/ui</span></span>
                 <span class="shell-chip shell-chip-object"><strong>오브젝트</strong><span id="shell-page-object">현재 오브젝트 없음</span></span>
               </div>
             </div>
           </div>
         </div>
-        <div class="status-panel metadata-block page-status-panel" aria-label="페이지 상태">
+        <div class="status-panel metadata-block preflight-box page-status-panel" data-surface-role="metadata" data-surface-kicker="현재 상태" aria-label="페이지 상태">
           <div class="status-row metadata-row"><span class="label">필터 상태</span><strong id="shell-filter-state">URL 상태 대기</strong></div>
           <div class="status-row metadata-row"><span class="label">알림 상태</span><strong id="shell-alert-state">정상</strong></div>
-          <div class="status-row metadata-row"><span class="label">복구</span><strong id="shell-recovery-state">작업 / 상태 / 비교</strong></div>
+          <div class="status-row metadata-row"><span class="label">복구 경로</span><strong id="shell-recovery-state">작업 / 상태 / 비교</strong></div>
         </div>
       </div>
     </section>
-    <section class="sticky-action-bar shell-action-bar" aria-label="고정 액션 바">
+    <section class="sticky-action-bar shell-action-bar action-rail-shell" data-surface-role="action" aria-label="고정 액션 바">
       <div class="shell-action-head">
-        <span class="muted-text">액션 계층</span>
-        <div class="quick-links shell-action-state">
-          <span class="shell-chip shell-chip-filter" id="shell-filter-chip" data-severity="muted">URL 상태 대기</span>
-          <span class="shell-chip shell-chip-state" id="shell-alert-chip" data-severity="muted">정상</span>
+        <div class="stack shell-action-summary">
+          <span class="muted-text">주요 액션</span>
+          <div class="quick-links shell-action-state">
+            <span class="shell-chip shell-chip-filter" id="shell-filter-chip" data-severity="muted">URL 상태 대기</span>
+            <span class="shell-chip shell-chip-state" id="shell-alert-chip" data-severity="muted">정상</span>
+          </div>
         </div>
+        <span class="muted-text shell-action-copy">기본 액션, 필터, 링크 복사를 같은 위치에 둡니다.</span>
       </div>
       <div class="shell-action-buttons">
         <button id="shell-primary-action" type="button"><span class="kbd">R</span><span id="shell-primary-label">기본 액션 실행</span></button>
@@ -123,7 +126,7 @@ export function renderUiPage(title: string, body: string): string {
   <div id="toast-wrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div>
   <div id="shortcut-help" class="shortcut-help" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="shortcut-title">
     <div class="shortcut-card">
-      <h2 id="shortcut-title">키보드 단축키</h2>
+      <h2 id="shortcut-title">단축키 도움말</h2>
       <table><thead><tr><th>키</th><th>동작</th></tr></thead><tbody>${renderShortcutRows()}</tbody></table>
       <div class="actions" style="margin-top:10px"><button id="shortcut-close" type="button">닫기</button></div>
     </div>
