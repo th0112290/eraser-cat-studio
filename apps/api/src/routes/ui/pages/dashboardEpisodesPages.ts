@@ -23,40 +23,59 @@ const OPERATOR_PATTERN_STYLE = `<style>
 .ops-titlebar{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
 .ops-titleblock{display:grid;gap:4px;max-width:720px}
 .ops-titleblock h1,.ops-titleblock h2{margin-bottom:0}
-.ops-kpi-grid,.ops-note-grid,.ops-mini-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.ops-kpi-grid,.ops-note-grid,.ops-mini-grid,.ops-key-grid,.ops-rail-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .ops-kpi,.ops-lane,.ops-inline-card{display:grid;gap:6px;padding:10px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fff,#f7fbfc);border-radius:12px}
 .ops-kpi-label{font-size:12px;font-weight:700;color:#42556a;text-transform:uppercase;letter-spacing:.08em}
 .ops-kpi-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;font-weight:800}
-.ops-callout{display:grid;gap:6px;padding:10px;border-radius:12px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fbfefd,#f2f8f9)}
-.ops-callout h3,.ops-lane h3{margin:0;font-size:14px}
-.ops-callout p,.ops-lane p,.ops-inline-card p{margin:0;color:#4f6470;line-height:1.5}
-.ops-callout.warn{border-color:#edd2ac;background:linear-gradient(180deg,#fffaf1,#fff3df)}
-.ops-callout.bad{border-color:#efc5c8;background:linear-gradient(180deg,#fff7f7,#fff1f2)}
-.ops-callout.ok{border-color:#bcdccf;background:linear-gradient(180deg,#f5fcf7,#edf8f0)}
-.ops-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.ops-actions-list,.ops-mini-list{display:grid;gap:7px;margin:0;padding:0;list-style:none}
-.ops-actions-list li,.ops-mini-list li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:6px 0;border-top:1px solid #e1eaef}
-.ops-actions-list li:first-child,.ops-mini-list li:first-child{border-top:none;padding-top:0}
-.ops-mini-list li span:first-child{font-weight:700;color:#1f3340}
+.ops-rail-card{display:grid;gap:8px;padding:12px;border:1px solid #d6e4ea;border-radius:14px;background:linear-gradient(180deg,#ffffff,#f8fbfc)}
+.ops-rail-card h3{margin:0;font-size:15px}
+.ops-rail-card p{margin:0;color:#4f6470;line-height:1.5}
+.ops-rail-card.tone-ok{border-color:#cbe6d7;background:linear-gradient(180deg,#effcf7,#ffffff)}
+.ops-rail-card.tone-warn{border-color:#ecd9ad;background:linear-gradient(180deg,#fff8ea,#fffdf7)}
+.ops-rail-card.tone-bad{border-color:#efc4c4;background:linear-gradient(180deg,#fff4f4,#fffdfd)}
+.ops-rail-card.tone-muted{border-color:#dbe5ef;background:linear-gradient(180deg,#f7fafc,#ffffff)}
+.ops-rail-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.ops-rail-item{display:grid;gap:4px;padding-top:8px;border-top:1px solid #e1eaef}
+.ops-rail-item:first-child{border-top:none;padding-top:0}
+.ops-rail-item strong{font-size:14px;color:#1f3340}
+.ops-rail-card .quick-links{margin-top:2px}
 .ops-inline-card{color:inherit;text-decoration:none}
 .ops-inline-card:hover{border-color:#9ec6c3;background:linear-gradient(180deg,#ffffff,#eef8f6);text-decoration:none}
-.ops-inline-card strong{font-size:15px;letter-spacing:-.01em}
+.ops-object-card .ops-object-kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#58707c}
+.ops-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .ops-table-shell{display:grid;gap:10px}
 .ops-table-meta{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
 .search-cluster{display:grid;gap:6px;padding:10px;border:1px solid #dbe7f3;background:#f8fbff;border-radius:12px}
 .search-cluster label{font-size:12px;font-weight:700;color:#334155}
 .search-cluster input{width:100%}
 .search-cluster .muted-text{line-height:1.4}
-.ops-key-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .ops-summary-line{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 9px;border:1px solid #d9e4e8;background:#fff;border-radius:10px}
-@media (max-width:720px){.ops-titleblock{max-width:none}.ops-actions-list li,.ops-mini-list li,.ops-summary-line{display:grid;justify-content:stretch}}
+.ops-form-shell{display:grid;gap:10px}
+@media (max-width:720px){.ops-titleblock{max-width:none}.ops-summary-line{display:grid;justify-content:stretch}}
 </style>`;
 
 function renderOpsStyle(): string {
   return OPERATOR_PATTERN_STYLE;
 }
 
-function inferTone(markup: string): "ok" | "warn" | "bad" | "muted" {
+type OpsRailTone = "ok" | "warn" | "bad" | "muted";
+
+type OpsRailItem = {
+  label: string;
+  detail: string;
+  html?: string;
+};
+
+type OpsRailCardInput = {
+  title: string;
+  intro: string;
+  tone?: OpsRailTone;
+  items?: OpsRailItem[];
+  bodyHtml?: string;
+  linksHtml?: string;
+};
+
+function inferTone(markup: string): OpsRailTone {
   if (markup.includes("badge bad")) return "bad";
   if (markup.includes("badge warn")) return "warn";
   if (markup.includes("badge ok")) return "ok";
@@ -77,6 +96,35 @@ function renderSearchCluster(input: {
   return `<div class="search-cluster"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}" placeholder="${input.placeholder}" autocomplete="off"/><span class="muted-text">${input.hint}</span></div>`;
 }
 
+function renderRailItems(items: OpsRailItem[]): string {
+  return `<ul class="ops-rail-list">${items
+    .map(
+      (item) =>
+        `<li class="ops-rail-item"><strong>${item.label}</strong><span class="muted-text">${item.detail}</span>${item.html ?? ""}</li>`
+    )
+    .join("")}</ul>`;
+}
+
+function renderRailCard(input: OpsRailCardInput): string {
+  const tone = input.tone ?? "muted";
+  const bodyHtml =
+    input.bodyHtml ?? ((input.items?.length ?? 0) > 0 ? renderRailItems(input.items ?? []) : '<div class="notice">표시할 항목이 없습니다.</div>');
+  return `<div class="ops-rail-card tone-${tone}"><div class="stack"><h3>${input.title}</h3><p>${input.intro}</p></div>${bodyHtml}${
+    input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""
+  }</div>`;
+}
+
+function renderRailSection(input: {
+  title: string;
+  intro: string;
+  linksHtml?: string;
+  cards: OpsRailCardInput[];
+}): string {
+  return `<section class="card"><div class="section-head"><div><h2>${input.title}</h2><p class="section-intro">${input.intro}</p></div>${
+    input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""
+  }</div><div class="ops-rail-grid">${input.cards.map(renderRailCard).join("")}</div></section>`;
+}
+
 function buildDashboardRecentObjectsScript(): string {
   return `<script>(() => {
   const episodeRoot = document.getElementById('dashboard-recent-episodes');
@@ -90,50 +138,53 @@ function buildDashboardRecentObjectsScript(): string {
     if (text === 'RUNNING' || text === 'QUEUED' || text === 'PENDING' || text === 'DEGRADED') return 'warn';
     return 'muted';
   };
-  const renderEmpty = (label) => '<div class="notice">최근 ' + esc(label) + ' 항목이 없습니다.</div>';
+  const renderEmpty = (label) => '<div class="notice">No recent ' + esc(label) + '.</div>';
   const renderEpisodeCard = (row) => {
     const id = String(row && row.id || '').trim();
-    const topic = String(row && row.topic || id || '제목 없는 에피소드');
+    const topic = String(row && row.topic || id || 'Untitled episode');
     const status = String(row && row.status || 'UNKNOWN');
-    const duration = row && row.targetDurationSec ? String(row.targetDurationSec) + '초 목표' : '길이 정보 없음';
+    const duration = row && row.targetDurationSec ? String(row.targetDurationSec) + ' sec target' : 'Duration missing';
     const latest = Array.isArray(row && row.jobs) && row.jobs.length > 0 && row.jobs[0] && typeof row.jobs[0] === 'object'
       ? String(row.jobs[0].type || '-') + ' / ' + String(row.jobs[0].status || '-')
-      : '최근 작업 없음';
+      : 'No recent job';
     const channel = row && row.channel && typeof row.channel === 'object' && row.channel !== null
-      ? String(row.channel.name || row.channel.id || '기본 채널')
-      : '기본 채널';
-    return '<a class="ops-inline-card" href="/ui/episodes/' + encodeURIComponent(id) + '">' +
+      ? String(row.channel.name || row.channel.id || 'Default channel')
+      : 'Default channel';
+    return '<a class="ops-inline-card ops-object-card" href="/ui/episodes/' + encodeURIComponent(id) + '">' +
+      '<span class="ops-object-kicker">Recent episode</span>' +
       '<div class="inline-actions"><span class="badge ' + badgeClass(status) + '">' + esc(status) + '</span><span class="muted-text">' + esc(channel) + '</span></div>' +
       '<strong>' + esc(topic) + '</strong>' +
       '<span class="muted-text">' + esc(id) + '</span>' +
       '<span class="muted-text">' + esc(latest) + ' | ' + esc(duration) + '</span>' +
+      '<span class="muted-text">Next: open detail, then render / artifacts / publish.</span>' +
       '</a>';
   };
   const renderJobCard = (row) => {
     const id = String(row && row.id || '').trim();
-    const type = String(row && row.type || '알 수 없는 작업');
+    const type = String(row && row.type || 'Unknown job');
     const status = String(row && row.status || 'UNKNOWN');
     const progress = row && row.progress != null ? String(row.progress) + '%' : '0%';
     const episodeId = String(row && row.episodeId || row && row.episode && row.episode.id || '').trim();
     const episodeLabel = row && row.episode && typeof row.episode === 'object' && row.episode !== null
-      ? String(row.episode.topic || episodeId || '에피소드 링크')
-      : (episodeId || '에피소드 링크');
+      ? String(row.episode.topic || episodeId || 'Episode')
+      : (episodeId || 'Episode');
     const inspectLinks = [
-      '<a href="/ui/jobs/' + encodeURIComponent(id) + '">상세 보기</a>',
-      episodeId ? '<a href="/ui/episodes/' + encodeURIComponent(episodeId) + '">에피소드</a>' : '',
-      episodeId ? '<a href="/ui/artifacts?episodeId=' + encodeURIComponent(episodeId) + '">산출물</a>' : ''
+      '<a href="/ui/jobs/' + encodeURIComponent(id) + '">Detail</a>',
+      episodeId ? '<a href="/ui/episodes/' + encodeURIComponent(episodeId) + '">Episode</a>' : '',
+      episodeId ? '<a href="/ui/artifacts?episodeId=' + encodeURIComponent(episodeId) + '">Artifacts</a>' : ''
     ].filter(Boolean).join('');
-    return '<div class="ops-inline-card">' +
+    return '<div class="ops-inline-card ops-object-card">' +
+      '<span class="ops-object-kicker">Recent job</span>' +
       '<div class="inline-actions"><span class="badge ' + badgeClass(status) + '">' + esc(status) + '</span><span class="muted-text">' + esc(progress) + '</span></div>' +
       '<strong>' + esc(type) + '</strong>' +
       '<span class="muted-text">' + esc(id) + '</span>' +
       '<span class="muted-text">' + esc(episodeLabel) + '</span>' +
-      '<div class="inline-actions">' + inspectLinks + '</div>' +
+      '<div class="quick-links">' + inspectLinks + '</div>' +
       '</div>';
   };
   const load = async () => {
-    episodeRoot.innerHTML = '<div class="notice">최근 에피소드를 불러오는 중...</div>';
-    jobRoot.innerHTML = '<div class="notice">최근 작업을 불러오는 중...</div>';
+    episodeRoot.innerHTML = '<div class="notice">Loading recent episodes...</div>';
+    jobRoot.innerHTML = '<div class="notice">Loading recent jobs...</div>';
     try {
       const [episodesRes, jobsRes] = await Promise.all([
         fetch('/api/episodes', { headers: { accept: 'application/json' } }),
@@ -143,18 +194,18 @@ function buildDashboardRecentObjectsScript(): string {
       const jobsJson = jobsRes.ok ? await jobsRes.json() : { data: [] };
       const episodes = Array.isArray(episodesJson && episodesJson.data) ? episodesJson.data.slice(0, 4) : [];
       const jobs = Array.isArray(jobsJson && jobsJson.data) ? jobsJson.data.slice(0, 4) : [];
-      episodeRoot.innerHTML = episodes.length > 0 ? episodes.map(renderEpisodeCard).join('') : renderEmpty('에피소드');
-      jobRoot.innerHTML = jobs.length > 0 ? jobs.map(renderJobCard).join('') : renderEmpty('작업');
+      episodeRoot.innerHTML = episodes.length > 0 ? episodes.map(renderEpisodeCard).join('') : renderEmpty('episodes');
+      jobRoot.innerHTML = jobs.length > 0 ? jobs.map(renderJobCard).join('') : renderEmpty('jobs');
       if (!episodesRes.ok) {
-        episodeRoot.innerHTML = '<div class="error">에피소드 요약 새로고침 실패: ' + esc(episodesRes.status) + '</div>';
+        episodeRoot.innerHTML = '<div class="error">Failed to load episodes: ' + esc(episodesRes.status) + '</div>';
       }
       if (!jobsRes.ok) {
-        jobRoot.innerHTML = '<div class="error">작업 요약 새로고침 실패: ' + esc(jobsRes.status) + '</div>';
+        jobRoot.innerHTML = '<div class="error">Failed to load jobs: ' + esc(jobsRes.status) + '</div>';
       }
     } catch (error) {
       const message = esc(error instanceof Error ? error.message : String(error));
-      episodeRoot.innerHTML = '<div class="error">에피소드 요약 새로고침 실패: ' + message + '</div>';
-      jobRoot.innerHTML = '<div class="error">작업 요약 새로고침 실패: ' + message + '</div>';
+      episodeRoot.innerHTML = '<div class="error">Failed to load episodes: ' + message + '</div>';
+      jobRoot.innerHTML = '<div class="error">Failed to load jobs: ' + message + '</div>';
     }
   };
   let timer = null;
@@ -240,24 +291,24 @@ function buildEpisodesLiveMonitorScript(): string {
     lastUpdated.textContent = new Date().toLocaleTimeString();
   };
   const poll = async (label) => {
-      setLive(label || '최근 에피소드 상태를 새로고침하는 중...', 'notice');
-      try {
-        const res = await fetch('/api/episodes', { headers: { accept: 'application/json' } });
-        if (!res.ok) throw new Error('poll failed: ' + res.status);
-        const json = await res.json();
-        const data = Array.isArray(json && json.data) ? json.data : [];
-        updateRows(data);
-        stamp();
-        setLive('최근 에피소드 상태를 동기화했습니다.', 'notice');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        setLive('상태 새로고침 실패: ' + message, 'error');
-      }
-    };
+    setLive(label || 'Refreshing episode states...', 'notice');
+    try {
+      const res = await fetch('/api/episodes', { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error('poll failed: ' + res.status);
+      const json = await res.json();
+      const data = Array.isArray(json && json.data) ? json.data : [];
+      updateRows(data);
+      stamp();
+      setLive('Episode states are current.', 'notice');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLive('Refresh failed: ' + message, 'error');
+    }
+  };
   let timer = null;
   const start = () => {
     if (!(autoRefresh instanceof HTMLInputElement) || !autoRefresh.checked || document.hidden || timer !== null) return;
-    timer = setInterval(() => { void poll('Refreshing recent episode states...'); }, 7000);
+    timer = setInterval(() => { void poll('Refreshing episode states...'); }, 7000);
   };
   const stop = () => {
     if (timer === null) return;
@@ -265,18 +316,18 @@ function buildEpisodesLiveMonitorScript(): string {
     timer = null;
   };
   if (refreshNow instanceof HTMLButtonElement) {
-    refreshNow.addEventListener('click', () => { void poll('수동 새로고침을 실행하는 중...'); });
+    refreshNow.addEventListener('click', () => { void poll('Manual refresh in progress...'); });
   }
   if (autoRefresh instanceof HTMLInputElement) {
     autoRefresh.addEventListener('change', () => {
       if (autoRefresh.checked) {
-        setLive('실시간 새로고침을 켰습니다.', 'notice');
-        void poll('최근 에피소드 상태를 새로고침하는 중...');
+        setLive('Auto refresh enabled.', 'notice');
+        void poll('Refreshing episode states...');
         start();
         return;
       }
       stop();
-      setLive('실시간 새로고침을 멈췄습니다. 수동 동기화는 지금 새로고침을 사용하세요.', 'notice');
+      setLive('Auto refresh paused. Use manual refresh when needed.', 'notice');
     });
   }
   const onVisibility = () => {
@@ -284,10 +335,10 @@ function buildEpisodesLiveMonitorScript(): string {
       stop();
       return;
     }
-    void poll('최근 에피소드 상태를 새로고침하는 중...');
+    void poll('Refreshing episode states...');
     start();
   };
-  void poll('최근 에피소드 상태를 새로고침하는 중...');
+  void poll('Refreshing episode states...');
   start();
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('beforeunload', () => {
@@ -310,261 +361,209 @@ ${renderOpsStyle()}
     <div class="ops-titleblock">
       <span class="eyebrow">운영 보드</span>
       <h1>대시보드</h1>
-      <p class="section-intro">여기서 전체 상황과 위험 신호를 먼저 확인하고, 다음 액션을 에피소드, 작업, 재렌더, 퍼블리시로 이어가세요.</p>
+      <p class="section-intro">오늘의 blocker, 다음 안전 액션, 최근 오브젝트를 위에서 먼저 읽고 detail과 recover로 내려가는 surface입니다.</p>
     </div>
     <div class="quick-links"><a href="/ui/episodes">에피소드</a><a href="/ui/jobs">작업</a><a href="/ui/hitl">HITL</a><a href="/ui/health">상태</a></div>
   </div>
   <div class="ops-kpi-grid">
-    ${renderMetricCard("전체 상태", input.overall, "새 작업을 큐에 넣기 전 가장 먼저 보는 진행 가능 여부입니다.")}
-    ${renderMetricCard("데이터베이스", input.dbStatus, "메타데이터와 에피소드 상태를 안정적으로 읽을 수 있어야 합니다.")}
-    ${renderMetricCard("Redis", input.redisStatus, "Queue and worker coordination depend on this staying healthy.")}
-    ${renderMetricCard("Minio", input.minioStatus, "퍼블리시 인계 전에 산출물 저장소가 안정적이어야 합니다.")}
-    ${renderMetricCard("큐", input.queueReady, "false면 프리뷰, 렌더, 재시도 경로가 막힐 수 있습니다.")}
+    ${renderMetricCard("Overall", input.overall, "전체 상태를 먼저 보고 그 아래 action rail로 내려갑니다.")}
+    ${renderMetricCard("DB", input.dbStatus, "오브젝트 메타데이터와 episode detail 흐름이 여기에 걸립니다.")}
+    ${renderMetricCard("Redis", input.redisStatus, "queue coordination과 worker handoff 상태를 빠르게 읽습니다.")}
+    ${renderMetricCard("Minio", input.minioStatus, "artifacts와 publish 승격이 storage 정합 위에서만 안전합니다.")}
+    ${renderMetricCard("Queue Ready", input.queueReady, "false면 enqueue와 retry보다 recovery를 먼저 진행합니다.")}
   </div>
 </section>
 
-<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>위험 신호</h2>
-      <p class="section-intro">플랫폼 상태를 훑은 뒤 계속 진행할지 판단하고, 바로 영향을 받는 운영 동선으로 이동하세요.</p>
-    </div>
-    <div class="quick-links"><a href="/ui/health">상태 열기</a><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a></div>
-  </div>
-  <div class="ops-note-grid">
-    <div class="ops-callout ${healthTone}">
-      <h3>플랫폼 상태</h3>
-      <p>전체 서비스 상태: ${input.overall}. down 또는 degraded면 작업 재시도나 퍼블리시 전에 인프라를 먼저 확인하세요.</p>
-    </div>
-    <div class="ops-callout ${queueTone}">
-      <h3>큐 준비 상태</h3>
-      <p>큐 상태: ${input.queueReady}. 큐 준비 상태가 false면 새 에피소드 작업을 넣기 전에 작업 또는 상태 화면으로 이동하세요.</p>
-    </div>
-    <div class="ops-callout ${storageTone}">
-      <h3>산출물 + 퍼블리시 경로</h3>
-      <p>저장소 상태: ${input.minioStatus}. 산출물이 불안정하면 퍼블리시와 산출물 점검 모두 복구 경로가 필요할 수 있습니다.</p>
-    </div>
-  </div>
-</section>
+${renderRailSection({
+  title: "오늘의 blocker",
+  intro: "새 작업보다 차단 요인을 먼저 해소해야 list -> detail -> recover 흐름이 안정됩니다.",
+  linksHtml: '<a href="/ui/health">상태 열기</a><a href="/ui/jobs">작업</a><a href="/ui/artifacts">산출물</a>',
+  cards: [
+    {
+      title: "플랫폼 상태",
+      intro: "down 또는 degraded면 작업 생성과 승격을 모두 멈추고 health에서 복구합니다.",
+      tone: healthTone,
+      bodyHtml: `<div class="ops-summary-line"><span>Current</span><span>${input.overall}</span></div>`,
+      linksHtml: '<a href="/ui/health">상태</a>'
+    },
+    {
+      title: "Queue / retry 차단",
+      intro: "queue ready가 false면 enqueue, retry, HITL handoff 모두 지연될 수 있습니다.",
+      tone: queueTone,
+      bodyHtml: `<div class="ops-summary-line"><span>Queue ready</span><span>${input.queueReady}</span></div>`,
+      linksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/health">상태</a>'
+    },
+    {
+      title: "Artifacts / publish 차단",
+      intro: "storage가 흔들리면 linked outputs와 publish 승격이 동시에 막힙니다.",
+      tone: storageTone,
+      bodyHtml: `<div class="ops-summary-line"><span>Storage</span><span>${input.minioStatus}</span></div>`,
+      linksHtml: '<a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a>'
+    }
+  ]
+})}
 
-<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>다음 액션</h2>
-      <p class="section-intro">새 작업을 빠르게 만들 때는 여기서 시작하고, 이후 세부 후속 조치는 에피소드나 작업 화면에서 이어가세요.</p>
-    </div>
-  </div>
-  <div class="quick-grid">
-    <form method="post" action="/ui/actions/demo-extreme" class="form-card">
-      <h3>Demo Extreme</h3>
-      <p class="section-intro">생성, 렌더, 패키징을 한 번에 점검하는 전체 E2E 기준 루프를 실행합니다.</p>
-      <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="데모 파이프라인 실행">Demo Extreme 실행</button></div>
-    </form>
-    <form method="post" action="/ui/actions/generate-preview" class="form-card">
-      <h3>프리뷰 렌더</h3>
-      <div class="field"><label for="preview-topic">프리뷰 주제</label><input id="preview-topic" name="topic" value="UI 프리뷰 데모"/><small>빠른 프리뷰 작업을 만들고, 진행 상황은 작업이나 에피소드에서 확인하세요.</small></div>
-      <div class="field"><label for="preview-duration">목표 길이(초)</label><input id="preview-duration" name="targetDurationSec" inputmode="numeric" value="600"/><small>권장 범위는 120초에서 900초입니다.</small></div>
-      <div class="actions"><button type="submit">프리뷰 렌더 시작</button></div>
-    </form>
-    <form method="post" action="/ui/actions/generate-full" class="form-card">
-      <h3>최종 + 패키지</h3>
-      <div class="field"><label for="full-topic">최종 파이프라인 주제</label><input id="full-topic" name="topic" value="UI 전체 파이프라인 데모"/><small>최종 렌더, 패키지 생성, 다운스트림 퍼블리시 점검까지 염두에 둔 작업을 큐에 넣습니다.</small></div>
-      <div class="field"><label for="full-duration">목표 길이(초)</label><input id="full-duration" name="targetDurationSec" inputmode="numeric" value="600"/><small>프리뷰만이 아니라 퍼블리시 지향 실행일 때 사용하세요.</small></div>
-      <div class="actions"><button type="submit" class="secondary">최종 + 패키지 실행</button></div>
-    </form>
-  </div>
-</section>
+${renderRailSection({
+  title: "다음 안전 액션",
+  intro: "preview -> full -> publish / recover 순서를 고정해 운영 사고를 줄입니다.",
+  cards: [
+    {
+      title: "안전한 시작: preview",
+      intro: "가장 작은 성공 경로를 먼저 만들어 현재 surface를 안정화합니다.",
+      tone: "ok",
+      bodyHtml: `<form method="post" action="/ui/actions/generate-preview" class="ops-form-shell"><div class="field"><label for="preview-topic">Preview topic</label><input id="preview-topic" name="topic" value="UI preview demo"/><small>가벼운 preview로 queue, render, artifacts 흐름을 먼저 확인합니다.</small></div><div class="field"><label for="preview-duration">Target duration (sec)</label><input id="preview-duration" name="targetDurationSec" inputmode="numeric" value="600"/><small>짧은 길이에서 먼저 상태와 산출물 정합을 확인합니다.</small></div><div class="actions"><button type="submit">Preview render 시작</button></div></form>`
+    },
+    {
+      title: "승격 경로: full",
+      intro: "preview가 정상일 때만 full render와 package handoff를 진행합니다.",
+      tone: "warn",
+      bodyHtml: `<form method="post" action="/ui/actions/generate-full" class="ops-form-shell"><div class="field"><label for="full-topic">Full topic</label><input id="full-topic" name="topic" value="UI full pipeline demo"/><small>full render, package, downstream publish handoff를 한 오브젝트 흐름으로 묶습니다.</small></div><div class="field"><label for="full-duration">Target duration (sec)</label><input id="full-duration" name="targetDurationSec" inputmode="numeric" value="600"/><small>preview와 같은 오브젝트 id를 유지한 채 승격합니다.</small></div><div class="actions"><button type="submit" class="secondary">Full render 시작</button></div></form>`
+    },
+    {
+      title: "복구 / 데모",
+      intro: "차단 요인이 없을 때만 full demo를 실행하고, 막히면 linked objects로 돌아갑니다.",
+      tone: "muted",
+      bodyHtml: `<form method="post" action="/ui/actions/demo-extreme" class="ops-form-shell"><div class="field"><label>Demo Extreme</label><small>생성, render, package를 한 번에 돌리는 점검 루프입니다. blocker가 남아 있으면 사용하지 않습니다.</small></div><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="Demo Extreme 실행">Demo Extreme 실행</button></div></form>`,
+      linksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">퍼블리시</a>'
+    }
+  ]
+})}
 
-<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>오브젝트 동선</h2>
-      <p class="section-intro">콘솔은 오브젝트 중심으로 유지합니다. 생성은 에피소드, 점검은 작업, 트리아지는 HITL, 출하는 퍼블리시, 검증은 산출물에서 진행합니다.</p>
-    </div>
-  </div>
-  <div class="ops-mini-grid">
-    <div class="ops-lane">
-      <h3>에피소드 동선</h3>
-      <p>새 에피소드 작업을 만들고 최신 상태를 본 뒤, 같은 행에서 프리뷰, 전체, 렌더 전용 실행을 이어갑니다.</p>
-      <div class="quick-links"><a href="/ui/episodes">에피소드 열기</a><a href="/ui/studio">스튜디오</a></div>
-    </div>
-    <div class="ops-lane">
-      <h3>작업 동선</h3>
-      <p>큐 진행 상황을 확인하고, 로그를 열고, 실패 실행을 재시도한 뒤, 관련 에피소드나 산출물 맥락으로 이동합니다.</p>
-      <div class="quick-links"><a href="/ui/jobs">작업 열기</a><a href="/ui/hitl">실패 큐</a></div>
-    </div>
-    <div class="ops-lane">
-      <h3>출하 동선</h3>
-      <p>산출물과 상태를 확인한 뒤, 에피소드 맥락을 잃지 않고 퍼블리시로 넘깁니다.</p>
-      <div class="quick-links"><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a></div>
-    </div>
-  </div>
-</section>
-
-<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>최근 오브젝트 요약</h2>
-      <p class="section-intro">대시보드는 개요 중심이지만, 최근 에피소드와 작업을 여기서 바로 보고 현재 오브젝트로 이동할 수 있어야 합니다.</p>
-    </div>
-    <div class="quick-links"><a href="/ui/episodes">전체 에피소드</a><a href="/ui/jobs">전체 작업</a></div>
-  </div>
-  <div class="ops-mini-grid">
-    <div class="ops-lane">
-      <div class="ops-table-meta"><h3>최근 에피소드</h3><span class="muted-text">자동 새로고침 동선</span></div>
-      <div id="dashboard-recent-episodes" class="ops-shell"><div class="notice">최근 에피소드를 불러오는 중...</div></div>
-    </div>
-    <div class="ops-lane">
-      <div class="ops-table-meta"><h3>최근 작업</h3><span class="muted-text">자동 새로고침 동선</span></div>
-      <div id="dashboard-recent-jobs" class="ops-shell"><div class="notice">최근 작업을 불러오는 중...</div></div>
-    </div>
-  </div>
-</section>
+${renderRailSection({
+  title: "최근 오브젝트",
+  intro: "목록으로 바로 내려가기 전에 최근 episode와 job을 위에서 읽고 적절한 detail로 이동합니다.",
+  linksHtml: '<a href="/ui/episodes">전체 에피소드</a><a href="/ui/jobs">전체 작업</a>',
+  cards: [
+    {
+      title: "최근 episodes",
+      intro: "현재 queue와 artifacts 흐름을 가장 빨리 보여 주는 object 집합입니다.",
+      tone: "muted",
+      bodyHtml: `<div id="dashboard-recent-episodes" class="ops-shell"><div class="notice">Loading recent episodes...</div></div>`
+    },
+    {
+      title: "최근 jobs",
+      intro: "retry, recovery, publish hold 판단을 위에서 바로 읽습니다.",
+      tone: "muted",
+      bodyHtml: `<div id="dashboard-recent-jobs" class="ops-shell"><div class="notice">Loading recent jobs...</div></div>`
+    },
+    {
+      title: "흐름 고정",
+      intro: "list -> detail -> recover -> publish 흐름을 화면마다 같은 순서로 유지합니다.",
+      tone: "ok",
+      items: [
+        { label: "list", detail: "에피소드와 작업 리스트에서 object와 next action을 먼저 읽습니다." },
+        { label: "detail", detail: "실패 context와 linked objects는 raw evidence보다 위에 둡니다." },
+        { label: "recover / publish", detail: "복구와 승격은 artifacts 정합을 거친 뒤에만 진행합니다." }
+      ],
+      linksHtml: '<a href="/ui/episodes">에피소드</a><a href="/ui/jobs">작업</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">퍼블리시</a>'
+    }
+  ]
+})}
 ${buildDashboardRecentObjectsScript()}`;
 }
 
 export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
   const t = UI_TEXT.episodes;
+
   return `
 ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   ${input.flash}
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">에피소드 큐</span>
+      <span class="eyebrow">에피소드 리스트</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">목록 중심 운영 화면에서 상태를 훑고, 빠르게 필터링하고, 현재 행에서 프리뷰, 전체, 렌더 전용 흐름을 바로 실행합니다.</p>
+      <p class="section-intro">list 화면에서 object, live state, next action을 먼저 읽고 detail과 recover로 내려가는 흐름을 맞춥니다.</p>
     </div>
     <div class="quick-links"><a href="/ui/jobs">${t.quickLinksJobs}</a><a href="/ui/artifacts">${t.quickLinksArtifacts}</a><a href="/ui/publish">퍼블리시</a></div>
   </div>
   <div class="ops-kpi-grid">
-    ${renderMetricCard("생성", "<strong>주제, 채널, 길이</strong>", "현재 목록이 안정적인지 확인한 뒤 새 에피소드를 큐에 넣으세요.")}
-    ${renderMetricCard("실행", "<strong>프리뷰, 전체, 렌더 전용</strong>", "행 액션으로 실행과 후속 조치를 한 곳에서 이어갑니다.")}
-    ${renderMetricCard("인계", "<strong>작업, 산출물, 퍼블리시</strong>", "현재 오브젝트를 잃지 않고 다운스트림 점검으로 이동합니다.")}
+    ${renderMetricCard("오브젝트", "<strong>topic, channel, duration</strong>", "row마다 같은 object grammar로 읽습니다.")}
+    ${renderMetricCard("live 상태", "<strong>status + latest job</strong>", "자동 refresh가 status와 latest job만 조용히 갱신합니다.")}
+    ${renderMetricCard("인계", "<strong>jobs -> artifacts -> publish</strong>", "리스트에서 detail, recover, 승격 경로를 같은 순서로 유지합니다.")}
   </div>
 </section>
 
-<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>필터 + 실시간 큐 제어</h2>
-      <p class="section-intro">먼저 검색하고, 실시간 상태를 계속 보면서, 모든 에피소드에 같은 행 액션 리듬을 적용합니다.</p>
-    </div>
-  </div>
-  <div class="ops-key-grid">
-    ${renderSearchCluster({
-      id: "episodes-filter",
-      targetId: "episodes-table",
-      label: "최근 에피소드 필터",
-      placeholder: t.tableFilterPlaceholder,
-      hint: `${t.localFilterHint} / 키를 누르면 검색으로 이동합니다.`
-    })}
-    <div class="form-card">
-      <h3>실시간 모니터</h3>
-      <div class="ops-toolbar">
-        <label class="toggle-pill" for="episodes-auto-refresh"><input id="episodes-auto-refresh" type="checkbox" checked/> 실시간 새로고침</label>
-        <button id="episodes-refresh-now" type="button" class="secondary">지금 새로고침</button>
-      </div>
-      <div class="ops-summary-line"><span>마지막 동기화</span><span id="episodes-last-updated" class="muted-text">첫 동기화를 기다리는 중입니다.</span></div>
-      <div id="episodes-live-status" class="notice" role="status" aria-live="polite">${t.listHint}</div>
-    </div>
-    <div class="form-card">
-      <h3>행 액션 리듬</h3>
-      <ul class="ops-actions-list">
-        <li><span>프리뷰</span><span class="muted-text">전체 실행이나 퍼블리시 지향 작업 전에 빠르게 확인합니다.</span></li>
-        <li><span>전체</span><span class="muted-text">에피소드가 다운스트림으로 넘어갈 준비가 됐을 때 전체 파이프라인을 실행합니다.</span></li>
-        <li><span>렌더</span><span class="muted-text">스크립트와 샷이 준비됐고 출력 패스만 필요할 때 사용합니다.</span></li>
-      </ul>
-    </div>
-  </div>
-</section>
+${renderRailSection({
+  title: "리스트 control",
+  intro: "필터, live status, row action rhythm을 표 위에서 먼저 고정합니다.",
+  cards: [
+    {
+      title: "로컬 필터",
+      intro: "id, topic, status 단어로 현재 표를 줄인 다음 첫 행에서 detail로 이동합니다.",
+      tone: "muted",
+      bodyHtml: renderSearchCluster({
+        id: "episodes-filter",
+        targetId: "episodes-table",
+        label: "에피소드 필터",
+        placeholder: t.tableFilterPlaceholder,
+        hint: `${t.localFilterHint} / 필요하면 전역 검색으로 바로 이동할 수 있습니다.`
+      })
+    },
+    {
+      title: "Live status",
+      intro: "표 전체를 다시 읽지 않고 status와 latest job만 조용히 갱신합니다.",
+      tone: "ok",
+      bodyHtml: `<div class="ops-form-shell"><div class="ops-toolbar"><label class="toggle-pill" for="episodes-auto-refresh"><input id="episodes-auto-refresh" type="checkbox" checked/> Auto refresh</label><button id="episodes-refresh-now" type="button" class="secondary">지금 새로고침</button></div><div class="ops-summary-line"><span>마지막 갱신</span><span id="episodes-last-updated" class="muted-text">첫 갱신 대기 중</span></div><div id="episodes-live-status" class="notice" role="status" aria-live="polite">Episode states will refresh here.</div></div>`
+    },
+    {
+      title: "row action rhythm",
+      intro: "모든 row는 object -> state -> latest job -> next action 순서로 읽습니다.",
+      tone: "warn",
+      items: [
+        { label: "object first", detail: "첫 열에서 episode detail로 들어가고 그 안에서 full context를 봅니다." },
+        { label: "latest job second", detail: "표 안에서는 latest job과 status만 읽고 raw logs는 detail로 미룹니다." },
+        { label: "next action last", detail: "preview, recover, publish handoff는 마지막 열에서만 고릅니다." }
+      ]
+    }
+  ]
+})}
 
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>${t.recent}</h2>
-      <p class="section-intro">이 화면은 표가 중심입니다. 생성 폼보다 먼저 상태, 최근 작업, 행 액션이 읽혀야 합니다.</p>
+      <h2>에피소드 오브젝트</h2>
+      <p class="section-intro">각 row는 object, live state, latest job, next action 순서로 읽습니다. raw evidence는 detail이나 jobs로 내립니다.</p>
     </div>
     <div class="quick-links"><a href="/ui/jobs">${t.quickLinksJobs}</a><a href="/ui/hitl">HITL</a><a href="/ui/health">상태</a></div>
   </div>
-  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>에피소드</th><th>주제</th><th>상태</th><th>채널</th><th>스타일 / 훅</th><th>최근 작업</th><th>길이</th><th>생성 시각</th><th>실행 / 후속 조치</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>오브젝트</th><th>주제</th><th>상태</th><th>채널</th><th>스타일 / 훅</th><th>최근 작업</th><th>길이</th><th>생성 시각</th><th>다음 액션</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(9, t.noEpisodes)
   }</tbody></table></div>
 </section>
 
-<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>다음 에피소드 생성</h2>
-      <p class="section-intro">큐를 먼저 확인한 뒤, 이 폼으로 다음 오브젝트를 적절한 스타일 프리셋과 다운스트림 경로와 함께 추가하세요.</p>
-    </div>
-  </div>
-  <form method="post" action="/ui/episodes" class="quick-grid">
-    <div class="form-card">
-      <h3>기본 컨텍스트</h3>
-      <div class="field">
-        <label for="episode-topic">주제</label>
-        <input id="episode-topic" name="topic" required data-tooltip="예: Q4 성장 분석"/>
-        <small>에피소드와 생성될 작업에서 읽기 쉬운 짧은 주제를 사용하세요.</small>
-      </div>
-      <div class="field">
-        <label for="episode-channel">채널 ID</label>
-        <input id="episode-channel" name="channelId"/>
-        <small>선택 사항입니다. 비워 두면 기본 채널 컨텍스트를 유지합니다.</small>
-      </div>
-      <div class="field">
-        <label for="episode-duration">목표 길이(초)</label>
-        <input id="episode-duration" name="targetDurationSec" value="600" inputmode="numeric"/>
-        <small>프리뷰 전용, 전체, 수동 흐름 중 하나를 고르기 전에 목표 실행 길이를 설정하세요.</small>
-      </div>
-    </div>
-    <div class="form-card">
-      <h3>파이프라인 설정</h3>
-      <div class="field">
-        <label for="episode-jobType">작업 타입</label>
-        <select id="episode-jobType" name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option></select>
-      </div>
-      <div class="field">
-        <label for="episode-pipelineMode">파이프라인 모드</label>
-        <select id="episode-pipelineMode" name="pipelineMode"><option value="preview">프리뷰 전용</option><option value="full">전체(최종 + 패키지)</option><option value="manual">수동</option></select>
-      </div>
-      <div class="field">
-        <label for="episode-stylePreset">스타일 프리셋</label>
-        <select id="episode-stylePreset" name="stylePresetId">${input.styleOptions}</select>
-        <small>AUTO는 톤과 속도감으로 선택합니다. 반복 가능한 비교 실행이 필요하면 프리셋을 고정하세요.</small>
-      </div>
-      <div class="field">
-        <label for="episode-hookBoost">훅 부스트(0~1)</label>
-        <input id="episode-hookBoost" type="range" name="hookBoost" min="0" max="1" step="0.05" value="${input.defaultHookBoost}" oninput="this.nextElementSibling.value=this.value"/>
-        <output>${input.defaultHookBoost}</output>
-      </div>
-      <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="에피소드 생성 후 큐 등록">${t.createAndEnqueue}</button></div>
-    </div>
-  </form>
-</section>
-
-<section class="card">
-  <div class="section-head">
-    <div>
-      <h2>복구 + 인계</h2>
-      <p class="section-intro">에피소드가 정상 경로를 벗어나거나 다운스트림 작업 준비가 됐을 때, 다음 액션이 바로 보여야 합니다.</p>
-    </div>
-  </div>
-  <div class="ops-note-grid">
-    <div class="ops-callout warn">
-      <h3>실패 또는 정체</h3>
-      <p>행에서 최신 작업을 열고 로그를 확인한 뒤, 복구에 사람 판단이 필요하면 HITL에서 실패 샷 재렌더 경로를 사용하세요.</p>
-      <div class="quick-links"><a href="/ui/jobs">작업</a><a href="/ui/hitl">HITL</a></div>
-    </div>
-    <div class="ops-callout ok">
-      <h3>산출물 준비 완료</h3>
-      <p>프리뷰 또는 최종 출력이 있으면 퍼블리시를 열기 전에 먼저 산출물 점검으로 이동하세요.</p>
-      <div class="quick-links"><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a></div>
-    </div>
-    <div class="ops-callout">
-      <h3>운영 단축 경로</h3>
-      <p><span class="kbd">/</span> 키로 검색으로 이동하고, 실시간 새로고침을 유지한 채 행 액션 버튼으로 다음 단계를 진행하세요.</p>
-    </div>
-  </div>
-</section>${buildEpisodesLiveMonitorScript()}`;
+${renderRailSection({
+  title: "다음 안전 액션",
+  intro: "새 episode 생성도 같은 grammar로 묶고, recover와 linked handoff를 별도 카드로 고정합니다.",
+  cards: [
+    {
+      title: "새 episode 시작",
+      intro: "기본 컨텍스트와 pipeline 설정을 한 번에 입력하되, 가장 작은 안전 경로부터 선택합니다.",
+      tone: "ok",
+      bodyHtml: `<form method="post" action="/ui/episodes" class="quick-grid"><div class="form-card"><h3>기본 컨텍스트</h3><div class="field"><label for="episode-topic">주제</label><input id="episode-topic" name="topic" required data-tooltip="예: Q4 실적 분석"/><small>리스트와 detail에서 바로 이해할 수 있는 주제를 사용합니다.</small></div><div class="field"><label for="episode-channel">채널 ID</label><input id="episode-channel" name="channelId"/><small>비워 두면 기본 채널 컨텍스트를 사용합니다.</small></div><div class="field"><label for="episode-duration">목표 길이(초)</label><input id="episode-duration" name="targetDurationSec" value="600" inputmode="numeric"/><small>preview와 full에서 같은 목표 길이를 유지합니다.</small></div></div><div class="form-card"><h3>Pipeline 설정</h3><div class="field"><label for="episode-jobType">작업 타입</label><select id="episode-jobType" name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option></select></div><div class="field"><label for="episode-pipelineMode">Pipeline 모드</label><select id="episode-pipelineMode" name="pipelineMode"><option value="preview">preview</option><option value="full">full</option><option value="manual">manual</option></select></div><div class="field"><label for="episode-stylePreset">스타일 프리셋</label><select id="episode-stylePreset" name="stylePresetId">${input.styleOptions}</select><small>비교와 반복 실행이 필요하면 프리셋을 고정합니다.</small></div><div class="field"><label for="episode-hookBoost">Hook boost (0~1)</label><input id="episode-hookBoost" type="range" name="hookBoost" min="0" max="1" step="0.05" value="${input.defaultHookBoost}" oninput="this.nextElementSibling.value=this.value"/><output>${input.defaultHookBoost}</output></div><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="에피소드 생성 및 enqueue">${t.createAndEnqueue}</button></div></div></form>`
+    },
+    {
+      title: "복구 경로",
+      intro: "row에서 막히면 jobs와 HITL에서 recover하고, outputs가 생기면 artifacts로 handoff 합니다.",
+      tone: "warn",
+      items: [
+        { label: "실패 / 정체", detail: "latest job detail을 먼저 열어 lastError와 retry 가능 여부를 확인합니다." },
+        { label: "HITL", detail: "shot 단위 복구가 필요하면 list를 벗어나지 않고 HITL 큐로 이동합니다." },
+        { label: "artifacts", detail: "출력이 생긴 뒤에만 output presence와 QC를 확인합니다." }
+      ],
+      linksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/hitl">HITL</a><a href="/ui/artifacts">산출물</a>'
+    },
+    {
+      title: "승격 handoff",
+      intro: "list에서 바로 publish를 누르기보다 episode detail과 artifacts를 거친 뒤 승격합니다.",
+      tone: "ok",
+      items: [
+        { label: "detail", detail: "오브젝트 상태와 latest job을 detail에서 확정합니다." },
+        { label: "artifacts", detail: "preview / final / QC 정합을 확인합니다." },
+        { label: "publish", detail: "정합이 맞는 경우에만 같은 episode id로 승격합니다." }
+      ],
+      linksHtml: '<a href="/ui/episodes">에피소드</a><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a>'
+    }
+  ]
+})}${buildEpisodesLiveMonitorScript()}`;
 }

@@ -1748,7 +1748,7 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
         previews
       });
 
-      return reply.type("text/html; charset=utf-8").send(uiPage("\uC5D0\uC14B", body));
+      return reply.type("text/html; charset=utf-8").send(uiPage("Assets", body));
     } catch (error) {
       if (isDbUnavailableError(error)) {
         request.log.warn(
@@ -1761,11 +1761,11 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
           "UI fallback: database unavailable"
         );
         const body = renderDbUnavailableCard({
-          title: "\uC5D0\uC14B",
+          title: "Assets",
           route: "/ui/assets",
           requestId: request.id
         });
-        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("\uC5D0\uC14B", body));
+        return reply.code(503).type("text/html; charset=utf-8").send(uiPage("Assets", body));
       }
       throw error;
     }
