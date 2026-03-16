@@ -31,16 +31,20 @@ type EpisodesPageBodyInput = {
 };
 
 const OPERATOR_PATTERN_STYLE = `<style>
+:root{--ops-density-gap:10px;--ops-density-card-padding:12px;--ops-density-cell-y:10px;--ops-density-cell-x:12px}
+body[data-shell-density="compact"],body[data-density="compact"],body[data-ui-density="compact"],body[class*="density-compact"]{--ops-density-gap:8px;--ops-density-card-padding:10px;--ops-density-cell-y:8px;--ops-density-cell-x:10px}
+body[data-shell-density="comfortable"],body[data-density="comfortable"],body[data-ui-density="comfortable"],body[class*="density-comfortable"]{--ops-density-gap:12px;--ops-density-card-padding:14px;--ops-density-cell-y:12px;--ops-density-cell-x:14px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#0c5c58}
-.ops-shell{display:grid;gap:10px}
+.ops-shell{display:grid;gap:var(--ops-density-gap)}
 .ops-titlebar{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
 .ops-titleblock{display:grid;gap:4px;max-width:720px}
 .ops-titleblock h1,.ops-titleblock h2{margin-bottom:0}
 .ops-kpi-grid,.ops-note-grid,.ops-mini-grid,.ops-key-grid,.ops-rail-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-.ops-kpi,.ops-lane,.ops-inline-card{display:grid;gap:6px;padding:10px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fff,#f7fbfc);border-radius:12px}
+.ops-kpi,.ops-lane,.ops-inline-card{display:grid;gap:6px;padding:var(--ops-density-card-padding);border:1px solid #d6e3e8;background:linear-gradient(180deg,#fff,#f7fbfc);border-radius:12px}
 .ops-kpi-label{font-size:12px;font-weight:700;color:#42556a;text-transform:uppercase;letter-spacing:.08em}
 .ops-kpi-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;font-weight:800}
-.ops-rail-card{display:grid;gap:8px;padding:12px;border:1px solid #d6e4ea;border-radius:14px;background:linear-gradient(180deg,#ffffff,#f8fbfc)}
+.ops-rail-card{display:grid;gap:8px;padding:var(--ops-density-card-padding);border:1px solid #d6e4ea;border-radius:14px;background:linear-gradient(180deg,#ffffff,#f8fbfc)}
 .ops-rail-card h3{margin:0;font-size:15px}
 .ops-rail-card p{margin:0;color:#4f6470;line-height:1.5}
 .ops-rail-card.tone-ok{border-color:#cbe6d7;background:linear-gradient(180deg,#effcf7,#ffffff)}
@@ -56,15 +60,18 @@ const OPERATOR_PATTERN_STYLE = `<style>
 .ops-inline-card:hover{border-color:#9ec6c3;background:linear-gradient(180deg,#ffffff,#eef8f6);text-decoration:none}
 .ops-object-card .ops-object-kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#58707c}
 .ops-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.ops-table-shell{display:grid;gap:10px}
+.ops-table-shell{display:grid;gap:var(--ops-density-gap)}
 .ops-table-meta{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
-.search-cluster{display:grid;gap:6px;padding:10px;border:1px solid #dbe7f3;background:#f8fbff;border-radius:12px}
+.ops-table-meta>.search-cluster,.ops-table-meta>input[type="search"]{flex:1 1 280px;max-width:420px}
+.search-cluster{display:grid;gap:6px;padding:var(--ops-density-card-padding);border:1px solid #dbe7f3;background:#f8fbff;border-radius:12px}
 .search-cluster label{font-size:12px;font-weight:700;color:#334155}
-.search-cluster input{width:100%}
+.search-cluster input{width:100%;min-height:40px}
 .search-cluster .muted-text{line-height:1.4}
 .ops-summary-line{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 9px;border:1px solid #d9e4e8;background:#fff;border-radius:10px}
-.ops-form-shell{display:grid;gap:10px}
-@media (max-width:720px){.ops-titleblock{max-width:none}.ops-summary-line{display:grid;justify-content:stretch}}
+.ops-form-shell{display:grid;gap:var(--ops-density-gap)}
+.table-wrap table{font-size:12px}
+.table-wrap th,.table-wrap td{padding:var(--ops-density-cell-y) var(--ops-density-cell-x);line-height:1.55}
+@media (max-width:720px){.ops-titleblock{max-width:none}.ops-summary-line{display:grid;justify-content:stretch}.ops-table-meta{align-items:stretch}.ops-table-meta>.search-cluster,.ops-table-meta>input[type="search"]{max-width:none;width:100%}}
 </style>`;
 
 function renderOpsStyle(): string {
@@ -107,9 +114,14 @@ function renderSearchCluster(input: {
   hint: string;
   urlParam?: string;
 }): string {
-  return `<div class="search-cluster"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}"${
+  const hintId = `${input.id}-hint`;
+  return `<div class="search-cluster" role="search" aria-label="${input.label}"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}" aria-controls="${input.targetId}" aria-describedby="${hintId}"${
     input.urlParam ? ` data-url-param="${input.urlParam}"` : ""
-  } placeholder="${input.placeholder}" autocomplete="off"/><span class="muted-text">${input.hint}</span></div>`;
+  } placeholder="${input.placeholder}" autocomplete="off"/><span id="${hintId}" class="muted-text">${input.hint}</span></div>`;
+}
+
+function renderSrOnlyCaption(text: string): string {
+  return `<caption class="sr-only">${text}</caption>`;
 }
 
 function renderRailItems(items: OpsRailItem[]): string {
@@ -449,6 +461,12 @@ export function buildDashboardPageBody(input: DashboardPageBodyInput): string {
   const healthTone = inferTone(input.overall);
   const queueTone = inferTone(input.queueReady);
   const storageTone = inferTone(input.minioStatus);
+  const todayFocusTone: OpsRailTone =
+    healthTone === "bad" || queueTone === "bad" || storageTone === "bad"
+      ? "bad"
+      : healthTone === "warn" || queueTone === "warn" || storageTone === "warn"
+        ? "warn"
+        : "ok";
 
   return `
 ${renderOpsStyle()}
@@ -496,6 +514,17 @@ ${renderRailSection({
       tone: storageTone,
       bodyHtml: `<div class="ops-summary-line"><span>Storage</span><span>${input.minioStatus}</span></div>`,
       linksHtml: '<a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a>'
+    },
+    {
+      title: "Today focus",
+      intro: "Start from the calmest next action: health first when blocked, queue next when work is waiting, artifacts only after the platform looks stable.",
+      tone: todayFocusTone,
+      items: [
+        { label: "Platform first", detail: "If overall health is degraded, recover platform signals before touching list rows." },
+        { label: "Queue second", detail: "If workers are waiting or retries are stacking, use jobs and health before rerunning." },
+        { label: "Promotion last", detail: "Only reopen artifacts or publish after queue and storage signals agree." }
+      ],
+      linksHtml: '<a href="/ui/health">Health</a><a href="/ui/jobs">Jobs</a><a href="/ui/artifacts">Artifacts</a>'
     }
   ]
 })}
@@ -600,6 +629,17 @@ ${renderRailSection({
         { label: "handoff", detail: "Review blocked signals before compare-before-promote or artifact detail." }
       ],
       linksHtml: '<a href="/ui/rollouts?filter=blocked#rollout-signal-table">View</a>'
+    },
+    {
+      title: "Board help",
+      intro: "Use the dashboard to choose a next action and reopen recent objects, not to do deep evidence review.",
+      tone: "muted",
+      items: [
+        { label: "Today, then detail", detail: "Read blockers and next actions here, then move into the owned list or detail surface." },
+        { label: "Recent objects", detail: "Reopen episodes or jobs from the recent cards when you need continuity without rebuilding context." },
+        { label: "Saved-view launchpad", detail: "Use the launchpad to reopen jobs, episodes, benchmarks, or rollouts with URL-backed state." }
+      ],
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a><a href="/ui/rollouts">Rollouts</a>'
     }
   ]
 })}
@@ -681,6 +721,17 @@ ${renderRailSection({
         { label: "latest job second", detail: "표 안에서는 latest job과 status만 읽고 raw logs는 detail로 미룹니다." },
         { label: "next action last", detail: "preview, recover, publish handoff는 마지막 열에서만 고릅니다." }
       ]
+    },
+    {
+      title: "Episodes help",
+      intro: "Keep this surface dense but calm: search, compare, and reopen safely before you fall into job detail, HITL, or publish.",
+      tone: "muted",
+      items: [
+        { label: "Mobile degrade", detail: "On small screens, use the filter and object cell first, then open detail instead of scanning every column." },
+        { label: "Compare stays local", detail: "Saved views stay in this browser while filters and compare selection stay mirrored into the URL." },
+        { label: "Recovery discipline", detail: "If a row feels blocked, reopen jobs or HITL first and return with the same episode object." }
+      ],
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">Publish</a>'
     }
   ]
 })}
@@ -693,7 +744,7 @@ ${renderRailSection({
     </div>
     <div class="quick-links"><a href="/ui/jobs">${t.quickLinksJobs}</a><a href="/ui/hitl">HITL</a><a href="/ui/health">상태</a></div>
   </div>
-  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>episode object / selection</th><th>topic / channel</th><th>status</th><th>latest job / lifecycle</th><th>style / duration</th><th>created / next safe action</th><th>row actions / run profiles</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="episodes-table" aria-label="Episode objects table">${renderSrOnlyCaption("Episode objects table with selection, lifecycle status, next safe action, and row actions.")}<thead><tr><th>episode object / selection</th><th>topic / channel</th><th>status</th><th>latest job / lifecycle</th><th>style / duration</th><th>created / next safe action</th><th>row actions / run profiles</th></tr></thead><tbody>${
     rowsHtml || renderTableEmptyRow(7, t.noEpisodes)
   }</tbody></table></div>
 </section>
