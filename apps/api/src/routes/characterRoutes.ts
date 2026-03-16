@@ -4082,9 +4082,9 @@ function buildCharacterPackLineageSection(input: {
   compareHref: string | null;
 }): string {
   if (!input.lineage) {
-    return `<section class="card"><h3>Generated Pack Lineage</h3><div class="error">No generated character artifact root was found for <strong>${escHtml(
+    return `<section class="card"><h3>Pack Lineage / Provenance</h3><div class="error">No generated character artifact root was found for <strong>${escHtml(
       input.selectedPackId
-    )}</strong>. This page only reads existing generated pack artifacts; it does not rerun generation.</div>${renderLineageLinks([
+    )}</strong>. This review surface only reads existing generated pack artifacts. It does not rerun generation, and it exists to explain how preview, QC, repair tasks, and compare context connect.</div>${renderLineageLinks([
       input.compareHref ? { label: "Compare vs active pack", href: input.compareHref } : null
     ].filter((item): item is { label: string; href: string } => Boolean(item)))}</section>`;
   }
@@ -4165,7 +4165,7 @@ function buildCharacterPackLineageSection(input: {
     )
     .join("");
 
-  return `<section class="card"><h3>Generated Pack Lineage</h3><p>Reads the generated character artifact tree directly so operators can inspect source image lineage, pack build inputs, and open repair tasks without rerunning generation.</p>${actionLinks}${summaryCards}<section class="card" style="margin-top:16px"><h4>View Lineage</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">${viewCards || '<div class="notice">No view lineage entries.</div>'}</div></section><section class="card" style="margin-top:16px"><h4>Repair Tasks</h4>${
+  return `<section class="card"><h3>Pack Lineage / Provenance</h3><p>Lineage is the provenance layer behind preview, QC, compare, and repair decisions. Read it here to see which source image, manifest, and repair tasks produced the current pack without rerunning generation.</p>${actionLinks}${summaryCards}<section class="card" style="margin-top:16px"><h4>View Lineage</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">${viewCards || '<div class="notice">No view lineage entries.</div>'}</div></section><section class="card" style="margin-top:16px"><h4>Repair Tasks</h4>${
     repairRows
       ? `<table><thead><tr><th>#</th><th>Code</th><th>Severity</th><th>Action</th><th>Reason</th><th>Assets</th></tr></thead><tbody>${repairRows}</tbody></table>`
       : `<div class="notice">No open repair tasks were recorded for this pack.</div>`
@@ -6531,7 +6531,11 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     };
 
     const selectedSection = selectedJob
-      ? `<section class="card"><h2>Selected Generation Job</h2><p>jobId: <strong>${escHtml(selectedJob.id)}</strong></p><p>status: <span class="badge ${uiBadge(
+      ? `<section class="card"><h2>Candidates Ready for Comparison</h2><p>Stage 04에서 생성된 후보 workset이다. 여기서 입력, reference, policy, workflow diagnostics를 읽고 compare lane으로 넘깁니다.</p><div class="quick-links"><a href="#pick-candidates">HITL pick</a><a href="#recommended-actions">Approve / Recover</a>${
+          selectedManifest?.characterPackId
+            ? `<a href="/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}">Characters review</a>`
+            : ""
+        }</div><p>jobId: <strong>${escHtml(selectedJob.id)}</strong></p><p>status: <span class="badge ${uiBadge(
           selectedJob.status
         )}">${escHtml(selectedJob.status)}</span> / progress: ${escHtml(selectedJob.progress)}%</p><p>episode: ${
           selectedJob.episode
@@ -6607,7 +6611,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const recommendedActionsSection =
       selectedJob && selectedManifest
-        ? `<section class="card" id="recommended-actions"><h2>Recommended Next Actions</h2>${
+        ? `<section class="card" id="recommended-actions"><h2>Approve / Recover Decision</h2><p>compare 결과 뒤에만 노출되는 다음 수순이다. rollback, regenerate, recreate 패턴을 현재 팩 상태와 함께 읽으세요.</p>${
             selectedDecisionOutcome || selectedSelectionRisk || selectedAutoReroute || selectedFinalQualityFirewall
               ? `<div class="notice">decision: outcome=${escHtml(
                   selectedDecisionOutcome?.status ?? "unknown"
@@ -6674,16 +6678,16 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                 }</div>`
               : `<div class="notice">No immediate follow-up action is recommended for this job.</div>`
           }</section>`
-        : `<section class="card"><h2>Recommended Next Actions</h2><div class="notice">Select a generation job to see targeted regenerate/recreate suggestions.</div></section>`;
+        : `<section class="card"><h2>Approve / Recover Decision</h2><div class="notice">Select a generation job to see targeted regenerate/recreate suggestions.</div></section>`;
 
     const regenerateSection = selectedJob
-      ? `<section class="card" id="regenerate-view"><h2>Regenerate View</h2><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="regenerate-view"><h2>Regenerate Single View</h2><p>한 뷰만 다시 생성해 compare lane으로 되돌릴 때 사용합니다.</p><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
         )}"/><label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Regenerate with same seed</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Strengthen negative prompt</label><div class="actions" style="grid-column:1/-1"><button type="submit">Run View Regeneration</button></div></form></section>`
       : "";
 
     const recreateSection = selectedJob
-      ? `<section class="card" id="recreate-pack"><h2>Recreate Full Pack</h2><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="recreate-pack"><h2>Recreate Full Pack</h2><p>전체 팩을 새 기준으로 다시 올려 compare와 approval을 처음부터 다시 닫을 때 사용합니다.</p><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
         )}"/><label>Candidate Count<input name="candidateCount" value="6"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true"/> Recreate with same seed</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Strengthen negative prompt</label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Run Full Pack Recreation</button></div></form></section>`
       : "";
@@ -6707,7 +6711,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         ? (() => {
             const pickBlocked =
               selectedFinalQualityFirewall?.level === "block" || selectedDecisionOutcome?.status === "blocked";
-            return `<section class="card" id="pick-candidates"><h2>Pick Candidates (HITL)</h2>${
+            return `<section class="card" id="pick-candidates"><h2>Pick Candidates (HITL)</h2><p>세 뷰의 후보를 비교한 뒤, pack build에 들어갈 조합을 명시적으로 선택합니다.</p>${
               pickBlocked
                 ? `<div class="notice">Direct pick is blocked because the selected pack still fails the final gate. Use regenerate/recreate first, or replace blocked views.</div>`
                 : ""
@@ -6729,7 +6733,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             const artifacts = getCharacterArtifacts(selectedManifest.characterPackId);
             const previewExists = fs.existsSync(artifacts.previewPath);
             const qcExists = fs.existsSync(artifacts.qcReportPath);
-            return `<section class="card"><h2>Selected Pack Preview</h2><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
+            return `<section class="card"><h2>Pack Preview / Review Handoff</h2><p>compare에서 고른 pack이 review surface로 어떻게 이어지는지 보여줍니다. 더 깊은 preview/QC/lineage/jobs inspection은 Characters에서 닫습니다.</p><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
               selectedManifest.characterPackId
             )}">${escHtml(selectedManifest.characterPackId)}</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
               selectedManifest.characterPackId
@@ -6753,7 +6757,9 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                     )
                     .join(" / ")}</p>`
                 : ""
-            }<form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
+            }<div class="quick-links"><a href="/ui/characters?characterPackId=${encodeURIComponent(
+              selectedManifest.characterPackId
+            )}">Characters review</a><a href="/ui/studio">Studio fast flow</a></div><form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
               selectedManifest.characterPackId
             )}"/><button type="submit" class="secondary">Set Pack Active</button></form></section>`;
           })()
@@ -6761,7 +6767,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const rollbackSection =
       approvedPacks.length > 0
-        ? `<section class="card"><h2>Rollback Active Pack</h2><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>Target Pack<select name="targetCharacterPackId">${approvedPacks
+        ? `<section class="card"><h2>Rollback Active Pack</h2><p>현재 active pack을 이전 approved baseline으로 되돌립니다. compare와 review를 끝낸 뒤에만 사용하세요.</p><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>Target Pack<select name="targetCharacterPackId">${approvedPacks
             .map(
               (pack) =>
                 `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
@@ -6771,7 +6777,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const compareSection =
       approvedPacks.length >= 2
-        ? `<section class="card"><h2>Compare Approved Packs</h2><form method="get" action="/ui/character-generator/compare" class="grid two"><label>Left Pack<select name="leftPackId">${approvedPacks
+        ? `<section class="card"><h2>Compare Approved Packs</h2><p>승인된 pack끼리 preview/QC/lineage/jobs 관계를 읽는 dedicated compare surface를 엽니다.</p><form method="get" action="/ui/character-generator/compare" class="grid two"><label>Left Pack<select name="leftPackId">${approvedPacks
             .map((pack) => `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)})</option>`)
             .join("")}</select></label><label>Right Pack<select name="rightPackId">${approvedPacks
             .map((pack, index) => `<option value="${escHtml(pack.id)}"${index === 1 ? " selected" : ""}>${escHtml(
@@ -7061,18 +7067,32 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const [leftPack, rightPack] = await Promise.all([
       prisma.characterPack.findUnique({
         where: { id: leftPackId },
-        select: {
-          id: true,
-          version: true,
-          status: true
+        include: {
+          episodes: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            include: {
+              jobs: {
+                orderBy: { createdAt: "desc" },
+                take: 3
+              }
+            }
+          }
         }
       }),
       prisma.characterPack.findUnique({
         where: { id: rightPackId },
-        select: {
-          id: true,
-          version: true,
-          status: true
+        include: {
+          episodes: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            include: {
+              jobs: {
+                orderBy: { createdAt: "desc" },
+                take: 3
+              }
+            }
+          }
         }
       })
     ]);
@@ -7087,32 +7107,99 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const rightPreviewExists = fs.existsSync(rightArtifacts.previewPath);
     const leftQcExists = fs.existsSync(leftArtifacts.qcReportPath);
     const rightQcExists = fs.existsSync(rightArtifacts.qcReportPath);
-
+    const leftLineage = readCharacterPackLineage(leftPack.id);
+    const rightLineage = readCharacterPackLineage(rightPack.id);
+    const compareStyle = `<style>
+      .pack-compare-shell{display:grid;gap:14px}
+      .pack-compare-hero,.pack-compare-panel,.pack-compare-next{position:relative;overflow:hidden;border:1px solid #d6e0ef;border-radius:18px;background:linear-gradient(180deg,#fff,#f8fbff);box-shadow:0 16px 40px rgba(15,23,42,.06)}
+      .pack-compare-hero,.pack-compare-panel,.pack-compare-next{padding:18px}
+      .pack-compare-hero::before,.pack-compare-panel::before,.pack-compare-next::before{content:"";position:absolute;inset:0 auto auto 0;height:3px;width:100%;background:linear-gradient(90deg,#1257c7,rgba(18,87,199,.15))}
+      .pack-compare-hero h1,.pack-compare-panel h2,.pack-compare-next h2{margin:0}
+      .pack-compare-hero p,.pack-compare-panel p,.pack-compare-next p{color:#5b6b82;line-height:1.55}
+      .pack-compare-flow{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px}
+      .pack-compare-step{display:grid;gap:6px;padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
+      .pack-compare-step strong{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#245372}
+      .pack-compare-grid{display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr))}
+      .pack-compare-stats{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));margin:14px 0}
+      .pack-compare-stat{padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fff,#f8fbff)}
+      .pack-compare-stat span{display:block;margin-bottom:6px;color:#5b6b82;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+      .pack-compare-stat strong{display:block;font-size:14px;line-height:1.45}
+      .pack-compare-links,.pack-compare-next-links{display:flex;gap:8px;flex-wrap:wrap}
+      .pack-compare-link{display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700;text-decoration:none}
+      .pack-compare-link:hover{text-decoration:none;box-shadow:0 8px 20px rgba(18,87,199,.08)}
+      .pack-compare-jobs{margin:12px 0 0;padding-left:18px;display:grid;gap:6px}
+      .pack-compare-player{margin-top:14px}
+      .pack-compare-player video{width:100%;max-width:640px;background:#000;border-radius:12px}
+      @media (max-width:960px){.pack-compare-grid,.pack-compare-flow,.pack-compare-stats{grid-template-columns:1fr}}
+    </style>`;
     const panel = (
       side: "A" | "B",
-      pack: { id: string; version: number; status: string },
+      pack: typeof leftPack,
       previewExists: boolean,
-      qcExists: boolean
-    ) => `<section class="card"><h2>${escHtml(side)}: ${escHtml(pack.id)}</h2><p>version: <strong>${escHtml(
-      pack.version
-    )}</strong></p><p>status: <span class="badge ${uiBadge(pack.status)}">${escHtml(pack.status)}</span></p>${
-      previewExists
-        ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px"><source src="/artifacts/characters/${encodeURIComponent(
-            pack.id
-          )}/preview.mp4" type="video/mp4"/></video>`
-        : `<div class="error">preview.mp4 missing</div>`
-    }<p><a href="/artifacts/characters/${encodeURIComponent(pack.id)}/pack.json">pack.json</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
-      pack.id
-    )}/preview.mp4">preview.mp4</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
-      pack.id
-    )}/qc_report.json">qc_report.json</a> ${qcExists ? "(exists)" : "(missing)"}</p></section>`;
+      qcExists: boolean,
+      lineage: CharacterPackLineage | null
+    ) => {
+      const latestEpisode = pack.episodes[0];
+      const latestJobs = latestEpisode?.jobs ?? [];
+      const latestJobSummary =
+        latestJobs.length > 0 ? latestJobs.map((job) => `${job.type} / ${job.status} / ${job.progress}%`).join(" | ") : "연결된 jobs 없음";
+      return `<section class="pack-compare-panel"><h2>${escHtml(side)}: ${escHtml(
+        pack.id
+      )}</h2><p>preview -> QC -> lineage -> jobs를 따라 어느 팩을 다음 review / approval surface로 넘길지 판단하세요.</p><div class="pack-compare-stats"><div class="pack-compare-stat"><span>버전 / 상태</span><strong>v${escHtml(
+        pack.version
+      )} / <span class="badge ${uiBadge(pack.status)}">${escHtml(pack.status)}</span></strong></div><div class="pack-compare-stat"><span>Preview / QC</span><strong>preview=${escHtml(
+        previewExists ? "exists" : "missing"
+      )} / qc=${escHtml(qcExists ? "exists" : "missing")}</strong></div><div class="pack-compare-stat"><span>Lineage Gate</span><strong>${escHtml(
+        lineage?.acceptanceStatus ?? "unknown"
+      )} / repair=${escHtml(lineage ? String(lineage.repairOpenCount) : "-")}</strong></div><div class="pack-compare-stat"><span>Latest Episode</span><strong>${escHtml(
+        latestEpisode ? `${latestEpisode.id} / ${latestEpisode.topic ?? "-"}` : "연결 없음"
+      )}</strong></div></div>${
+        previewExists
+          ? `<div class="pack-compare-player"><video controls preload="metadata"><source src="/artifacts/characters/${encodeURIComponent(
+              pack.id
+            )}/preview.mp4" type="video/mp4"/></video></div>`
+          : `<div class="error">preview.mp4 missing</div>`
+      }<div class="pack-compare-links"><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
+        pack.id
+      )}">Pack Review</a><a class="pack-compare-link" href="/artifacts/characters/${encodeURIComponent(
+        pack.id
+      )}/pack.json">pack.json</a><a class="pack-compare-link" href="/artifacts/characters/${encodeURIComponent(
+        pack.id
+      )}/preview.mp4">preview.mp4</a><a class="pack-compare-link" href="/artifacts/characters/${encodeURIComponent(
+        pack.id
+      )}/qc_report.json">qc_report.json</a>${
+        lineage?.manifestUrl ? `<a class="pack-compare-link" href="${escHtml(lineage.manifestUrl)}">manifest</a>` : ""
+      }${lineage?.repairTasksUrl ? `<a class="pack-compare-link" href="${escHtml(lineage.repairTasksUrl)}">repair tasks</a>` : ""}</div><p>jobs: ${escHtml(
+        latestJobSummary
+      )}</p>${
+        latestJobs.length > 0
+          ? `<ul class="pack-compare-jobs">${latestJobs
+              .map(
+                (job) =>
+                  `<li><a href="/ui/jobs/${encodeURIComponent(job.id)}">${escHtml(job.id)}</a> / ${escHtml(
+                    job.type
+                  )} / <span class="badge ${uiBadge(job.status)}">${escHtml(job.status)}</span> / ${escHtml(job.progress)}%</li>`
+              )
+              .join("")}</ul>`
+          : ""
+      }</section>`;
+    };
 
-    const html = `<section class="card"><h1>Character Pack A/B Compare</h1><p><a href="/ui/character-generator">Back to Character Generator</a></p><div class="grid two">${panel(
+    const html = `${compareStyle}<div class="pack-compare-shell"><section class="pack-compare-hero"><p class="eyebrow">Pack Compare Surface</p><h1>캐릭터 팩 비교</h1><p>이 surface는 winner를 정하는 비교면이다. preview를 나란히 보고, QC 산출물을 확인하고, lineage와 jobs를 읽은 뒤, 승인/rollback은 <a href="/ui/character-generator">Character Generator</a>에서, 깊은 수동 검수는 <a href="/ui/characters">Characters</a>에서 닫으세요.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="/ui/character-generator">Character Generator</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
+      leftPack.id
+    )}">A 리뷰</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
+      rightPack.id
+    )}">B 리뷰</a></div><div class="pack-compare-flow"><div class="pack-compare-step"><strong>01 Preview</strong><span>두 팩의 preview와 상태를 나란히 비교합니다.</span></div><div class="pack-compare-step"><strong>02 QC</strong><span>qc_report.json 존재 여부와 pack 상태를 함께 봅니다.</span></div><div class="pack-compare-step"><strong>03 Lineage</strong><span>acceptance status와 repair task를 확인해 provenance risk를 읽습니다.</span></div><div class="pack-compare-step"><strong>04 Jobs</strong><span>latest episode/jobs를 따라 어떤 review surface로 넘길지 결정합니다.</span></div></div></section><section class="pack-compare-next"><h2>다음 액션</h2><p>비교에서 승자를 정한 뒤에는 Generator에서 approval/rollback을 닫고, 더 깊은 QC/lineage/jobs inspection이 필요하면 각 팩의 Characters review로 이동하세요.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="/ui/character-generator">승인 / 롤백 열기</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
+      leftPack.id
+    )}">A pack review</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
+      rightPack.id
+    )}">B pack review</a></div></section><div class="pack-compare-grid">${panel(
       "A",
       leftPack,
       leftPreviewExists,
-      leftQcExists
-    )}${panel("B", rightPack, rightPreviewExists, rightQcExists)}</div></section>`;
+      leftQcExists,
+      leftLineage
+    )}${panel("B", rightPack, rightPreviewExists, rightQcExists, rightLineage)}</div></div>`;
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329 \uBE44\uAD50", html));
   });
 
@@ -7277,29 +7364,62 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           compareHref
         })
       : "";
+    const selectedLatestJob = selectedPack?.episodes[0]?.jobs[0] ?? null;
+    const reviewStyle = `<style>
+      .pack-review-shell{display:grid;gap:14px}
+      .pack-review-hero,.pack-review-panel,.pack-review-rail{position:relative;overflow:hidden;border:1px solid #d6e0ef;border-radius:18px;background:linear-gradient(180deg,#fff,#f8fbff);box-shadow:0 16px 40px rgba(15,23,42,.06)}
+      .pack-review-hero,.pack-review-panel,.pack-review-rail{padding:18px}
+      .pack-review-hero::before,.pack-review-panel::before,.pack-review-rail::before{content:"";position:absolute;inset:0 auto auto 0;height:3px;width:100%;background:linear-gradient(90deg,#1257c7,rgba(18,87,199,.15))}
+      .pack-review-hero h1,.pack-review-panel h2,.pack-review-rail h2{margin:0}
+      .pack-review-hero p,.pack-review-panel p,.pack-review-rail p{color:#5b6b82;line-height:1.55}
+      .pack-review-grid{display:grid;gap:14px;grid-template-columns:minmax(0,1.18fr) minmax(320px,.82fr)}
+      .pack-review-actions{display:flex;gap:8px;flex-wrap:wrap}
+      .pack-review-link{display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700;text-decoration:none}
+      .pack-review-link:hover{text-decoration:none;box-shadow:0 8px 20px rgba(18,87,199,.08)}
+      .pack-review-summary{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px}
+      .pack-review-card{padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
+      .pack-review-card span{display:block;margin-bottom:6px;color:#5b6b82;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+      .pack-review-card strong{display:block;font-size:14px;line-height:1.45}
+      .pack-review-flow{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));margin:14px 0}
+      .pack-review-flow-item{display:grid;gap:6px;padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
+      .pack-review-flow-item strong{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#245372}
+      .pack-review-stage{display:grid;gap:14px}
+      .pack-review-manual summary{cursor:pointer;font-weight:700}
+      @media (max-width:1080px){.pack-review-grid,.pack-review-summary,.pack-review-flow{grid-template-columns:1fr}}
+    </style>`;
+    const manualCreateSection = `<details class="pack-review-panel pack-review-manual"><summary>수동 팩 생성 (예외 경로)</summary><p>이 surface의 주 역할은 생성 허브가 아니라 pack review / inspection이다. 새 런과 compare / approval / rollback은 <a href="/ui/character-generator">Character Generator</a>가 기본 경로이며, 이 폼은 예외적인 수동 생성에만 사용하세요.</p><form method="post" action="/ui/characters/create" class="grid"><div class="grid two"><label>Front Asset<select name="front" required>${
+      assetOptions || '<option value="">No READY assets available</option>'
+    }</select></label><label>ThreeQuarter Asset<select name="threeQuarter" required>${
+      assetOptions || '<option value="">No READY assets available</option>'
+    }</select></label><label>Profile Asset<select name="profile" required>${
+      assetOptions || '<option value="">No READY assets available</option>'
+    }</select></label><label>Topic (optional)<input name="topic" placeholder="character preview"/></label></div><button type="submit">Create character pack + enqueue preview</button></form></details>`;
+    const roleSplitRail = `<section class="pack-review-rail"><p class="eyebrow">Role Split</p><h2>이 surface가 맡는 일</h2><p>빠른 흐름은 <a href="/ui/studio">Studio</a>, 새 런과 approval / rollback은 <a href="/ui/character-generator">Character Generator</a>, 이 페이지는 preview, QC, lineage, jobs를 함께 읽는 깊은 수동 팩 review를 담당합니다.</p><div class="pack-review-actions"><a class="pack-review-link" href="/ui/studio">Studio</a><a class="pack-review-link" href="/ui/character-generator">Character Generator</a>${
+      compareHref ? `<a class="pack-review-link" href="${escHtml(compareHref)}">Active Pack Compare</a>` : ""
+    }</div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>01 Preview</strong><span>visual check를 먼저 닫습니다.</span></article><article class="pack-review-flow-item"><strong>02 QC</strong><span>qc_report.json과 이슈 severity를 읽습니다.</span></article><article class="pack-review-flow-item"><strong>03 Lineage</strong><span>source, manifest, repair provenance를 추적합니다.</span></article><article class="pack-review-flow-item"><strong>04 Jobs</strong><span>이 팩을 만든 episode/jobs history를 확인합니다.</span></article></div></section>`;
 
     const selectedSection = selectedPack
-      ? `<section class="card"><h2>Selected Pack</h2><p>id: <strong>${escHtml(selectedPack.id)}</strong></p><p>version: <strong>${escHtml(
-          selectedPack.version
-        )}</strong></p><p>status: <span class="badge ${uiBadge(selectedPack.status)}">${escHtml(
+      ? `<section class="pack-review-panel"><p class="eyebrow">Pack Review Surface</p><h2>선택된 팩 리뷰</h2><p>이 surface는 pack을 만드는 곳이 아니라 pack을 읽는 곳이다. preview, QC, lineage, jobs를 한 흐름에서 검토한 뒤 compare 또는 approval / rollback surface로 넘기세요.</p><div class="pack-review-actions"><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
+          selectedPack.id
+        )}/pack.json">pack.json</a><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
+          selectedPack.id
+        )}/preview.mp4">preview.mp4</a><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
+          selectedPack.id
+        )}/qc_report.json">qc_report.json</a>${
+          compareHref ? `<a class="pack-review-link" href="${escHtml(compareHref)}">active pack compare</a>` : ""
+        }<a class="pack-review-link" href="/ui/character-generator">approval / rollback</a></div><div class="pack-review-summary"><article class="pack-review-card"><span>Pack</span><strong>${escHtml(
+          selectedPack.id
+        )}</strong><p>v${escHtml(selectedPack.version)} / <span class="badge ${uiBadge(selectedPack.status)}">${escHtml(
           selectedPack.status
-        )}</span></p><div class="grid two"><div><p><a href="/artifacts/characters/${encodeURIComponent(
-          selectedPack.id
-        )}/pack.json">pack.json</a> ${
-          selectedArtifacts && fs.existsSync(selectedArtifacts.packJsonPath) ? "(exists)" : "(missing)"
-        }</p><p><a href="/artifacts/characters/${encodeURIComponent(
-          selectedPack.id
-        )}/preview.mp4">preview.mp4</a> ${
-          selectedArtifacts && fs.existsSync(selectedArtifacts.previewPath) ? "(exists)" : "(missing)"
-        }</p><p><a href="/artifacts/characters/${encodeURIComponent(
-          selectedPack.id
-        )}/qc_report.json">qc_report.json</a> ${
-          selectedArtifacts && fs.existsSync(selectedArtifacts.qcReportPath) ? "(exists)" : "(missing)"
-        }</p></div><div><p>episode: ${
-          selectedPack.episodes[0]
-            ? `<a href="/ui/episodes/${escHtml(selectedPack.episodes[0].id)}">${escHtml(selectedPack.episodes[0].id)}</a>`
-            : "-"
-        }</p></div></div>${
+        )}</span></p></article><article class="pack-review-card"><span>Latest Episode</span><strong>${escHtml(
+          selectedPack.episodes[0] ? `${selectedPack.episodes[0].id} / ${selectedPack.episodes[0].topic ?? "-"}` : "연결 없음"
+        )}</strong><p>active compare: ${escHtml(compareHref ? "available" : "none")}</p></article><article class="pack-review-card"><span>Preview / QC</span><strong>preview=${escHtml(
+          selectedPreviewExists ? "exists" : "missing"
+        )} / qc=${escHtml(selectedQcExists ? "exists" : "missing")}</strong><p>issues=${escHtml(String(selectedQcIssues.length))}</p></article><article class="pack-review-card"><span>Lineage / Jobs</span><strong>${escHtml(
+          selectedGeneratedLineage?.acceptanceStatus ?? "unknown"
+        )} / jobs=${escHtml(String(selectedPack.episodes[0]?.jobs.length ?? 0))}</strong><p>repair=${escHtml(
+          selectedGeneratedLineage ? String(selectedGeneratedLineage.repairOpenCount) : "-"
+        )}</p></article></div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>Preview</strong><span>영상과 pack.json 링크를 통해 visual handoff를 먼저 점검합니다.</span></article><article class="pack-review-flow-item"><strong>QC</strong><span>문제 severity와 details를 읽어 compare 전에 위험을 분리합니다.</span></article><article class="pack-review-flow-item"><strong>Lineage</strong><span>manifest, proposal, repair provenance로 생성 맥락을 복구합니다.</span></article><article class="pack-review-flow-item"><strong>Jobs</strong><span>어떤 episode/jobs가 이 팩을 만들었는지 뒤로 따라갑니다.</span></article></div>${
           selectedPreviewExists && selectedPreviewUrl
             ? `<section class="card"><h3>Preview Player</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
                 selectedPreviewUrl
@@ -7315,24 +7435,22 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   JSON.stringify(selectedQcReport, null, 2)
                 )}</pre></section>`
             : `<section class="card"><h3>QC Report</h3><div class="error">qc_report.json is not generated yet.</div></section>`
-        }${selectedLineageSection}<details><summary>View pack.json</summary><pre>${escHtml(
-          JSON.stringify(selectedPack.json, null, 2)
-        )}</pre></details></section><section class="card"><h2>Selected Pack Jobs</h2><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
+        }${selectedLineageSection}<section class="card"><h3>Jobs Behind This Pack</h3><p>preview, QC, lineage 판단을 만든 실행 이력을 여기서 바로 읽습니다.</p><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
           selectedJobs || '<tr><td colspan="5">No jobs</td></tr>'
-        }</tbody></table></section>`
-      : "";
+        }</tbody></table></section><details><summary>View pack.json</summary><pre>${escHtml(
+          JSON.stringify(selectedPack.json, null, 2)
+        )}</pre></details></section>`
+      : `<section class="pack-review-panel"><p class="eyebrow">Pack Review Surface</p><h2>선택된 팩 없음</h2><p>최근 팩 목록에서 항목을 고르면 preview, QC, lineage, jobs inspection surface가 열립니다.</p></section>`;
 
-    const html = `<section class="card"><h1>\uCE90\uB9AD\uD130 \uD329 (\uC0C1\uC138 \uBAA8\uB4DC)</h1><div class="notice">For fast flow, use <a href="/ui/studio">Studio</a>. This page is for manual pack inspection and creation.</div>${
+    const html = `${reviewStyle}<div class="pack-review-shell"><section class="pack-review-hero"><p class="eyebrow">Deep Manual Review</p><h1>캐릭터 팩 리뷰</h1><p>빠른 흐름은 <a href="/ui/studio">Studio</a>, 새 런과 compare / approval / rollback은 <a href="/ui/character-generator">Character Generator</a>, 이 페이지는 preview / QC / lineage / jobs를 한 곳에서 읽는 pack inspection surface다.</p><div class="pack-review-actions"><a class="pack-review-link" href="/ui/studio">Studio</a><a class="pack-review-link" href="/ui/character-generator">Character Generator</a>${
+      selectedPack ? `<a class="pack-review-link" href="/ui/characters?characterPackId=${encodeURIComponent(selectedPack.id)}">현재 팩 고정</a>` : ""
+    }${
+      selectedLatestJob ? `<a class="pack-review-link" href="/ui/jobs/${encodeURIComponent(selectedLatestJob.id)}">Latest Job</a>` : ""
+    }</div><div class="pack-review-summary"><article class="pack-review-card"><span>최근 팩</span><strong>${escHtml(String(packs.length))}</strong><p>review queue</p></article><article class="pack-review-card"><span>Ready Assets</span><strong>${escHtml(String(readyAssets.length))}</strong><p>manual create exception path</p></article><article class="pack-review-card"><span>선택된 팩</span><strong>${escHtml(selectedPack?.id ?? "없음")}</strong><p>${escHtml(selectedPack ? String(selectedPack.status) : "choose one from the list")}</p></article><article class="pack-review-card"><span>Active Compare</span><strong>${escHtml(compareHref ? "available" : "none")}</strong><p>approval surface = Character Generator</p></article></div>${
       message ? `<div class="notice">${escHtml(message)}</div>` : ""
-    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}<form method="post" action="/ui/characters/create" class="grid"><div class="grid two"><label>Front Asset<select name="front" required>${
-      assetOptions || '<option value="">No READY assets available</option>'
-    }</select></label><label>ThreeQuarter Asset<select name="threeQuarter" required>${
-      assetOptions || '<option value="">No READY assets available</option>'
-    }</select></label><label>Profile Asset<select name="profile" required>${
-      assetOptions || '<option value="">No READY assets available</option>'
-    }</select></label><label>Topic (optional)<input name="topic" placeholder="character preview"/></label></div><button type="submit">Create character pack + enqueue preview</button></form></section>${selectedSection}<section class="card"><h2>\uCD5C\uADFC \uCE90\uB9AD\uD130 \uD329</h2><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created At</th></tr></thead><tbody>${
+    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}</section>${selectedSection}<div class="pack-review-grid"><section class="pack-review-stage"><section class="pack-review-panel"><h2>최근 캐릭터 팩</h2><p>이 목록은 review queue다. 팩을 고르면 위 inspection surface가 preview -> QC -> lineage -> jobs 순서로 열립니다.</p><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created At</th></tr></thead><tbody>${
       packRows || '<tr><td colspan="6">No character packs</td></tr>'
-    }</tbody></table></section>`;
+    }</tbody></table></section></section><aside class="pack-review-stage">${roleSplitRail}${manualCreateSection}</aside></div></div>`;
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329", html));
   });
 

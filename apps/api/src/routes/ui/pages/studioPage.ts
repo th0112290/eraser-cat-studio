@@ -128,9 +128,9 @@ export function buildStudioBody(input: StudioBodyInput): string {
       ? "이 채널에는 프롬프트 가드레일이 활성화되어 있습니다."
       : "현재 프롬프트 가드레일이 비교적 가볍습니다.";
   const workbenchLinks = [
-    renderStudioWorkbenchLink("에셋", "입력, QC, 프리뷰를 검토합니다.", "/ui/assets"),
-    renderStudioWorkbenchLink("캐릭터 생성기", "비교와 승인을 포함한 단계형 생성을 실행합니다.", input.packState.generatorHref),
-    renderStudioWorkbenchLink("캐릭터", "팩을 검토하고 버전을 비교하며 안전하게 롤백합니다.", input.packState.charactersHref),
+    renderStudioWorkbenchLink("에셋", "새 입력과 reference readiness를 검토합니다.", "/ui/assets"),
+    renderStudioWorkbenchLink("캐릭터 생성기", "생성 허브에서 compare, approve, regenerate, recreate를 운영합니다.", input.packState.generatorHref),
+    renderStudioWorkbenchLink("캐릭터", "preview, QC, lineage, jobs를 읽는 깊은 수동 팩 리뷰를 엽니다.", input.packState.charactersHref),
     renderStudioWorkbenchLink("에피소드", "에디터와 에피소드 상세 워크벤치를 엽니다.", "/ui/episodes"),
     renderStudioWorkbenchLink("작업", "큐 실행을 보고 실패를 복구합니다.", "/ui/jobs"),
     renderStudioWorkbenchLink("프로필", "프롬프트 규칙과 채널 정책을 점검합니다.", "/ui/profiles")
@@ -255,42 +255,42 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
 <section class="card studio-shell">
   <div class="studio-hero">
     <section class="studio-hero-card">
-      <p class="studio-eyebrow">오케스트레이션 허브</p>
+      <p class="studio-eyebrow">빠른 디스패치 허브</p>
       <div class="studio-title-row">
         <div>
           <h1>스튜디오</h1>
-          <p class="studio-hint">다음 결정을 담당하는 워크벤치로 들어가기 전에 현재 상태, 최근 오브젝트 활동, 위험 신호를 먼저 확인하세요. 스튜디오는 모든 제어를 한 화면에 쏟아붓는 곳이 아니라, 다음 단계로 정확히 밀어주는 허브여야 합니다.</p>
+          <p class="studio-hint">다음 결정을 담당하는 워크벤치로 들어가기 전에 현재 상태, 최근 오브젝트 활동, 위험 신호를 먼저 확인하세요. 스튜디오는 모든 제어를 붙잡아 두는 곳이 아니라, 빠른 흐름을 올바른 surface로 밀어주는 dispatch hub여야 합니다.</p>
         </div>
       </div>
       <div class="studio-pill-row">
-        <span class="studio-pill">현재 상태 요약</span>
-        <span class="studio-pill">최근 오브젝트 활동</span>
-        <span class="studio-pill">위험 신호</span>
-        <span class="studio-pill">전용 워크벤치 인계</span>
+        <span class="studio-pill">빠른 흐름만 유지</span>
+        <span class="studio-pill">새 입력은 Assets</span>
+        <span class="studio-pill">생성/승인은 Generator</span>
+        <span class="studio-pill">깊은 팩 리뷰는 Characters</span>
       </div>
       <div class="studio-status">
         <span class="studio-status-label">운영자 상태</span>
-        <div id="studio-status" role="status" aria-live="polite" aria-atomic="true">준비됨: 상태를 검토하고 다음 액션을 고른 뒤, 적절한 워크벤치로 일을 넘기세요.</div>
+        <div id="studio-status" role="status" aria-live="polite" aria-atomic="true">준비됨: 상태를 검토하고 다음 액션을 고른 뒤, 적절한 전용 워크벤치로 일을 넘기세요.</div>
       </div>
       <div class="studio-workbench-grid">${workbenchLinks}</div>
     </section>
     <section class="studio-runtime-card">
       <div>
-        <p class="studio-eyebrow" style="color:#be6727">상위 3개 다음 액션</p>
-        <h2 style="margin:0">동시 결정을 줄이며 파이프라인을 전진시키기</h2>
-        <p class="studio-copy">아래 액션들은 모든 입력을 한꺼번에 보이는 상태로 두는 대신, 운영자를 하나의 판단면으로 좁혀 줍니다.</p>
+        <p class="studio-eyebrow" style="color:#be6727">상위 3개 디스패치</p>
+        <h2 style="margin:0">한 화면에 오래 머무르지 않고 다음 surface로 보내기</h2>
+        <p class="studio-copy">아래 액션들은 운영자를 한 번에 하나의 판단면으로 좁혀 줍니다. 깊은 비교나 팩 검수는 허브 밖으로 보냅니다.</p>
       </div>
       <div class="studio-plan-list">
-        ${renderStudioNextAction("1", "검토", "에셋에서 새 입력 점검", "검토 워크벤치를 사용해 QC, 프리뷰 출력, 그리고 소스가 다운스트림 작업의 기준점이 될 준비가 되었는지 확인합니다.", [
+        ${renderStudioNextAction("1", "검토", "새 입력은 Assets에서 닫기", "검토 워크벤치를 사용해 QC, 프리뷰 출력, 그리고 소스가 다운스트림 작업의 기준점이 될 준비가 되었는지 확인합니다.", [
           { label: "에셋 열기", href: "/ui/assets" },
           { label: "스튜디오 입력 열기", href: "#studio-intake" }
         ])}
-        ${renderStudioNextAction("2", "스테이지", "다음 팩 생성 또는 비교", "단계형 런 흐름이 필요하면 캐릭터 생성기로, 비교·승인·롤백 맥락이 필요하면 캐릭터 화면으로 이동합니다.", [
+        ${renderStudioNextAction("2", "스테이지", "생성은 Generator, 깊은 리뷰는 Characters", "새 런과 compare/approve/recover는 캐릭터 생성기로, preview/QC/lineage/jobs를 오래 읽는 검수는 캐릭터 화면으로 이동합니다.", [
           { label: "캐릭터 생성기 열기", href: input.packState.generatorHref },
           { label: "캐릭터 열기", href: input.packState.charactersHref },
           ...(input.packState.compareHref ? [{ label: "비교 열기", href: input.packState.compareHref }] : [])
         ])}
-        ${renderStudioNextAction("3", "디스패치", "선택한 팩을 묶고 에피소드를 전진", "예전 올인원 대시보드를 다시 열지 않고 생성, 프리뷰, 편집, 퍼블리시로 이어가려면 디스패치 레일을 사용하세요.", [
+        ${renderStudioNextAction("3", "디스패치", "선택한 팩을 묶고 에피소드만 전진", "예전 올인원 대시보드를 다시 열지 않고 생성, 프리뷰, 편집, 퍼블리시로 이어가려면 디스패치 레일만 사용하세요.", [
           { label: "디스패치 레일 열기", href: "#studio-dispatch" },
           { label: "에피소드 열기", href: "/ui/episodes" },
           { label: "작업 열기", href: "/ui/jobs" }
@@ -322,8 +322,8 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
         </section>
         <section class="studio-signal">
           <span class="studio-signal-label">운영 모델</span>
-          <strong class="studio-signal-value">검토 -> 스테이지 -> 디스패치</strong>
-          <span class="studio-signal-note">지금 내리는 판단에 맞는 워크벤치를 사용하세요.</span>
+          <strong class="studio-signal-value">빠른 흐름 -> 전용 surface</strong>
+          <span class="studio-signal-note">빠른 흐름은 Studio, 깊은 생성/검수는 Generator와 Characters를 사용하세요.</span>
         </section>
       </div>
       <div class="studio-overview-grid">
@@ -364,7 +364,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
         <div class="studio-head-copy">
           <div class="studio-kicker">최근 오브젝트 활동</div>
           <h2>라이브 피드 검토</h2>
-          <p class="studio-monitor-note">이 압축된 피드를 사용해 지금 관심이 필요한 오브젝트를 고른 뒤, 맞는 워크벤치나 디스패치 레일에서 계속 진행하세요.</p>
+          <p class="studio-monitor-note">이 압축된 피드를 사용해 지금 관심이 필요한 오브젝트를 고른 뒤, 맞는 워크벤치나 디스패치 레일에서 계속 진행하세요. 허브는 선택과 라우팅만 담당합니다.</p>
         </div>
         <div class="studio-links"><a href="#studio-live-controls" class="studio-link">라이브 제어 열기</a></div>
       </div>
@@ -440,7 +440,8 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     <section class="studio-ops-card" id="studio-dispatch">
       <p class="studio-ops-kicker">디스패치 레일</p>
       <h2 style="margin:0">팩을 바인딩하고 에피소드를 전진</h2>
-      <p class="studio-monitor-note">스튜디오에 남겨둔 유일한 활성 입력면입니다. 더 시끄러운 제어는 전용 워크벤치나 접힌 상세 뒤로 보냅니다.</p>
+      <p class="studio-monitor-note">스튜디오에 남겨둔 유일한 활성 입력면입니다. 승인, 비교, 롤백 판단은 Generator/Characters에 남기고 여기서는 fast flow binding만 수행하세요.</p>
+      <div class="studio-links"><a href="/ui/character-generator" class="studio-link">Generator로 가기</a><a href="/ui/characters" class="studio-link">Characters로 가기</a></div>
       <div class="studio-binding-grid">
         <label class="studio-binding"><span>에피소드 주제</span><input id="studio-topic" placeholder="예: 캐릭터 소개 영상"/></label>
         <label class="studio-binding"><span>episodeId</span><input id="studio-episode-id" placeholder="cmm..."/></label>
@@ -463,7 +464,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     <section class="studio-ops-card">
       <p class="studio-ops-kicker">현재 선택</p>
       <h2 id="studio-selection-title" style="margin:0">선택 없음</h2>
-      <p id="studio-selection-meta" class="studio-monitor-note">최근 오브젝트 활동에서 팩이나 에피소드를 선택해 라우팅 준비 메타데이터를 점검하세요.</p>
+      <p id="studio-selection-meta" class="studio-monitor-note">최근 오브젝트 활동에서 팩이나 에피소드를 선택해 라우팅 준비 메타데이터와 다음 surface를 점검하세요.</p>
       <div id="studio-selection-fields" class="studio-meta"><div class="studio-selection-empty">아직 선택된 팩이나 에피소드가 없습니다.</div></div>
       <div id="studio-selection-links" class="studio-links" style="margin-top:12px"></div>
     </section>
@@ -639,9 +640,12 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       const summary = summarizePackJson(pack.json);
       const latestEpisode = Array.isArray(pack.episodes) && pack.episodes.length > 0 ? pack.episodes[0] : null;
       const rollbackState = String(pack.status || "").toUpperCase() === "APPROVED" ? "활성" : "롤백 후보";
+      const nextSurface = String(pack.status || "").toUpperCase() === "APPROVED"
+        ? "Characters에서 깊은 리뷰 / Generator에서 rollback"
+        : "Generator에서 compare·approve / Characters에서 수동 리뷰";
       renderSelection(
         "팩 " + readText(pack.id),
-        "비교, 롤백, 마스코트 프로필 점검에 필요한 채널 및 팩 메타데이터입니다.",
+        "Studio에서 다음 surface를 고르기 위한 팩 요약입니다. 깊은 비교와 수동 리뷰는 허브 밖에서 계속 진행합니다.",
         [
           { label: "채널", value: readText(pack.channelId) },
           { label: "버전", value: "v" + readText(pack.version) },
@@ -650,12 +654,14 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           { label: "선택된 뷰", value: summary.selectedViews },
           { label: "계보", value: summary.lineage },
           { label: "최신 에피소드", value: latestEpisode ? readText(latestEpisode.id) + " / " + readText(latestEpisode.topic) : "-" },
-          { label: "롤백 상태", value: rollbackState }
+          { label: "롤백 상태", value: rollbackState },
+          { label: "다음 surface", value: nextSurface }
         ],
         [
-          { label: "팩 상세", href: "/ui/characters?characterPackId=" + encodeURIComponent(packId) },
-          summary.mascotProfile && summary.mascotProfile !== "(기록 없음)" ? { label: "프로필", href: "/ui/profiles?q=" + encodeURIComponent(summary.mascotProfile) } : null,
+          { label: "팩 리뷰", href: "/ui/characters?characterPackId=" + encodeURIComponent(packId) },
+          { label: "생성 허브", href: "/ui/character-generator" },
           { label: "QC 리포트", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/qc_report.json" },
+          summary.mascotProfile && summary.mascotProfile !== "(기록 없음)" ? { label: "프로필", href: "/ui/profiles?q=" + encodeURIComponent(summary.mascotProfile) } : null,
           ${seed.compareHref ? `{ label: "비교", href: ${JSON.stringify(seed.compareHref)} }` : "null"}
         ].filter(Boolean)
       );
