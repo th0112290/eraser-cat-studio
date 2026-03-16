@@ -53,22 +53,26 @@ type BenchmarksPageBodyInput = {
 };
 
 const OPERATOR_PATTERN_STYLE = `<style>
+:root{--ops-density-gap:10px;--ops-density-card-padding:12px;--ops-density-cell-y:10px;--ops-density-cell-x:12px;--ops-density-chip-gap:8px;--ops-density-table-font:12px}
+body[data-shell-density="compact"],body[data-density="compact"],body[data-ui-density="compact"],body[class*="density-compact"]{--ops-density-gap:8px;--ops-density-card-padding:10px;--ops-density-cell-y:8px;--ops-density-cell-x:10px;--ops-density-chip-gap:6px;--ops-density-table-font:11px}
+body[data-shell-density="comfortable"],body[data-density="comfortable"],body[data-ui-density="comfortable"],body[class*="density-comfortable"]{--ops-density-gap:12px;--ops-density-card-padding:14px;--ops-density-cell-y:12px;--ops-density-cell-x:14px;--ops-density-chip-gap:10px;--ops-density-table-font:13px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#0c5c58}
-.ops-shell{display:grid;gap:10px}
+.ops-shell{display:grid;gap:var(--ops-density-gap)}
 .ops-titlebar{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
 .ops-titleblock{display:grid;gap:4px;max-width:720px}
 .ops-titleblock h1,.ops-titleblock h2{margin-bottom:0}
 .ops-kpi-grid,.ops-note-grid,.ops-mini-grid,.ops-filter-grid,.ops-rail-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
-.ops-kpi,.ops-lane,.ops-resource-card,.ops-inline-card{display:grid;gap:6px;padding:10px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fff,#f7fbfc);border-radius:12px}
+.ops-kpi,.ops-lane,.ops-resource-card,.ops-inline-card{display:grid;gap:6px;padding:var(--ops-density-card-padding);border:1px solid #d6e3e8;background:linear-gradient(180deg,#fff,#f7fbfc);border-radius:12px}
 .ops-kpi-label{font-size:12px;font-weight:700;color:#42556a;text-transform:uppercase;letter-spacing:.08em}
 .ops-kpi-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;font-weight:800}
-.ops-callout{display:grid;gap:6px;padding:10px;border-radius:12px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fbfefd,#f2f8f9)}
+.ops-callout{display:grid;gap:6px;padding:var(--ops-density-card-padding);border-radius:12px;border:1px solid #d6e3e8;background:linear-gradient(180deg,#fbfefd,#f2f8f9)}
 .ops-callout h3,.ops-lane h3,.ops-resource-card h3{margin:0;font-size:14px}
 .ops-callout p,.ops-lane p,.ops-resource-card p{margin:0;color:#4f6470;line-height:1.5}
 .ops-callout.warn{border-color:#edd2ac;background:linear-gradient(180deg,#fffaf1,#fff3df)}
 .ops-callout.bad{border-color:#efc5c8;background:linear-gradient(180deg,#fff7f7,#fff1f2)}
 .ops-callout.ok{border-color:#bcdccf;background:linear-gradient(180deg,#f5fcf7,#edf8f0)}
-.ops-rail-card{display:grid;gap:8px;padding:12px;border:1px solid #d6e4ea;border-radius:14px;background:linear-gradient(180deg,#ffffff,#f8fbfc)}
+.ops-rail-card{display:grid;gap:8px;padding:var(--ops-density-card-padding);border:1px solid #d6e4ea;border-radius:14px;background:linear-gradient(180deg,#ffffff,#f8fbfc)}
 .ops-rail-card h3{margin:0;font-size:15px}
 .ops-rail-card p{margin:0;color:#4f6470;line-height:1.5}
 .ops-rail-card.tone-ok{border-color:#cbe6d7;background:linear-gradient(180deg,#effcf7,#ffffff)}
@@ -80,24 +84,26 @@ const OPERATOR_PATTERN_STYLE = `<style>
 .ops-rail-item:first-child{border-top:none;padding-top:0}
 .ops-rail-item strong{font-size:14px;color:#1f3340}
 .ops-rail-card .quick-links{margin-top:2px}
-.ops-table-shell{display:grid;gap:10px}
+.ops-table-shell{display:grid;gap:var(--ops-density-gap)}
 .ops-table-meta{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
-.search-cluster{display:grid;gap:6px;padding:10px;border:1px solid #dbe7f3;background:#f8fbff;border-radius:12px}
+.ops-table-meta>.search-cluster,.ops-table-meta>input[type="search"]{flex:1 1 280px;max-width:420px}
+.search-cluster{display:grid;gap:6px;padding:var(--ops-density-card-padding);border:1px solid #dbe7f3;background:#f8fbff;border-radius:12px}
+.search-cluster[role="search"]{box-shadow:0 0 0 1px rgba(216,228,236,.55) inset}
 .search-cluster label{font-size:12px;font-weight:700;color:#334155}
-.search-cluster input{width:100%}
+.search-cluster input{width:100%;min-height:40px}
 .search-cluster .muted-text{line-height:1.4}
 .ops-resource-list ul{margin:0;padding-left:18px;display:grid;gap:8px}
 .ops-resource-list li{line-height:1.5}
 .ops-inline-card{color:inherit;text-decoration:none}
 .ops-inline-card:hover{text-decoration:none}
 .ops-detail-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-.ops-form-shell{display:grid;gap:10px}
+.ops-form-shell{display:grid;gap:var(--ops-density-gap)}
 .ops-object-shell{display:grid;gap:12px}
 .ops-object-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
 .ops-object-title{display:grid;gap:6px;max-width:760px}
 .ops-object-title h1,.ops-object-title h2{margin:0}
 .ops-summary-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
-.ops-summary-card{display:grid;gap:4px;padding:10px 12px;border:1px solid #d6e4ea;border-radius:14px;background:linear-gradient(180deg,#ffffff,#f7fbfc)}
+.ops-summary-card{display:grid;gap:4px;padding:var(--ops-density-card-padding);border:1px solid #d6e4ea;border-radius:14px;background:linear-gradient(180deg,#ffffff,#f7fbfc)}
 .ops-summary-card.tone-ok{border-color:#cbe6d7;background:linear-gradient(180deg,#effcf7,#ffffff)}
 .ops-summary-card.tone-warn{border-color:#ecd9ad;background:linear-gradient(180deg,#fff8ea,#fffdf7)}
 .ops-summary-card.tone-bad{border-color:#efc4c4;background:linear-gradient(180deg,#fff4f4,#fffdfd)}
@@ -105,7 +111,7 @@ const OPERATOR_PATTERN_STYLE = `<style>
 .ops-summary-label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#486173}
 .ops-summary-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:15px;font-weight:800}
 .ops-summary-hint{color:#4f6470;line-height:1.45}
-.ops-lifecycle-shell{display:grid;gap:8px;padding:12px;border:1px solid #dbe5ef;border-radius:14px;background:linear-gradient(180deg,#f8fbfd,#ffffff)}
+.ops-lifecycle-shell{display:grid;gap:8px;padding:var(--ops-density-card-padding);border:1px solid #dbe5ef;border-radius:14px;background:linear-gradient(180deg,#f8fbfd,#ffffff)}
 .ops-lifecycle-shell h2{margin:0;font-size:15px}
 .ops-lifecycle-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .ops-lifecycle-step{display:grid;gap:4px;padding:10px;border-radius:12px;border:1px dashed #cbd7e1;background:#ffffff}
@@ -119,11 +125,15 @@ const OPERATOR_PATTERN_STYLE = `<style>
 .ops-cell-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ops-cell-title strong{font-size:14px}
 .ops-cell-meta{color:#4f6470;line-height:1.45}
-.ops-link-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ops-link-row{display:flex;align-items:center;gap:var(--ops-density-chip-gap);flex-wrap:wrap}
 .ops-link-row form{margin:0;display:inline-flex;align-items:center}
-.ops-link-row a,.ops-link-row button{white-space:nowrap}
+.ops-link-row a,.ops-link-row button{white-space:nowrap;min-height:34px}
+.ops-link-row a{font-weight:700}
+.table-wrap table{font-size:var(--ops-density-table-font)}
+.table-wrap th,.table-wrap td{padding:var(--ops-density-cell-y) var(--ops-density-cell-x);line-height:1.55}
+.table-wrap .notice,.table-wrap .error{margin:0;min-height:72px;display:grid;align-content:center}
 .ops-log-table pre{margin:0;max-height:220px;overflow:auto}
-@media (max-width:720px){.ops-titleblock{max-width:none}}
+@media (max-width:720px){.ops-titleblock{max-width:none}.ops-table-meta{align-items:stretch}.ops-table-meta>.search-cluster,.ops-table-meta>input[type="search"]{max-width:none;width:100%}.ops-link-row,.ops-toolbar{display:grid;grid-template-columns:1fr}.ops-link-row a,.ops-link-row button,.ops-link-row form{width:100%}.ops-link-row form button{width:100%}}
 </style>`;
 
 function renderOpsStyle(): string {
@@ -142,9 +152,18 @@ function renderSearchCluster(input: {
   hint: string;
   urlParam?: string;
 }): string {
-  return `<div class="search-cluster"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}"${
-    input.urlParam ? ` data-url-param="${input.urlParam}"` : ""
-  } placeholder="${input.placeholder}" autocomplete="off"/><span class="muted-text">${input.hint}</span></div>`;
+  const hintId = `${input.id}-hint`;
+  return `<div class="search-cluster" role="search" aria-label="${escapeAttribute(input.label)}"><label for="${escapeAttribute(input.id)}">${input.label}</label><input id="${escapeAttribute(
+    input.id
+  )}" name="q" type="search" data-table-filter="${escapeAttribute(input.targetId)}" aria-controls="${escapeAttribute(input.targetId)}" aria-describedby="${escapeAttribute(
+    hintId
+  )}"${input.urlParam ? ` data-url-param="${escapeAttribute(input.urlParam)}"` : ""} placeholder="${escapeAttribute(input.placeholder)}" autocomplete="off"/><span id="${escapeAttribute(
+    hintId
+  )}" class="muted-text">${input.hint}</span></div>`;
+}
+
+function renderSrOnlyCaption(text: string): string {
+  return `<caption class="sr-only">${escapeAttribute(text)}</caption>`;
 }
 
 type ListPowerPresetInput = {
@@ -234,31 +253,35 @@ function serializeInlineJson(value: unknown): string {
 
 export function renderListPowerStyle(): string {
   return `<style>
-.list-power-shell{display:grid;gap:12px}
+.list-power-shell{display:grid;gap:var(--ops-density-gap)}
 .list-power-grid,.list-power-compare-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-.list-power-card,.list-power-compare-card{display:grid;gap:8px;padding:12px;border:1px solid #d8e4ec;border-radius:14px;background:linear-gradient(180deg,#fff,#f7fbfc)}
+.list-power-card,.list-power-compare-card{display:grid;gap:8px;padding:var(--ops-density-card-padding);border:1px solid #d8e4ec;border-radius:14px;background:linear-gradient(180deg,#fff,#f7fbfc)}
 .list-power-card h3,.list-power-compare-card h3{margin:0;font-size:15px}
 .list-power-card p,.list-power-compare-card p{margin:0;color:#4f6470;line-height:1.5}
-.list-power-chip-row,.list-power-action-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.list-power-chip,.list-power-custom-chip button{border:1px solid #c8d8e5;border-radius:999px;background:#fff;color:#173040;font-size:12px;font-weight:700;padding:6px 10px}
+.list-power-chip-row,.list-power-action-row{display:flex;flex-wrap:wrap;gap:var(--ops-density-chip-gap);align-items:center}
+.list-power-chip,.list-power-custom-chip button{border:1px solid #c8d8e5;border-radius:999px;background:#fff;color:#173040;font-size:12px;font-weight:700;padding:6px 10px;min-height:34px}
 .list-power-chip.is-active,.list-power-custom-chip button.is-active{border-color:#0f766e;background:#e8f7f5;color:#0f5c58}
 .list-power-custom-chip{display:inline-flex;align-items:center;gap:4px;padding:2px;border:1px solid #d6e2ea;border-radius:999px;background:#fff}
-.list-power-custom-chip [data-remove-view]{border:none;background:transparent;color:#64748b;padding:4px 6px}
+.list-power-custom-chip [data-remove-view]{border:none;background:transparent;color:#64748b;padding:4px 8px;font-size:11px;font-weight:700}
 .list-power-action-row form{margin:0}
-.list-power-action,.list-power-action-row button,.list-power-action-row a{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;border-radius:10px;border:1px solid #c7d8e6;background:#fff;color:#173040;font-size:12px;font-weight:700;text-decoration:none}
+.list-power-action,.list-power-action-row button,.list-power-action-row a{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;border-radius:10px;border:1px solid #c7d8e6;background:#fff;color:#173040;font-size:12px;font-weight:700;text-decoration:none;min-height:34px}
+.list-power-action-row a{border-color:#d7e2e9;background:linear-gradient(180deg,#fcfefe,#f5faf9);color:#0f6e67}
+.list-power-action-row button,.list-power-action-row form .list-power-action{box-shadow:0 1px 0 rgba(15,23,42,.04)}
 .list-power-action:hover,.list-power-action-row button:hover,.list-power-action-row a:hover{text-decoration:none;border-color:#0f766e;background:#eef8f6}
 .list-power-action[aria-disabled="true"],.list-power-action-row [aria-disabled="true"]{opacity:.55;pointer-events:none}
 .list-power-checkbox{display:inline-flex;align-items:center;gap:6px}
 .list-power-checkbox input{margin:0}
 .list-power-checkbox.is-selected{color:#0f766e;font-weight:700}
 .list-power-status{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.list-power-caption{color:#4f6470;line-height:1.45}
-.list-power-compare-panel{display:grid;gap:10px;padding:12px;border:1px solid #d8e4ec;border-radius:16px;background:linear-gradient(180deg,#f8fbfd,#fff)}
+.list-power-caption{display:grid;gap:4px;color:#4f6470;line-height:1.45;min-height:42px}
+.list-power-live{padding:10px 12px;border:1px dashed #d4e0e7;border-radius:12px;background:linear-gradient(180deg,#fbfdfe,#f5f9fb);color:#47606d;line-height:1.45}
+.list-power-compare-panel{display:grid;gap:10px;padding:var(--ops-density-card-padding);border:1px solid #d8e4ec;border-radius:16px;background:linear-gradient(180deg,#f8fbfd,#fff)}
 .list-power-compare-card .list-power-meta{color:#4f6470;line-height:1.45}
 .list-power-actions-shell{display:grid;gap:8px}
 .list-power-run-profiles{display:grid;gap:6px;padding-top:6px;border-top:1px dashed #d6e2ea}
 .list-power-inline-note{color:#4f6470;line-height:1.45}
-@media (max-width:720px){.list-power-grid,.list-power-compare-grid{grid-template-columns:1fr}}
+.list-power-compare-panel .notice{margin:0}
+@media (max-width:720px){.list-power-grid,.list-power-compare-grid{grid-template-columns:1fr}.list-power-status{justify-content:stretch}.list-power-action-row{display:grid;grid-template-columns:1fr}.list-power-action-row form{width:100%}.list-power-action,.list-power-action-row button,.list-power-action-row a{width:100%}}
 </style>`;
 }
 
@@ -294,7 +317,7 @@ export function renderListPowerSurface(input: ListPowerSurfaceInput): string {
     <article class="list-power-card">
       <div class="stack">
         <h3>Saved views</h3>
-        <p>${input.selectionHint}</p>
+        <p>Keep reusable list presets local to this browser while the current filter state stays safe to reopen from the URL.</p>
       </div>
       <div class="list-power-chip-row">
         ${renderListPowerButton("All rows", `data-view-id="all" data-view-note="Reset to the full list"`)}
@@ -314,12 +337,13 @@ export function renderListPowerSurface(input: ListPowerSurfaceInput): string {
       </div>
       <div class="list-power-action-row">
         <label class="list-power-checkbox"><input type="checkbox" data-select-all/> Select visible rows</label>
-        <a class="list-power-action" href="#${input.rootId}-compare" data-compare-launch aria-disabled="true">Compare selected</a>
-        <button type="button" data-copy-selection data-copy="">Copy ID/path</button>
+        <a class="list-power-action" href="#${input.rootId}-compare" data-compare-launch aria-disabled="true" aria-controls="${input.rootId}-compare">Compare selected</a>
+        <button type="button" data-copy-selection data-copy="" aria-label="Copy selected IDs or paths" disabled>Copy selected IDs/paths</button>
       </div>
       <div class="list-power-caption" data-selection-caption>${input.selectionHint}</div>
     </article>
   </div>
+  <div class="list-power-live" data-list-power-live role="status" aria-live="polite" aria-atomic="true">Saved views ready. No compare selection yet.</div>
   <div class="list-power-compare-panel" id="${input.rootId}-compare" data-compare-panel hidden>
     <div class="section-head">
       <div>
@@ -405,7 +429,7 @@ export function renderListPowerScript(): string {
   const slugify = (value) => cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'saved-view';
   const storageKey = (pageKey) => 'ecs-ui:list-power:v1:' + pageKey;
   const parseKoreanDate = (value) => {
-    const match = cleanText(value).match(/^(\\d{4})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})시\\s*(\\d{1,2})분\\s*(\\d{1,2})초$/);
+    const match = cleanText(value).match(/^(\\d{4})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})??\s*(\\d{1,2})遺?\s*(\\d{1,2})珥?/);
     if (!match) return null;
     const [, year, month, day, hour, minute, second] = match;
     return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
@@ -465,6 +489,7 @@ export function renderListPowerScript(): string {
     const viewCaption = root.querySelector('[data-view-caption]');
     const selectionState = root.querySelector('[data-selection-state]');
     const selectionCaption = root.querySelector('[data-selection-caption]');
+    const liveRegion = root.querySelector('[data-list-power-live]');
     const customViewsRoot = root.querySelector('[data-custom-views]');
     const compareLaunch = root.querySelector('[data-compare-launch]');
     const copySelectionButton = root.querySelector('[data-copy-selection]');
@@ -484,6 +509,12 @@ export function renderListPowerScript(): string {
       return [{ id: 'all', label: 'All rows', note: 'Reset to the full list', tags: [], search: {} }].concat(presetViews, saved);
     };
     const findView = (id) => loadAllViews().find((view) => cleanText(view.id) === cleanText(id)) || null;
+    const toast = (title, message, tone = 'ok', timeoutMs = 2200) => {
+      if (typeof window.__ecsToast === 'function') window.__ecsToast(title, message, tone, timeoutMs);
+    };
+    const announce = (message) => {
+      if (liveRegion instanceof HTMLElement) liveRegion.textContent = message;
+    };
     const markDynamicTags = () => {
       rows.forEach((row) => {
         if (!(row instanceof HTMLTableRowElement)) return;
@@ -516,7 +547,8 @@ export function renderListPowerScript(): string {
         .map((view) => {
           const id = cleanText(view.id);
           const activeClass = id === activeViewId ? 'is-active' : '';
-          return '<span class="list-power-custom-chip"><button type="button" class=\"' + activeClass + '\" data-view-id=\"' + escapeHtml(id) + '\" data-view-note=\"' + escapeHtml(cleanText(view.note || view.label || 'Saved view')) + '\">' + escapeHtml(cleanText(view.label || id)) + '</button><button type="button" data-remove-view=\"' + escapeHtml(id) + '\">x</button></span>';
+          const label = cleanText(view.label || id);
+          return '<span class="list-power-custom-chip"><button type="button" class=\"' + activeClass + '\" data-view-id=\"' + escapeHtml(id) + '\" data-view-note=\"' + escapeHtml(cleanText(view.note || view.label || 'Saved view')) + '\">' + escapeHtml(label) + '</button><button type="button" data-remove-view=\"' + escapeHtml(id) + '\" aria-label=\"Remove saved view ' + escapeHtml(label) + '\">Remove</button></span>';
         })
         .join('');
     };
@@ -555,6 +587,7 @@ export function renderListPowerScript(): string {
       const viewLabel = cleanText(view && view.label) || 'All rows';
       if (viewState instanceof HTMLElement) viewState.textContent = viewLabel;
       if (viewCaption instanceof HTMLElement) viewCaption.textContent = cleanText(view && view.note) || 'Saved views stay local to this browser, while filters and selections stay mirrored into the URL.';
+      announce(viewLabel + ' ready. ' + rows.filter((row) => isVisibleRow(row)).length + ' rows visible.');
       syncViewButtons();
       renderCustomViews();
       syncSelection(false);
@@ -575,8 +608,9 @@ export function renderListPowerScript(): string {
             ? 'Selection is mirrored into the URL so the compare handoff can be reopened safely.'
             : 'Select rows to build a compare handoff without leaving the list.';
       }
-      if (copySelectionButton instanceof HTMLElement) {
+      if (copySelectionButton instanceof HTMLButtonElement) {
         copySelectionButton.setAttribute('data-copy', selected.map((node) => cleanText(node.dataset.copyValue || node.value)).filter(Boolean).join(', '));
+        copySelectionButton.disabled = selectionCount === 0;
       }
       if (compareLaunch instanceof HTMLAnchorElement) {
         const nextUrl = new URL(window.location.href);
@@ -616,6 +650,11 @@ export function renderListPowerScript(): string {
         comparePanel.hidden = selectionCount === 0;
         compareEmpty.hidden = selectionCount > 0;
       }
+      announce(
+        selectionCount > 0
+          ? selectionCount + ' rows selected for compare. Compare handoff and copy actions are ready.'
+          : 'No compare selection yet. Select visible rows to build a reopenable compare handoff.'
+      );
       if (writeUrl) updateUrlParam(compareParam, selectionCount > 0 ? encodeSelection(selected.map((node) => cleanText(node.value)).filter(Boolean)) : '');
     };
     const loadSelectionFromUrl = () => {
@@ -645,11 +684,14 @@ export function renderListPowerScript(): string {
       }
       const removeView = target.closest('[data-remove-view]');
       if (removeView instanceof HTMLElement) {
+        const removedId = cleanText(removeView.dataset.removeView);
+        const removedLabel = cleanText(findView(removedId)?.label || removedId || 'Saved view');
         const nextViews = readSavedViews(pageKey).filter((view) => cleanText(view.id) !== cleanText(removeView.dataset.removeView));
         writeSavedViews(pageKey, nextViews);
         if (cleanText(root.dataset.activeViewId) === cleanText(removeView.dataset.removeView)) applyView('all');
         else renderCustomViews();
         syncViewButtons();
+        toast('Saved view removed', removedLabel, 'warn');
         return;
       }
       if (target.closest('[data-save-view]')) {
@@ -668,10 +710,12 @@ export function renderListPowerScript(): string {
         savedViews.push(nextView);
         writeSavedViews(pageKey, savedViews);
         applyView(nextView.id, false);
+        toast('Saved view updated', nextView.label);
         return;
       }
       if (target.closest('[data-reset-view]')) {
         applyView('all');
+        toast('View reset', 'All rows');
         return;
       }
       if (target.closest('[data-clear-selection]')) {
@@ -679,13 +723,17 @@ export function renderListPowerScript(): string {
           if (node instanceof HTMLInputElement) node.checked = false;
         });
         syncSelection();
+        toast('Selection cleared', 'Compare handoff reset');
         return;
       }
       if (target.closest('[data-list-copy]')) {
         const button = target.closest('[data-list-copy]');
         const value = cleanText(button && button.getAttribute('data-list-copy'));
         if (!value) return;
-        navigator.clipboard.writeText(value).catch(() => {});
+        navigator.clipboard
+          .writeText(value)
+          .then(() => toast('Copied', value))
+          .catch((error) => toast('Copy failed', String(error), 'bad', 5000));
       }
     });
     if (compareLaunch instanceof HTMLAnchorElement) {
@@ -709,8 +757,11 @@ export function renderListPowerScript(): string {
     searchInputs.forEach((input) => {
       if (!(input instanceof HTMLInputElement)) return;
       input.addEventListener('input', () => {
-        if (viewState instanceof HTMLElement) viewState.textContent = cleanText(findView(cleanText(root.dataset.activeViewId || 'all'))?.label) || 'All rows';
-        syncSelection(false);
+        window.setTimeout(() => {
+          if (viewState instanceof HTMLElement) viewState.textContent = cleanText(findView(cleanText(root.dataset.activeViewId || 'all'))?.label) || 'All rows';
+          announce(rows.filter((row) => isVisibleRow(row)).length + ' rows match the current filters.');
+          syncSelection(false);
+        }, 0);
       });
     });
     window.addEventListener('list-power:sync', () => {
@@ -762,7 +813,7 @@ function renderRailItems(items: OpsRailItem[]): string {
 function renderRailCard(input: OpsRailCardInput): string {
   const tone = input.tone ?? "muted";
   const bodyHtml =
-    input.bodyHtml ?? ((input.items?.length ?? 0) > 0 ? renderRailItems(input.items ?? []) : '<div class="notice">표시할 항목이 없습니다.</div>');
+    input.bodyHtml ?? ((input.items?.length ?? 0) > 0 ? renderRailItems(input.items ?? []) : '<div class="notice">?쒖떆????ぉ???놁뒿?덈떎.</div>');
   return `<div class="ops-rail-card tone-${tone}"><div class="stack"><h3>${input.title}</h3><p>${input.intro}</p></div>${bodyHtml}${
     input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""
   }</div>`;
@@ -916,7 +967,7 @@ function dedupeLinks(links: Array<TableCellLink | null | undefined>): TableCellL
   });
 }
 
-function renderActionLinks(links: Array<TableCellLink | null | undefined>, empty = "추가 링크 없음"): string {
+function renderActionLinks(links: Array<TableCellLink | null | undefined>, empty = "異붽? 留곹겕 ?놁쓬"): string {
   const deduped = dedupeLinks(links);
   if (deduped.length === 0) return `<span class="muted-text">${empty}</span>`;
   return `<div class="ops-link-row">${deduped.map((link) => `<a href="${link.href}">${link.label}</a>`).join("")}</div>`;
@@ -949,7 +1000,7 @@ function renderObjectSummaryHeader(input: OpsObjectSummaryHeaderInput): string {
     input.lifecycleSteps?.length
       ? renderLifecycleStrip({
           title: input.lifecycleTitle ?? "object lifecycle",
-          intro: input.lifecycleIntro ?? "상태와 안전 액션을 위에서 고정합니다.",
+          intro: input.lifecycleIntro ?? "?곹깭? ?덉쟾 ?≪뀡???꾩뿉??怨좎젙?⑸땲??",
           steps: input.lifecycleSteps
         })
       : ""
@@ -959,9 +1010,9 @@ function renderObjectSummaryHeader(input: OpsObjectSummaryHeaderInput): string {
 function extractLastErrorText(errorStackHtml: string): string {
   const preMatch = errorStackHtml.match(/<pre>([\s\S]*?)<\/pre>/i);
   const raw = stripHtml(preMatch?.[1] ?? errorStackHtml)
-    .replace(/^lastError 스택 열기\/닫기\s*/i, "")
+    .replace(/^lastError ?ㅽ깮 ?닿린\/?リ린\s*/i, "")
     .replace(/^lastError:\s*/i, "");
-  return summarizeText(raw || "기록된 lastError 없음", 160);
+  return summarizeText(raw || "湲곕줉??lastError ?놁쓬", 160);
 }
 
 function parseLogEntries(logRowsHtml: string): ParsedLogEntry[] {
@@ -970,87 +1021,87 @@ function parseLogEntries(logRowsHtml: string): ParsedLogEntry[] {
     .map((row) => ({
       createdAt: stripHtml(row.cells[0]) || "-",
       level: stripHtml(row.cells[1]) || "-",
-      message: stripHtml(row.cells[2]) || "(메시지 없음)",
+      message: stripHtml(row.cells[2]) || "(硫붿떆吏 ?놁쓬)",
       detailsHtml: row.cells[3] ?? ""
     }));
 }
 
 function toneFromLogLevel(level: string): OpsRailTone {
   const normalized = level.trim().toUpperCase();
-  if (/(ERROR|FAIL|실패)/.test(normalized)) return "bad";
-  if (/(WARN|경고)/.test(normalized)) return "warn";
-  if (/(INFO|완료|성공)/.test(normalized)) return "ok";
+  if (/(ERROR|FAIL|FAILED)/.test(normalized)) return "bad";
+  if (/(WARN|WARNING)/.test(normalized)) return "warn";
+  if (/(INFO|SUCCESS|SUCCEEDED|COMPLETED)/.test(normalized)) return "ok";
   return "muted";
 }
 
 function describeJobLifecycle(statusText: string, progressText: string, latestMessage = ""): JobLifecycleSummary {
   const normalized = statusText.trim().toUpperCase();
   const progressLabel = progressText.trim().length > 0 ? progressText : "0%";
-  if (/(FAILED|실패)/.test(normalized)) {
+  if (/(FAILED|ERROR|FAIL)/.test(normalized)) {
     return {
       tone: "bad",
       stageLabel: "recover",
-      latestResult: latestMessage || "최근 실행이 실패 경로에서 멈췄습니다.",
-      retryLabel: "retry 가능",
-      retryDetail: "FAILED 상태라면 detail에서 바로 retry 여부를 확인할 수 있습니다.",
+      latestResult: latestMessage || "The latest attempt failed and needs recovery triage.",
+      retryLabel: "retry available",
+      retryDetail: "When a job is failed, confirm retryability on the detail surface before rerunning it.",
       safeActionLabel: "detail -> retry / recover",
-      safeActionDetail: "lastError와 retryability를 먼저 본 뒤 HITL 또는 health로 넘깁니다.",
+      safeActionDetail: "Read lastError and retryability first, then decide between retry, HITL, or health.",
       shouldRecover: true,
       shouldPublish: false,
       shouldInspectHealth: true
     };
   }
-  if (/(SUCCEEDED|COMPLETED|SUCCESS|성공)/.test(normalized)) {
+  if (/(SUCCEEDED|COMPLETED|SUCCESS)/.test(normalized)) {
     return {
       tone: "ok",
       stageLabel: "handoff",
-      latestResult: latestMessage || `최근 실행이 handoff 후보입니다. 진행률 ${progressLabel}에서 종료되었습니다.`,
-      retryLabel: "retry 불필요",
-      retryDetail: "성공 경로에서는 retry보다 artifacts와 publish handoff 검증이 우선입니다.",
+      latestResult: latestMessage || `The latest attempt completed cleanly at ${progressLabel} and is ready for handoff review.`,
+      retryLabel: "retry not needed",
+      retryDetail: "On a successful path, verify artifacts and publish handoff before thinking about another run.",
       safeActionLabel: "episode -> artifacts -> publish",
-      safeActionDetail: "소유 episode와 linked outputs 정합을 확인한 뒤에만 승격으로 넘깁니다.",
+      safeActionDetail: "Confirm the owner episode and linked outputs before promoting to publish.",
       shouldRecover: false,
       shouldPublish: true,
       shouldInspectHealth: false
     };
   }
-  if (/(RUNNING|실행 중)/.test(normalized)) {
+  if (/(RUNNING|IN_PROGRESS)/.test(normalized)) {
     return {
       tone: "warn",
       stageLabel: "in flight",
-      latestResult: latestMessage || `작업이 아직 실행 중입니다. 현재 진행률은 ${progressLabel}입니다.`,
-      retryLabel: "retry 잠김",
-      retryDetail: "종료 전까지는 retry를 열지 말고 stuck 여부를 먼저 확인합니다.",
+      latestResult: latestMessage || `The job is still running. Current progress is ${progressLabel}.`,
+      retryLabel: "retry later",
+      retryDetail: "Do not retry while the job is active. Confirm whether it is making progress or stuck first.",
       safeActionLabel: "detail -> health",
-      safeActionDetail: "중복 실행을 피하려면 latest result와 상태 화면을 함께 확인합니다.",
+      safeActionDetail: "Inspect the latest result and health state before deciding whether the run is actually stuck.",
       shouldRecover: false,
       shouldPublish: false,
       shouldInspectHealth: true
     };
   }
-  if (/(QUEUED|PENDING|대기)/.test(normalized)) {
+  if (/(QUEUED|PENDING)/.test(normalized)) {
     return {
       tone: "muted",
       stageLabel: "queued",
-      latestResult: latestMessage || "아직 worker에 배정되지 않았거나 queue에서 대기 중입니다.",
-      retryLabel: "retry 잠김",
-      retryDetail: "실행이 시작되기 전에는 retry보다 queue 상태 확인이 우선입니다.",
+      latestResult: latestMessage || "The job is queued and waiting for worker capacity.",
+      retryLabel: "retry later",
+      retryDetail: "Before retrying a queued job, inspect queue and worker health first.",
       safeActionLabel: "detail -> health",
-      safeActionDetail: "queue, worker, duplicate job 여부를 먼저 확인합니다.",
+      safeActionDetail: "Check queue, worker availability, and duplicate runs before taking action.",
       shouldRecover: false,
       shouldPublish: false,
       shouldInspectHealth: true
     };
   }
-  if (/(CANCELLED|취소)/.test(normalized)) {
+  if (/(CANCELLED|痍⑥냼)/.test(normalized)) {
     return {
       tone: "warn",
       stageLabel: "inspect",
-      latestResult: latestMessage || "작업이 취소되어 종료되었습니다.",
+      latestResult: latestMessage || "?묒뾽??痍⑥냼?섏뼱 醫낅즺?섏뿀?듬땲??",
       retryLabel: "inspect first",
-      retryDetail: "왜 취소되었는지 확인한 뒤에만 retry 또는 대체 경로를 고릅니다.",
+      retryDetail: "??痍⑥냼?섏뿀?붿? ?뺤씤???ㅼ뿉留?retry ?먮뒗 ?泥?寃쎈줈瑜?怨좊쫭?덈떎.",
       safeActionLabel: "detail -> episode",
-      safeActionDetail: "취소 원인과 owning episode 문맥을 먼저 확인합니다.",
+      safeActionDetail: "痍⑥냼 ?먯씤怨?owning episode 臾몃㎘??癒쇱? ?뺤씤?⑸땲??",
       shouldRecover: false,
       shouldPublish: false,
       shouldInspectHealth: false
@@ -1059,11 +1110,11 @@ function describeJobLifecycle(statusText: string, progressText: string, latestMe
   return {
     tone: "muted",
     stageLabel: "inspect",
-    latestResult: latestMessage || `상태 ${statusText || "-"} 에서 추가 판단이 필요합니다.`,
+    latestResult: latestMessage || `?곹깭 ${statusText || "-"} ?먯꽌 異붽? ?먮떒???꾩슂?⑸땲??`,
     retryLabel: "inspect first",
-    retryDetail: "retryability와 blockers를 detail에서 먼저 확인합니다.",
+    retryDetail: "retryability? blockers瑜?detail?먯꽌 癒쇱? ?뺤씤?⑸땲??",
     safeActionLabel: "detail",
-    safeActionDetail: "원시 evidence보다 먼저 object summary와 linked objects를 읽습니다.",
+    safeActionDetail: "?먯떆 evidence蹂대떎 癒쇱? object summary? linked objects瑜??쎌뒿?덈떎.",
     shouldRecover: false,
     shouldPublish: false,
     shouldInspectHealth: false
@@ -1091,7 +1142,7 @@ function renderJobsTableRows(rowsHtml: string): string {
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null,
           episodeId && lifecycle.shouldPublish ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "linked object 없음"
+        "linked object ?놁쓬"
       );
       const nextActionLinks = renderActionLinks(
         [
@@ -1101,15 +1152,15 @@ function renderJobsTableRows(rowsHtml: string): string {
           episodeLink ? { href: episodeLink.href, label: "episode" } : null,
           episodeId && lifecycle.shouldPublish ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "detail에서 다음 액션을 확인하세요."
+        "detail?먯꽌 ?ㅼ쓬 ?≪뀡???뺤씤?섏꽭??"
       );
 
       return `<tr><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         jobLink ? `<a href="${jobLink.href}">${jobLink.label}</a>` : stripHtml(row.cells[0]) || "-"
-      }</strong>${renderToneBadge(lifecycle.stageLabel, lifecycle.tone)}</div><span class="ops-cell-meta">list -> detail -> recover 흐름의 anchor job object입니다.</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
+      }</strong>${renderToneBadge(lifecycle.stageLabel, lifecycle.tone)}</div><span class="ops-cell-meta">list -> detail -> recover ?먮쫫??anchor job object?낅땲??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : "-"
       }</strong></div><span class="ops-cell-meta">${
-        episodeId ? `owner episode ${episodeId}` : "연결된 owner episode 정보가 없습니다."
+        episodeId ? `owner episode ${episodeId}` : "?곌껐??owner episode ?뺣낫媛 ?놁뒿?덈떎."
       }</span>${linkedObjectLinks}</div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${typeText}</strong></div><span class="ops-cell-meta">${lifecycle.latestResult}</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title">${statusMarkup}${renderToneBadge(
         lifecycle.retryLabel,
         lifecycle.shouldRecover ? "bad" : lifecycle.tone
@@ -1163,7 +1214,7 @@ function renderPoweredJobsTableRows(rowsHtml: string): string {
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null,
           episodeId && lifecycle.shouldPublish ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "linked object ?놁쓬"
+        "linked object ??곸벉"
       );
       const followupLinks = renderActionLinks(
         [
@@ -1171,7 +1222,7 @@ function renderPoweredJobsTableRows(rowsHtml: string): string {
           lifecycle.shouldInspectHealth ? { href: "/ui/health", label: "health" } : null,
           episodeLink ? { href: episodeLink.href, label: "episode" } : null
         ],
-        "detail?먯꽌 ?ㅼ쓬 ?≪뀡???뺤씤?섏꽭??"
+        "detail?癒?퐣 ??쇱벉 ??る???類ㅼ뵥??뤾쉭??"
       );
       const rowActions: ListPowerActionInput[] = [];
       if (jobLink?.href) rowActions.push({ kind: "link", label: "View", href: jobLink.href });
@@ -1199,10 +1250,10 @@ function renderPoweredJobsTableRows(rowsHtml: string): string {
       )}<strong>${jobLink ? `<a href="${jobLink.href}">${jobLink.label}</a>` : jobId}</strong>${renderToneBadge(
         lifecycle.stageLabel,
         lifecycle.tone
-      )}</div><span class="ops-cell-meta">list -> detail -> recover ?먮쫫??anchor job object?낅땲??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
+      )}</div><span class="ops-cell-meta">list -> detail -> recover ?癒?カ??anchor job object??낅빍??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : "-"
       }</strong></div><span class="ops-cell-meta">${
-        episodeId ? `owner episode ${episodeId}` : "?곌껐??owner episode ?뺣낫媛 ?놁뒿?덈떎."
+        episodeId ? `owner episode ${episodeId}` : "?怨뚭퍙??owner episode ?類ｋ궖揶쎛 ??곷뮸??덈뼄."
       }</span>${linkedObjectLinks}</div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${typeText}</strong></div><span class="ops-cell-meta">${lifecycle.latestResult}</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title">${statusMarkup}${renderToneBadge(
         lifecycle.retryLabel,
         lifecycle.shouldRecover ? "bad" : lifecycle.tone
@@ -1225,36 +1276,36 @@ function renderHitlTableRows(rowsHtml: string): string {
       const topicText = stripHtml(row.cells[2]) || "-";
       const typeText = stripHtml(row.cells[3]) || "-";
       const createdText = stripHtml(row.cells[4]) || "-";
-      const blockerText = summarizeText(stripHtml(row.cells[5]) || "기록된 lastError 없음", 140);
+      const blockerText = summarizeText(stripHtml(row.cells[5]) || "湲곕줉??lastError ?놁쓬", 140);
       const preflightLinks = renderActionLinks(
         [
           jobLink ? { href: jobLink.href, label: "detail" } : null,
           episodeLink ? { href: episodeLink.href, label: "episode" } : null,
           episodeId ? { href: `/ui/hitl?episodeId=${encodeURIComponent(episodeId)}`, label: "recover" } : null
         ],
-        "detail에서 blocker를 먼저 확인하세요."
+        "detail?먯꽌 blocker瑜?癒쇱? ?뺤씤?섏꽭??"
       );
       const handoffLinks = renderActionLinks(
         [
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null,
           episodeId ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
         ],
-        "recover 뒤 linked outputs를 확인하세요."
+        "recover ??linked outputs瑜??뺤씤?섏꽭??"
       );
 
       return `<tr><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         jobLink ? `<a href="${jobLink.href}">${jobLink.label}</a>` : stripHtml(row.cells[0]) || "-"
-      }</strong>${renderToneBadge("recover", "bad")}</div><span class="ops-cell-meta">실패 job object에서 recover 흐름을 시작합니다.</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
+      }</strong>${renderToneBadge("recover", "bad")}</div><span class="ops-cell-meta">?ㅽ뙣 job object?먯꽌 recover ?먮쫫???쒖옉?⑸땲??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
         episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : "-"
       }</strong></div><span class="ops-cell-meta">${
-        episodeId ? `owner episode ${episodeId}` : "연결 episode 정보가 없습니다."
+        episodeId ? `owner episode ${episodeId}` : "?곌껐 episode ?뺣낫媛 ?놁뒿?덈떎."
       }</span>${renderActionLinks(
         [
           episodeLink ? { href: episodeLink.href, label: "episode" } : null,
           episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null
         ],
-        "linked object 없음"
-      )}</div></td><td><div class="ops-cell-stack"><strong>${topicText}</strong><span class="ops-cell-meta">${typeText}</span></div></td><td><div class="ops-cell-stack"><strong>preflight blocker</strong><span class="ops-cell-meta">${blockerText}</span></div></td><td><div class="ops-cell-stack"><strong>detail -> dryRun recover</strong><span class="ops-cell-meta">root cause를 detail에서 확인한 뒤 episodeId와 failedShotIds로 dryRun부터 검증합니다.</span>${preflightLinks}</div></td><td><div class="ops-cell-stack"><strong>artifacts -> publish handoff</strong><span class="ops-cell-meta">${createdText}</span>${handoffLinks}</div></td></tr>`;
+        "linked object ?놁쓬"
+      )}</div></td><td><div class="ops-cell-stack"><strong>${topicText}</strong><span class="ops-cell-meta">${typeText}</span></div></td><td><div class="ops-cell-stack"><strong>preflight blocker</strong><span class="ops-cell-meta">${blockerText}</span></div></td><td><div class="ops-cell-stack"><strong>detail -> dryRun recover</strong><span class="ops-cell-meta">root cause瑜?detail?먯꽌 ?뺤씤????episodeId? failedShotIds濡?dryRun遺??寃利앺빀?덈떎.</span>${preflightLinks}</div></td><td><div class="ops-cell-stack"><strong>artifacts -> publish handoff</strong><span class="ops-cell-meta">${createdText}</span>${handoffLinks}</div></td></tr>`;
     })
     .join("");
 }
@@ -1268,22 +1319,22 @@ ${renderOpsStyle()}
 ${renderObjectSummaryHeader({
   eyebrow: "job lifecycle",
   title: t.title,
-  intro: "list -> detail -> recover -> handoff 흐름을 Job object 기준으로 읽습니다. row action grammar도 같은 단어(detail, recover, episode, artifacts, publish)로 맞춥니다.",
+  intro: "list -> detail -> recover -> handoff ?먮쫫??Job object 湲곗??쇰줈 ?쎌뒿?덈떎. row action grammar??媛숈? ?⑥뼱(detail, recover, episode, artifacts, publish)濡?留욎땅?덈떎.",
   flash: input.flash,
-  quickLinksHtml: '<a href="/ui">대시보드</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">퍼블리시</a>',
+  quickLinksHtml: '<a href="/ui">Dashboard</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">Publish</a>',
   summaryCards: [
-    { label: "범위", valueHtml: "<strong>최근 100개 job object</strong>", hint: "최신 실패와 멈춘 실행을 위쪽에서 먼저 잡습니다.", tone: "muted" },
-    { label: "latest result", valueHtml: "<strong>failed / stuck running 우선</strong>", hint: "성공 경로보다 recover 후보를 먼저 여는 리스트입니다.", tone: "warn" },
-    { label: "row grammar", valueHtml: "<strong>detail -> recover -> handoff</strong>", hint: "각 행은 detail, retryability, linked objects를 같은 순서로 보여줍니다.", tone: "ok" },
-    { label: "linked objects", valueHtml: "<strong>episode -> artifacts -> publish</strong>", hint: "job에서 끝내지 않고 owner episode와 handoff 경로까지 같이 봅니다.", tone: "ok" }
+    { label: "踰붿쐞", valueHtml: "<strong>理쒓렐 100媛?job object</strong>", hint: "理쒖떊 ?ㅽ뙣? 硫덉텣 ?ㅽ뻾???꾩そ?먯꽌 癒쇱? ?≪뒿?덈떎.", tone: "muted" },
+    { label: "latest result", valueHtml: "<strong>failed / stuck running ?곗꽑</strong>", hint: "?깃났 寃쎈줈蹂대떎 recover ?꾨낫瑜?癒쇱? ?щ뒗 由ъ뒪?몄엯?덈떎.", tone: "warn" },
+    { label: "row grammar", valueHtml: "<strong>detail -> recover -> handoff</strong>", hint: "媛??됱? detail, retryability, linked objects瑜?媛숈? ?쒖꽌濡?蹂댁뿬以띾땲??", tone: "ok" },
+    { label: "linked objects", valueHtml: "<strong>episode -> artifacts -> publish</strong>", hint: "job?먯꽌 ?앸궡吏 ?딄퀬 owner episode? handoff 寃쎈줈源뚯? 媛숈씠 遊낅땲??", tone: "ok" }
   ],
   lifecycleTitle: "list -> detail -> recover -> handoff",
-  lifecycleIntro: "리스트는 Job object lifecycle의 입구입니다. 실패와 정체를 먼저 잡고, 승격은 마지막 단계에서만 엽니다.",
+  lifecycleIntro: "由ъ뒪?몃뒗 Job object lifecycle???낃뎄?낅땲?? ?ㅽ뙣? ?뺤껜瑜?癒쇱? ?↔퀬, ?밴꺽? 留덉?留??④퀎?먯꽌留??쎈땲??",
   lifecycleSteps: [
-    { label: "list", detail: "status와 latest result로 failed / stuck job을 먼저 고릅니다.", tone: "muted" },
-    { label: "detail", detail: "status, retryability, blockers, linked objects를 상단에서 읽습니다.", tone: "warn" },
-    { label: "recover", detail: "retry, HITL, health 중 다음 안전 액션을 고릅니다.", tone: "bad" },
-    { label: "handoff", detail: "owner episode와 artifacts가 정합할 때만 publish를 엽니다.", tone: "ok" }
+    { label: "list", detail: "status? latest result濡?failed / stuck job??癒쇱? 怨좊쫭?덈떎.", tone: "muted" },
+    { label: "detail", detail: "status, retryability, blockers, linked objects瑜??곷떒?먯꽌 ?쎌뒿?덈떎.", tone: "warn" },
+    { label: "recover", detail: "retry, HITL, health 以??ㅼ쓬 ?덉쟾 ?≪뀡??怨좊쫭?덈떎.", tone: "bad" },
+    { label: "handoff", detail: "owner episode? artifacts媛 ?뺥빀???뚮쭔 publish瑜??쎈땲??", tone: "ok" }
   ]
 })}
 
@@ -1314,44 +1365,55 @@ ${renderListPowerSurface({
 })}
 
 ${renderRailSection({
-  title: "다음 안전 액션",
-  intro: "필터, retryability, linked objects를 먼저 고정한 뒤에만 row detail로 내려갑니다.",
-  linksHtml: '<a href="/ui/health">상태</a><a href="/ui/episodes">에피소드</a><a href="/ui/artifacts">산출물</a>',
+  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
+  intro: "?꾪꽣, retryability, linked objects瑜?癒쇱? 怨좎젙???ㅼ뿉留?row detail濡??대젮媛묐땲??",
+  linksHtml: '<a href="/ui/health">Health</a><a href="/ui/episodes">Episodes</a><a href="/ui/artifacts">Artifacts</a>',
   cards: [
     {
-      title: "필터 + row 오픈",
-      intro: "job id, owner episode, status로 좁힌 다음 detail에서 lifecycle을 엽니다.",
+      title: "?꾪꽣 + row ?ㅽ뵂",
+      intro: "job id, owner episode, status濡?醫곹엺 ?ㅼ쓬 detail?먯꽌 lifecycle???쎈땲??",
       tone: "muted",
       bodyHtml: renderSearchCluster({
         id: "jobs-filter",
         targetId: "jobs-table",
-        label: "작업 필터",
+        label: "?묒뾽 ?꾪꽣",
         placeholder: t.filterPlaceholder,
         urlParam: "jobsFilter",
-        hint: "이 리스트에 로컬로 적용됩니다. / 로 전역 검색으로 바로 이동할 수 있습니다."
+        hint: "??由ъ뒪?몄뿉 濡쒖뺄濡??곸슜?⑸땲?? / 濡??꾩뿭 寃?됱쑝濡?諛붾줈 ?대룞?????덉뒿?덈떎."
       })
     },
     {
-      title: "복구 우선순위",
-      intro: "FAILED와 멈춘 RUNNING을 먼저 정리하고, publish는 latest result가 정합할 때만 마지막에 엽니다.",
+      title: "蹂듦뎄 ?곗꽑?쒖쐞",
+      intro: "FAILED? 硫덉텣 RUNNING??癒쇱? ?뺣━?섍퀬, publish??latest result媛 ?뺥빀???뚮쭔 留덉?留됱뿉 ?쎈땲??",
       tone: "warn",
       items: [
-        { label: "FAILED는 detail -> retry / recover", detail: "job detail에서 lastError, retryability, blocker를 확인한 뒤 HITL 여부를 판단합니다." },
-        { label: "RUNNING 정체는 detail -> health", detail: "재시도 전에 health, queue, 최근 jobs를 함께 확인해 중복 실행을 피합니다." },
-        { label: "publish hold", detail: "latest result와 linked artifacts가 맞아야만 승격으로 넘깁니다." }
+        { label: "FAILED??detail -> retry / recover", detail: "job detail?먯꽌 lastError, retryability, blocker瑜??뺤씤????HITL ?щ?瑜??먮떒?⑸땲??" },
+        { label: "RUNNING ?뺤껜??detail -> health", detail: "?ъ떆???꾩뿉 health, queue, 理쒓렐 jobs瑜??④퍡 ?뺤씤??以묐났 ?ㅽ뻾???쇳빀?덈떎." },
+        { label: "publish hold", detail: "latest result? linked artifacts媛 留욎븘?쇰쭔 ?밴꺽?쇰줈 ?섍퉩?덈떎." }
       ],
-      linksHtml: '<a href="/ui/hitl">HITL</a><a href="/ui/health">상태</a>'
+      linksHtml: '<a href="/ui/hitl">HITL</a><a href="/ui/health">?곹깭</a>'
     },
     {
-      title: "공통 row 문법",
-      intro: "모든 row는 detail, owner episode, linked objects, next safe action을 같은 문법으로 보여줍니다.",
+      title: "怨듯넻 row 臾몃쾿",
+      intro: "紐⑤뱺 row??detail, owner episode, linked objects, next safe action??媛숈? 臾몃쾿?쇰줈 蹂댁뿬以띾땲??",
       tone: "ok",
       items: [
-        { label: "detail", detail: "status, latest result, retryability를 먼저 읽습니다." },
-        { label: "episode / artifacts", detail: "owner object와 linked outputs를 같은 row에서 바로 엽니다." },
-        { label: "recover / publish", detail: "실패는 recover로, 성공은 publish handoff로 이어집니다." }
+        { label: "detail", detail: "status, latest result, retryability瑜?癒쇱? ?쎌뒿?덈떎." },
+        { label: "episode / artifacts", detail: "owner object? linked outputs瑜?媛숈? row?먯꽌 諛붾줈 ?쎈땲??" },
+        { label: "recover / publish", detail: "?ㅽ뙣??recover濡? ?깃났? publish handoff濡??댁뼱吏묐땲??" }
       ],
-      linksHtml: '<a href="/ui/episodes">에피소드</a><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a>'
+      linksHtml: '<a href="/ui/episodes">Episodes</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/publish">Publish</a>'
+    },
+    {
+      title: "Surface help",
+      intro: "Use the list as the control layer: filter, compare, and copy first, then open detail only for the next safe action.",
+      tone: "muted",
+      items: [
+        { label: "Saved views", detail: "Keep a few local job slices per browser without leaking them into shell-wide navigation." },
+        { label: "Compare handoff", detail: "Selection stays in the URL, so compare and recovery work can be reopened safely after moving to detail pages." },
+        { label: "Empty or blocked rows", detail: "If the list is empty or stale, go back to dashboard, health, or recent episodes before retrying raw actions." }
+      ],
+      linksHtml: '<a href="/ui">Dashboard</a><a href="/ui/health">Health</a>'
     }
   ]
 })}
@@ -1359,12 +1421,14 @@ ${renderRailSection({
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>작업 오브젝트</h2>
-      <p class="section-intro">각 행은 job object -> owner episode -> latest result -> retryability -> next safe action 순서로 읽습니다. raw evidence는 detail 화면으로 내립니다.</p>
+      <h2>?묒뾽 ?ㅻ툕?앺듃</h2>
+      <p class="section-intro">媛??됱? job object -> owner episode -> latest result -> retryability -> next safe action ?쒖꽌濡??쎌뒿?덈떎. raw evidence??detail ?붾㈃?쇰줈 ?대┰?덈떎.</p>
     </div>
     <span class="badge muted">${t.latestBadge}</span>
   </div>
-  <div class="table-wrap"><table id="jobs-table"><thead><tr><th>job object / lifecycle</th><th>owner episode / linked objects</th><th>type / latest result</th><th>status / retryability</th><th>progress / created</th><th>next safe action</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="jobs-table" aria-label="Job objects list">${renderSrOnlyCaption(
+    "Job objects list with owner episode, latest result, retryability, and next safe action."
+  )}<thead><tr><th>job object / lifecycle</th><th>owner episode / linked objects</th><th>type / latest result</th><th>status / retryability</th><th>progress / created</th><th>next safe action</th></tr></thead><tbody>${
     rowsHtml || renderTableEmptyRow(6, t.noJobs)
   }</tbody></table></div>
 </section>${renderListPowerScript()}`;
@@ -1377,109 +1441,120 @@ export function buildPublishPageBody(input: PublishPageBodyInput): string {
   const episodeHref = hasEpisodeId ? `/ui/episodes/${encodeURIComponent(episodeId)}` : "/ui/episodes";
   const artifactsHref = hasEpisodeId ? `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}` : "/ui/artifacts";
   const folderHref = hasEpisodeId ? `/artifacts/${encodeURIComponent(episodeId)}/` : "/artifacts/";
-  const episodeLabel = hasEpisodeId ? `<strong class="mono">${episodeId}</strong>` : "<strong>episode id를 입력하세요.</strong>";
+  const episodeLabel = hasEpisodeId ? `<strong class="mono">${episodeId}</strong>` : "<strong>episode id瑜??낅젰?섏꽭??</strong>";
 
   return `
 ${renderOpsStyle()}
 ${renderObjectSummaryHeader({
   eyebrow: "publish preflight",
   title: t.title,
-  intro: "publish는 page action이 아니라 episode object handoff입니다. episode -> latest job -> artifacts -> publish 순서로 잠금이 풀릴 때만 안전합니다.",
+  intro: "publish??page action???꾨땲??episode object handoff?낅땲?? episode -> latest job -> artifacts -> publish ?쒖꽌濡??좉툑???由??뚮쭔 ?덉쟾?⑸땲??",
   flash: input.flash,
-  quickLinksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/episodes">에피소드</a><a href="/ui/artifacts">산출물</a>',
+  quickLinksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a><a href="/ui/artifacts">Artifacts</a>',
   summaryCards: [
-    { label: "target object", valueHtml: episodeLabel, hint: "같은 episode id로 jobs, artifacts, publish를 끝까지 이어갑니다.", tone: hasEpisodeId ? "ok" : "warn" },
-    { label: "latest job gate", valueHtml: "<strong>COMPLETED / PREVIEW_READY</strong>", hint: "FAILED, stuck RUNNING, retry pending이면 publish보다 recover가 먼저입니다.", tone: "warn" },
-    { label: "linked artifacts", valueHtml: "<strong>preview / final / manifest</strong>", hint: "raw folder보다 QC와 output presence 정합을 먼저 확인합니다.", tone: hasEpisodeId ? "ok" : "muted" },
+    { label: "target object", valueHtml: episodeLabel, hint: "媛숈? episode id濡?jobs, artifacts, publish瑜??앷퉴吏 ?댁뼱媛묐땲??", tone: hasEpisodeId ? "ok" : "warn" },
+    { label: "latest job gate", valueHtml: "<strong>COMPLETED / PREVIEW_READY</strong>", hint: "FAILED, stuck RUNNING, retry pending?대㈃ publish蹂대떎 recover媛 癒쇱??낅땲??", tone: "warn" },
+    { label: "linked artifacts", valueHtml: "<strong>preview / final / manifest</strong>", hint: "raw folder蹂대떎 QC? output presence ?뺥빀??癒쇱? ?뺤씤?⑸땲??", tone: hasEpisodeId ? "ok" : "muted" },
     {
       label: "next safe action",
-      valueHtml: `<strong>${hasEpisodeId ? "jobs -> artifacts -> publish" : "episode 선택"}</strong>`,
-      hint: hasEpisodeId ? "latest result와 linked outputs를 확인한 뒤에만 publish request를 보냅니다." : "에피소드 상세나 job detail에서 같은 id를 복사해 오세요.",
+      valueHtml: `<strong>${hasEpisodeId ? "jobs -> artifacts -> publish" : "episode ?좏깮"}</strong>`,
+      hint: hasEpisodeId ? "latest result? linked outputs瑜??뺤씤???ㅼ뿉留?publish request瑜?蹂대깄?덈떎." : "?먰뵾?뚮뱶 ?곸꽭??job detail?먯꽌 媛숈? id瑜?蹂듭궗???ㅼ꽭??",
       tone: hasEpisodeId ? "ok" : "warn"
     }
   ],
   lifecycleTitle: "episode -> latest job -> artifacts -> publish",
-  lifecycleIntro: "publish는 마지막 단계입니다. preflight가 깨지면 다시 jobs 또는 recover 경로로 되돌아갑니다.",
+  lifecycleIntro: "publish??留덉?留??④퀎?낅땲?? preflight媛 源⑥?硫??ㅼ떆 jobs ?먮뒗 recover 寃쎈줈濡??섎룎?꾧컩?덈떎.",
   lifecycleSteps: [
-    { label: "episode", detail: hasEpisodeId ? `target object ${episodeId}를 고정합니다.` : "먼저 target episode를 고릅니다.", tone: hasEpisodeId ? "ok" : "warn" },
-    { label: "latest job", detail: "최근 job이 성공 경로인지, retry / recover가 먼저인지 확인합니다.", tone: "warn" },
-    { label: "artifacts", detail: "preview, final, QC, upload manifest 정합을 맞춥니다.", tone: hasEpisodeId ? "ok" : "muted" },
-    { label: "publish", detail: "preflight가 모두 통과할 때만 handoff를 실행합니다.", tone: hasEpisodeId ? "ok" : "muted" }
+    { label: "episode", detail: hasEpisodeId ? `target object ${episodeId}瑜?怨좎젙?⑸땲??` : "癒쇱? target episode瑜?怨좊쫭?덈떎.", tone: hasEpisodeId ? "ok" : "warn" },
+    { label: "latest job", detail: "理쒓렐 job???깃났 寃쎈줈?몄?, retry / recover媛 癒쇱??몄? ?뺤씤?⑸땲??", tone: "warn" },
+    { label: "artifacts", detail: "preview, final, QC, upload manifest ?뺥빀??留욎땅?덈떎.", tone: hasEpisodeId ? "ok" : "muted" },
+    { label: "publish", detail: "preflight媛 紐⑤몢 ?듦낵???뚮쭔 handoff瑜??ㅽ뻾?⑸땲??", tone: hasEpisodeId ? "ok" : "muted" }
   ]
 })}
 
 ${renderRailSection({
   title: "preflight + next safe action",
-  intro: "퍼블리시 버튼보다 먼저 target episode, latest result gate, linked outputs, blocked path를 상단에서 고정합니다.",
+  intro: "?쇰툝由ъ떆 踰꾪듉蹂대떎 癒쇱? target episode, latest result gate, linked outputs, blocked path瑜??곷떒?먯꽌 怨좎젙?⑸땲??",
   cards: [
     {
       title: "episode object + latest result",
       intro: hasEpisodeId
-        ? `승격 대상 episode id는 ${episodeId} 입니다. 먼저 episode detail에서 상태와 latest job result를 확인합니다.`
-        : "승격할 오브젝트가 아직 정해지지 않았습니다. episode id를 먼저 정하세요.",
+        ? `?밴꺽 ???episode id??${episodeId} ?낅땲?? 癒쇱? episode detail?먯꽌 ?곹깭? latest job result瑜??뺤씤?⑸땲??`
+        : "?밴꺽???ㅻ툕?앺듃媛 ?꾩쭅 ?뺥빐吏吏 ?딆븯?듬땲?? episode id瑜?癒쇱? ?뺥븯?몄슂.",
       tone: hasEpisodeId ? "ok" : "warn",
       items: [
-        { label: "episode detail", detail: "이 오브젝트의 현재 상태와 owner context를 먼저 확인합니다." },
-        { label: "latest job", detail: "publish는 최신 작업이 성공 경로에 있는 경우에만 안전합니다." },
-        { label: "retryability", detail: "FAILED 또는 stuck RUNNING이면 publish 대신 recover 판단을 먼저 내립니다." }
+        { label: "episode detail", detail: "???ㅻ툕?앺듃???꾩옱 ?곹깭? owner context瑜?癒쇱? ?뺤씤?⑸땲??" },
+        { label: "latest job", detail: "publish??理쒖떊 ?묒뾽???깃났 寃쎈줈???덈뒗 寃쎌슦?먮쭔 ?덉쟾?⑸땲??" },
+        { label: "retryability", detail: "FAILED ?먮뒗 stuck RUNNING?대㈃ publish ???recover ?먮떒??癒쇱? ?대┰?덈떎." }
       ],
-      linksHtml: `<a href="${episodeHref}">${hasEpisodeId ? "에피소드 상세" : "에피소드 목록"}</a>`
+      linksHtml: `<a href="${episodeHref}">${hasEpisodeId ? "?먰뵾?뚮뱶 ?곸꽭" : "?먰뵾?뚮뱶 紐⑸줉"}</a>`
     },
     {
       title: "artifacts gate",
-      intro: "preview, final, QC, upload manifest가 모두 같은 episode object를 가리키는지 먼저 맞춥니다.",
+      intro: "preview, final, QC, upload manifest媛 紐⑤몢 媛숈? episode object瑜?媛由ы궎?붿? 癒쇱? 留욎땅?덈떎.",
       tone: hasEpisodeId ? "ok" : "muted",
       items: [
-        { label: "preview / final", detail: "승격 전 출력 파일이 실제로 존재하는지 확인합니다." },
-        { label: "QC / manifest", detail: "원시 evidence보다 먼저 QC와 upload manifest를 확인합니다." },
-        { label: "publish handoff", detail: "linked outputs가 정합한 경우에만 publish request를 엽니다." }
+        { label: "preview / final", detail: "?밴꺽 ??異쒕젰 ?뚯씪???ㅼ젣濡?議댁옱?섎뒗吏 ?뺤씤?⑸땲??" },
+        { label: "QC / manifest", detail: "?먯떆 evidence蹂대떎 癒쇱? QC? upload manifest瑜??뺤씤?⑸땲??" },
+        { label: "publish handoff", detail: "linked outputs媛 ?뺥빀??寃쎌슦?먮쭔 publish request瑜??쎈땲??" }
       ],
-      linksHtml: `<a href="${artifactsHref}">산출물</a><a href="${folderHref}">원시 폴더</a>`
+      linksHtml: `<a href="${artifactsHref}">Artifacts</a><a href="${folderHref}">Raw folder</a>`
     },
     {
       title: "blocked path",
-      intro: "publish가 막히면 raw folder 탐색보다 jobs, health, artifacts 중 어느 오브젝트에서 되돌아갈지 먼저 고릅니다.",
+      intro: "publish媛 留됲엳硫?raw folder ?먯깋蹂대떎 jobs, health, artifacts 以??대뒓 ?ㅻ툕?앺듃?먯꽌 ?섎룎?꾧컝吏 癒쇱? 怨좊쫭?덈떎.",
       tone: "warn",
       items: [
-        { label: "jobs로 복귀", detail: "latest job failure와 retryability를 먼저 확인합니다." },
-        { label: "health 확인", detail: "queue나 storage 저하가 있으면 승격을 멈추고 의존성을 먼저 복구합니다." },
-        { label: "artifacts 재검증", detail: "누락 output이면 publish가 아니라 render / compile 단계로 되돌아갑니다." }
+        { label: "jobs first", detail: "Confirm the latest job failure, blocker, and retryability before forcing publish." },
+        { label: "health second", detail: "If queue or storage health is degraded, recover the platform before retrying handoff." },
+        { label: "artifacts before publish", detail: "If outputs are missing, return to render or compile instead of promoting a broken package." }
       ],
-      linksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/health">상태</a><a href="/ui/artifacts">산출물</a>'
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/health">Health</a><a href="/ui/artifacts">Artifacts</a>'
     }
   ]
 })}
 
 ${renderRailSection({
-  title: "퍼블리시 실행",
-  intro: "요청 입력은 간단하게 두되, next safe action과 rollback anchor는 같은 레일 안에 유지합니다.",
+  title: "?쇰툝由ъ떆 ?ㅽ뻾",
+  intro: "?붿껌 ?낅젰? 媛꾨떒?섍쾶 ?먮릺, next safe action怨?rollback anchor??媛숈? ?덉씪 ?덉뿉 ?좎??⑸땲??",
   cards: [
     {
-      title: "퍼블리시 요청",
-      intro: "episode id 하나로 handoff를 실행합니다.",
+      title: "?쇰툝由ъ떆 ?붿껌",
+      intro: "episode id ?섎굹濡?handoff瑜??ㅽ뻾?⑸땲??",
       tone: hasEpisodeId ? "ok" : "muted",
-      bodyHtml: `<form method="post" action="/ui/publish" class="ops-form-shell"><div class="field"><label for="publish-episode-id">episodeId <span class="hint" data-tooltip="${t.episodeHelp}">?</span></label><input id="publish-episode-id" name="episodeId" value="${input.episodeId}" placeholder="clx..." required/><small>에피소드 상세, 작업 상세, 산출물 링크에서 같은 id를 복사해 사용합니다.</small></div><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="퍼블리시 실행">${t.runAction}</button></div></form>`
+      bodyHtml: `<form method="post" action="/ui/publish" class="ops-form-shell"><div class="field"><label for="publish-episode-id">episodeId <span class="hint" data-tooltip="${t.episodeHelp}">?</span></label><input id="publish-episode-id" name="episodeId" value="${input.episodeId}" placeholder="clx..." required/><small>?먰뵾?뚮뱶 ?곸꽭, ?묒뾽 ?곸꽭, ?곗텧臾?留곹겕?먯꽌 媛숈? id瑜?蹂듭궗???ъ슜?⑸땲??</small></div><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="?쇰툝由ъ떆 ?ㅽ뻾">${t.runAction}</button></div></form>`
     },
     {
       title: "submit preflight",
-      intro: "입력값보다 latest result와 linked outputs 정합이 더 중요합니다.",
+      intro: "?낅젰媛믩낫??latest result? linked outputs ?뺥빀????以묒슂?⑸땲??",
       tone: "ok",
       items: [
-        { label: "episode 상태", detail: "COMPLETED 또는 PREVIEW_READY인지 확인합니다." },
-        { label: "latest job", detail: "방금 실패한 작업이 있으면 승격보다 recover를 먼저 진행합니다." },
-        { label: "output manifest", detail: "upload manifest와 output presence가 맞는지 확인합니다." }
+        { label: "episode ?곹깭", detail: "COMPLETED ?먮뒗 PREVIEW_READY?몄? ?뺤씤?⑸땲??" },
+        { label: "latest job", detail: "諛⑷툑 ?ㅽ뙣???묒뾽???덉쑝硫??밴꺽蹂대떎 recover瑜?癒쇱? 吏꾪뻾?⑸땲??" },
+        { label: "output manifest", detail: "upload manifest? output presence媛 留욌뒗吏 ?뺤씤?⑸땲??" }
       ]
     },
     {
-      title: "차단 시 복귀",
-      intro: "publish가 막히면 raw folder보다 owner episode와 linked job 쪽으로 되돌아가야 합니다.",
+      title: "李⑤떒 ??蹂듦?",
+      intro: "publish媛 留됲엳硫?raw folder蹂대떎 owner episode? linked job 履쎌쑝濡??섎룎?꾧????⑸땲??",
       tone: "warn",
       items: [
-        { label: "jobs", detail: "실패한 최신 작업과 retryability를 확인합니다." },
-        { label: "artifacts", detail: "출력이 비면 render / compile 단계부터 다시 봅니다." },
-        { label: "health", detail: "서비스 저하가 있으면 승격을 멈추고 복구 명령을 먼저 고릅니다." }
+        { label: "jobs", detail: "?ㅽ뙣??理쒖떊 ?묒뾽怨?retryability瑜??뺤씤?⑸땲??" },
+        { label: "artifacts", detail: "異쒕젰??鍮꾨㈃ render / compile ?④퀎遺???ㅼ떆 遊낅땲??" },
+        { label: "health", detail: "?쒕퉬????섍? ?덉쑝硫??밴꺽??硫덉텛怨?蹂듦뎄 紐낅졊??癒쇱? 怨좊쫭?덈떎." }
       ],
-      linksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/artifacts">산출물</a><a href="/ui/health">상태</a>'
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/health">Health</a>'
+    },
+    {
+      title: "Publish help",
+      intro: "Treat this page as a preflight and handoff checkpoint, not as a raw publish button.",
+      tone: "muted",
+      items: [
+        { label: "Start from the episode object", detail: "Reuse the same episodeId from episodes, jobs, or artifacts so the handoff stays coherent." },
+        { label: "Do not trust the folder alone", detail: "Manifest, preview, final output, and latest job state should agree before you promote anything." },
+        { label: "Blocked path", detail: "If the request feels unsafe, go back to jobs or artifacts first instead of forcing publish from here." }
+      ],
+      linksHtml: '<a href="/ui/episodes">Episodes</a><a href="/ui/jobs">Jobs</a>'
     }
   ]
 })}`;
@@ -1490,17 +1565,17 @@ export function buildJobDetailPageBody(input: JobDetailPageBodyInput): string {
   const statusText = stripHtml(input.statusBadge) || "unknown";
   const logs = parseLogEntries(input.logRows);
   const latestLog = logs.at(-1) ?? null;
-  const latestResultText = latestLog ? summarizeText(latestLog.message, 140) : "기록된 최신 로그가 없습니다.";
+  const latestResultText = latestLog ? summarizeText(latestLog.message, 140) : "湲곕줉??理쒖떊 濡쒓렇媛 ?놁뒿?덈떎.";
   const blockerText = extractLastErrorText(input.errorStack);
-  const hasBlocker = !/(기록된 lastError 없음|\(없음\))/.test(blockerText);
+  const hasBlocker = !/(湲곕줉??lastError ?놁쓬|\(?놁쓬\))/.test(blockerText);
   const canRetry = input.retryAction.includes("<form") && !input.retryAction.includes("disabled");
   const lifecycle = describeJobLifecycle(statusText, `${input.progress}%`, latestResultText);
   const retryTone: OpsRailTone = canRetry ? "bad" : lifecycle.shouldPublish ? "ok" : statusTone;
   const nextSafeActionLabel = canRetry ? "retry -> artifacts recheck" : lifecycle.safeActionLabel;
   const nextSafeActionDetail = canRetry
-    ? "이 job object에서 retry한 뒤 owner episode와 linked outputs를 다시 확인합니다."
+    ? "??job object?먯꽌 retry????owner episode? linked outputs瑜??ㅼ떆 ?뺤씤?⑸땲??"
     : lifecycle.safeActionDetail;
-  const actionGrammarHtml = `<div class="stack"><span class="muted-text">detail -> retry / recover -> episode -> artifacts -> publish 문법을 같은 순서로 유지합니다.</span><div class="ops-link-row">${input.retryAction}<a href="/ui/hitl">recover</a>${
+  const actionGrammarHtml = `<div class="stack"><span class="muted-text">detail -> retry / recover -> episode -> artifacts -> publish 臾몃쾿??媛숈? ?쒖꽌濡??좎??⑸땲??</span><div class="ops-link-row">${input.retryAction}<a href="/ui/hitl">recover</a>${
     lifecycle.shouldInspectHealth ? '<a href="/ui/health">health</a>' : ""
   }<a href="/ui/episodes/${input.episodeId}">episode</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(
     input.episodeId
@@ -1512,17 +1587,17 @@ ${renderObjectSummaryHeader({
   eyebrow: "job object summary",
   title: "Job object summary",
   titleTag: "h2",
-  intro: "status, owner episode, latest result, retryability, blockers, next safe action, linked objects를 raw logs 위에 고정합니다.",
+  intro: "status, owner episode, latest result, retryability, blockers, next safe action, linked objects瑜?raw logs ?꾩뿉 怨좎젙?⑸땲??",
   flash: input.flash,
-  quickLinksHtml: `<a href="/ui/jobs">작업 목록</a><a href="/ui/episodes/${input.episodeId}">에피소드</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(
+  quickLinksHtml: `<a href="/ui/jobs">Jobs list</a><a href="/ui/episodes/${input.episodeId}">Episode</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(
     input.episodeId
-  )}">산출물</a>`,
+  )}">Artifacts</a>`,
   summaryCards: [
-    { label: "status", valueHtml: input.statusBadge, hint: "status badge가 retry / recover / publish hold 판단을 결정합니다.", tone: statusTone },
+    { label: "status", valueHtml: input.statusBadge, hint: "status badge媛 retry / recover / publish hold ?먮떒??寃곗젙?⑸땲??", tone: statusTone },
     {
       label: "owner episode",
       valueHtml: `<a href="/ui/episodes/${input.episodeId}">${input.episodeId}</a>`,
-      hint: "목록으로 돌아가지 않고 owner object로 바로 handoff 합니다.",
+      hint: "紐⑸줉?쇰줈 ?뚯븘媛吏 ?딄퀬 owner object濡?諛붾줈 handoff ?⑸땲??",
       tone: "muted"
     },
     {
@@ -1533,14 +1608,14 @@ ${renderObjectSummaryHeader({
     },
     {
       label: "retryability",
-      valueHtml: `<strong>${canRetry ? "retry 가능" : lifecycle.retryLabel}</strong>`,
-      hint: canRetry ? "이 detail에서 실패 작업을 직접 재실행할 수 있습니다." : lifecycle.retryDetail,
+      valueHtml: `<strong>${canRetry ? "retry available" : lifecycle.retryLabel}</strong>`,
+      hint: canRetry ? "This failed job can be retried directly from the detail surface." : lifecycle.retryDetail,
       tone: retryTone
     },
     {
       label: "blockers",
-      valueHtml: `<strong>${hasBlocker ? "있음" : "없음"}</strong>`,
-      hint: hasBlocker ? blockerText : "현재 lastError blocker는 보이지 않습니다.",
+      valueHtml: `<strong>${hasBlocker ? "?덉쓬" : "?놁쓬"}</strong>`,
+      hint: hasBlocker ? blockerText : "?꾩옱 lastError blocker??蹂댁씠吏 ?딆뒿?덈떎.",
       tone: hasBlocker ? "bad" : "ok"
     },
     {
@@ -1551,36 +1626,36 @@ ${renderObjectSummaryHeader({
     }
   ],
   lifecycleTitle: "list -> detail -> recover -> handoff",
-  lifecycleIntro: "이 detail은 page가 아니라 Job object 제어면입니다. latest result와 blockers를 읽은 뒤 다음 단계로만 이동합니다.",
+  lifecycleIntro: "??detail? page媛 ?꾨땲??Job object ?쒖뼱硫댁엯?덈떎. latest result? blockers瑜??쎌? ???ㅼ쓬 ?④퀎濡쒕쭔 ?대룞?⑸땲??",
   lifecycleSteps: [
-    { label: "list", detail: "job list에서 실패 또는 정체 job을 고릅니다.", tone: "muted" },
-    { label: "detail", detail: "status, owner, latest result, retryability를 위에서 읽습니다.", tone: statusTone },
+    { label: "list", detail: "job list?먯꽌 ?ㅽ뙣 ?먮뒗 ?뺤껜 job??怨좊쫭?덈떎.", tone: "muted" },
+    { label: "detail", detail: "status, owner, latest result, retryability瑜??꾩뿉???쎌뒿?덈떎.", tone: statusTone },
     {
       label: lifecycle.shouldRecover || canRetry ? "recover" : lifecycle.shouldInspectHealth ? "health" : "inspect",
-      detail: canRetry ? "retry 또는 recover 경로를 고릅니다." : lifecycle.safeActionDetail,
+      detail: canRetry ? "retry ?먮뒗 recover 寃쎈줈瑜?怨좊쫭?덈떎." : lifecycle.safeActionDetail,
       tone: retryTone
     },
     {
       label: lifecycle.shouldPublish ? "handoff" : "linked objects",
-      detail: lifecycle.shouldPublish ? "owner episode와 artifacts 정합 후 publish로 넘깁니다." : "owner episode와 artifacts를 먼저 맞춥니다.",
+      detail: lifecycle.shouldPublish ? "owner episode? artifacts ?뺥빀 ??publish濡??섍퉩?덈떎." : "owner episode? artifacts瑜?癒쇱? 留욎땅?덈떎.",
       tone: lifecycle.shouldPublish ? "ok" : "muted"
     }
   ],
   panels: [
     {
-      title: "공통 액션 문법",
-      intro: "retry / recover / episode / artifacts / publish handoff를 같은 문법으로 유지합니다.",
+      title: "怨듯넻 ?≪뀡 臾몃쾿",
+      intro: "retry / recover / episode / artifacts / publish handoff瑜?媛숈? 臾몃쾿?쇰줈 ?좎??⑸땲??",
       tone: retryTone,
       bodyHtml: actionGrammarHtml
     },
     {
       title: "linked objects",
-      intro: "detail에서 바로 owner episode, artifacts, publish 경로로 handoff 합니다.",
+      intro: "detail?먯꽌 諛붾줈 owner episode, artifacts, publish 寃쎈줈濡?handoff ?⑸땲??",
       tone: "ok",
       items: [
-        { label: "owner episode", detail: "소유 object 상태와 후속 렌더 경로를 확인합니다." },
-        { label: "artifacts", detail: "output presence 확인이 필요할 때만 raw folder로 내려갑니다." },
-        { label: "publish handoff", detail: "성공 결과를 승격할 때 같은 episode id로 넘깁니다." }
+        { label: "owner episode", detail: "?뚯쑀 object ?곹깭? ?꾩냽 ?뚮뜑 寃쎈줈瑜??뺤씤?⑸땲??" },
+        { label: "artifacts", detail: "output presence ?뺤씤???꾩슂???뚮쭔 raw folder濡??대젮媛묐땲??" },
+        { label: "publish handoff", detail: "?깃났 寃곌낵瑜??밴꺽????媛숈? episode id濡??섍퉩?덈떎." }
       ],
       linksHtml: `<a href="/ui/episodes/${input.episodeId}">episode</a><a href="/artifacts/${input.episodeId}/">artifacts folder</a><a href="/ui/publish?episodeId=${encodeURIComponent(
         input.episodeId
@@ -1588,37 +1663,37 @@ ${renderObjectSummaryHeader({
     },
     {
       title: "raw evidence discipline",
-      intro: "원시 evidence는 위 판단면 뒤에만 둡니다. latest result와 blockers를 먼저 요약해서 읽습니다.",
+      intro: "?먯떆 evidence?????먮떒硫??ㅼ뿉留??〓땲?? latest result? blockers瑜?癒쇱? ?붿빟?댁꽌 ?쎌뒿?덈떎.",
       tone: hasBlocker ? "warn" : "muted",
       items: [
-        { label: "latest result", detail: latestLog ? `${latestLog.createdAt} · ${latestResultText}` : lifecycle.latestResult },
+        { label: "latest result", detail: latestLog ? `${latestLog.createdAt} 쨌 ${latestResultText}` : lifecycle.latestResult },
         { label: "blocker snapshot", detail: blockerText },
-        { label: "raw logs", detail: "retry와 recover 경로를 정한 뒤에만 2차 evidence로 내려갑니다." }
+        { label: "raw logs", detail: "retry? recover 寃쎈줈瑜??뺥븳 ?ㅼ뿉留?2李?evidence濡??대젮媛묐땲??" }
       ]
     }
   ]
 })}
 
-<section class="card">
+<section class="card" data-surface-role="evidence" data-surface-priority="secondary">
   <div class="section-head">
     <div>
       <h2>Blocker snapshot</h2>
-      <p class="section-intro">가장 중요한 failure context만 남깁니다. raw logs보다 위에 두는 마지막 판단용 evidence입니다.</p>
+      <p class="section-intro">媛??以묒슂??failure context留??④퉩?덈떎. raw logs蹂대떎 ?꾩뿉 ?먮뒗 留덉?留??먮떒??evidence?낅땲??</p>
     </div>
   </div>
   <div class="ops-resource-card">${input.errorStack}</div>
 </section>
 
-<section class="card ops-table-shell ops-log-table">
+<section class="card ops-table-shell ops-log-table" data-surface-role="evidence" data-surface-priority="secondary">
   <div class="ops-table-meta">
     <div>
-      <h2>원시 로그 / 2차 evidence</h2>
-      <p class="section-intro">retry와 recovery 경로가 위에서 정리된 뒤에만 raw log evidence를 확인합니다.</p>
+      <h2>?먯떆 濡쒓렇 / 2李?evidence</h2>
+      <p class="section-intro">retry? recovery 寃쎈줈媛 ?꾩뿉???뺣━???ㅼ뿉留?raw log evidence瑜??뺤씤?⑸땲??</p>
     </div>
-    <input type="search" data-table-filter="job-log-table" placeholder="로그 검색"/>
+    <input id="job-log-filter" type="search" data-table-filter="job-log-table" data-url-param="jobLogFilter" aria-label="Job log filter" aria-controls="job-log-table" placeholder="Search logs"/>
   </div>
-  <div class="table-wrap"><table id="job-log-table"><thead><tr><th>생성 시각</th><th>레벨</th><th>메시지</th><th>상세</th></tr></thead><tbody>${
-    input.logRows || renderTableEmptyRow(4, "로그가 없습니다.")
+  <div class="table-wrap"><table id="job-log-table" aria-label="Job log evidence">${renderSrOnlyCaption("Job log evidence table with timestamp, level, message, and details.")}<thead><tr><th>?앹꽦 ?쒓컖</th><th>?덈꺼</th><th>硫붿떆吏</th><th>?곸꽭</th></tr></thead><tbody>${
+    input.logRows || renderTableEmptyRow(4, "濡쒓렇媛 ?놁뒿?덈떎.")
   }</tbody></table></div>
 </section>`;
 }
@@ -1632,57 +1707,68 @@ ${renderOpsStyle()}
 ${renderObjectSummaryHeader({
   eyebrow: "recover preflight",
   title: t.title,
-  intro: "실패 job object에서 recover로 넘어가는 제어면입니다. failed detail, dryRun preflight, artifacts handoff, publish hold를 같은 흐름으로 유지합니다.",
+  intro: "?ㅽ뙣 job object?먯꽌 recover濡??섏뼱媛???쒖뼱硫댁엯?덈떎. failed detail, dryRun preflight, artifacts handoff, publish hold瑜?媛숈? ?먮쫫?쇰줈 ?좎??⑸땲??",
   flash: input.flash,
-  quickLinksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/publish">퍼블리시</a><a href="/ui/artifacts">산출물</a>',
+  quickLinksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/publish">Publish</a><a href="/ui/artifacts">Artifacts</a>',
   summaryCards: [
-    { label: "failure anchor", valueHtml: "<strong>failed job detail</strong>", hint: "원인 확인은 항상 failed job object에서 시작합니다.", tone: "bad" },
-    { label: "recover input", valueHtml: "<strong>episodeId + failedShotIds</strong>", hint: "복구 대상 object를 명시적으로 좁혀서 rerender 합니다.", tone: "warn" },
-    { label: "preflight", valueHtml: "<strong>dryRun first</strong>", hint: "실행 전 경로 검증을 먼저 통과시키는 것이 안전합니다.", tone: "warn" },
-    { label: "handoff", valueHtml: "<strong>artifacts -> publish</strong>", hint: "복구 성공 후 바로 승격하지 말고 linked outputs 정합을 먼저 맞춥니다.", tone: "ok" }
+    { label: "failure anchor", valueHtml: "<strong>failed job detail</strong>", hint: "?먯씤 ?뺤씤? ??긽 failed job object?먯꽌 ?쒖옉?⑸땲??", tone: "bad" },
+    { label: "recover input", valueHtml: "<strong>episodeId + failedShotIds</strong>", hint: "蹂듦뎄 ???object瑜?紐낆떆?곸쑝濡?醫곹???rerender ?⑸땲??", tone: "warn" },
+    { label: "preflight", valueHtml: "<strong>dryRun first</strong>", hint: "?ㅽ뻾 ??寃쎈줈 寃利앹쓣 癒쇱? ?듦낵?쒗궎??寃껋씠 ?덉쟾?⑸땲??", tone: "warn" },
+    { label: "handoff", valueHtml: "<strong>artifacts -> publish</strong>", hint: "蹂듦뎄 ?깃났 ??諛붾줈 ?밴꺽?섏? 留먭퀬 linked outputs ?뺥빀??癒쇱? 留욎땅?덈떎.", tone: "ok" }
   ],
   lifecycleTitle: "failed job -> preflight -> rerender -> handoff",
-  lifecycleIntro: "HITL은 raw rerender 버튼이 아니라 recover preflight입니다. failed detail과 linked outputs를 끊지 않고 이어야 합니다.",
+  lifecycleIntro: "HITL? raw rerender 踰꾪듉???꾨땲??recover preflight?낅땲?? failed detail怨?linked outputs瑜??딆? ?딄퀬 ?댁뼱???⑸땲??",
   lifecycleSteps: [
-    { label: "failed job", detail: "실패 job detail에서 blocker와 root cause를 읽습니다.", tone: "bad" },
-    { label: "preflight", detail: "episodeId, failedShotIds, dryRun으로 recover 경로를 검증합니다.", tone: "warn" },
-    { label: "rerender", detail: "새 job object를 생성하되 recover 문맥을 유지합니다.", tone: "warn" },
-    { label: "handoff", detail: "artifacts 정합 뒤에만 publish handoff로 넘깁니다.", tone: "ok" }
+    { label: "failed job", detail: "?ㅽ뙣 job detail?먯꽌 blocker? root cause瑜??쎌뒿?덈떎.", tone: "bad" },
+    { label: "preflight", detail: "episodeId, failedShotIds, dryRun?쇰줈 recover 寃쎈줈瑜?寃利앺빀?덈떎.", tone: "warn" },
+    { label: "rerender", detail: "??job object瑜??앹꽦?섎릺 recover 臾몃㎘???좎??⑸땲??", tone: "warn" },
+    { label: "handoff", detail: "artifacts ?뺥빀 ?ㅼ뿉留?publish handoff濡??섍퉩?덈떎.", tone: "ok" }
   ]
 })}
 
 ${renderRailSection({
   title: "recover preflight + next safe action",
-  intro: "failed row를 고르고 rerender를 실행한 뒤, artifacts와 publish hold까지 같은 레일에서 확인합니다.",
+  intro: "failed row瑜?怨좊Ⅴ怨?rerender瑜??ㅽ뻾???? artifacts? publish hold源뚯? 媛숈? ?덉씪?먯꽌 ?뺤씤?⑸땲??",
   cards: [
     {
-      title: "실패 row 좁히기",
-      intro: "job, owner episode, topic, error text로 recover 대상을 먼저 줄입니다.",
+      title: "failed row intake",
+      intro: "Use job id, owner episode, topic, and error text to isolate the recovery target before opening a rerender request.",
       tone: "muted",
       bodyHtml: renderSearchCluster({
         id: "hitl-filter",
         targetId: "hitl-failed-table",
-        label: "실패 작업 필터",
+        label: "Failed jobs filter",
         placeholder: t.filterPlaceholder,
-        hint: "작업, 에피소드, 주제, 타입, 오류 단어로 빠르게 줄입니다."
+        hint: "Search by job id, owner episode, topic, or failure keyword before you open a recovery path."
       })
     },
     {
       title: "recover request",
-      intro: "복구 대상 shot id를 명시하고 dryRun으로 경로를 먼저 검증할 수 있습니다.",
+      intro: "蹂듦뎄 ???shot id瑜?紐낆떆?섍퀬 dryRun?쇰줈 寃쎈줈瑜?癒쇱? 寃利앺븷 ???덉뒿?덈떎.",
       tone: "warn",
-      bodyHtml: `<form method="post" action="/ui/hitl/rerender" class="ops-form-shell"><div class="field"><label for="hitl-episode-id">episodeId</label><input id="hitl-episode-id" name="episodeId" value="${input.episodeIdValue}" required/></div><div class="field"><label for="hitl-shot-ids">failedShotIds <span class="hint" data-tooltip="${t.failedShotHelp}">?</span></label><input id="hitl-shot-ids" name="failedShotIds" value="${input.failedShotIdsValue}" placeholder="shot_1,shot_2" required/><small>${t.failedShotHint}</small></div><label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun (실행 전 검증)</label><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="HITL rerender 실행">${t.runAction}</button></div></form>`
+      bodyHtml: `<form method="post" action="/ui/hitl/rerender" class="ops-form-shell"><div class="field"><label for="hitl-episode-id">episodeId</label><input id="hitl-episode-id" name="episodeId" value="${input.episodeIdValue}" required/></div><div class="field"><label for="hitl-shot-ids">failedShotIds <span class="hint" data-tooltip="${t.failedShotHelp}">?</span></label><input id="hitl-shot-ids" name="failedShotIds" value="${input.failedShotIdsValue}" placeholder="shot_1,shot_2" required/><small>${t.failedShotHint}</small></div><label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun (?ㅽ뻾 ??寃利?</label><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="HITL rerender ?ㅽ뻾">${t.runAction}</button></div></form>`
     },
     {
-      title: "recover 뒤 handoff",
-      intro: "복구가 끝나도 바로 publish로 가지 말고 linked outputs와 latest result를 먼저 확인합니다.",
+      title: "recover -> handoff",
+      intro: "Do not jump straight from rerender to publish. Recheck linked outputs and the latest result first.",
       tone: "ok",
       items: [
-        { label: "실패 job detail", detail: "원인 확인은 항상 failed job detail에서 먼저 시작합니다." },
-        { label: "산출물 재검증", detail: "rerender 뒤 preview / final / QC가 실제로 갱신되었는지 확인합니다." },
-        { label: "publish handoff", detail: "복구 결과가 정합한 경우에만 승격 경로로 넘깁니다." }
+        { label: "failed job detail", detail: "Start from the failed job detail when you need blocker context or retry history." },
+        { label: "artifact verification", detail: "Confirm preview, final output, and QC were really refreshed by the rerender." },
+        { label: "publish handoff", detail: "Only hand off to publish after the rerender result looks coherent." }
       ],
-      linksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a>'
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/publish">Publish</a>'
+    },
+    {
+      title: "Recover help",
+      intro: "Use this surface to validate the rerender request, not to bypass the failed-job diagnosis.",
+      tone: "muted",
+      items: [
+        { label: "Dry run first", detail: "failure mode媛 ?룰컝由щ㈃ episodeId? failedShotIds瑜?癒쇱? 寃利앺븳 ???ㅼ젣 rerender瑜??ㅽ뻾?⑸땲??" },
+        { label: "Keep the failed row nearby", detail: "?꾪꽣濡????row瑜?醫곹? owner episode? blocker瑜????놁뿉 ??梨꾨줈 蹂듦뎄瑜?吏꾪뻾?⑸땲??" },
+        { label: "Return from the same object", detail: "rerender ?ㅼ뿉??媛숈? episode object?먯꽌 artifacts? publish瑜??ㅼ떆 ?щ뒗 ?몄씠 ?덉쟾?⑸땲??" }
+      ],
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/artifacts">Artifacts</a>'
     }
   ]
 })}
@@ -1691,10 +1777,12 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.failedJobs}</h2>
-      <p class="section-intro">row action grammar를 failed job object -> owner episode -> preflight blocker -> recover -> handoff 순서로 통일합니다.</p>
+      <p class="section-intro">row action grammar瑜?failed job object -> owner episode -> preflight blocker -> recover -> handoff ?쒖꽌濡??듭씪?⑸땲??</p>
     </div>
   </div>
-  <div class="table-wrap"><table id="hitl-failed-table"><thead><tr><th>failed job object / lifecycle</th><th>owner episode / linked objects</th><th>topic / type</th><th>preflight blocker</th><th>next safe action</th><th>recover -> handoff</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="hitl-failed-table" aria-label="?ㅽ뙣 ?묒뾽 蹂듦뎄 ?뚯씠釉?>${renderSrOnlyCaption(
+    "Failed job recovery table with owner episode, preflight blocker, next safe action, and handoff."
+  )}<thead><tr><th>failed job object / lifecycle</th><th>owner episode / linked objects</th><th>topic / type</th><th>preflight blocker</th><th>next safe action</th><th>recover -> handoff</th></tr></thead><tbody>${
     rowsHtml || renderTableEmptyRow(6, t.noFailedJobs)
   }</tbody></table></div>
 </section>`;
@@ -1765,7 +1853,7 @@ export function buildArtifactsPageBody(input: ArtifactsPageBodyInput): string {
   const t = UI_TEXT.artifacts;
   const hasEpisodeLinks = input.episodeLinks.trim().length > 0;
   const rowsHtml = input.rows ? renderPoweredArtifactsTableRows(input.rows, input.episodeId.trim()) : "";
-  const linkedOutputsHtml = hasEpisodeLinks ? input.episodeLinks : '<div class="notice">아직 에피소드 빠른 링크를 불러오지 않았습니다.</div>';
+  const linkedOutputsHtml = hasEpisodeLinks ? input.episodeLinks : '<div class="notice">?꾩쭅 ?먰뵾?뚮뱶 鍮좊Ⅸ 留곹겕瑜?遺덈윭?ㅼ? ?딆븯?듬땲??</div>';
 
   return `
 ${renderOpsStyle()}
@@ -1774,15 +1862,15 @@ ${renderOpsStyle()}
     <div class="ops-titleblock">
       <span class="eyebrow">linked outputs</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">산출물 화면은 raw directory 브라우저가 아니라 linked object view입니다. episode id를 중심으로 output presence와 recovery anchor를 함께 봅니다.</p>
+      <p class="section-intro">?곗텧臾??붾㈃? raw directory 釉뚮씪?곗?媛 ?꾨땲??linked object view?낅땲?? episode id瑜?以묒떖?쇰줈 output presence? recovery anchor瑜??④퍡 遊낅땲??</p>
     </div>
-    <div class="quick-links"><a href="/artifacts/">${t.openArtifacts}</a><a href="/ui/episodes">${t.openEpisodes}</a><a href="/ui/jobs">작업</a></div>
+    <div class="quick-links"><a href="/artifacts/">${t.openArtifacts}</a><a href="/ui/episodes">${t.openEpisodes}</a><a href="/ui/jobs">Jobs</a></div>
   </div>
   ${input.flash}
   <div class="ops-kpi-grid">
-    ${renderMetricCard("조회 키", "<strong>episodeId</strong>", "항상 같은 오브젝트 id로 jobs, episode, publish까지 이어갑니다.")}
-    ${renderMetricCard("핵심 outputs", "<strong>beats, shots, media, QC</strong>", "원시 인덱스보다 먼저 linked outputs를 확인합니다.")}
-    ${renderMetricCard("복구 앵커", "<strong>jobs / episode detail</strong>", "누락 파일은 대개 상위 파이프라인 단계에서 해결됩니다.")}
+    ${renderMetricCard("Lookup anchor", "<strong>episodeId</strong>", "Keep jobs, episode detail, artifacts, and publish aligned on the same object id.")}
+    ${renderMetricCard("Linked outputs", "<strong>beats, shots, media, QC</strong>", "Verify the linked outputs before you drop into raw file evidence.")}
+    ${renderMetricCard("Recovery return", "<strong>jobs / episode detail</strong>", "When evidence is missing, return to the upstream owner surface before trusting the raw path.")}
   </div>
 </section>
 
@@ -1807,33 +1895,44 @@ ${renderListPowerSurface({
 })}
 
 ${renderRailSection({
-  title: "다음 안전 액션",
-  intro: "episode lookup, linked outputs, recovery anchor를 같은 화면 위쪽에 유지합니다.",
+  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
+  intro: "episode lookup, linked outputs, recovery anchor瑜?媛숈? ?붾㈃ ?꾩そ???좎??⑸땲??",
   cards: [
     {
       title: "episode lookup",
-      intro: "같은 object id로 output set을 빠르게 여는 진입점입니다.",
+      intro: "媛숈? object id濡?output set??鍮좊Ⅴ寃??щ뒗 吏꾩엯?먯엯?덈떎.",
       tone: "muted",
-      bodyHtml: `<form method="get" action="/ui/artifacts" class="ops-form-shell"><div class="field"><label for="artifact-episode-id">episodeId</label><input id="artifact-episode-id" name="episodeId" value="${input.episodeId}"/><small>${t.episodeHelp}</small></div><div class="actions"><button type="submit" class="secondary" data-primary-action="1" data-primary-label="에피소드 산출물 열기">${t.quickLinkAction}</button></div></form>`
+      bodyHtml: `<form method="get" action="/ui/artifacts" class="ops-form-shell"><div class="field"><label for="artifact-episode-id">episodeId</label><input id="artifact-episode-id" name="episodeId" value="${input.episodeId}"/><small>${t.episodeHelp}</small></div><div class="actions"><button type="submit" class="secondary" data-primary-action="1" data-primary-label="?먰뵾?뚮뱶 ?곗텧臾??닿린">${t.quickLinkAction}</button></div></form>`
     },
     {
       title: "linked outputs",
       intro: hasEpisodeLinks
-        ? "이 오브젝트와 직접 연결된 outputs를 위에서 바로 확인합니다."
-        : "episode id를 입력하면 이 오브젝트의 linked outputs를 먼저 띄웁니다.",
+        ? "???ㅻ툕?앺듃? 吏곸젒 ?곌껐??outputs瑜??꾩뿉??諛붾줈 ?뺤씤?⑸땲??"
+        : "episode id瑜??낅젰?섎㈃ ???ㅻ툕?앺듃??linked outputs瑜?癒쇱? ?꾩썎?덈떎.",
       tone: hasEpisodeLinks ? "ok" : "muted",
       bodyHtml: `<div class="ops-resource-card"><div class="ops-resource-list">${linkedOutputsHtml}</div></div>`
     },
     {
-      title: "복구 앵커",
-      intro: "누락 output은 대부분 상위 파이프라인 단계에서 해결합니다.",
+      title: "蹂듦뎄 ?듭빱",
+      intro: "?꾨씫 output? ?遺遺??곸쐞 ?뚯씠?꾨씪???④퀎?먯꽌 ?닿껐?⑸땲??",
       tone: "warn",
       items: [
-        { label: "shots.json 없음", detail: "compile_shots 또는 beats 생성 작업부터 다시 확인합니다." },
-        { label: "preview / final 없음", detail: "관련 render job 또는 HITL rerender 경로로 되돌아갑니다." },
-        { label: "upload manifest 없음", detail: "publish를 멈추고 linked outputs 정합부터 맞춥니다." }
+        { label: "shots.json ?놁쓬", detail: "compile_shots ?먮뒗 beats ?앹꽦 ?묒뾽遺???ㅼ떆 ?뺤씤?⑸땲??" },
+        { label: "preview / final ?놁쓬", detail: "愿??render job ?먮뒗 HITL rerender 寃쎈줈濡??섎룎?꾧컩?덈떎." },
+        { label: "upload manifest ?놁쓬", detail: "publish瑜?硫덉텛怨?linked outputs ?뺥빀遺??留욎땅?덈떎." }
       ],
-      linksHtml: '<a href="/ui/jobs">작업</a><a href="/ui/episodes">에피소드</a><a href="/ui/publish">퍼블리시</a>'
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a><a href="/ui/publish">Publish</a>'
+    },
+    {
+      title: "Artifacts help",
+      intro: "Use this page to verify linked outputs and safe copy paths before opening raw files one by one.",
+      tone: "muted",
+      items: [
+        { label: "Start from episodeId", detail: "Keep jobs, episode detail, artifacts, and publish on the same object id so recovery stays easy to reopen." },
+        { label: "Copy paths deliberately", detail: "Copy the exact path or manifest candidate from the selected rows instead of retyping from the raw folder view." },
+        { label: "Empty artifact index", detail: "If the index is sparse, return to jobs or episode detail first and confirm which upstream stage failed to write outputs." }
+      ],
+      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a>'
     }
   ]
 })}
@@ -1841,12 +1940,12 @@ ${renderRailSection({
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>원시 산출물 인덱스</h2>
-      <p class="section-intro">이 표는 2차 evidence입니다. linked outputs와 recovery anchor를 본 뒤에만 raw index를 확인합니다.</p>
+      <h2>?먯떆 ?곗텧臾??몃뜳??/h2>
+      <p class="section-intro">???쒕뒗 2李?evidence?낅땲?? linked outputs? recovery anchor瑜?蹂??ㅼ뿉留?raw index瑜??뺤씤?⑸땲??</p>
     </div>
-    <input id="artifact-index-filter" type="search" data-table-filter="artifact-index-table" data-url-param="artifactsFilter" aria-label="산출물 인덱스 필터" placeholder="${t.indexFilterPlaceholder}"/>
+    <input id="artifact-index-filter" type="search" data-table-filter="artifact-index-table" data-url-param="artifactsFilter" aria-label="Artifact index filter" aria-controls="artifact-index-table" placeholder="${t.indexFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="artifact-index-table"><thead><tr><th>artifact object / selection</th><th>type / owner</th><th>path / handoff</th><th>row actions</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="artifact-index-table" aria-label="Artifact index table">${renderSrOnlyCaption("Artifact index table with selected object, owner, path, and row actions.")}<thead><tr><th>artifact object / selection</th><th>type / owner</th><th>path / handoff</th><th>row actions</th></tr></thead><tbody>${
     rowsHtml || renderTableEmptyRow(4, t.noArtifacts)
   }</tbody></table></div>
 </section>${renderListPowerScript()}`;
@@ -1860,52 +1959,63 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">판정 surface</span>
+      <span class="eyebrow">?먯젙 surface</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">rollout과 compare 신호를 raw JSON이 아니라 decision surface로 읽습니다. 판단, recovery, linked evidence를 같은 위계로 맞춥니다.</p>
+      <p class="section-intro">rollout怨?compare ?좏샇瑜?raw JSON???꾨땲??decision surface濡??쎌뒿?덈떎. ?먮떒, recovery, linked evidence瑜?媛숈? ?꾧퀎濡?留욎땅?덈떎.</p>
     </div>
-    <div class="quick-links"><a href="/ui/benchmarks">벤치마크</a><a href="/ui/health">${t.openHealth}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+    <div class="quick-links"><a href="/ui/benchmarks">踰ㅼ튂留덊겕</a><a href="/ui/health">${t.openHealth}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
   </div>
   ${input.flash}
   <div class="summary-grid">${input.summaryCards}</div>
 </section>
 
 ${renderRailSection({
-  title: "다음 안전 액션",
-  intro: "filter, compare read order, recovery anchor를 표 위에 고정해 판단 피로도를 줄입니다.",
+  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
+  intro: "filter, compare read order, recovery anchor瑜????꾩뿉 怨좎젙???먮떒 ?쇰줈?꾨? 以꾩엯?덈떎.",
   cards: [
     {
-      title: "신호 필터",
-      intro: "signal, status, verdict, reason, source를 기준으로 문제 묶음을 먼저 좁힙니다.",
+      title: "?좏샇 ?꾪꽣",
+      intro: "signal, status, verdict, reason, source瑜?湲곗??쇰줈 臾몄젣 臾띠쓬??癒쇱? 醫곹옓?덈떎.",
       tone: "muted",
       bodyHtml: renderSearchCluster({
         id: "rollouts-filter",
         targetId: "rollouts-table",
-        label: "롤아웃 신호 필터",
+        label: "濡ㅼ븘???좏샇 ?꾪꽣",
         placeholder: t.filterPlaceholder,
-        hint: "신호 종류, 상태, 판정, 사유, 소스로 바로 줄입니다."
+        hint: "?좏샇 醫낅쪟, ?곹깭, ?먯젙, ?ъ쑀, ?뚯뒪濡?諛붾줈 以꾩엯?덈떎."
       })
     },
     {
-      title: "비교 읽는 순서",
-      intro: "상태보다 판정과 사유를 먼저 읽고, compare action은 그 다음에 엽니다.",
+      title: "鍮꾧탳 ?쎈뒗 ?쒖꽌",
+      intro: "?곹깭蹂대떎 ?먯젙怨??ъ쑀瑜?癒쇱? ?쎄퀬, compare action? 洹??ㅼ쓬???쎈땲??",
       tone: "warn",
       items: [
-        { label: "status", detail: "blocked와 below-min은 즉시 차단 신호로 취급합니다." },
-        { label: "verdict / reason", detail: "수치만 보지 말고 왜 막혔는지 reason을 먼저 읽습니다." },
-        { label: "compare action", detail: "상세와 원시 JSON은 판단이 서지 않을 때만 엽니다." }
+        { label: "status", detail: "blocked? below-min? 利됱떆 李⑤떒 ?좏샇濡?痍④툒?⑸땲??" },
+        { label: "verdict / reason", detail: "?섏튂留?蹂댁? 留먭퀬 ??留됲삍?붿? reason??癒쇱? ?쎌뒿?덈떎." },
+        { label: "compare action", detail: "?곸꽭? ?먯떆 JSON? ?먮떒???쒖? ?딆쓣 ?뚮쭔 ?쎈땲??" }
       ]
     },
     {
-      title: "복구 / linked evidence",
-      intro: "rollout signal은 benchmark, artifacts, health와 같이 묶어서 봐야 합니다.",
+      title: "蹂듦뎄 / linked evidence",
+      intro: "rollout signal? benchmark, artifacts, health? 媛숈씠 臾띠뼱??遊먯빞 ?⑸땲??",
       tone: "ok",
       items: [
-        { label: "benchmark와 비교", detail: "동일 번들의 upstream benchmark 결과를 함께 확인합니다." },
-        { label: "artifacts handoff", detail: "판정 근거가 필요한 경우에만 linked outputs로 이동합니다." },
-        { label: "health 확인", detail: "서비스 저하가 보이면 signal 자체보다 인프라 복구를 먼저 합니다." }
+        { label: "benchmark? 鍮꾧탳", detail: "?숈씪 踰덈뱾??upstream benchmark 寃곌낵瑜??④퍡 ?뺤씤?⑸땲??" },
+        { label: "artifacts handoff", detail: "?먯젙 洹쇨굅媛 ?꾩슂??寃쎌슦?먮쭔 linked outputs濡??대룞?⑸땲??" },
+        { label: "health ?뺤씤", detail: "?쒕퉬????섍? 蹂댁씠硫?signal ?먯껜蹂대떎 ?명봽??蹂듦뎄瑜?癒쇱? ?⑸땲??" }
       ],
-      linksHtml: '<a href="/ui/benchmarks">벤치마크</a><a href="/ui/artifacts">산출물</a><a href="/ui/health">상태</a>'
+      linksHtml: '<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/health">Health</a>'
+    },
+    {
+      title: "Rollout help",
+      intro: "Treat rollout rows as decision signals first, and only drop into raw evidence when the signal still looks ambiguous.",
+      tone: "muted",
+      items: [
+        { label: "Read order", detail: "Status, verdict, and reason should answer most decisions before you inspect the source payloads." },
+        { label: "Blocked-first review", detail: "Keep blocked or below-min rows above healthy rollout noise so compare work stays focused." },
+        { label: "Secondary evidence", detail: "Use linked benchmarks, artifacts, or health only when the row itself cannot explain the signal." }
+      ],
+      linksHtml: '<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/health">Health</a>'
     }
   ]
 })}
@@ -1914,10 +2024,10 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.tableTitle}</h2>
-      <p class="section-intro">각 행은 signal -> verdict -> reason -> next compare action 순서로 읽습니다.</p>
+      <p class="section-intro">媛??됱? signal -> verdict -> reason -> next compare action ?쒖꽌濡??쎌뒿?덈떎.</p>
     </div>
   </div>
-  <div class="table-wrap"><table id="rollouts-table"><thead><tr><th>오브젝트 / 비교 액션</th><th>상태</th><th>점수</th><th>판정</th><th>사유</th><th>생성 시각</th><th>소스</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="rollouts-table" aria-label="Rollout signal table">${renderSrOnlyCaption("Rollout signal table with object, decision state, reason, and source links.")}<thead><tr><th>?ㅻ툕?앺듃 / 鍮꾧탳 ?≪뀡</th><th>?곹깭</th><th>?먯닔</th><th>?먯젙</th><th>?ъ쑀</th><th>?앹꽦 ?쒓컖</th><th>?뚯뒪</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(7, t.noSignals)
   }</tbody></table></div>
 </section>
@@ -1925,7 +2035,7 @@ ${renderRailSection({
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>2차 evidence / sources</h2>
+      <h2>2李?evidence / sources</h2>
       <p class="section-intro">${t.sourcesHint}</p>
     </div>
   </div>
@@ -1943,7 +2053,7 @@ ${renderOpsStyle()}
     <div class="ops-titleblock">
       <span class="eyebrow">compare surface</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">benchmark는 scenario compare와 regression recover를 함께 보는 화면입니다. heavy evidence보다 비교 판단과 next action을 먼저 올립니다.</p>
+      <p class="section-intro">benchmark??scenario compare? regression recover瑜??④퍡 蹂대뒗 ?붾㈃?낅땲?? heavy evidence蹂대떎 鍮꾧탳 ?먮떒怨?next action??癒쇱? ?щ┰?덈떎.</p>
     </div>
     <div class="quick-links"><a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
   </div>
@@ -1952,37 +2062,48 @@ ${renderOpsStyle()}
 </section>
 
 ${renderRailSection({
-  title: "다음 안전 액션",
-  intro: "backend matrix와 regression queue를 같은 compare grammar로 읽고, sources는 마지막에 내립니다.",
+  title: "?ㅼ쓬 ?덉쟾 ?≪뀡",
+  intro: "backend matrix? regression queue瑜?媛숈? compare grammar濡??쎄퀬, sources??留덉?留됱뿉 ?대┰?덈떎.",
   cards: [
     {
-      title: "backend matrix 읽기",
-      intro: "상태보다 허용률, 실패율, 메모를 함께 읽어 현재 시나리오가 승격 가능한지 판단합니다.",
+      title: "backend matrix read order",
+      intro: "Read the scenario state, latency, failure rate, and notes before deciding whether a backend is still safe enough for current work.",
       tone: "muted",
       items: [
-        { label: "상태", detail: "시나리오 결과가 usable 한지 먼저 확인합니다." },
-        { label: "지연 + 허용률", detail: "비용과 품질을 한 줄에서 함께 읽습니다." },
-        { label: "linked outputs", detail: "필요할 때만 smoke / plan artifacts로 내려갑니다." }
+        { label: "state", detail: "Confirm first whether the scenario is still usable." },
+        { label: "latency + failure rate", detail: "Read cost and reliability together before escalating the issue." },
+        { label: "linked outputs", detail: "Open smoke or plan artifacts only when the benchmark row needs more evidence." }
       ]
     },
     {
-      title: "regression queue 읽기",
-      intro: "warning과 error를 먼저 보고 drift와 issue를 그 다음에 해석합니다.",
+      title: "regression queue ?쎄린",
+      intro: "warning怨?error瑜?癒쇱? 蹂닿퀬 drift? issue瑜?洹??ㅼ쓬???댁꽍?⑸땲??",
       tone: "warn",
       items: [
-        { label: "경고 / 오류", detail: "차단 여부를 가장 먼저 판단합니다." },
-        { label: "렌더 드리프트", detail: "비교 기준을 벗어난 폭을 빠르게 읽습니다." },
-        { label: "이슈 요약", detail: "세부 evidence를 열기 전에 다음 조치를 정합니다." }
+        { label: "寃쎄퀬 / ?ㅻ쪟", detail: "李⑤떒 ?щ?瑜?媛??癒쇱? ?먮떒?⑸땲??" },
+        { label: "?뚮뜑 ?쒕━?꾪듃", detail: "鍮꾧탳 湲곗???踰쀬뼱????쓣 鍮좊Ⅴ寃??쎌뒿?덈떎." },
+        { label: "?댁뒋 ?붿빟", detail: "?몃? evidence瑜??닿린 ?꾩뿉 ?ㅼ쓬 議곗튂瑜??뺥빀?덈떎." }
       ]
     },
     {
       title: "linked compare flow",
-      intro: "benchmark 결과는 rollout과 artifacts까지 연결될 때만 운영 판단이 됩니다.",
+      intro: "Connect benchmark findings to rollouts and artifacts only after you know which benchmark row is driving the decision.",
       tone: "ok",
       items: [
-        { label: "rollouts로 인계", detail: "동일 번들의 rollout decision surface와 연결합니다." },
-        { label: "artifacts로 확인", detail: "근거가 필요할 때만 linked outputs로 이동합니다." },
-        { label: "sources는 마지막", detail: "raw source rows는 2차 evidence로 아래에 둡니다." }
+        { label: "hand off to rollouts", detail: "Jump to the rollout decision surface with the same candidate in mind." },
+        { label: "check artifacts sparingly", detail: "Open linked outputs only when the benchmark row still looks ambiguous." },
+        { label: "sources stay last", detail: "Treat raw source rows as secondary evidence after the compare decision is mostly clear." }
+      ],
+      linksHtml: `<a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a>`
+    },
+    {
+      title: "Benchmark help",
+      intro: "Use the backend matrix and regression queue to decide what changed before you open linked sources or rollout surfaces.",
+      tone: "muted",
+      items: [
+        { label: "Backend matrix first", detail: "Latency, success rate, and notes should tell you whether a backend is still safe enough for current work." },
+        { label: "Regression queue second", detail: "Warnings and errors deserve attention before you scan the long source evidence rows." },
+        { label: "Compare handoff", detail: "Jump to rollouts or artifacts only after you know which benchmark row is actually driving the decision." }
       ],
       linksHtml: `<a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a>`
     }
@@ -1993,11 +2114,11 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.backendTitle}</h2>
-      <p class="section-intro">backend compare의 1차 표입니다. row별 next action을 먼저 읽고 필요할 때만 source evidence로 내려갑니다.</p>
+      <p class="section-intro">backend compare??1李??쒖엯?덈떎. row蹂?next action??癒쇱? ?쎄퀬 ?꾩슂???뚮쭔 source evidence濡??대젮媛묐땲??</p>
     </div>
-    <input type="search" data-table-filter="benchmark-backend-table" aria-label="백엔드 벤치마크 필터" placeholder="${t.backendFilterPlaceholder}"/>
+    <input id="benchmark-backend-filter" type="search" data-table-filter="benchmark-backend-table" data-url-param="benchmarkBackendFilter" aria-label="Backend benchmark filter" aria-controls="benchmark-backend-table" placeholder="${t.backendFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="benchmark-backend-table"><thead><tr><th>시나리오 / 다음 액션</th><th>상태</th><th>지연 시간</th><th>허용률</th><th>실패율</th><th>메모</th><th>소스</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="benchmark-backend-table" aria-label="Backend benchmark table">${renderSrOnlyCaption("Backend benchmark table with scenario status, latency, failure rate, notes, and sources.")}<thead><tr><th>?쒕굹由ъ삤 / ?ㅼ쓬 ?≪뀡</th><th>?곹깭</th><th>吏???쒓컙</th><th>?덉슜瑜?/th><th>?ㅽ뙣??/th><th>硫붾え</th><th>?뚯뒪</th></tr></thead><tbody>${
     input.backendRows || renderTableEmptyRow(7, t.noBackendRows)
   }</tbody></table></div>
 </section>
@@ -2006,11 +2127,11 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.regressionTitle}</h2>
-      <p class="section-intro">regression queue의 1차 표입니다. warning / error를 먼저 읽고 drift와 issue를 뒤에 붙입니다.</p>
+      <p class="section-intro">regression queue??1李??쒖엯?덈떎. warning / error瑜?癒쇱? ?쎄퀬 drift? issue瑜??ㅼ뿉 遺숈엯?덈떎.</p>
     </div>
-    <input type="search" data-table-filter="benchmark-regression-table" aria-label="회귀 리포트 필터" placeholder="${t.regressionFilterPlaceholder}"/>
+    <input id="benchmark-regression-filter" type="search" data-table-filter="benchmark-regression-table" data-url-param="benchmarkRegressionFilter" aria-label="Regression report filter" aria-controls="benchmark-regression-table" placeholder="${t.regressionFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="benchmark-regression-table"><thead><tr><th>번들 / 다음 액션</th><th>상태</th><th>경고 / 오류</th><th>프로필</th><th>렌더 드리프트</th><th>이슈</th><th>소스</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="benchmark-regression-table" aria-label="Regression report table">${renderSrOnlyCaption("Regression report table with bundle status, warnings, profile, drift, issues, and sources.")}<thead><tr><th>踰덈뱾 / ?ㅼ쓬 ?≪뀡</th><th>?곹깭</th><th>寃쎄퀬 / ?ㅻ쪟</th><th>?꾨줈??/th><th>?뚮뜑 ?쒕━?꾪듃</th><th>?댁뒋</th><th>?뚯뒪</th></tr></thead><tbody>${
     input.regressionRows || renderTableEmptyRow(7, t.noRegressionRows)
   }</tbody></table></div>
 </section>
@@ -2018,10 +2139,12 @@ ${renderRailSection({
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>2차 evidence / sources</h2>
+      <h2>2李?evidence / sources</h2>
       <p class="section-intro">${t.sourcesHint}</p>
     </div>
   </div>
   <div class="status-list">${input.sourceRows}</div>
 </section>`;
 }
+
+

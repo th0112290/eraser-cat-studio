@@ -112,9 +112,9 @@ function esc(value: unknown): string {
 }
 
 export function renderTableEmptyRow(colspan: number, message: string): string {
-  return `<tr><td colspan="${colspan}"><div class="notice">${esc(message)}</div></td></tr>`;
+  return `<tr><td colspan="${colspan}"><div class="notice" role="status" aria-live="polite">${esc(message)}</div></td></tr>`;
 }
 
 export function renderInlineError(message: string): string {
-  return `<div class="error">${esc(message)}</div>`;
+  return `<div class="error" role="alert">${esc(message)}</div>`;
 }
