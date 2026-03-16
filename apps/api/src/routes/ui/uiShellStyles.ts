@@ -603,10 +603,64 @@ pre{margin:0;background:#111922;color:#d7e1e8;padding:12px 13px;border-radius:14
 }
 .shortcut-card h2{margin:0 0 8px}
 .shortcut-card table{font-size:14px}
+.shell-object-tools{justify-content:flex-end}
+.shell-palette{position:fixed;inset:0;background:rgba(10,18,28,.54);display:none;align-items:center;justify-content:center;z-index:9997;padding:22px}
+.shell-palette.open{display:flex}
+.shell-palette-card{
+  width:min(1280px,96vw);
+  max-height:88vh;
+  overflow:hidden;
+  display:grid;
+  gap:14px;
+  padding:18px;
+  border-radius:22px;
+  border:1px solid var(--line);
+  background:linear-gradient(180deg,#ffffff,#f6fafb);
+  box-shadow:0 28px 56px rgba(0,0,0,.22)
+}
+.shell-palette-head,.shell-palette-panel-head,.shell-palette-head-actions{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.shell-palette-search{display:grid;gap:6px}
+.shell-palette-search-label{font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#5c707d}
+.shell-palette-search input{min-height:52px;padding:12px 14px;border-radius:16px;font-size:18px;font-weight:700}
+.shell-palette-hint{font-size:12px}
+.shell-palette-layout{display:grid;grid-template-columns:minmax(0,1.44fr) minmax(320px,.82fr);gap:14px;align-items:start}
+.shell-palette-results-panel,.shell-palette-rail-card{
+  display:grid;
+  gap:10px;
+  padding:15px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:linear-gradient(180deg,#ffffff,#f7fafb)
+}
+.shell-palette-list,.shell-palette-rail,.shell-palette-side-list{display:grid;gap:10px}
+.shell-palette-item,.shell-palette-side-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  padding:13px 14px;
+  border-radius:16px;
+  border:1px solid var(--line);
+  background:#fff;
+  text-align:left;
+  box-shadow:none
+}
+.shell-palette-item-main{display:grid;gap:4px}
+.shell-palette-item-main strong,.shell-palette-side-item strong{font-size:14px;color:var(--ink-2)}
+.shell-palette-item-main span,.shell-palette-side-item span{color:var(--muted);line-height:1.5}
+.shell-palette-item-meta{display:grid;gap:6px;min-width:120px;justify-items:end;color:var(--muted-2);font-size:12px;text-align:right}
+.shell-palette-item.active,.shell-palette-item:hover,.shell-palette-side-item:hover{border-color:#8fbab4;background:linear-gradient(180deg,#fbffff,#eef6f5);text-decoration:none;transform:none}
+.shell-palette-empty{
+  padding:14px 15px;
+  border-radius:16px;
+  border:1px dashed var(--muted-border);
+  background:linear-gradient(180deg,#f8fbfc,#f2f6f8);
+  color:var(--muted-tone)
+}
 .sr-live{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
 @media (max-width:1220px){
   .shell-nav-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .shell-top,.detail-shell,.compare-shell,.hero-grid,.page-header-grid,main .ops-review-strip{grid-template-columns:1fr}
+  .shell-top,.detail-shell,.compare-shell,.hero-grid,.page-header-grid,main .ops-review-strip,.shell-palette-layout{grid-template-columns:1fr}
 }
 @media (max-width:900px){
   :root{--sticky-top:16px}
@@ -620,6 +674,8 @@ pre{margin:0;background:#111922;color:#d7e1e8;padding:12px 13px;border-radius:14
   .sticky-action-bar{position:static;grid-template-columns:1fr;align-items:stretch}
   .shell-action-head,.shell-action-buttons{justify-content:flex-start}
   .shell-action-buttons button,.shell-action-buttons a{width:100%;justify-content:center}
+  .shell-palette{padding:12px}
+  .shell-palette-card{width:min(100vw - 24px,1000px);max-height:92vh;padding:14px}
 }
 @media (max-width:720px){
   .shell-inner{padding:10px 12px 12px}
@@ -635,6 +691,8 @@ pre{margin:0;background:#111922;color:#d7e1e8;padding:12px 13px;border-radius:14
   .status-row,.metadata-row,.metadata-item,.ops-summary-line,.ops-actions-list li,.ops-mini-list li,.rail-list li{display:grid;justify-content:stretch}
   main{padding:0 12px 28px}
   .quick-grid,.summary-grid,.ops-kpi-grid,.ops-note-grid,.ops-mini-grid,.ops-filter-grid,.ops-detail-grid,.ops-key-grid,.metadata-grid,main .ops-review-fact-grid{grid-template-columns:1fr}
+  .shell-palette-item,.shell-palette-side-item{display:grid}
+  .shell-palette-item-meta{justify-items:start;min-width:0;text-align:left}
   .table-wrap table{min-width:620px}
   th,td{padding:8px 9px;font-size:12px}
   .table-tools input[type="search"]{min-width:100%;max-width:none}
