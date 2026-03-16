@@ -1,4 +1,4 @@
-import { renderTableEmptyRow, UI_TEXT } from "./uiText";
+import { renderTableEmptyRow } from "./uiText";
 
 type AssetPreviewEntry = {
   label: string;
@@ -110,19 +110,44 @@ function esc(value: unknown): string {
 }
 
 export function buildAssetsPageBody(input: AssetsPageBodyInput): string {
-  const t = UI_TEXT.assets;
+  const t = {
+    upload: "Asset Intake",
+    uploadResultIdle: "Waiting for upload...",
+    uploadInProgress: "Uploading asset...",
+    uploadAction: "Upload Asset",
+    recentAssets: "Recent Assets",
+    filterPlaceholder: "Filter by id / type / status / QC",
+    selectedAsset: "Selected Asset",
+    nextActions: "Next Actions",
+    reviewProtocol: "Review Protocol",
+    noAssets: "No assets have been created yet.",
+    noSelectedAsset: "No asset is selected.",
+    noPreviewImages: "No preview images are available yet.",
+    openJson: "Open JSON",
+    openPreview: "Open Preview",
+    localPreviewMissing: "The local preview file is not available yet.",
+    columns: {
+      id: "ID",
+      type: "Type",
+      status: "Status",
+      qc: "QC",
+      mime: "MIME",
+      size: "Size",
+      created: "Created"
+    }
+  } as const;
   const primaryPreviewHref = input.previews.length > 0 ? input.previews[0]?.url ?? "" : "";
 
   const previewCards = input.previews.length
     ? input.previews
         .map((entry) => {
           const previewBody = entry.localExists
-            ? `<div class="preview-frame"><img src="${esc(entry.url)}" alt="${esc(entry.label)} 프리뷰" loading="lazy" width="960" height="960"/></div>`
-            : `<div class="asset-empty asset-empty-inline"><strong>${t.localPreviewMissing}</strong><span>처리된 로컬 출력이 아직 생성되지 않았다면 원본 에셋 URL을 열어 확인하세요.</span></div>`;
+            ? `<div class="preview-frame"><img src="${esc(entry.url)}" alt="${esc(entry.label)} preview" loading="lazy" width="960" height="960"/></div>`
+            : `<div class="asset-empty asset-empty-inline"><strong>${t.localPreviewMissing}</strong><span>The local preview file has not been generated yet. Open the asset URL or rerun normalization before routing this object.</span></div>`;
 
           return `<article class="preview-card"><div class="preview-head"><div><h4>${esc(entry.label)}</h4><p><code>${esc(entry.key)}</code></p></div><span class="asset-mini-badge ${
             entry.localExists ? "asset-mini-badge-ready" : "asset-mini-badge-muted"
-          }">${entry.localExists ? "준비됨" : "없음"}</span></div>${previewBody}<p><a href="${esc(entry.url)}">${t.openPreview}: ${esc(
+          }">${entry.localExists ? "Ready" : "Missing"}</span></div>${previewBody}<p><a href="${esc(entry.url)}">${t.openPreview}: ${esc(
             entry.label
           )}</a></p></article>`;
         })
@@ -131,57 +156,57 @@ export function buildAssetsPageBody(input: AssetsPageBodyInput): string {
 
   const qcHeadline = input.selectedAsset
     ? /pass|ready|ok/i.test(input.selectedAsset.qcLevel)
-      ? "QC가 다운스트림 작업으로 넘기기에 충분히 안정적입니다."
+      ? "QC is healthy enough to hand this object to downstream work."
       : /n\/a/i.test(input.selectedAsset.qcLevel)
-        ? "QC가 아직 명확한 판정을 내리지 못했습니다."
-        : "인계 전에 의도적인 점검이 필요합니다."
-    : "검토 큐에서 항목을 선택하면 점검 패널과 다음 액션이 열립니다.";
+        ? "QC has not produced a decisive signal yet."
+        : "This object still needs an explicit recovery or review decision before handoff."
+    : "Choose an asset from the review queue to unlock detail, previews, and next actions.";
 
   const qcDetail = input.selectedAsset
-    ? `상태 ${input.selectedAsset.status} / QC ${input.selectedAsset.qcLevel}. 다음 단계로 넘기기 전 프리뷰와 JSON을 함께 확인하세요.`
-    : "검토 큐에서 에셋을 선택한 뒤 스튜디오로 되돌릴지, 캐릭터 생성기에 투입할지, 계속 점검에 둘지 결정하세요.";
+    ? `Status ${input.selectedAsset.status} / QC ${input.selectedAsset.qcLevel}. Confirm previews and JSON evidence before routing this asset into a run.`
+    : "Pick an asset from the queue, then decide whether it should return to Studio, seed Character Generator, or stay in review.";
 
   const nextActions = input.selectedAsset
-    ? `<section class="card asset-next-card"><div class="asset-section-head"><div><p class="asset-kicker">다음 액션</p><h2>${t.nextActions}</h2><p class="asset-copy">${qcHeadline}</p></div></div><div class="asset-next-grid"><article class="asset-next-item"><strong>1. 출력 확인</strong><span>${qcDetail}</span><div class="asset-link-grid"><a class="asset-link-chip" href="/api/assets/${encodeURIComponent(
+    ? `<section class="card asset-next-card"><div class="asset-section-head"><div><p class="asset-kicker">Next Actions</p><h2>${t.nextActions}</h2><p class="asset-copy">${qcHeadline}</p></div></div><div class="asset-next-grid"><article class="asset-next-item"><strong>1. Confirm output readiness</strong><span>${qcDetail}</span><div class="asset-link-grid"><a class="asset-link-chip" href="/api/assets/${encodeURIComponent(
         input.selectedAsset.id
       )}">${t.openJson}</a>${
         primaryPreviewHref ? `<a class="asset-link-chip" href="${esc(primaryPreviewHref)}">${t.openPreview}</a>` : ""
-      }</div></article><article class="asset-next-item"><strong>2. 에셋을 다음 단계로 라우팅</strong><span>오케스트레이션이 필요하면 스튜디오로 돌아가고, 이 에셋이 런의 기준점이 되면 캐릭터 생성기를 엽니다.</span><div class="asset-link-grid"><a class="asset-link-chip" href="/ui/studio">스튜디오 열기</a><a class="asset-link-chip" href="/ui/character-generator">캐릭터 생성기 열기</a></div></article><article class="asset-next-item"><strong>3. 복구 맥락 보존</strong><span>승인, 비교, 롤백 결정을 뒷받침할 수 있도록 JSON과 프리뷰 출력을 함께 유지하세요.</span><div class="asset-link-grid"><a class="asset-link-chip" href="/ui/jobs">작업 열기</a><a class="asset-link-chip" href="/ui/assets?assetId=${encodeURIComponent(
+      }</div></article><article class="asset-next-item"><strong>2. Route this asset forward</strong><span>If orchestration is next, return to Studio. If this asset should anchor a run, open Character Generator from here.</span><div class="asset-link-grid"><a class="asset-link-chip" href="/ui/studio">Open Studio</a><a class="asset-link-chip" href="/ui/character-generator">Open Character Generator</a></div></article><article class="asset-next-item"><strong>3. Preserve recovery context</strong><span>Keep JSON and preview outputs attached so approval, compare, and rollback decisions remain traceable.</span><div class="asset-link-grid"><a class="asset-link-chip" href="/ui/jobs">Open Jobs</a><a class="asset-link-chip" href="/ui/assets?assetId=${encodeURIComponent(
         input.selectedAsset.id
-      )}">이 점검 화면 유지</a></div></article></div></section>`
-    : `<section class="card asset-next-card"><div class="asset-section-head"><div><p class="asset-kicker">다음 액션</p><h2>${t.nextActions}</h2><p class="asset-copy">${qcHeadline}</p></div></div><div class="asset-empty"><strong>${t.noSelectedAsset}</strong><span>${qcDetail}</span></div><div class="asset-link-grid" style="margin-top:12px"><a class="asset-link-chip" href="/ui/studio">스튜디오 열기</a><a class="asset-link-chip" href="/ui/character-generator">캐릭터 생성기 열기</a></div></section>`;
+      )}">Stay on this asset</a></div></article></div></section>`
+    : `<section class="card asset-next-card"><div class="asset-section-head"><div><p class="asset-kicker">Next Actions</p><h2>${t.nextActions}</h2><p class="asset-copy">${qcHeadline}</p></div></div><div class="asset-empty"><strong>${t.noSelectedAsset}</strong><span>${qcDetail}</span></div><div class="asset-link-grid" style="margin-top:12px"><a class="asset-link-chip" href="/ui/studio">Open Studio</a><a class="asset-link-chip" href="/ui/character-generator">Open Character Generator</a></div></section>`;
 
   const selectedDetails = input.selectedAsset
-    ? `<section class="card asset-detail-panel"><div class="asset-section-head"><div><p class="asset-kicker">선택된 점검</p><h2>${t.selectedAsset}</h2><p class="asset-copy">선택된 레코드를 점검하고 QC 상태와 로컬 출력을 확인한 뒤 다음 워크벤치를 결정하세요.</p></div><div class="asset-link-row"><a class="asset-link-chip" href="/api/assets/${encodeURIComponent(
+    ? `<section class="card asset-detail-panel"><div class="asset-section-head"><div><p class="asset-kicker">Selected Asset</p><h2>${t.selectedAsset}</h2><p class="asset-copy">Read the object record, QC signal, and preview evidence here before making the next routing decision.</p></div><div class="asset-link-row"><a class="asset-link-chip" href="/api/assets/${encodeURIComponent(
         input.selectedAsset.id
       )}">${t.openJson}</a></div></div><div class="asset-summary-grid"><div class="asset-summary-card"><span>ID</span><strong>${esc(
         input.selectedAsset.id
-      )}</strong></div><div class="asset-summary-card"><span>상태</span><strong><span class="badge ${esc(
+      )}</strong></div><div class="asset-summary-card"><span>Status</span><strong><span class="badge ${esc(
         input.selectedAsset.statusClassName
       )}">${esc(input.selectedAsset.status)}</span></strong></div><div class="asset-summary-card"><span>QC</span><strong><span class="badge ${esc(
         input.selectedAsset.qcClassName
       )}" title="${esc(input.selectedAsset.qcReason)}">${esc(input.selectedAsset.qcLevel)}</span></strong></div><div class="asset-summary-card"><span>MIME</span><strong><code>${esc(
         input.selectedAsset.mime
-      )}</code></strong></div></div><div class="asset-meta-grid"><div><span>원본</span><code>${esc(
+      )}</code></strong></div></div><div class="asset-meta-grid"><div><span>Original</span><code>${esc(
         input.selectedAsset.originalKey
-      )}</code></div><div><span>정규화 1024</span><code>${esc(input.selectedAsset.normalized1024Key)}</code></div><div><span>정규화 2048</span><code>${esc(
+      )}</code></div><div><span>Normalized 1024</span><code>${esc(input.selectedAsset.normalized1024Key)}</code></div><div><span>Normalized 2048</span><code>${esc(
         input.selectedAsset.normalized2048Key
-      )}</code></div><div><span>QC 사유</span><code>${esc(input.selectedAsset.qcReason || "-")}</code></div></div>${
+      )}</code></div><div><span>QC reason</span><code>${esc(input.selectedAsset.qcReason || "-")}</code></div></div>${
         previewCards.length > 0
-          ? `<div><div class="asset-subhead"><h3>프리뷰 출력</h3><p>로컬 산출물로 크롭, 정규화, 검토 인계 준비 상태를 확인하세요.</p></div><div class="preview-grid">${previewCards}</div></div>`
-          : `<div class="asset-empty"><strong>${t.noPreviewImages}</strong><span>에셋 파이프라인이 로컬 이미지 출력을 만들면 여기에 프리뷰 카드가 표시됩니다.</span></div>`
-      }<details class="asset-json"><summary>QC 페이로드</summary><pre>${esc(input.selectedAsset.qcJson)}</pre></details></section>`
-    : `<section class="card asset-detail-panel asset-detail-empty"><div class="asset-section-head"><div><p class="asset-kicker">선택된 점검</p><h2>${t.selectedAsset}</h2><p class="asset-copy">검토 큐에서 에셋을 고르거나 업로드 후 리다이렉트로 들어와 프리뷰, 저장소 키, QC 페이로드를 확인하세요.</p></div></div><div class="asset-empty"><strong>${t.noSelectedAsset}</strong><span>가운데 열의 검토 큐에서 항목을 선택하면 이 패널이 점검 모드로 전환됩니다.</span></div></section>`;
+          ? `<div><div class="asset-subhead"><h3>Preview Outputs</h3><p>Use these previews to confirm local artifact presence before routing or approval.</p></div><div class="preview-grid">${previewCards}</div></div>`
+          : `<div class="asset-empty"><strong>${t.noPreviewImages}</strong><span>Preview images will appear here after normalization or local output generation completes.</span></div>`
+      }<details class="asset-json"><summary>QC payload</summary><pre>${esc(input.selectedAsset.qcJson)}</pre></details></section>`
+    : `<section class="card asset-detail-panel asset-detail-empty"><div class="asset-section-head"><div><p class="asset-kicker">Selected Asset</p><h2>${t.selectedAsset}</h2><p class="asset-copy">Choose an existing asset or upload a new one to inspect previews, storage keys, and QC evidence.</p></div></div><div class="asset-empty"><strong>${t.noSelectedAsset}</strong><span>The right rail switches into detailed inspection mode as soon as you select one object from the queue.</span></div></section>`;
 
-  const heroSection = `<section class="card asset-hero"><div class="asset-section-head"><div><p class="asset-kicker">검토 워크벤치</p><h2>검토 큐 + 점검</h2><p class="asset-copy">이 화면은 입력, 큐 검토, 점검, 다음 인계 라우팅에 집중합니다. <a href="/ui/studio">스튜디오</a>는 계속 오케스트레이션 허브 역할을 합니다.</p></div><div class="asset-hero-links"><a href="/ui/studio" class="asset-link-chip">스튜디오 열기</a><a href="/ui/character-generator" class="asset-link-chip">캐릭터 생성기 열기</a></div></div><div class="asset-flow-grid"><div class="asset-flow-step"><strong>입력</strong><span>새 레퍼런스를 밀어 넣거나 스튜디오에서 이 화면으로 진입합니다.</span></div><div class="asset-flow-step"><strong>큐</strong><span>현재 슬라이스를 필터링하고 지금 점검할 에셋을 고릅니다.</span></div><div class="asset-flow-step"><strong>점검</strong><span>인계 전에 QC, 저장소 키, 로컬 프리뷰를 확인합니다.</span></div><div class="asset-flow-step"><strong>라우팅</strong><span>선택한 에셋을 스튜디오나 캐릭터 생성기로 넘깁니다.</span></div></div></section>`;
+  const heroSection = `<section class="card asset-hero"><div class="asset-section-head"><div><p class="asset-kicker">Review Workbench</p><h1>Assets</h1><p class="asset-copy">This page keeps intake, review, selected object context, and next routing actions on one surface. Use <a href="/ui/studio">Studio</a> when orchestration should continue immediately.</p></div><div class="asset-hero-links"><a href="/ui/studio" class="asset-link-chip">Open Studio</a><a href="/ui/character-generator" class="asset-link-chip">Open Character Generator</a></div></div><div class="asset-flow-grid"><div class="asset-flow-step"><strong>Intake</strong><span>Upload a reference or open a previously created asset from Studio or direct review.</span></div><div class="asset-flow-step"><strong>Queue</strong><span>Filter the recent queue and choose the single object that needs attention right now.</span></div><div class="asset-flow-step"><strong>Inspect</strong><span>Check QC, storage keys, and local previews before approving downstream use.</span></div><div class="asset-flow-step"><strong>Route</strong><span>Return the selected asset to Studio, Character Generator, or recovery review without losing context.</span></div></div></section>`;
 
   const clientScript = `<script>const selectedAssetId=${JSON.stringify(
     input.selectedAsset?.id ?? ""
-  )};const form=document.getElementById("asset-upload-form");const output=document.getElementById("asset-upload-result");const submit=document.getElementById("asset-upload-submit");const filter=document.getElementById("asset-filter");const assetTable=document.getElementById("asset-table");const filterCount=document.getElementById("asset-filter-count");const updateCount=()=>{if(!(assetTable instanceof HTMLTableElement))return;let total=0;let visible=0;assetTable.querySelectorAll("tbody tr").forEach((row)=>{if(!(row instanceof HTMLElement))return;const text=String(row.textContent||"").trim();const hasDataRow=!!row.querySelector("a")||row.querySelectorAll("td").length>1;if(hasDataRow)total+=1;if(hasDataRow&&row.style.display!=="none")visible+=1;const firstCell=hasDataRow?row.querySelector("td"):null;row.dataset.selected=selectedAssetId&&firstCell&&String(firstCell.textContent||"").trim()===selectedAssetId?"true":"false";});if(filterCount instanceof HTMLElement)filterCount.textContent=visible+" / "+total+"개 표시 중";};const applyFilter=()=>{if(!(filter instanceof HTMLInputElement)||!(assetTable instanceof HTMLTableElement))return;const q=filter.value.trim().toLowerCase();assetTable.querySelectorAll("tbody tr").forEach((row)=>{if(!(row instanceof HTMLElement))return;const text=String(row.textContent||"").toLowerCase();row.style.display=!q||text.includes(q)?"":"none";});updateCount();};if(filter){filter.addEventListener("input",applyFilter);}applyFilter();if(form&&output&&submit){form.addEventListener("submit",async(event)=>{event.preventDefault();submit.disabled=true;output.dataset.state="busy";output.textContent=${JSON.stringify(
+  )};const form=document.getElementById("asset-upload-form");const output=document.getElementById("asset-upload-result");const submit=document.getElementById("asset-upload-submit");const filter=document.getElementById("asset-filter");const assetTable=document.getElementById("asset-table");const filterCount=document.getElementById("asset-filter-count");const updateCount=()=>{if(!(assetTable instanceof HTMLTableElement))return;let total=0;let visible=0;assetTable.querySelectorAll("tbody tr").forEach((row)=>{if(!(row instanceof HTMLElement))return;const hasDataRow=!!row.querySelector("a")||row.querySelectorAll("td").length>1;if(hasDataRow)total+=1;if(hasDataRow&&row.style.display!=="none")visible+=1;const firstCell=hasDataRow?row.querySelector("td"):null;row.dataset.selected=selectedAssetId&&firstCell&&String(firstCell.textContent||"").trim()===selectedAssetId?"true":"false";});if(filterCount instanceof HTMLElement)filterCount.textContent=visible+" / "+total+" visible";};const applyFilter=()=>{if(!(filter instanceof HTMLInputElement)||!(assetTable instanceof HTMLTableElement))return;const q=filter.value.trim().toLowerCase();assetTable.querySelectorAll("tbody tr").forEach((row)=>{if(!(row instanceof HTMLElement))return;const text=String(row.textContent||"").toLowerCase();row.style.display=!q||text.includes(q)?"":"none";});updateCount();};if(filter){filter.addEventListener("input",applyFilter);}applyFilter();if(form&&output&&submit){form.addEventListener("submit",async(event)=>{event.preventDefault();submit.disabled=true;output.dataset.state="busy";output.textContent=${JSON.stringify(
     t.uploadInProgress
   )};const fd=new FormData(form);try{const res=await fetch("/api/assets/upload",{method:"POST",body:fd});const json=await res.json();output.dataset.state=res.ok?"success":"error";output.textContent=JSON.stringify(json,null,2);if(res.ok&&json&&json.data&&json.data.assetId){window.location.href="/ui/assets?assetId="+encodeURIComponent(json.data.assetId);}}catch(error){output.dataset.state="error";output.textContent=String(error);}finally{submit.disabled=false;}});}</script>`;
 
-  return `${ASSET_PAGE_STYLE}${heroSection}<section class="asset-shell"><div class="asset-left-rail"><section class="card asset-upload-card"><div class="asset-section-head"><div><p class="asset-kicker">입력</p><h2>${t.upload}</h2><p class="asset-copy">소스 이미지를 파이프라인에 넣고 처리 시작과 동시에 바로 점검으로 이동합니다.</p></div></div><form id="asset-upload-form" enctype="multipart/form-data" class="grid"><div class="grid two"><label>에셋 타입<select name="assetType"><option value="character_reference">character_reference (레퍼런스)</option><option value="character_view">character_view (뷰 변형)</option><option value="background">background (배경)</option><option value="chart_source">chart_source (차트 소스)</option></select></label><label>파일<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label></div><button id="asset-upload-submit" type="submit" data-primary-action="1" data-primary-label="에셋 업로드 후 검토 열기">${t.uploadAction}</button></form><p class="asset-inline-note">지원 입력 형식: PNG, JPEG, WebP. 업로드가 성공하면 새 에셋 상세 레코드로 이동합니다.</p><pre id="asset-upload-result" class="asset-output" data-state="idle" role="status" aria-live="polite" aria-atomic="true">${t.uploadResultIdle}</pre></section><section class="card asset-guide-card"><div class="asset-section-head"><div><p class="asset-kicker">검토 절차</p><h2>${t.reviewProtocol}</h2><p class="asset-copy">저장소 브라우징보다 점검과 다음 결정에 큐의 초점을 유지하세요.</p></div></div><ol class="asset-guide-list"><li>선택한 에셋이 의도한 레퍼런스나 소스 역할과 실제로 맞는지 확인합니다.</li><li>생성이나 오케스트레이션으로 넘기기 전에 QC 등급과 프리뷰 출력을 확인합니다.</li><li>승인, 비교, 롤백 판단이 필요한 경우 JSON과 프리뷰를 복구 맥락으로 함께 사용합니다.</li></ol></section></div><div class="asset-main-col"><section class="card asset-list-card"><div class="asset-section-head"><div><p class="asset-kicker">검토 큐</p><h2>${t.recentAssets}</h2><p class="asset-copy">지금 점검이 필요한 에셋을 고르고, 오른쪽 레일에서 다음 조치를 결정하세요.</p></div><span id="asset-filter-count" class="asset-counter">0 / 0개 표시 중</span></div><div class="asset-table-tools"><input id="asset-filter" type="search" autocomplete="off" aria-label="최근 에셋 필터" placeholder="${t.filterPlaceholder}" /><span class="asset-filter-note">현재 로드된 행에만 적용되는 로컬 필터입니다.</span></div><div class="asset-table-wrap"><table id="asset-table"><thead><tr><th>${t.columns.id}</th><th>${t.columns.type}</th><th>${t.columns.status}</th><th>${t.columns.qc}</th><th>${t.columns.mime}</th><th>${t.columns.size}</th><th>${t.columns.created}</th></tr></thead><tbody>${
+  return `${ASSET_PAGE_STYLE}${heroSection}<section class="asset-shell"><div class="asset-left-rail"><section class="card asset-upload-card"><div class="asset-section-head"><div><p class="asset-kicker">Intake</p><h2>${t.upload}</h2><p class="asset-copy">Push a source image into the pipeline, then move directly into object review.</p></div></div><form id="asset-upload-form" enctype="multipart/form-data" class="grid"><div class="grid two"><label>Asset type<select name="assetType"><option value="character_reference">character_reference (reference)</option><option value="character_view">character_view (view variant)</option><option value="background">background</option><option value="chart_source">chart_source</option></select></label><label>File<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label></div><button id="asset-upload-submit" type="submit" data-primary-action="1" data-primary-label="Upload asset and open review">${t.uploadAction}</button></form><p class="asset-inline-note">Accepted input formats: PNG, JPEG, WebP. A successful upload redirects to the new asset record.</p><pre id="asset-upload-result" class="asset-output" data-state="idle" role="status" aria-live="polite" aria-atomic="true">${t.uploadResultIdle}</pre></section><section class="card asset-guide-card"><div class="asset-section-head"><div><p class="asset-kicker">Review Protocol</p><h2>${t.reviewProtocol}</h2><p class="asset-copy">Keep the operator focused on review and routing decisions, not raw storage browsing.</p></div></div><ol class="asset-guide-list"><li>Confirm that the selected asset matches the intended role: reference, view variant, background, or chart source.</li><li>Read QC and preview outputs before handing the object to generation or orchestration.</li><li>Keep JSON and preview evidence attached whenever approval, compare, or rollback decisions may be needed.</li></ol></section></div><div class="asset-main-col"><section class="card asset-list-card"><div class="asset-section-head"><div><p class="asset-kicker">Review Queue</p><h2>${t.recentAssets}</h2><p class="asset-copy">Choose the asset that needs attention now, then decide the next action from the right rail.</p></div><span id="asset-filter-count" class="asset-counter">0 / 0 visible</span></div><div class="asset-table-tools"><input id="asset-filter" type="search" autocomplete="off" aria-label="Recent Assets filter" placeholder="${t.filterPlaceholder}" /><span class="asset-filter-note">This is a local filter for the currently loaded rows only.</span></div><div class="asset-table-wrap"><table id="asset-table"><thead><tr><th>${t.columns.id}</th><th>${t.columns.type}</th><th>${t.columns.status}</th><th>${t.columns.qc}</th><th>${t.columns.mime}</th><th>${t.columns.size}</th><th>${t.columns.created}</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(7, t.noAssets)
   }</tbody></table></div></section></div><div class="asset-right-rail">${selectedDetails}${nextActions}</div></section>${clientScript}`;
 }
