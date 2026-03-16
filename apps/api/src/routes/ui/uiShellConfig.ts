@@ -17,6 +17,26 @@ export type UiShellShortcut = {
   action: string;
 };
 
+export type UiShellPaletteAction = {
+  id: string;
+  label: string;
+  description: string;
+  keywords: string[];
+  action: string;
+  hotkey?: string;
+};
+
+export type UiShellJumpTarget = {
+  key: string;
+  label: string;
+  description: string;
+  prefixes: string[];
+  queryKey: string;
+  hrefBase: string;
+  example: string;
+  mode: "path" | "query" | "segment";
+};
+
 export const UI_SHELL_NAV_GROUPS: UiShellNavGroup[] = [
   {
     key: "observe",
@@ -137,6 +157,7 @@ export const UI_SHELL_NAV_GROUPS: UiShellNavGroup[] = [
 ];
 
 export const UI_SHELL_SHORTCUTS: UiShellShortcut[] = [
+  { key: "Ctrl/Cmd + K", action: "전역 command palette를 엽니다." },
   { key: "?", action: "단축키 도움말을 열거나 닫습니다." },
   { key: "Esc", action: "열린 대화상자를 닫거나 이동 대기 상태를 해제합니다." },
   { key: "/", action: "첫 번째 검색 또는 필터 입력으로 이동합니다." },
@@ -155,6 +176,151 @@ export const UI_SHELL_SHORTCUTS: UiShellShortcut[] = [
   { key: "g r", action: "롤아웃으로 이동" },
   { key: "g b", action: "벤치마크로 이동" }
 ];
+
+export const UI_SHELL_PALETTE_ACTIONS: UiShellPaletteAction[] = [
+  {
+    id: "focus-filter",
+    label: "필터 포커스",
+    description: "현재 페이지의 첫 번째 검색 또는 필터 입력으로 이동합니다.",
+    keywords: ["filter", "search", "focus", "/"],
+    action: "focus-filter",
+    hotkey: "/"
+  },
+  {
+    id: "run-primary",
+    label: "기본 액션 실행",
+    description: "현재 페이지에서 지정된 기본 액션을 바로 실행합니다.",
+    keywords: ["run", "primary", "action", "execute", "r"],
+    action: "run-primary",
+    hotkey: "r"
+  },
+  {
+    id: "open-current-object",
+    label: "현재 오브젝트 열기",
+    description: "현재 페이지가 가리키는 오브젝트의 대표 상세 경로로 이동합니다.",
+    keywords: ["current", "object", "detail", "open"],
+    action: "open-current-object"
+  },
+  {
+    id: "copy-deep-link",
+    label: "딥링크 복사",
+    description: "현재 페이지 URL을 딥링크로 복사합니다.",
+    keywords: ["copy", "deep link", "url", "share"],
+    action: "copy-deep-link"
+  },
+  {
+    id: "open-return-link",
+    label: "복귀 링크 열기",
+    description: "URL에 포함된 returnTo 경로로 되돌아갑니다.",
+    keywords: ["return", "back", "returnTo"],
+    action: "open-return-link"
+  },
+  {
+    id: "toggle-pin-current",
+    label: "현재 오브젝트 pin",
+    description: "현재 오브젝트를 pins 목록에 추가하거나 제거합니다.",
+    keywords: ["pin", "favorite", "save", "current"],
+    action: "toggle-pin-current"
+  },
+  {
+    id: "open-shortcuts",
+    label: "단축키 도움말",
+    description: "현재 셸의 키보드 단축키 목록을 엽니다.",
+    keywords: ["shortcut", "keyboard", "help", "?"],
+    action: "open-shortcuts",
+    hotkey: "?"
+  }
+];
+
+export const UI_SHELL_JUMP_TARGETS: UiShellJumpTarget[] = [
+  {
+    key: "episode",
+    label: "Episode",
+    description: "에피소드 상세로 이동합니다.",
+    prefixes: ["episode", "ep"],
+    queryKey: "id",
+    hrefBase: "/ui/episodes",
+    example: "episode:ep_video_i2v_smoke",
+    mode: "segment"
+  },
+  {
+    key: "job",
+    label: "Job",
+    description: "작업 상세로 이동합니다.",
+    prefixes: ["job"],
+    queryKey: "id",
+    hrefBase: "/ui/jobs",
+    example: "job:clx_job_123",
+    mode: "segment"
+  },
+  {
+    key: "character-pack",
+    label: "Character Pack",
+    description: "캐릭터 팩 상세 쿼리로 이동합니다.",
+    prefixes: ["pack", "character-pack", "cp"],
+    queryKey: "characterPackId",
+    hrefBase: "/ui/characters",
+    example: "pack:clx_pack_123",
+    mode: "query"
+  },
+  {
+    key: "asset",
+    label: "Asset",
+    description: "에셋 상세 쿼리로 이동합니다.",
+    prefixes: ["asset"],
+    queryKey: "assetId",
+    hrefBase: "/ui/assets",
+    example: "asset:asset_123",
+    mode: "query"
+  },
+  {
+    key: "artifact-episode",
+    label: "Artifact Index",
+    description: "에피소드 산출물 인덱스로 이동합니다.",
+    prefixes: ["artifact", "artifacts", "out"],
+    queryKey: "episodeId",
+    hrefBase: "/ui/artifacts",
+    example: "artifact:ep_video_i2v_smoke",
+    mode: "query"
+  },
+  {
+    key: "artifact-path",
+    label: "Artifact Path",
+    description: "롤아웃 artifact detail 경로로 이동합니다.",
+    prefixes: ["path", "json", "log", "file"],
+    queryKey: "path",
+    hrefBase: "/ui/rollouts/detail",
+    example: "path:rollouts/2025-03-01/result.json",
+    mode: "query"
+  }
+];
+
+export const UI_SHELL_STORAGE_KEYS = {
+  recentObjects: "ecs.ui.shell.recentObjects.v1",
+  pinnedObjects: "ecs.ui.shell.pinnedObjects.v1",
+  paletteState: "ecs.ui.shell.paletteState.v1"
+} as const;
+
+export const UI_SHELL_PALETTE_SHORTCUTS = {
+  open: "Mod+K"
+} as const;
+
+export const UI_SHELL_HELPER_CONTRACT = {
+  currentObject: "data-shell-current-object",
+  objectKind: "data-shell-object-kind",
+  objectId: "data-shell-object-id",
+  objectLabel: "data-shell-object-label",
+  objectHref: "data-shell-object-href",
+  command: "data-shell-command",
+  commandLabel: "data-shell-command-label",
+  commandKeywords: "data-shell-command-keywords",
+  commandHref: "data-shell-command-href",
+  commandAction: "data-shell-command-action",
+  returnTo: "data-shell-return-to",
+  returnLabel: "data-shell-return-label",
+  deepLinkLabel: "data-shell-deep-link-label",
+  recentIgnore: "data-shell-recent-ignore"
+} as const;
 
 export const UI_SHELL_FLAT_NAV = UI_SHELL_NAV_GROUPS.flatMap((group) =>
   group.items.map((item) => ({
