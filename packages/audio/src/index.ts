@@ -16,6 +16,7 @@ export type {
   LicenseLogEntry,
   MusicLibrary,
   NarrationAlignmentDocument,
+  NarrationAlignmentSourceKind,
   NarrationAlignmentShot,
   NarrationAlignmentVisemeCue,
   NarrationAlignmentWord,

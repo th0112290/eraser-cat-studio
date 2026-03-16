@@ -73,6 +73,8 @@ async function run(): Promise<void> {
   assert.ok(fs.existsSync(first.mixPath));
   assert.ok(fs.existsSync(first.licenseLogPath));
   assert.ok(fs.existsSync(first.alignmentPath));
+  assert.equal(first.alignmentSourceKind, "heuristic");
+  assert.equal(first.alignmentFallbackUsed, false);
 
   const firstNarrationSize = sizeOf(first.narrationPath);
   const firstMixSize = sizeOf(first.mixPath);

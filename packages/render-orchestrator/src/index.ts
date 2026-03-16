@@ -6,6 +6,8 @@ export {
 export {
   applyNarrationAlignmentToSequences,
   buildNarrationAlignmentHook,
+  createFailoverSubtitleAlignmentProvider,
+  resolveAlignmentHook,
   normalizeNarrationAlignmentDocument
 } from "./alignment";
 export { applyAlignmentAwareActingTimeline } from "./actingTimeline";
@@ -20,6 +22,12 @@ export {
 } from "./episodeRegression";
 export { applyEmphasis, buildSubtitleCues, toSrt } from "./srt";
 export { resolveShotFinishProfile } from "./finishProfiles";
+export {
+  applyLayoutContinuityToSequences,
+  computePrimaryVisualAnchorInRect,
+  resolvePrimaryVisualPointerTargetCount,
+  resolveSequenceLayoutPlan
+} from "./layoutPlan";
 export { runVisualQcWithFallback } from "./visualQc";
 
 export type {
@@ -61,6 +69,8 @@ export type {
   ShotSidecarRenderer,
   ShotSidecarRetakeOutcome,
   ShotSidecarRetakeStep,
+  SubtitleAlignmentProvider,
+  SubtitleAlignmentProviderContext,
   SubtitleCue,
   VisualQcCheck,
   VisualQcIssue,

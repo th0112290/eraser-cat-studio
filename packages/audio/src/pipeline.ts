@@ -18,6 +18,7 @@ import type {
   LicenseLogEntry,
   MusicLibrary,
   NarrationAlignmentDocument,
+  NarrationAlignmentSourceKind,
   NarrationAlignmentShot,
   NarrationAlignmentVisemeCue,
   NarrationAlignmentWord,
@@ -37,6 +38,32 @@ type ResolvedSfxEvent = SfxTrackEvent & {
   gain: number;
 };
 
+type ResolvedShotText = {
+  shot: AudioBuildInput["shots"][number];
+  text: string;
+};
+
+type ExternalAlignmentProviderId = "mfa" | "faster-whisper" | "whisperx";
+
+type ExternalAlignmentProviderSpec = {
+  id: ExternalAlignmentProviderId;
+  command: string;
+};
+
+type ExternalAlignmentWord = {
+  text: string;
+  startSec: number;
+  endSec: number;
+  confidence?: number;
+};
+
+type ExternalAlignmentResolution = {
+  alignment: NarrationAlignmentDocument;
+  provider: string;
+  sourceKind: NarrationAlignmentSourceKind;
+  fallbackUsed: boolean;
+};
+
 const PROCEDURAL_LICENSE: LicenseInfo = {
   licenseId: "PROCEDURAL-GENERATED",
   attribution: "procedurally generated",
@@ -54,6 +81,56 @@ function readText(pathLike: string): string {
 
 function writeJson(pathLike: string, value: unknown): void {
   fs.writeFileSync(pathLike, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function pickString(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function readTimeSec(
+  record: Record<string, unknown>,
+  secKeys: string[],
+  msKeys: string[],
+  fallbackSec: number | null = null
+): number | null {
+  for (const key of secKeys) {
+    const parsed = parseNumber(record[key]);
+    if (parsed !== null) {
+      return Math.max(0, parsed);
+    }
+  }
+  for (const key of msKeys) {
+    const parsed = parseNumber(record[key]);
+    if (parsed !== null) {
+      return Math.max(0, parsed / 1000);
+    }
+  }
+  return fallbackSec === null ? null : Math.max(0, fallbackSec);
 }
 
 function ffmpegExists(): boolean {
@@ -100,6 +177,10 @@ function countVowelGroups(text: string): number {
   return matches ? matches.length : 0;
 }
 
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 function tokenizeWords(text: string): string[] {
   return text
     .match(/[A-Za-z0-9']+/g)
@@ -139,6 +220,14 @@ function deriveShotTexts(input: AudioBuildInput): string[] {
     cursor += count;
     return slice.join(" ");
   });
+}
+
+function resolveShotTextEntries(input: AudioBuildInput): ResolvedShotText[] {
+  const texts = deriveShotTexts(input);
+  return input.shots.map((shot, index) => ({
+    shot,
+    text: texts[index] ?? ""
+  }));
 }
 
 function visemeForWord(word: string): AudioViseme {
@@ -196,133 +285,196 @@ function normalizeVisemeCues(cues: NarrationAlignmentVisemeCue[]): NarrationAlig
   return deduped;
 }
 
-function buildNarrationAlignment(
-  input: AudioBuildInput,
-  narrationPath: string,
-  narration: MonoWav
-): NarrationAlignmentDocument {
-  const resolvedShotTexts = deriveShotTexts(input);
-  const plannedDurationSec = Math.max(
-    0.001,
-    input.shots.reduce((max, shot) => Math.max(max, shot.startSec + shot.durationSec), 0)
-  );
-  const audioDurationSec = narration.samples.length / Math.max(1, narration.sampleRate);
+function buildClosedMouthVisemeCues(
+  shotId: string,
+  startSec: number,
+  endSec: number
+): NarrationAlignmentVisemeCue[] {
+  const durationSec = Math.max(0, endSec - startSec);
+  return [
+    {
+      shotId,
+      timeSec: startSec,
+      localTimeSec: 0,
+      viseme: "mouth_closed",
+      intensity: 0
+    },
+    {
+      shotId,
+      timeSec: endSec,
+      localTimeSec: durationSec,
+      viseme: "mouth_closed",
+      intensity: 0
+    }
+  ];
+}
 
-  const shots: NarrationAlignmentShot[] = input.shots.map((shot, index) => {
-    const startSec = Math.max(0, shot.startSec);
-    const durationSec = Math.max(0.001, shot.durationSec);
-    const endSec = startSec + durationSec;
-    const text = resolvedShotTexts[index] ?? "";
-    const words = tokenizeWords(text);
+function buildShotAlignmentFromWords(input: {
+  shotId: string;
+  startSec: number;
+  durationSec: number;
+  text: string;
+  provider?: string;
+  version?: string;
+  sourceKind?: NarrationAlignmentSourceKind;
+  words: ExternalAlignmentWord[];
+}): NarrationAlignmentShot {
+  const startSec = Math.max(0, input.startSec);
+  const durationSec = Math.max(0.001, input.durationSec);
+  const endSec = startSec + durationSec;
+  const normalizedWords = input.words
+    .map((word, index) => {
+      const text = normalizeWhitespace(word.text);
+      if (text.length === 0) {
+        return null;
+      }
+      const clippedStartSec = clamp(word.startSec, startSec, endSec);
+      const clippedEndSec = clamp(word.endSec, clippedStartSec, endSec);
+      const endTimeSec =
+        clippedEndSec > clippedStartSec
+          ? clippedEndSec
+          : Math.min(endSec, clippedStartSec + Math.min(0.08, Math.max(0.02, durationSec * 0.12)));
+      const viseme = visemeForWord(text);
+      const baseIntensity = visemeIntensity(viseme, text);
+      const confidence =
+        typeof word.confidence === "number" && Number.isFinite(word.confidence)
+          ? clamp(word.confidence, 0, 1)
+          : undefined;
+      const intensity = clamp(baseIntensity * 0.82 + (confidence ?? 0.6) * 0.18, 0, 1);
 
-    if (words.length === 0) {
       return {
-        shotId: shot.id,
-        startSec,
-        endSec,
-        durationSec,
+        shotId: input.shotId,
+        index,
         text,
-        words: [],
-        visemeCues: [
+        startSec: clippedStartSec,
+        endSec: Math.max(clippedStartSec, endTimeSec),
+        localStartSec: Math.max(0, clippedStartSec - startSec),
+        localEndSec: Math.max(0, Math.max(clippedStartSec, endTimeSec) - startSec),
+        viseme,
+        intensity
+      } satisfies NarrationAlignmentWord;
+    })
+    .filter((word): word is NarrationAlignmentWord => word !== null)
+    .sort((left, right) => left.startSec - right.startSec || left.endSec - right.endSec);
+
+  const visemeCues =
+    normalizedWords.length === 0
+      ? buildClosedMouthVisemeCues(input.shotId, startSec, endSec)
+      : normalizeVisemeCues([
           {
-            shotId: shot.id,
+            shotId: input.shotId,
             timeSec: startSec,
             localTimeSec: 0,
             viseme: "mouth_closed",
             intensity: 0
           },
+          ...normalizedWords.flatMap((word) => [
+            {
+              shotId: input.shotId,
+              timeSec: word.startSec,
+              localTimeSec: word.localStartSec,
+              viseme: word.viseme,
+              intensity: word.intensity,
+              sourceWord: word.text
+            },
+            {
+              shotId: input.shotId,
+              timeSec: word.endSec,
+              localTimeSec: word.localEndSec,
+              viseme: "mouth_closed" as const,
+              intensity: 0,
+              sourceWord: word.text
+            }
+          ]),
           {
-            shotId: shot.id,
+            shotId: input.shotId,
             timeSec: endSec,
             localTimeSec: durationSec,
             viseme: "mouth_closed",
             intensity: 0
           }
-        ]
-      };
-    }
+        ]);
 
-    const leadInSec = Math.min(0.12, durationSec * 0.08);
-    const tailOutSec = Math.min(0.14, durationSec * 0.1);
-    const speechStartSec = startSec + leadInSec;
-    const speechEndSec = Math.max(speechStartSec + 0.1, endSec - tailOutSec);
-    const speakingDurationSec = Math.max(0.1, speechEndSec - speechStartSec);
-    const totalWeight = words.reduce((sum, word) => sum + wordWeight(word), 0);
+  return {
+    shotId: input.shotId,
+    startSec,
+    endSec,
+    durationSec,
+    text: input.text,
+    ...(input.provider ? { provider: input.provider } : {}),
+    ...(input.version ? { version: input.version } : {}),
+    ...(input.sourceKind ? { sourceKind: input.sourceKind } : {}),
+    words: normalizedWords,
+    visemeCues
+  };
+}
 
-    let cursor = speechStartSec;
-    const alignedWords: NarrationAlignmentWord[] = [];
-    const visemeCues: NarrationAlignmentVisemeCue[] = [
-      {
-        shotId: shot.id,
-        timeSec: startSec,
-        localTimeSec: 0,
-        viseme: "mouth_closed",
-        intensity: 0
-      }
-    ];
+function buildHeuristicShotAlignment(entry: ResolvedShotText): NarrationAlignmentShot {
+  const startSec = Math.max(0, entry.shot.startSec);
+  const durationSec = Math.max(0.001, entry.shot.durationSec);
+  const endSec = startSec + durationSec;
+  const words = tokenizeWords(entry.text);
 
-    words.forEach((word, wordIndex) => {
-      const ratio = wordWeight(word) / Math.max(1, totalWeight);
-      const rawDuration = speakingDurationSec * ratio;
-      const gapSec = Math.min(0.05, rawDuration * 0.18);
-      const wordStartSec = cursor;
-      const isLast = wordIndex === words.length - 1;
-      const wordEndSec = isLast
-        ? speechEndSec
-        : Math.min(speechEndSec, wordStartSec + Math.max(0.06, rawDuration - gapSec));
-      const viseme = visemeForWord(word);
-      const intensity = visemeIntensity(viseme, word);
-
-      alignedWords.push({
-        shotId: shot.id,
-        index: wordIndex,
-        text: word,
-        startSec: wordStartSec,
-        endSec: wordEndSec,
-        localStartSec: wordStartSec - startSec,
-        localEndSec: wordEndSec - startSec,
-        viseme,
-        intensity
-      });
-
-      visemeCues.push({
-        shotId: shot.id,
-        timeSec: wordStartSec,
-        localTimeSec: wordStartSec - startSec,
-        viseme,
-        intensity,
-        sourceWord: word
-      });
-      visemeCues.push({
-        shotId: shot.id,
-        timeSec: wordEndSec,
-        localTimeSec: wordEndSec - startSec,
-        viseme: "mouth_closed",
-        intensity: 0,
-        sourceWord: word
-      });
-
-      cursor = isLast ? speechEndSec : Math.min(speechEndSec, wordEndSec + gapSec);
-    });
-
-    visemeCues.push({
-      shotId: shot.id,
-      timeSec: endSec,
-      localTimeSec: durationSec,
-      viseme: "mouth_closed",
-      intensity: 0
-    });
-
-    return {
-      shotId: shot.id,
+  if (words.length === 0) {
+    return buildShotAlignmentFromWords({
+      shotId: entry.shot.id,
       startSec,
-      endSec,
       durationSec,
-      text,
-      words: alignedWords,
-      visemeCues: normalizeVisemeCues(visemeCues)
-    };
+      text: entry.text,
+      provider: "heuristic_from_shot_timing",
+      sourceKind: "heuristic",
+      words: []
+    });
+  }
+
+  const leadInSec = Math.min(0.12, durationSec * 0.08);
+  const tailOutSec = Math.min(0.14, durationSec * 0.1);
+  const speechStartSec = startSec + leadInSec;
+  const speechEndSec = Math.max(speechStartSec + 0.1, endSec - tailOutSec);
+  const speakingDurationSec = Math.max(0.1, speechEndSec - speechStartSec);
+  const totalWeight = words.reduce((sum, word) => sum + wordWeight(word), 0);
+
+  let cursor = speechStartSec;
+  const weightedWords: ExternalAlignmentWord[] = [];
+  words.forEach((word, index) => {
+    const ratio = wordWeight(word) / Math.max(1, totalWeight);
+    const rawDuration = speakingDurationSec * ratio;
+    const gapSec = Math.min(0.05, rawDuration * 0.18);
+    const wordStartSec = cursor;
+    const isLast = index === words.length - 1;
+    const wordEndSec = isLast
+      ? speechEndSec
+      : Math.min(speechEndSec, wordStartSec + Math.max(0.06, rawDuration - gapSec));
+    weightedWords.push({
+      text: word,
+      startSec: wordStartSec,
+      endSec: wordEndSec
+    });
+    cursor = isLast ? speechEndSec : Math.min(speechEndSec, wordEndSec + gapSec);
   });
+
+  return buildShotAlignmentFromWords({
+    shotId: entry.shot.id,
+    startSec,
+    durationSec,
+    text: entry.text,
+    provider: "heuristic_from_shot_timing",
+    sourceKind: "heuristic",
+    words: weightedWords
+  });
+}
+
+function buildHeuristicNarrationAlignment(
+  input: AudioBuildInput,
+  narrationPath: string,
+  narration: MonoWav,
+  shotEntries: ResolvedShotText[]
+): NarrationAlignmentDocument {
+  const plannedDurationSec = Math.max(
+    0.001,
+    input.shots.reduce((max, shot) => Math.max(max, shot.startSec + shot.durationSec), 0)
+  );
+  const audioDurationSec = narration.samples.length / Math.max(1, narration.sampleRate);
 
   return {
     schema_version: "1.0",
@@ -331,10 +483,523 @@ function buildNarrationAlignment(
     voice: input.voice,
     speed: input.speed,
     provider: "heuristic_from_shot_timing",
+    sourceKind: "heuristic",
     narration_path: narrationPath,
     audio_duration_sec: audioDurationSec,
     planned_duration_sec: plannedDurationSec,
+    shots: shotEntries.map((entry) => buildHeuristicShotAlignment(entry))
+  };
+}
+
+function normalizeExternalAlignmentProviderId(value: string): ExternalAlignmentProviderId | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "mfa") {
+    return "mfa";
+  }
+  if (normalized === "faster-whisper" || normalized === "faster_whisper" || normalized === "fasterwhisper") {
+    return "faster-whisper";
+  }
+  if (normalized === "whisperx" || normalized === "whisper-x") {
+    return "whisperx";
+  }
+  return null;
+}
+
+function resolveProviderCommandEnvName(providerId: ExternalAlignmentProviderId): string {
+  switch (providerId) {
+    case "mfa":
+      return "AUDIO_ALIGNMENT_MFA_COMMAND";
+    case "faster-whisper":
+      return "AUDIO_ALIGNMENT_FASTER_WHISPER_COMMAND";
+    case "whisperx":
+      return "AUDIO_ALIGNMENT_WHISPERX_COMMAND";
+  }
+}
+
+function resolveConfiguredAlignmentProviders(): ExternalAlignmentProviderSpec[] {
+  const preferredIds = (process.env.AUDIO_ALIGNMENT_PROVIDERS ?? process.env.AUDIO_ALIGNMENT_PROVIDER ?? "")
+    .split(",")
+    .map((entry) => normalizeExternalAlignmentProviderId(entry))
+    .filter((entry): entry is ExternalAlignmentProviderId => entry !== null);
+  const orderedIds =
+    preferredIds.length > 0
+      ? preferredIds
+      : (["mfa", "faster-whisper", "whisperx"] as const).filter((providerId) => {
+          const command = process.env[resolveProviderCommandEnvName(providerId)];
+          return typeof command === "string" && command.trim().length > 0;
+        });
+
+  const deduped = Array.from(new Set(orderedIds));
+  return deduped
+    .map((id) => ({
+      id,
+      command: process.env[resolveProviderCommandEnvName(id)]?.trim() ?? ""
+    }))
+    .filter((provider) => provider.command.length > 0);
+}
+
+function resolveProviderOutputExtension(providerId: ExternalAlignmentProviderId): string {
+  return providerId === "mfa" ? ".TextGrid" : ".json";
+}
+
+function approximateWordsFromSegment(text: string, startSec: number, endSec: number): ExternalAlignmentWord[] {
+  const words = tokenizeWords(text);
+  if (words.length === 0) {
+    return [];
+  }
+
+  const safeStartSec = Math.max(0, startSec);
+  const safeEndSec = Math.max(safeStartSec, endSec);
+  const durationSec = Math.max(0.08, safeEndSec - safeStartSec);
+  const stepSec = durationSec / words.length;
+
+  return words.map((word, index) => {
+    const wordStartSec = safeStartSec + stepSec * index;
+    const isLast = index === words.length - 1;
+    const wordEndSec = isLast ? safeEndSec : Math.max(wordStartSec + 0.04, safeStartSec + stepSec * (index + 1));
+    return {
+      text: word,
+      startSec: wordStartSec,
+      endSec: Math.min(safeEndSec, wordEndSec)
+    };
+  });
+}
+
+function normalizeExternalAlignmentWordRow(entry: unknown): ExternalAlignmentWord | null {
+  if (!isRecord(entry)) {
+    return null;
+  }
+
+  const text = pickString(entry, ["text", "word", "token"]);
+  const startSec = readTimeSec(
+    entry,
+    ["startSec", "start", "start_time", "timeSec", "time_sec"],
+    ["startMs", "start_ms", "timeMs", "time_ms"]
+  );
+  const endSec = readTimeSec(
+    entry,
+    ["endSec", "end", "end_time"],
+    ["endMs", "end_ms"],
+    startSec ?? 0
+  );
+  if (!text || startSec === null || endSec === null) {
+    return null;
+  }
+
+  return {
+    text,
+    startSec,
+    endSec: Math.max(startSec, endSec),
+    confidence:
+      parseNumber(entry.confidence) ??
+      parseNumber(entry.score) ??
+      parseNumber(entry.probability) ??
+      undefined
+  };
+}
+
+function parseTextGridWordTimings(rawText: string): ExternalAlignmentWord[] {
+  const tierMatch =
+    /item \[\d+\]:([\s\S]*?name = "(?:words|word)"[\s\S]*?)(?=item \[\d+\]:|$)/i.exec(rawText)?.[1] ?? rawText;
+  const matches = tierMatch.matchAll(
+    /intervals \[\d+\]:\s*xmin = ([0-9.]+)\s*xmax = ([0-9.]+)\s*text = "(.*?)"/gsi
+  );
+  const words: ExternalAlignmentWord[] = [];
+
+  for (const match of matches) {
+    const startSec = Number(match[1]);
+    const endSec = Number(match[2]);
+    const text = normalizeWhitespace(match[3].replace(/\\"/g, "\""));
+    if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || text.length === 0) {
+      continue;
+    }
+    words.push({
+      text,
+      startSec: Math.max(0, startSec),
+      endSec: Math.max(Math.max(0, startSec), endSec)
+    });
+  }
+
+  return words.sort((left, right) => left.startSec - right.startSec || left.endSec - right.endSec);
+}
+
+function extractExternalAlignmentWords(raw: unknown): ExternalAlignmentWord[] {
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      return [];
+    }
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        return extractExternalAlignmentWords(JSON.parse(trimmed) as unknown);
+      } catch {
+        return [];
+      }
+    }
+    if (trimmed.includes("TextGrid")) {
+      return parseTextGridWordTimings(trimmed);
+    }
+    return [];
+  }
+
+  if (Array.isArray(raw)) {
+    const direct = raw
+      .map((entry) => normalizeExternalAlignmentWordRow(entry))
+      .filter((entry): entry is ExternalAlignmentWord => entry !== null);
+    if (direct.length > 0) {
+      return direct.sort((left, right) => left.startSec - right.startSec || left.endSec - right.endSec);
+    }
+    return raw.flatMap((entry) => extractExternalAlignmentWords(entry));
+  }
+
+  if (!isRecord(raw)) {
+    return [];
+  }
+
+  for (const key of ["words", "word_segments", "wordSegments", "word_timestamps", "wordTimestamps", "wordAlignment"]) {
+    const candidate = raw[key];
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
+    const words = candidate
+      .map((entry) => normalizeExternalAlignmentWordRow(entry))
+      .filter((entry): entry is ExternalAlignmentWord => entry !== null);
+    if (words.length > 0) {
+      return words.sort((left, right) => left.startSec - right.startSec || left.endSec - right.endSec);
+    }
+  }
+
+  if (Array.isArray(raw.segments)) {
+    const words: ExternalAlignmentWord[] = [];
+    for (const segment of raw.segments) {
+      if (!isRecord(segment)) {
+        continue;
+      }
+      const nestedWords = extractExternalAlignmentWords(segment);
+      if (nestedWords.length > 0) {
+        words.push(...nestedWords);
+        continue;
+      }
+
+      const text = pickString(segment, ["text", "transcript"]);
+      const startSec = readTimeSec(segment, ["startSec", "start"], ["startMs", "start_ms"]);
+      const endSec = readTimeSec(segment, ["endSec", "end"], ["endMs", "end_ms"], startSec ?? 0);
+      if (text && startSec !== null && endSec !== null) {
+        words.push(...approximateWordsFromSegment(text, startSec, endSec));
+      }
+    }
+    return words.sort((left, right) => left.startSec - right.startSec || left.endSec - right.endSec);
+  }
+
+  const text = pickString(raw, ["text", "transcript"]);
+  const startSec = readTimeSec(raw, ["startSec", "start"], ["startMs", "start_ms"]);
+  const endSec = readTimeSec(raw, ["endSec", "end"], ["endMs", "end_ms"], startSec ?? 0);
+  if (text && startSec !== null && endSec !== null) {
+    return approximateWordsFromSegment(text, startSec, endSec);
+  }
+
+  return [];
+}
+
+function normalizeExternalAlignmentShotRow(input: {
+  row: Record<string, unknown>;
+  fallbackEntry?: ResolvedShotText;
+  provider: string;
+  version?: string;
+}): NarrationAlignmentShot | null {
+  const shotId = pickString(input.row, ["shotId", "id"]) ?? input.fallbackEntry?.shot.id;
+  if (!shotId) {
+    return null;
+  }
+
+  const fallbackStartSec = input.fallbackEntry?.shot.startSec ?? 0;
+  const fallbackDurationSec = input.fallbackEntry?.shot.durationSec ?? 0.001;
+  const startSec =
+    readTimeSec(input.row, ["startSec", "start"], ["startMs", "start_ms"], fallbackStartSec) ?? fallbackStartSec;
+  const durationSec =
+    parseNumber(input.row.durationSec) ??
+    parseNumber(input.row.duration_seconds) ??
+    (() => {
+      const endSec = readTimeSec(input.row, ["endSec", "end"], ["endMs", "end_ms"]);
+      return endSec === null ? fallbackDurationSec : Math.max(0.001, endSec - startSec);
+    })();
+  const text = pickString(input.row, ["text", "narration", "transcript"]) ?? input.fallbackEntry?.text ?? "";
+
+  return buildShotAlignmentFromWords({
+    shotId,
+    startSec,
+    durationSec,
+    text,
+    provider: input.provider,
+    version: input.version,
+    sourceKind: "provider",
+    words: extractExternalAlignmentWords(input.row)
+  });
+}
+
+function normalizeExternalAlignmentDocument(input: {
+  raw: unknown;
+  provider: ExternalAlignmentProviderSpec;
+  audioInput: AudioBuildInput;
+  narrationPath: string;
+  narration: MonoWav;
+  shotEntries: ResolvedShotText[];
+}): NarrationAlignmentDocument | null {
+  const rawValue =
+    typeof input.raw === "string" && (input.raw.trim().startsWith("{") || input.raw.trim().startsWith("["))
+      ? (() => {
+          try {
+            return JSON.parse(input.raw) as unknown;
+          } catch {
+            return input.raw;
+          }
+        })()
+      : input.raw;
+
+  const plannedDurationSec = Math.max(
+    0.001,
+    input.audioInput.shots.reduce((max, shot) => Math.max(max, shot.startSec + shot.durationSec), 0)
+  );
+  const audioDurationSec = input.narration.samples.length / Math.max(1, input.narration.sampleRate);
+
+  if (isRecord(rawValue) && Array.isArray(rawValue.shots)) {
+    const provider = pickString(rawValue, ["provider"]) ?? input.provider.id;
+    const version = pickString(rawValue, ["version"]) ?? undefined;
+    const sourceKind =
+      pickString(rawValue, ["sourceKind"]) === "heuristic" ? ("heuristic" as const) : ("provider" as const);
+    const fallbackById = new Map(input.shotEntries.map((entry) => [entry.shot.id, entry]));
+    const shots = rawValue.shots
+      .map((row, index) => {
+        if (!isRecord(row)) {
+          return null;
+        }
+        const fallbackEntry =
+          fallbackById.get(pickString(row, ["shotId", "id"]) ?? "") ?? input.shotEntries[index];
+        return normalizeExternalAlignmentShotRow({
+          row,
+          fallbackEntry,
+          provider,
+          version
+        });
+      })
+      .filter((shot): shot is NarrationAlignmentShot => shot !== null);
+
+    if (shots.length > 0) {
+      return {
+        schema_version: "1.0",
+        generated_at: new Date().toISOString(),
+        strategy: pickString(rawValue, ["strategy"]) ?? `provider_${input.provider.id}_v1`,
+        voice: input.audioInput.voice,
+        speed: input.audioInput.speed,
+        provider,
+        ...(version ? { version } : {}),
+        sourceKind,
+        narration_path: input.narrationPath,
+        audio_duration_sec: audioDurationSec,
+        planned_duration_sec: plannedDurationSec,
+        shots
+      };
+    }
+  }
+
+  const words = extractExternalAlignmentWords(rawValue);
+  if (words.length === 0) {
+    return null;
+  }
+
+  const shots = input.shotEntries.map((entry) => {
+    const shotStartSec = Math.max(0, entry.shot.startSec);
+    const shotEndSec = shotStartSec + Math.max(0.001, entry.shot.durationSec);
+    const shotWords = words.filter((word) => {
+      const midpointSec = (word.startSec + word.endSec) * 0.5;
+      return midpointSec >= shotStartSec && midpointSec <= shotEndSec;
+    });
+
+    return buildShotAlignmentFromWords({
+      shotId: entry.shot.id,
+      startSec: shotStartSec,
+      durationSec: entry.shot.durationSec,
+      text: entry.text,
+      provider: input.provider.id,
+      sourceKind: "provider",
+      words: shotWords
+    });
+  });
+
+  if (!shots.some((shot) => shot.words.length > 0)) {
+    return null;
+  }
+
+  return {
+    schema_version: "1.0",
+    generated_at: new Date().toISOString(),
+    strategy: `provider_${input.provider.id}_v1`,
+    voice: input.audioInput.voice,
+    speed: input.audioInput.speed,
+    provider: input.provider.id,
+    sourceKind: "provider",
+    narration_path: input.narrationPath,
+    audio_duration_sec: audioDurationSec,
+    planned_duration_sec: plannedDurationSec,
     shots
+  };
+}
+
+function readExternalAlignmentPayload(
+  provider: ExternalAlignmentProviderSpec,
+  stdout: string,
+  outputPath: string
+): unknown {
+  if (fs.existsSync(outputPath)) {
+    const raw = readText(outputPath);
+    if (outputPath.toLowerCase().endsWith(".json")) {
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch {
+        return raw;
+      }
+    }
+    if (provider.id === "mfa") {
+      return raw;
+    }
+    return raw;
+  }
+
+  const trimmedStdout = stdout.trim();
+  if (trimmedStdout.length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmedStdout) as unknown;
+  } catch {
+    return trimmedStdout;
+  }
+}
+
+function runExternalAlignmentProvider(input: {
+  provider: ExternalAlignmentProviderSpec;
+  audioInput: AudioBuildInput;
+  narrationPath: string;
+  narration: MonoWav;
+  shotEntries: ResolvedShotText[];
+}): NarrationAlignmentDocument | null {
+  const requestPath = path.join(
+    input.audioInput.outDir,
+    `narration_alignment.${input.provider.id}.request.json`
+  );
+  const outputPath = path.join(
+    input.audioInput.outDir,
+    `narration_alignment.${input.provider.id}${resolveProviderOutputExtension(input.provider.id)}`
+  );
+  writeJson(requestPath, {
+    schema_version: "1.0",
+    provider: input.provider.id,
+    narrationPath: input.narrationPath,
+    scriptText: input.audioInput.scriptText,
+    voice: input.audioInput.voice,
+    speed: input.audioInput.speed,
+    outDir: input.audioInput.outDir,
+    shots: input.shotEntries.map((entry) => ({
+      shotId: entry.shot.id,
+      startSec: entry.shot.startSec,
+      durationSec: entry.shot.durationSec,
+      text: entry.text
+    }))
+  });
+
+  const env = {
+    ...process.env,
+    AUDIO_ALIGNMENT_PROVIDER: input.provider.id,
+    AUDIO_ALIGNMENT_REQUEST_PATH: requestPath,
+    AUDIO_ALIGNMENT_OUTPUT_PATH: outputPath,
+    EC_ALIGNMENT_PROVIDER: input.provider.id,
+    EC_ALIGNMENT_REQUEST_PATH: requestPath,
+    EC_ALIGNMENT_OUTPUT_PATH: outputPath
+  };
+  const result = spawnSync(input.provider.command, [], {
+    shell: true,
+    cwd: input.audioInput.outDir,
+    env,
+    encoding: "utf8",
+    stdio: "pipe",
+    maxBuffer: 20 * 1024 * 1024
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const stderr = normalizeWhitespace(result.stderr ?? "");
+    const stdout = normalizeWhitespace(result.stdout ?? "");
+    const detail = stderr || stdout || `exit_code=${result.status ?? 1}`;
+    throw new Error(`${input.provider.id} alignment provider failed: ${detail}`);
+  }
+
+  const raw = readExternalAlignmentPayload(input.provider, result.stdout ?? "", outputPath);
+  if (raw === null) {
+    return null;
+  }
+
+  return normalizeExternalAlignmentDocument({
+    raw,
+    provider: input.provider,
+    audioInput: input.audioInput,
+    narrationPath: input.narrationPath,
+    narration: input.narration,
+    shotEntries: input.shotEntries
+  });
+}
+
+function resolveNarrationAlignmentDocument(input: {
+  audioInput: AudioBuildInput;
+  narrationPath: string;
+  narration: MonoWav;
+  shotEntries: ResolvedShotText[];
+}): ExternalAlignmentResolution {
+  const heuristicAlignment = buildHeuristicNarrationAlignment(
+    input.audioInput,
+    input.narrationPath,
+    input.narration,
+    input.shotEntries
+  );
+  const providers = resolveConfiguredAlignmentProviders();
+  if (providers.length === 0) {
+    return {
+      alignment: heuristicAlignment,
+      provider: heuristicAlignment.provider,
+      sourceKind: "heuristic",
+      fallbackUsed: false
+    };
+  }
+
+  for (const provider of providers) {
+    try {
+      const resolved = runExternalAlignmentProvider({
+        provider,
+        audioInput: input.audioInput,
+        narrationPath: input.narrationPath,
+        narration: input.narration,
+        shotEntries: input.shotEntries
+      });
+      if (!resolved || !resolved.shots.some((shot) => shot.words.length > 0)) {
+        continue;
+      }
+      return {
+        alignment: resolved,
+        provider: resolved.provider,
+        sourceKind: resolved.sourceKind ?? "provider",
+        fallbackUsed: false
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    alignment: heuristicAlignment,
+    provider: heuristicAlignment.provider,
+    sourceKind: "heuristic",
+    fallbackUsed: true
   };
 }
 
@@ -510,7 +1175,18 @@ export async function runAudioPipeline(
 
   const narration = readMonoWav(narrationPath);
   const bgm = readMonoWav(bgmTrack.path);
-  const alignment = buildNarrationAlignment(input, narrationPath, narration);
+  const alignmentInput: AudioBuildInput = {
+    ...input,
+    scriptText: appliedScriptText
+  };
+  const shotEntries = resolveShotTextEntries(alignmentInput);
+  const resolvedAlignment = resolveNarrationAlignmentDocument({
+    audioInput: alignmentInput,
+    narrationPath,
+    narration,
+    shotEntries
+  });
+  const alignment = resolvedAlignment.alignment;
   const alignmentPath = path.join(input.outDir, "narration_alignment.json");
   writeJson(alignmentPath, alignment);
 
@@ -548,6 +1224,9 @@ export async function runAudioPipeline(
     licenseLogPath,
     alignmentPath,
     alignment,
+    alignmentProvider: resolvedAlignment.provider,
+    alignmentSourceKind: resolvedAlignment.sourceKind,
+    alignmentFallbackUsed: resolvedAlignment.fallbackUsed,
     appliedScriptText,
     placementPlan
   };

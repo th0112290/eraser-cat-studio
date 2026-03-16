@@ -303,6 +303,9 @@ export type DeterministicSequence = {
   primaryVisualKind?: ShotVisualObjectKind;
   visualObjects?: DeterministicVisualObject[];
   layoutPlan?: DeterministicLayoutPlan;
+  visualBox?: DeterministicLayoutRect;
+  narrationBox?: DeterministicLayoutRect;
+  pointerReachableZone?: DeterministicPointerReachability;
   annotationsEnabled: boolean;
   pointerTargetIndex: number;
   pointerEnabled: boolean;
@@ -359,6 +362,16 @@ export type AlignmentHook = (
   cue: SubtitleCue,
   context: SubtitleAlignmentContext
 ) => { startFrame: number; endFrame: number } | null;
+
+export type SubtitleAlignmentProviderContext = {
+  sequences: DeterministicSequence[];
+  cues: SubtitleCue[];
+  fps: number;
+};
+
+export type SubtitleAlignmentProvider = (
+  input: SubtitleAlignmentProviderContext
+) => Promise<AlignmentHook | undefined> | AlignmentHook | undefined;
 
 export type EpisodeRenderProps = {
   episodeId: string;
@@ -569,12 +582,14 @@ export type OrchestrateRenderInput = {
   allowUnacceptedGeneratedPacks?: boolean;
   qc?: RenderQcInput;
   alignmentHook?: AlignmentHook;
+  subtitleAlignmentProvider?: SubtitleAlignmentProvider;
   shotSidecarRenderer?: ShotSidecarRenderer;
 };
 
 export type OrchestrateRenderResult = {
   outputPath: string;
   srtPath: string;
+  narrationAlignmentPath: string;
   qcReportPath: string;
   episodeRegressionReportPath: string;
   renderLogPath: string;

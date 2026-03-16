@@ -1168,6 +1168,19 @@ export function resolveSequenceLayoutPlan(input: LayoutPlanInput): Deterministic
   };
 }
 
+function applyResolvedLayoutPlan(
+  sequence: DeterministicSequence,
+  layoutPlan: DeterministicLayoutPlan
+): DeterministicSequence {
+  return {
+    ...sequence,
+    layoutPlan,
+    visualBox: layoutPlan.primaryVisualBox,
+    narrationBox: layoutPlan.narrationBox,
+    pointerReachableZone: layoutPlan.pointerReachability
+  };
+}
+
 export function applyLayoutContinuityToSequences(input: {
   width: number;
   height: number;
@@ -1195,10 +1208,7 @@ export function applyLayoutContinuityToSequences(input: {
       previousVisualIntentFamily: previousSequence?.visualPlan?.selected_intent_family,
       previousLayoutPlan: previousSequence?.layoutPlan
     });
-    const resolved = {
-      ...sequence,
-      layoutPlan
-    };
+    const resolved = applyResolvedLayoutPlan(sequence, layoutPlan);
     previousSequence = resolved;
     return resolved;
   });

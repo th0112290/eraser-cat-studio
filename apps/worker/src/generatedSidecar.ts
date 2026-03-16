@@ -1,5 +1,397 @@
 import type { SidecarControlNetPresetId, SidecarImpactPresetId, SidecarQcPresetId } from "@ec/profiles";
 
+export const SIDECAR_SIGNAL_KEYS = ["motion", "subtitle", "chart", "identity"] as const;
+
+export type SidecarSignalKey = (typeof SIDECAR_SIGNAL_KEYS)[number];
+export type SidecarChannelDomain = "economy" | "medical" | "default";
+export type SidecarJudgeSeverity = "INFO" | "WARN" | "ERROR";
+export type SidecarJudgeStatus = "pass" | "warn" | "fail";
+
+export type SidecarJudgeArtifactRef = {
+  kind: "video" | "image" | "json" | "text";
+  path: string;
+  label?: string;
+};
+
+export type SidecarJudgeSignalHint = {
+  score?: number | null;
+  confidence?: number | null;
+  reasons?: string[];
+  evidence?: Record<string, unknown>;
+};
+
+export type SidecarJudgeCandidateInput = {
+  shotId: string;
+  candidateId: string;
+  expectedDurationSeconds: number;
+  outputDurationSeconds?: number | null;
+  outputVideoPath?: string | null;
+  referenceImagePath?: string | null;
+  narration?: string | null;
+  subtitleText?: string | null;
+  subtitlesExpected?: boolean;
+  chartExpected?: boolean;
+  signalHints?: Partial<Record<SidecarSignalKey, SidecarJudgeSignalHint>>;
+  artifacts?: SidecarJudgeArtifactRef[];
+  metadata?: Record<string, unknown>;
+};
+
+export type SidecarJudgeProviderDescriptor = {
+  kind: "local_vlm";
+  mode: string;
+  model: string | null;
+  prompt_version: string;
+};
+
+export type SidecarStandardizedSignalScore = {
+  schema_version: "1.0";
+  signal: SidecarSignalKey;
+  score: number;
+  normalized_score: number;
+  threshold: number;
+  weight: number;
+  confidence: number;
+  status: SidecarJudgeStatus;
+  reasons: string[];
+  evidence: Record<string, unknown>;
+};
+
+export type SidecarScorecard = {
+  schema_version: "1.0";
+  overall_score: number;
+  normalized_overall_score: number;
+  confidence: number;
+  accepted: boolean;
+  failing_signals: SidecarSignalKey[];
+  warning_signals: SidecarSignalKey[];
+  signals: Record<SidecarSignalKey, SidecarStandardizedSignalScore>;
+};
+
+export type SidecarJudgeCheck = {
+  name: string;
+  passed: boolean;
+  severity: "WARN" | "ERROR";
+  details: string;
+};
+
+export type SidecarJudgeIssue = {
+  code: string;
+  severity: SidecarJudgeSeverity;
+  message: string;
+  shotId?: string;
+  details?: Record<string, unknown>;
+};
+
+export type AdaptiveBestOfPolicyConfig = {
+  policy_version: "adaptive_best_of_2_3_v1";
+  channel_domain: SidecarChannelDomain;
+  initial_candidate_count: 2;
+  max_candidate_count: 3;
+  overall_pass_threshold: number;
+  signal_thresholds: Record<SidecarSignalKey, number>;
+  signal_weights: Record<SidecarSignalKey, number>;
+  warning_buffer: number;
+  escalation_margin_threshold: number;
+  escalation_overall_threshold: number;
+  escalation_confidence_threshold: number;
+  escalation_signal_buffer: number;
+};
+
+export type AdaptiveBestOfPolicyOverrides = Partial<
+  Omit<
+    AdaptiveBestOfPolicyConfig,
+    | "policy_version"
+    | "channel_domain"
+    | "initial_candidate_count"
+    | "max_candidate_count"
+    | "signal_thresholds"
+    | "signal_weights"
+  >
+> & {
+  signal_thresholds?: Partial<Record<SidecarSignalKey, number>>;
+  signal_weights?: Partial<Record<SidecarSignalKey, number>>;
+};
+
+export type SidecarJudgeRunCandidate = {
+  candidate_id: string;
+  provider_summary: string;
+  provider_confidence: number;
+  accepted: boolean;
+  scorecard: SidecarScorecard;
+  raw_response?: Record<string, unknown>;
+};
+
+export type SidecarJudgeRun = {
+  stage: string;
+  checks: SidecarJudgeCheck[];
+  issues: SidecarJudgeIssue[];
+  passed: boolean;
+  errorCount: number;
+  warnCount: number;
+  evaluated_candidate_ids: string[];
+  ranked_candidate_ids: string[];
+  selected_candidate_id: string | null;
+  scorecards: SidecarJudgeRunCandidate[];
+  policy_snapshot: AdaptiveBestOfPolicyConfig;
+};
+
+export type AdaptiveBestOfPolicyAudit = AdaptiveBestOfPolicyConfig & {
+  attempted_candidate_ids: string[];
+  initial_candidate_ids: string[];
+  escalated_to_best_of_3: boolean;
+  escalation_reason: string | null;
+  selected_candidate_id: string | null;
+};
+
+export type SidecarJudgeArtifact = {
+  schema_version: "1.0";
+  artifact_kind: "sidecar_visual_judge";
+  generated_at: string;
+  final_passed: boolean;
+  final_stage: string;
+  fallback_steps_applied: string[];
+  selected_candidate_id: string | null;
+  attempt_count: number;
+  provider: SidecarJudgeProviderDescriptor;
+  policy: AdaptiveBestOfPolicyAudit;
+  runs: SidecarJudgeRun[];
+};
+
+type RawSignalScoreInput = {
+  score?: number | null;
+  confidence?: number | null;
+  reasons?: string[];
+  evidence?: Record<string, unknown>;
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function round(value: number, digits = 2): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function signalWeightsForDomain(domain: SidecarChannelDomain): Record<SidecarSignalKey, number> {
+  if (domain === "medical") {
+    return {
+      motion: 0.18,
+      subtitle: 0.28,
+      chart: 0.14,
+      identity: 0.4
+    };
+  }
+  if (domain === "economy") {
+    return {
+      motion: 0.24,
+      subtitle: 0.22,
+      chart: 0.3,
+      identity: 0.24
+    };
+  }
+  return {
+    motion: 0.24,
+    subtitle: 0.24,
+    chart: 0.22,
+    identity: 0.3
+  };
+}
+
+function signalThresholdsForDomain(domain: SidecarChannelDomain): Record<SidecarSignalKey, number> {
+  if (domain === "medical") {
+    return {
+      motion: 58,
+      subtitle: 68,
+      chart: 60,
+      identity: 72
+    };
+  }
+  if (domain === "economy") {
+    return {
+      motion: 60,
+      subtitle: 64,
+      chart: 68,
+      identity: 64
+    };
+  }
+  return {
+    motion: 60,
+    subtitle: 64,
+    chart: 64,
+    identity: 68
+  };
+}
+
+export function resolveAdaptiveBestOfPolicy(
+  domain: SidecarChannelDomain,
+  overrides: AdaptiveBestOfPolicyOverrides = {}
+): AdaptiveBestOfPolicyConfig {
+  const baseThresholds = signalThresholdsForDomain(domain);
+  const baseWeights = signalWeightsForDomain(domain);
+  return {
+    policy_version: "adaptive_best_of_2_3_v1",
+    channel_domain: domain,
+    initial_candidate_count: 2,
+    max_candidate_count: 3,
+    overall_pass_threshold: overrides.overall_pass_threshold ?? (domain === "medical" ? 74 : 72),
+    signal_thresholds: {
+      ...baseThresholds,
+      ...(overrides.signal_thresholds ?? {})
+    },
+    signal_weights: {
+      ...baseWeights,
+      ...(overrides.signal_weights ?? {})
+    },
+    warning_buffer: overrides.warning_buffer ?? 4,
+    escalation_margin_threshold: overrides.escalation_margin_threshold ?? 6,
+    escalation_overall_threshold: overrides.escalation_overall_threshold ?? (domain === "medical" ? 80 : 76),
+    escalation_confidence_threshold: overrides.escalation_confidence_threshold ?? 0.75,
+    escalation_signal_buffer: overrides.escalation_signal_buffer ?? 3
+  };
+}
+
+export function buildSidecarSignalScore(input: {
+  signal: SidecarSignalKey;
+  threshold: number;
+  weight: number;
+  warning_buffer: number;
+  raw: RawSignalScoreInput;
+}): SidecarStandardizedSignalScore {
+  const score = round(clamp(input.raw.score ?? 0, 0, 100));
+  const confidence = round(clamp(input.raw.confidence ?? 0.5, 0, 1), 3);
+  const threshold = round(clamp(input.threshold, 0, 100));
+  const status: SidecarJudgeStatus =
+    score < threshold ? "fail" : score < threshold + input.warning_buffer ? "warn" : "pass";
+
+  return {
+    schema_version: "1.0",
+    signal: input.signal,
+    score,
+    normalized_score: round(score / 100, 4),
+    threshold,
+    weight: round(clamp(input.weight, 0, 1), 4),
+    confidence,
+    status,
+    reasons: uniqueStrings(input.raw.reasons ?? []),
+    evidence: { ...(input.raw.evidence ?? {}) }
+  };
+}
+
+export function buildSidecarScorecard(input: {
+  policy: AdaptiveBestOfPolicyConfig;
+  signals: Record<SidecarSignalKey, RawSignalScoreInput>;
+}): SidecarScorecard {
+  const standardizedSignals = Object.fromEntries(
+    SIDECAR_SIGNAL_KEYS.map((signal) => [
+      signal,
+      buildSidecarSignalScore({
+        signal,
+        threshold: input.policy.signal_thresholds[signal],
+        weight: input.policy.signal_weights[signal],
+        warning_buffer: input.policy.warning_buffer,
+        raw: input.signals[signal]
+      })
+    ])
+  ) as Record<SidecarSignalKey, SidecarStandardizedSignalScore>;
+
+  let weightedScore = 0;
+  let confidenceTotal = 0;
+  const failingSignals: SidecarSignalKey[] = [];
+  const warningSignals: SidecarSignalKey[] = [];
+
+  for (const signal of SIDECAR_SIGNAL_KEYS) {
+    const current = standardizedSignals[signal];
+    weightedScore += current.score * current.weight;
+    confidenceTotal += current.confidence;
+    if (current.status === "fail") {
+      failingSignals.push(signal);
+    } else if (current.status === "warn") {
+      warningSignals.push(signal);
+    }
+  }
+
+  const overallScore = round(weightedScore);
+  const confidence = round(confidenceTotal / SIDECAR_SIGNAL_KEYS.length, 3);
+
+  return {
+    schema_version: "1.0",
+    overall_score: overallScore,
+    normalized_overall_score: round(overallScore / 100, 4),
+    confidence,
+    accepted: failingSignals.length === 0 && overallScore >= input.policy.overall_pass_threshold,
+    failing_signals: failingSignals,
+    warning_signals: warningSignals,
+    signals: standardizedSignals
+  };
+}
+
+export function compareSidecarScorecards(left: SidecarScorecard, right: SidecarScorecard): number {
+  if (left.accepted !== right.accepted) {
+    return left.accepted ? -1 : 1;
+  }
+  if (left.overall_score !== right.overall_score) {
+    return right.overall_score - left.overall_score;
+  }
+  if (left.failing_signals.length !== right.failing_signals.length) {
+    return left.failing_signals.length - right.failing_signals.length;
+  }
+  const leftWeakest = Math.min(...SIDECAR_SIGNAL_KEYS.map((signal) => left.signals[signal].score));
+  const rightWeakest = Math.min(...SIDECAR_SIGNAL_KEYS.map((signal) => right.signals[signal].score));
+  if (leftWeakest !== rightWeakest) {
+    return rightWeakest - leftWeakest;
+  }
+  if (left.confidence !== right.confidence) {
+    return right.confidence - left.confidence;
+  }
+  return 0;
+}
+
+export function countJudgeIssues(issues: SidecarJudgeIssue[]): { errorCount: number; warnCount: number } {
+  let errorCount = 0;
+  let warnCount = 0;
+  for (const issue of issues) {
+    if (issue.severity === "ERROR") {
+      errorCount += 1;
+      continue;
+    }
+    if (issue.severity === "WARN") {
+      warnCount += 1;
+    }
+  }
+  return { errorCount, warnCount };
+}
+
+export function createJudgeIssue(
+  code: string,
+  severity: SidecarJudgeSeverity,
+  message: string,
+  shotId?: string,
+  details?: Record<string, unknown>
+): SidecarJudgeIssue {
+  return {
+    code,
+    severity,
+    message,
+    shotId,
+    details
+  };
+}
+
+export function createJudgeCheck(
+  name: string,
+  passed: boolean,
+  severity: "WARN" | "ERROR",
+  details: string
+): SidecarJudgeCheck {
+  return {
+    name,
+    passed,
+    severity,
+    details
+  };
+}
+
 export type SidecarBackendCapability =
   | "wan"
   | "hunyuan15_local_i2v"

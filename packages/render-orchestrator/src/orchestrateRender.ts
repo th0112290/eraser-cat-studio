@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createValidator } from "@ec/shared";
 import type {
+  AlignmentHook,
   ChartDataRow,
   DeterministicSequence,
   DeterministicVisualPlanSummary,
@@ -19,13 +20,16 @@ import type {
   RenderableShot,
   RenderableShotsDocument,
   ShotSidecarPlan,
+  SubtitleAlignmentProvider,
   VisualQcIssue,
   VisualQcReport
 } from "./types";
 import {
   applyNarrationAlignmentToSequences,
   buildNarrationAlignmentHook,
-  normalizeNarrationAlignmentDocument
+  createFailoverSubtitleAlignmentProvider,
+  normalizeNarrationAlignmentDocument,
+  resolveAlignmentHook
 } from "./alignment";
 import { applyAlignmentAwareActingTimeline } from "./actingTimeline";
 import {
@@ -73,6 +77,7 @@ type RenderLog = {
   shots_path: string;
   output_path: string;
   srt_path: string;
+  narration_alignment_path: string;
   qc_report_path: string;
   episode_regression_report_path: string;
   sidecar_plan_path: string;
@@ -290,6 +295,94 @@ function resolveTargetIndexFromId(targetId: string | undefined, rowCount: number
   return clamp(hashSeed(targetId) % rowCount, 0, rowCount - 1);
 }
 
+function resolveVisualFocusTargetId(
+  primaryVisualObject: DeterministicVisualObject | undefined
+): string | undefined {
+  const lookTargetId = primaryVisualObject?.anchors?.find(
+    (anchor) => anchor.type === "look_target" && isNonEmptyString(anchor.target_id)
+  )?.target_id;
+  if (isNonEmptyString(lookTargetId)) {
+    return lookTargetId;
+  }
+
+  const pointerAnchorTargetId = primaryVisualObject?.anchors?.find(
+    (anchor) => anchor.type === "pointer_anchor" && isNonEmptyString(anchor.target_id)
+  )?.target_id;
+  if (isNonEmptyString(pointerAnchorTargetId)) {
+    return pointerAnchorTargetId;
+  }
+
+  const pointerTargetId = primaryVisualObject?.pointerTargetIds?.find((targetId) => isNonEmptyString(targetId));
+  if (isNonEmptyString(pointerTargetId)) {
+    return pointerTargetId;
+  }
+
+  return undefined;
+}
+
+function resolvePreferredPointerTargetId(input: {
+  pointTargetId?: string;
+  highlightTargetId?: string;
+  primaryVisualObject?: DeterministicVisualObject;
+  preferVisualFocus?: boolean;
+}): string | undefined {
+  if (isNonEmptyString(input.pointTargetId)) {
+    return input.pointTargetId;
+  }
+
+  if (isNonEmptyString(input.highlightTargetId)) {
+    return input.highlightTargetId;
+  }
+
+  if (input.preferVisualFocus) {
+    const visualFocusTargetId = resolveVisualFocusTargetId(input.primaryVisualObject);
+    if (visualFocusTargetId) {
+      return visualFocusTargetId;
+    }
+  }
+
+  return undefined;
+}
+
+function resolvePointerTargetIndexFromVisualObject(input: {
+  primaryVisualObject?: DeterministicVisualObject;
+  preferredTargetId?: string;
+  pointerTargetCount: number;
+  fallbackIndex: number;
+}): number {
+  const targetId = input.preferredTargetId?.trim();
+  if (targetId) {
+    const pointerAnchors = input.primaryVisualObject?.anchors?.filter((anchor) => anchor.type === "pointer_anchor") ?? [];
+    const pointerAnchorIndex = pointerAnchors.findIndex((anchor) => anchor.target_id === targetId);
+    if (pointerAnchorIndex >= 0) {
+      return pointerAnchorIndex;
+    }
+
+    const pointerTargetIds = input.primaryVisualObject?.pointerTargetIds ?? [];
+    const pointerTargetIndex = pointerTargetIds.findIndex((candidate) => candidate === targetId);
+    if (pointerTargetIndex >= 0) {
+      return pointerTargetIndex;
+    }
+  }
+
+  return resolveTargetIndexFromId(targetId, input.pointerTargetCount, input.fallbackIndex);
+}
+
+function applySequenceLayoutFields(
+  sequence: DeterministicSequence,
+  layoutPlan: NonNullable<DeterministicSequence["layoutPlan"]>,
+  pointerTip: DeterministicSequence["pointerTip"]
+): DeterministicSequence {
+  return {
+    ...sequence,
+    layoutPlan,
+    visualBox: layoutPlan.primaryVisualBox,
+    narrationBox: layoutPlan.narrationBox,
+    pointerReachableZone: layoutPlan.pointerReachability,
+    pointerTip
+  };
+}
+
 function resolvePrimaryVisualObject(
   visualObjects: DeterministicVisualObject[] | undefined
 ): DeterministicVisualObject | undefined {
@@ -448,6 +541,12 @@ function buildDeterministicSequences(
 
     const highlightTargetId = shot.chart?.highlights?.[0]?.target_id;
     const pointTargetId = shot.character.tracks.point_track?.[0]?.target_id;
+    const preferredPointerTargetId = resolvePreferredPointerTargetId({
+      pointTargetId,
+      highlightTargetId,
+      primaryVisualObject,
+      preferVisualFocus: !shot.chart
+    });
     const pointerTargetCount = resolvePrimaryVisualPointerTargetCount({
       kind: primaryVisualObject?.kind,
       chartData,
@@ -455,11 +554,12 @@ function buildDeterministicSequences(
       anchors: primaryVisualObject?.anchors
     });
     const fallbackPointerIndex = Math.min(2, Math.max(0, pointerTargetCount - 1));
-    const pointerTargetIndex = resolveTargetIndexFromId(
-      pointTargetId ?? highlightTargetId,
+    const pointerTargetIndex = resolvePointerTargetIndexFromVisualObject({
+      primaryVisualObject,
+      preferredTargetId: preferredPointerTargetId,
       pointerTargetCount,
-      fallbackPointerIndex
-    );
+      fallbackIndex: fallbackPointerIndex
+    });
     const pointerEnabled =
       pointerTargetCount > 0 &&
       (Boolean(shot.chart) ||
@@ -485,7 +585,8 @@ function buildDeterministicSequences(
       expectOcclusion
     });
     const pointerAnchor = pointerEnabled
-      ? computePrimaryVisualAnchorInRect({
+      ? layoutPlan.pointerReachability.targetPoint ??
+        computePrimaryVisualAnchorInRect({
           kind: primaryVisualObject?.kind,
           chartData,
           pointerTargetIds: primaryVisualObject?.pointerTargetIds,
@@ -495,7 +596,7 @@ function buildDeterministicSequences(
         })
       : undefined;
 
-    return {
+    return applySequenceLayoutFields({
       shotId: shot.shot_id,
       shotType: shot.shot_type ?? "talk",
       renderMode: shot.render_mode ?? "deterministic",
@@ -577,7 +678,7 @@ function buildDeterministicSequences(
         }))
       },
       transitionHint: resolveTransitionHint(shot)
-    };
+    }, layoutPlan, pointerAnchor);
   });
 }
 
@@ -1082,6 +1183,9 @@ function resolvePaths(input: OrchestrateRenderInput) {
   const repoRoot = resolveRepoRoot();
   const shotsPath = path.resolve(input.shotsPath ?? path.join(repoRoot, "out", "shots.json"));
   const outputPath = path.resolve(input.outputPath ?? path.join(repoRoot, "out", "render_episode.mp4"));
+  const narrationAlignmentArtifactPath = path.resolve(
+    path.join(path.dirname(outputPath), "narration_alignment.json")
+  );
   const srtPath = path.resolve(input.srtPath ?? path.join(repoRoot, "out", "render_episode.srt"));
   const qcReportPath = path.resolve(
     input.qcReportPath ?? path.join(path.dirname(outputPath), "qc_report.json")
@@ -1102,6 +1206,7 @@ function resolvePaths(input: OrchestrateRenderInput) {
   return {
     shotsPath,
     outputPath,
+    narrationAlignmentArtifactPath,
     srtPath,
     qcReportPath,
     episodeRegressionReportPath,
@@ -1111,6 +1216,217 @@ function resolvePaths(input: OrchestrateRenderInput) {
     videoDir,
     remotionCliPath
   };
+}
+
+function tokenizeNarrationWords(text: string): string[] {
+  return text
+    .match(/[A-Za-z0-9']+/g)
+    ?.map((token) => token.trim())
+    .filter((token) => token.length > 0) ?? [];
+}
+
+function countNarrationVowelGroups(text: string): number {
+  return text.toLowerCase().match(/[aeiouy]+/g)?.length ?? 0;
+}
+
+function resolveNarrationViseme(word: string): "mouth_closed" | "mouth_open_small" | "mouth_open_wide" | "mouth_round_o" {
+  const normalized = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (normalized.length === 0) {
+    return "mouth_closed";
+  }
+  if (/(oo|oh|ou|ow|o|u)/.test(normalized)) {
+    return "mouth_round_o";
+  }
+  if (/(aa|ee|ai|ay|ei)|[ae]/.test(normalized)) {
+    return normalized.length >= 4 ? "mouth_open_wide" : "mouth_open_small";
+  }
+  return "mouth_open_small";
+}
+
+function resolveNarrationVisemeIntensity(
+  viseme: ReturnType<typeof resolveNarrationViseme>,
+  word: string
+): number {
+  const syllableWeight = Math.max(1, countNarrationVowelGroups(word));
+  if (viseme === "mouth_open_wide") {
+    return Math.min(1, 0.72 + syllableWeight * 0.1);
+  }
+  if (viseme === "mouth_round_o") {
+    return Math.min(0.92, 0.62 + syllableWeight * 0.08);
+  }
+  if (viseme === "mouth_open_small") {
+    return Math.min(0.8, 0.48 + syllableWeight * 0.06);
+  }
+  return 0;
+}
+
+function resolveNarrationWordWeight(word: string): number {
+  return Math.max(1, Math.min(6, word.length * 0.18 + countNarrationVowelGroups(word) * 0.85));
+}
+
+function buildFallbackNarrationAlignmentArtifact(
+  sequences: DeterministicSequence[],
+  fps: number
+): {
+  schema_version: "1.0";
+  generated_at: string;
+  strategy: string;
+  provider: string;
+  sourceKind: "heuristic" | "provider";
+  audio_duration_sec: number;
+  planned_duration_sec: number;
+  shots: Array<Record<string, unknown>>;
+} {
+  const totalDurationSec = sequences.reduce((maxSec, sequence) => {
+    return Math.max(maxSec, (sequence.from + sequence.duration) / Math.max(1, fps));
+  }, 0);
+
+  return {
+    schema_version: "1.0",
+    generated_at: new Date().toISOString(),
+    strategy: "render_orchestrator_fallback_v1",
+    provider: sequences.some((sequence) => sequence.alignment?.sourceKind === "provider")
+      ? "render_orchestrator_provider_passthrough"
+      : "render_orchestrator_fallback",
+    sourceKind: sequences.some((sequence) => sequence.alignment?.sourceKind === "provider") ? "provider" : "heuristic",
+    audio_duration_sec: totalDurationSec,
+    planned_duration_sec: totalDurationSec,
+    shots: sequences.map((sequence) => {
+      const startSec = sequence.from / Math.max(1, fps);
+      const durationSec = Math.max(1, sequence.duration) / Math.max(1, fps);
+      const endSec = startSec + durationSec;
+
+      if (sequence.alignment) {
+        return {
+          shotId: sequence.shotId,
+          startSec,
+          endSec,
+          durationSec,
+          text: sequence.narration,
+          provider: sequence.alignment.provider,
+          ...(sequence.alignment.version ? { version: sequence.alignment.version } : {}),
+          sourceKind: sequence.alignment.sourceKind,
+          words: sequence.alignment.words,
+          visemeCues: sequence.alignment.visemeCues,
+          pauseMap: sequence.alignment.pauseMap,
+          emphasisWords: sequence.alignment.emphasisWords
+        };
+      }
+
+      const narrationWords = tokenizeNarrationWords(sequence.narration);
+      if (narrationWords.length === 0) {
+        return {
+          shotId: sequence.shotId,
+          startSec,
+          endSec,
+          durationSec,
+          text: sequence.narration,
+          words: [],
+          visemeCues: [
+            {
+              timeSec: startSec,
+              localTimeSec: 0,
+              viseme: "mouth_closed",
+              intensity: 0
+            },
+            {
+              timeSec: endSec,
+              localTimeSec: durationSec,
+              viseme: "mouth_closed",
+              intensity: 0
+            }
+          ]
+        };
+      }
+
+      const leadInSec = Math.min(0.12, durationSec * 0.08);
+      const tailOutSec = Math.min(0.14, durationSec * 0.1);
+      const speechStartSec = startSec + leadInSec;
+      const speechEndSec = Math.max(speechStartSec + 0.1, endSec - tailOutSec);
+      const speakingDurationSec = Math.max(0.1, speechEndSec - speechStartSec);
+      const totalWeight = narrationWords.reduce((sum, word) => sum + resolveNarrationWordWeight(word), 0);
+      let cursor = speechStartSec;
+
+      const words = narrationWords.map((word, index) => {
+        const ratio = resolveNarrationWordWeight(word) / Math.max(1, totalWeight);
+        const rawDuration = speakingDurationSec * ratio;
+        const gapSec = Math.min(0.05, rawDuration * 0.18);
+        const wordStartSec = cursor;
+        const isLast = index === narrationWords.length - 1;
+        const wordEndSec = isLast
+          ? speechEndSec
+          : Math.min(speechEndSec, wordStartSec + Math.max(0.06, rawDuration - gapSec));
+        cursor = isLast ? speechEndSec : Math.min(speechEndSec, wordEndSec + gapSec);
+        const viseme = resolveNarrationViseme(word);
+        return {
+          text: word,
+          startSec: wordStartSec,
+          endSec: wordEndSec,
+          localStartSec: Math.max(0, wordStartSec - startSec),
+          localEndSec: Math.max(0, wordEndSec - startSec),
+          viseme,
+          intensity: resolveNarrationVisemeIntensity(viseme, word),
+          emphasis: false
+        };
+      });
+
+      return {
+        shotId: sequence.shotId,
+        startSec,
+        endSec,
+        durationSec,
+        text: sequence.narration,
+        words,
+        visemeCues: [
+          {
+            timeSec: startSec,
+            localTimeSec: 0,
+            viseme: "mouth_closed",
+            intensity: 0
+          },
+          ...words.flatMap((word) => [
+            {
+              timeSec: word.startSec,
+              localTimeSec: word.localStartSec,
+              viseme: word.viseme,
+              intensity: word.intensity
+            },
+            {
+              timeSec: word.endSec,
+              localTimeSec: word.localEndSec,
+              viseme: "mouth_closed" as const,
+              intensity: 0
+            }
+          ]),
+          {
+            timeSec: endSec,
+            localTimeSec: durationSec,
+            viseme: "mouth_closed",
+            intensity: 0
+          }
+        ]
+      };
+    })
+  };
+}
+
+function persistNarrationAlignmentArtifact(
+  sourcePath: string | undefined,
+  targetPath: string,
+  sequences: DeterministicSequence[],
+  fps: number
+): void {
+  ensureDir(path.dirname(targetPath));
+  if (sourcePath && fs.existsSync(sourcePath)) {
+    const resolvedSourcePath = path.resolve(sourcePath);
+    const resolvedTargetPath = path.resolve(targetPath);
+    if (resolvedSourcePath !== resolvedTargetPath) {
+      fs.copyFileSync(resolvedSourcePath, resolvedTargetPath);
+    }
+    return;
+  }
+
+  writeJson(targetPath, buildFallbackNarrationAlignmentArtifact(sequences, fps));
 }
 
 function getFinalQcIssues(report: VisualQcReport): VisualQcIssue[] {
@@ -1127,6 +1443,13 @@ function getQcCounts(report: VisualQcReport): { errors: number; warnings: number
     errors: finalRun.errorCount,
     warnings: finalRun.warnCount
   };
+}
+
+function createStaticAlignmentProvider(hook?: AlignmentHook): SubtitleAlignmentProvider | undefined {
+  if (!hook) {
+    return undefined;
+  }
+  return async () => hook;
 }
 
 export async function orchestrateRenderEpisode(input: OrchestrateRenderInput = {}): Promise<OrchestrateRenderResult> {
@@ -1258,11 +1581,18 @@ export async function orchestrateRenderEpisode(input: OrchestrateRenderInput = {
     }));
     freezeCharacterPose = qcEvaluation.freezeCharacterPose;
 
-    subtitles = buildSubtitleCues(
+    const baseSubtitles = buildSubtitleCues(sequences, preset.fps);
+    const fallbackAlignmentHook = buildNarrationAlignmentHook(preset.fps, narrationAlignmentByShot, input.alignmentHook);
+    const resolvedAlignmentHook = await resolveAlignmentHook({
       sequences,
-      preset.fps,
-      buildNarrationAlignmentHook(preset.fps, narrationAlignmentByShot, input.alignmentHook)
-    );
+      cues: baseSubtitles,
+      fps: preset.fps,
+      provider: createFailoverSubtitleAlignmentProvider(
+        input.subtitleAlignmentProvider,
+        createStaticAlignmentProvider(fallbackAlignmentHook)
+      )
+    });
+    subtitles = resolvedAlignmentHook ? buildSubtitleCues(sequences, preset.fps, resolvedAlignmentHook) : baseSubtitles;
     totalFrames = sequences.reduce((maxFrame, sequence) => {
       return Math.max(maxFrame, sequence.from + sequence.duration);
     }, 0);
@@ -1279,6 +1609,12 @@ export async function orchestrateRenderEpisode(input: OrchestrateRenderInput = {
     };
 
     writeJson(paths.propsPath, props);
+    persistNarrationAlignmentArtifact(
+      input.narrationAlignmentPath,
+      paths.narrationAlignmentArtifactPath,
+      sequences,
+      preset.fps
+    );
     writeText(paths.srtPath, toSrt(subtitles, preset.fps));
     episodeRegressionReport = buildEpisodeRegressionReport({
       episodeId: shotsDoc.episode.episode_id,
@@ -1327,6 +1663,7 @@ export async function orchestrateRenderEpisode(input: OrchestrateRenderInput = {
       shots_path: paths.shotsPath,
       output_path: paths.outputPath,
       srt_path: paths.srtPath,
+      narration_alignment_path: paths.narrationAlignmentArtifactPath,
       qc_report_path: paths.qcReportPath,
       episode_regression_report_path: paths.episodeRegressionReportPath,
       sidecar_plan_path: paths.sidecarPlanPath,
@@ -1360,6 +1697,7 @@ export async function orchestrateRenderEpisode(input: OrchestrateRenderInput = {
     return {
       outputPath: paths.outputPath,
       srtPath: paths.srtPath,
+      narrationAlignmentPath: paths.narrationAlignmentArtifactPath,
       qcReportPath: paths.qcReportPath,
       episodeRegressionReportPath: paths.episodeRegressionReportPath,
       renderLogPath: paths.renderLogPath,
@@ -1460,6 +1798,7 @@ export async function orchestrateRenderEpisode(input: OrchestrateRenderInput = {
       shots_path: paths.shotsPath,
       output_path: paths.outputPath,
       srt_path: paths.srtPath,
+      narration_alignment_path: paths.narrationAlignmentArtifactPath,
       qc_report_path: paths.qcReportPath,
       episode_regression_report_path: paths.episodeRegressionReportPath,
       sidecar_plan_path: paths.sidecarPlanPath,

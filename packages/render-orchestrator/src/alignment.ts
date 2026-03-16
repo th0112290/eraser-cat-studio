@@ -7,7 +7,9 @@ import type {
   DeterministicSequenceAlignmentPauseStrength,
   DeterministicSequenceAlignmentViseme,
   DeterministicSequenceAlignmentVisemeCue,
-  DeterministicSequenceAlignmentWord
+  DeterministicSequenceAlignmentWord,
+  SubtitleAlignmentProvider,
+  SubtitleAlignmentProviderContext
 } from "./types";
 
 type NarrationAlignmentWordLike = {
@@ -753,4 +755,46 @@ export function buildNarrationAlignmentHook(
 
     return fallbackHook?.(cue, context) ?? null;
   };
+}
+
+export function createFailoverSubtitleAlignmentProvider(
+  ...providers: Array<SubtitleAlignmentProvider | null | undefined>
+): SubtitleAlignmentProvider | undefined {
+  const activeProviders = providers.filter(
+    (provider): provider is SubtitleAlignmentProvider => typeof provider === "function"
+  );
+  if (activeProviders.length === 0) {
+    return undefined;
+  }
+
+  return async (input: SubtitleAlignmentProviderContext) => {
+    for (const provider of activeProviders) {
+      try {
+        const resolved = await provider(input);
+        if (resolved) {
+          return resolved;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return undefined;
+  };
+}
+
+export async function resolveAlignmentHook(input: {
+  sequences: DeterministicSequence[];
+  cues: SubtitleAlignmentProviderContext["cues"];
+  fps: number;
+  provider?: SubtitleAlignmentProvider;
+}): Promise<AlignmentHook | undefined> {
+  if (!input.provider) {
+    return undefined;
+  }
+
+  return (await input.provider({
+    sequences: input.sequences,
+    cues: input.cues,
+    fps: input.fps
+  })) ?? undefined;
 }

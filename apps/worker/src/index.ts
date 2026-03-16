@@ -22,10 +22,16 @@ import {
   resolveSidecarBackendCapability,
   resolveSidecarFallbackChain,
   resolveSidecarRuntimeJudgePolicy,
+  type SidecarChannelDomain,
+  type SidecarJudgeArtifact,
+  type SidecarJudgeArtifactRef,
+  type SidecarJudgeCandidateInput,
   type SidecarBackendCapability,
   type SidecarBrollRequestPack,
   type SidecarRuntimeJudgePolicy
 } from "./generatedSidecar";
+import { createLocalVlmJudgeProvider } from "./localVlmJudgeProvider";
+import { runPremiumSidecarVisualJudge } from "./sidecarVisualJudge";
 import {
   SIDECAR_CONTROLNET_PRESET_MANIFEST,
   SIDECAR_IMPACT_PRESET_MANIFEST,
@@ -698,6 +704,33 @@ function parseStringArray(value: unknown): string[] {
 function readJsonFile<T>(filePath: string): T {
   const raw = fs.readFileSync(filePath, "utf8");
   return JSON.parse(raw) as T;
+}
+
+type NarrationAlignmentLogSummary = {
+  provider: string | null;
+  sourceKind: "heuristic" | "provider" | null;
+  shotCount: number | null;
+};
+
+function readNarrationAlignmentLogSummary(filePath?: string | null): NarrationAlignmentLogSummary | null {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+    if (!isRecord(parsed)) {
+      return null;
+    }
+    const sourceKind =
+      parsed.sourceKind === "heuristic" || parsed.sourceKind === "provider" ? parsed.sourceKind : null;
+    return {
+      provider: typeof parsed.provider === "string" ? parsed.provider : null,
+      sourceKind,
+      shotCount: Array.isArray(parsed.shots) ? parsed.shots.length : null
+    };
+  } catch {
+    return null;
+  }
 }
 
 function logSidecarPresetRolloutStartupHealth(): void {
@@ -7597,6 +7630,303 @@ function normalizeRender(stage: RenderStage, payload: EpisodeJobPayload): Render
   return { ...r, shotsPath: r.shotsPath ?? d.shotsPath, outputPath: r.outputPath ?? d.outputPath, srtPath: r.srtPath ?? d.srtPath, qcReportPath: r.qcReportPath ?? d.qcReportPath, renderLogPath: r.renderLogPath ?? d.renderLogPath };
 }
 
+function resolveSidecarJudgeArtifactPath(episodeId: string, stage: string): string {
+  const out = getEpisodeOutputPaths(episodeId);
+  return path.join(out.outDir, "sidecar_benchmark", stage.toLowerCase(), "sidecar_visual_judge.json");
+}
+
+function readTextFileIfExists(filePath?: string | null): string | null {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function normalizeSidecarChannelDomain(value: unknown): SidecarChannelDomain | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "economy" || normalized === "medical" || normalized === "default") {
+    return normalized;
+  }
+  return null;
+}
+
+function searchChannelDomain(value: unknown): SidecarChannelDomain | null {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = searchChannelDomain(entry);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const direct = normalizeSidecarChannelDomain(value.channel_domain ?? value.channelDomain);
+  if (direct) {
+    return direct;
+  }
+
+  for (const nested of Object.values(value)) {
+    const found = searchChannelDomain(nested);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+type SidecarJudgeShotContext = {
+  fps: number;
+  expectedDurationSeconds: number;
+  chartExpected: boolean;
+  channelDomain: SidecarChannelDomain;
+};
+
+function resolveSidecarJudgeShotContext(shotsPath: string): SidecarJudgeShotContext {
+  if (!fs.existsSync(shotsPath)) {
+    return {
+      fps: 30,
+      expectedDurationSeconds: 0,
+      chartExpected: false,
+      channelDomain: normalizeSidecarChannelDomain(process.env.SIDECAR_JUDGE_CHANNEL_DOMAIN) ?? "default"
+    };
+  }
+
+  const shotDoc = readJsonFile<ShotDocFileLike & Record<string, unknown>>(shotsPath);
+  const fps = Math.max(1, parseNumber(shotDoc.render?.fps, 30));
+  const shots = Array.isArray(shotDoc.shots) ? shotDoc.shots : [];
+  let maxFrame = 0;
+  let chartExpected = false;
+
+  for (const shot of shots) {
+    const startFrame = parseNumber(shot.start_frame, 0);
+    const durationFrames = Math.max(0, parseNumber(shot.duration_frames, 0));
+    maxFrame = Math.max(maxFrame, startFrame + durationFrames);
+    if (!chartExpected && isRecord(shot.chart)) {
+      chartExpected = true;
+    }
+  }
+
+  return {
+    fps,
+    expectedDurationSeconds: Number((maxFrame / fps).toFixed(3)),
+    chartExpected,
+    channelDomain:
+      normalizeSidecarChannelDomain(process.env.SIDECAR_JUDGE_CHANNEL_DOMAIN) ??
+      searchChannelDomain(shotDoc) ??
+      "default"
+  };
+}
+
+function createConfiguredLocalVlmJudgeProvider() {
+  const command = process.env.SIDECAR_LOCAL_VLM_COMMAND?.trim() || "python";
+  const args = parseJsonStringArray(process.env.SIDECAR_LOCAL_VLM_ARGS_JSON);
+  const resolvedArgs = args.length > 0 ? args : [path.join(REPO_ROOT, "scripts", "runLocalVlmJudge.py")];
+  const cwd = process.env.SIDECAR_LOCAL_VLM_CWD?.trim();
+  const mode = process.env.SIDECAR_LOCAL_VLM_MODE?.trim();
+  const model = process.env.SIDECAR_LOCAL_VLM_MODEL?.trim() || "qwen2.5vl:7b";
+  const promptVersion = process.env.SIDECAR_LOCAL_VLM_PROMPT_VERSION?.trim();
+  const timeoutMs = parsePositiveInt(process.env.SIDECAR_LOCAL_VLM_TIMEOUT_MS, 90_000);
+
+  return createLocalVlmJudgeProvider({
+    command,
+    args: resolvedArgs,
+    ...(cwd ? { cwd } : {}),
+    ...(mode ? { mode } : {}),
+    ...(model ? { model } : {}),
+    ...(promptVersion ? { prompt_version: promptVersion } : {}),
+    timeout_ms: timeoutMs
+  });
+}
+
+function addSidecarJudgeArtifactRef(
+  target: SidecarJudgeArtifactRef[],
+  seen: Set<string>,
+  kind: SidecarJudgeArtifactRef["kind"],
+  filePath: string | null | undefined,
+  label?: string
+): void {
+  if (!filePath) {
+    return;
+  }
+  const resolvedPath = path.resolve(filePath);
+  if (!fs.existsSync(resolvedPath) || seen.has(resolvedPath)) {
+    return;
+  }
+  seen.add(resolvedPath);
+  target.push({
+    kind,
+    path: resolvedPath,
+    ...(label ? { label } : {})
+  });
+}
+
+function extractSidecarPlanArtifacts(planPath: string | null | undefined): SidecarJudgeArtifactRef[] {
+  if (!planPath || !fs.existsSync(planPath)) {
+    return [];
+  }
+  const parsed = readJsonFile<unknown>(planPath);
+  if (!isRecord(parsed) || !Array.isArray(parsed.plans)) {
+    return [];
+  }
+
+  const artifacts: SidecarJudgeArtifactRef[] = [];
+  const seen = new Set<string>();
+  for (const plan of parsed.plans) {
+    if (!isRecord(plan) || !Array.isArray(plan.artifacts)) {
+      continue;
+    }
+    for (const artifact of plan.artifacts) {
+      if (!isRecord(artifact)) {
+        continue;
+      }
+      const artifactPath = typeof artifact.path === "string" ? artifact.path.trim() : "";
+      if (!artifactPath) {
+        continue;
+      }
+      const rawKind = typeof artifact.kind === "string" ? artifact.kind.trim().toLowerCase() : "";
+      const kind: SidecarJudgeArtifactRef["kind"] =
+        rawKind === "video" || rawKind === "image" || rawKind === "json" ? rawKind : "text";
+      addSidecarJudgeArtifactRef(
+        artifacts,
+        seen,
+        kind,
+        artifactPath,
+        typeof artifact.label === "string" ? artifact.label.trim() : undefined
+      );
+    }
+  }
+  return artifacts;
+}
+
+function buildSidecarJudgeCandidates(input: {
+  episodeId: string;
+  stage: RenderStage;
+  shotsPath: string;
+  result: Awaited<ReturnType<typeof orchestrateRenderEpisode>>;
+  videoBrollReferenceImagePath?: string | null;
+  narrationAlignmentPath?: string | null;
+}): {
+  shotId: string;
+  channelDomain: SidecarChannelDomain;
+  candidates: SidecarJudgeCandidateInput[];
+} {
+  const shotContext = resolveSidecarJudgeShotContext(input.shotsPath);
+  const outputDurationSeconds =
+    shotContext.fps > 0 ? Number((Math.max(0, input.result.totalFrames) / shotContext.fps).toFixed(3)) : null;
+  const subtitleText = readTextFileIfExists(input.result.srtPath);
+  const subtitlesExpected = Boolean(subtitleText && subtitleText.trim().length > 0);
+  const shotId = `${input.episodeId}:${input.stage.toLowerCase()}`;
+  const artifacts: SidecarJudgeArtifactRef[] = [];
+  const seen = new Set<string>();
+  addSidecarJudgeArtifactRef(artifacts, seen, "video", input.result.outputPath, "render_output");
+  addSidecarJudgeArtifactRef(artifacts, seen, "text", input.result.srtPath, "render_subtitles");
+  addSidecarJudgeArtifactRef(artifacts, seen, "json", input.result.qcReportPath, "render_qc_report");
+  addSidecarJudgeArtifactRef(artifacts, seen, "json", input.result.renderLogPath, "render_log");
+  addSidecarJudgeArtifactRef(artifacts, seen, "json", input.result.sidecarPlanPath, "shot_sidecar_plan");
+  addSidecarJudgeArtifactRef(artifacts, seen, "json", input.narrationAlignmentPath, "narration_alignment");
+  for (const artifact of extractSidecarPlanArtifacts(input.result.sidecarPlanPath)) {
+    addSidecarJudgeArtifactRef(artifacts, seen, artifact.kind, artifact.path, artifact.label);
+  }
+
+  return {
+    shotId,
+    channelDomain: shotContext.channelDomain,
+    candidates: [
+      {
+        shotId,
+        candidateId: `${input.stage.toLowerCase()}:render_output`,
+        expectedDurationSeconds: shotContext.expectedDurationSeconds,
+        ...(outputDurationSeconds !== null ? { outputDurationSeconds } : {}),
+        outputVideoPath: input.result.outputPath,
+        ...(input.videoBrollReferenceImagePath ? { referenceImagePath: input.videoBrollReferenceImagePath } : {}),
+        ...(subtitleText ? { narration: subtitleText, subtitleText } : {}),
+        subtitlesExpected,
+        chartExpected: shotContext.chartExpected,
+        artifacts,
+        metadata: {
+          source: "render_output",
+          render_stage: input.stage,
+          episode_id: input.episodeId,
+          sidecar_plan_count: input.result.sidecarPlanCount,
+          sidecar_plan_available: input.result.sidecarPlanCount > 0
+        }
+      }
+    ]
+  };
+}
+
+async function persistSidecarJudgeArtifact(
+  episodeId: string,
+  jobDbId: string,
+  artifactPath: string,
+  artifact: SidecarJudgeArtifact
+) {
+  writeJson(artifactPath, artifact);
+  const runs = Array.isArray(artifact.runs) ? artifact.runs : [];
+  const finalRun = runs[runs.length - 1] ?? null;
+  const issues = Array.isArray(finalRun?.issues) ? finalRun.issues : [];
+  const hasError = issues.some((issue) => asString(issue.severity, "INFO").toUpperCase() === "ERROR");
+  const severity = artifact.final_passed ? (hasError ? "WARN" : "INFO") : "ERROR";
+
+  await prisma.qCResult.create({
+    data: {
+      episodeId,
+      check: "SCHEMA",
+      severity,
+      passed: artifact.final_passed,
+      details: toPrismaJson({
+        artifactKind: artifact.artifact_kind,
+        artifactPath,
+        finalStage: artifact.final_stage,
+        generatedAt: artifact.generated_at,
+        fallbackStepsApplied: artifact.fallback_steps_applied ?? [],
+        selectedCandidateId: artifact.selected_candidate_id,
+        attemptCount: artifact.attempt_count,
+        provider: artifact.provider,
+        policy: artifact.policy,
+        finalRunIssues: issues
+      })
+    }
+  });
+
+  for (const issue of issues) {
+    const issueSeverity = asString(issue.severity, "INFO").toUpperCase();
+    if (issueSeverity === "INFO") {
+      continue;
+    }
+    await prisma.qCResult.create({
+      data: {
+        episodeId,
+        check: "SCHEMA",
+        severity: issueSeverity === "ERROR" ? "ERROR" : "WARN",
+        passed: false,
+        details: toPrismaJson({
+          artifactKind: artifact.artifact_kind,
+          artifactPath,
+          code: issue.code ?? "unknown",
+          message: issue.message ?? "unknown",
+          shotId: issue.shotId ?? null,
+          details: issue.details ?? null
+        })
+      }
+    });
+  }
+
+  await logJob(jobDbId, "info", "Sidecar visual judge artifact stored in DB", {
+    artifactPath,
+    finalPassed: artifact.final_passed,
+    selectedCandidateId: artifact.selected_candidate_id,
+    issueCount: issues.length
+  });
+}
+
 async function persistQc(episodeId: string, jobDbId: string, qcReportPath: string) {
   if (!fs.existsSync(qcReportPath)) return;
   const report = JSON.parse(fs.readFileSync(qcReportPath, "utf8")) as StoredQcReport;
@@ -8083,6 +8413,7 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
 
   let partialShotsPath: string | null = null;
   let shotsPathForAttempt = baseShotsPath;
+  let previewAudioResult: Awaited<ReturnType<typeof runPreviewAudioArtifacts>> | null = null;
 
   if (failedShotIds.length > 0) {
     partialShotsPath = createPartialShotsPath(baseShotsPath, failedShotIds, attempt);
@@ -8094,7 +8425,7 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
   const recoveryMode = shotsPathForAttempt !== baseShotsPath;
 
   if (stage === RENDER_PREVIEW_JOB_NAME) {
-    await runPreviewAudioArtifacts(payload.episodeId, jobDbId, baseShotsPath);
+    previewAudioResult = await runPreviewAudioArtifacts(payload.episodeId, jobDbId, baseShotsPath);
     const previewOut = ensureOut(payload.episodeId);
     const candidate = path.join(previewOut.outDir, "narration_alignment.json");
     if (fs.existsSync(candidate)) {
@@ -8107,6 +8438,7 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
       narrationAlignmentPath = candidate;
     }
   }
+  const narrationAlignmentSummary = readNarrationAlignmentLogSummary(narrationAlignmentPath);
 
   await logJob(jobDbId, "info", "Render pipeline started", {
     stage,
@@ -8121,7 +8453,13 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
       characterPackId: episodeForRender?.characterPackId ?? null,
       characterPack: episodeForRender?.characterPack?.json ?? null
     }),
-    narrationAlignmentPath: narrationAlignmentPath ?? null
+    narrationAlignmentPath: narrationAlignmentPath ?? null,
+    narrationAlignmentProvider:
+      narrationAlignmentSummary?.provider ?? previewAudioResult?.alignmentProvider ?? null,
+    narrationAlignmentSourceKind:
+      narrationAlignmentSummary?.sourceKind ?? previewAudioResult?.alignmentSourceKind ?? null,
+    narrationAlignmentShotCount: narrationAlignmentSummary?.shotCount ?? null,
+    narrationAlignmentFallbackUsed: previewAudioResult?.alignmentFallbackUsed ?? null
   });
 
   const videoBrollReferenceContext = resolveCharacterPackReferenceImagePaths({
@@ -8224,8 +8562,54 @@ async function handleRender(stage: RenderStage, payload: EpisodeJobPayload, jobD
     videoBrollReferenceSourceByView: videoBrollReferenceContext.referenceSourceByView,
     videoBrollSpeciesId: videoBrollReferenceContext.speciesId,
     videoBrollGenerationManifestPath: videoBrollReferenceContext.manifestPath,
-    narrationAlignmentPath: narrationAlignmentPath ?? null
+    narrationAlignmentPath: narrationAlignmentPath ?? null,
+    narrationAlignmentProvider:
+      narrationAlignmentSummary?.provider ?? previewAudioResult?.alignmentProvider ?? null,
+    narrationAlignmentSourceKind:
+      narrationAlignmentSummary?.sourceKind ?? previewAudioResult?.alignmentSourceKind ?? null,
+    narrationAlignmentShotCount: narrationAlignmentSummary?.shotCount ?? null,
+    narrationAlignmentFallbackUsed: previewAudioResult?.alignmentFallbackUsed ?? null
   });
+
+  try {
+    const provider = createConfiguredLocalVlmJudgeProvider();
+    const judgeInput = buildSidecarJudgeCandidates({
+      episodeId: payload.episodeId,
+      stage,
+      shotsPath: shotsPathForAttempt,
+      result,
+      videoBrollReferenceImagePath,
+      narrationAlignmentPath
+    });
+    if (judgeInput.candidates.length > 0) {
+      const artifact = await runPremiumSidecarVisualJudge({
+        shotId: judgeInput.shotId,
+        candidates: judgeInput.candidates,
+        provider,
+        channelDomain: judgeInput.channelDomain
+      });
+      const artifactPath = resolveSidecarJudgeArtifactPath(payload.episodeId, stage);
+      await persistSidecarJudgeArtifact(payload.episodeId, jobDbId, artifactPath, artifact);
+      await logJob(jobDbId, "info", "Sidecar visual judge completed", {
+        stage,
+        artifactPath,
+        provider: artifact.provider,
+        policyVersion: artifact.policy.policy_version,
+        channelDomain: artifact.policy.channel_domain,
+        attemptCount: artifact.attempt_count,
+        selectedCandidateId: artifact.selected_candidate_id,
+        finalPassed: artifact.final_passed,
+        finalStage: artifact.final_stage,
+        candidateIds: judgeInput.candidates.map((candidate) => candidate.candidateId)
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await logJob(jobDbId, "warn", "Sidecar visual judge failed", {
+      stage,
+      error: message
+    });
+  }
 
   if (stage === RENDER_PREVIEW_JOB_NAME) {
     await setEpisodeStatus(payload.episodeId, "PREVIEW_READY");
@@ -8285,6 +8669,9 @@ async function runPreviewAudioArtifacts(episodeId: string, jobDbId: string, shot
     licenseLogPath: result.licenseLogPath,
     narrationPath: result.narrationPath,
     alignmentPath: result.alignmentPath,
+    alignmentProvider: result.alignmentProvider,
+    alignmentSourceKind: result.alignmentSourceKind,
+    alignmentFallbackUsed: result.alignmentFallbackUsed,
     sfxEvents: result.placementPlan.sfxEvents.length,
     ttsProvider: tts.providerName,
     ttsFallback: ttsFallbackReason ? tts.fallbackName ?? null : null,

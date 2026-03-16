@@ -50,6 +50,8 @@ export type AudioViseme =
   | "mouth_open_wide"
   | "mouth_round_o";
 
+export type NarrationAlignmentSourceKind = "heuristic" | "provider";
+
 export type NarrationAlignmentWord = {
   shotId: string;
   index: number;
@@ -78,6 +80,9 @@ export type NarrationAlignmentShot = {
   endSec: number;
   durationSec: number;
   text: string;
+  provider?: string;
+  version?: string;
+  sourceKind?: NarrationAlignmentSourceKind;
   words: NarrationAlignmentWord[];
   visemeCues: NarrationAlignmentVisemeCue[];
 };
@@ -85,10 +90,12 @@ export type NarrationAlignmentShot = {
 export type NarrationAlignmentDocument = {
   schema_version: "1.0";
   generated_at: string;
-  strategy: "heuristic_shot_timing_v1";
+  strategy: string;
   voice: string;
   speed: number;
   provider: string;
+  version?: string;
+  sourceKind?: NarrationAlignmentSourceKind;
   narration_path?: string;
   audio_duration_sec: number;
   planned_duration_sec: number;
@@ -130,6 +137,9 @@ export type AudioBuildResult = {
   licenseLogPath: string;
   alignmentPath: string;
   alignment: NarrationAlignmentDocument;
+  alignmentProvider: string;
+  alignmentSourceKind: NarrationAlignmentSourceKind;
+  alignmentFallbackUsed: boolean;
   appliedScriptText: string;
   placementPlan: PlacementPlan;
 };
