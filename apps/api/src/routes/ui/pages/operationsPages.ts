@@ -127,7 +127,7 @@ const OPERATOR_PATTERN_STYLE = `<style>
 </style>`;
 
 function renderOpsStyle(): string {
-  return OPERATOR_PATTERN_STYLE;
+  return OPERATOR_PATTERN_STYLE + renderListPowerStyle();
 }
 
 function renderMetricCard(label: string, value: string, hint: string): string {
@@ -140,8 +140,590 @@ function renderSearchCluster(input: {
   label: string;
   placeholder: string;
   hint: string;
+  urlParam?: string;
 }): string {
-  return `<div class="search-cluster"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}" placeholder="${input.placeholder}" autocomplete="off"/><span class="muted-text">${input.hint}</span></div>`;
+  return `<div class="search-cluster"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}"${
+    input.urlParam ? ` data-url-param="${input.urlParam}"` : ""
+  } placeholder="${input.placeholder}" autocomplete="off"/><span class="muted-text">${input.hint}</span></div>`;
+}
+
+type ListPowerPresetInput = {
+  id: string;
+  label: string;
+  note: string;
+  tags?: string[];
+  match?: "all" | "any";
+  search?: Record<string, string>;
+};
+
+type ListPowerSurfaceInput = {
+  rootId: string;
+  pageKey: string;
+  tableId: string;
+  title: string;
+  intro: string;
+  presets: ListPowerPresetInput[];
+  searchInputIds: string[];
+  viewParam: string;
+  compareParam: string;
+  compareTitle: string;
+  compareIntro: string;
+  compareEmpty: string;
+  selectionHint: string;
+};
+
+type ListPowerCompareMeta = {
+  checkboxId: string;
+  compareId: string;
+  label: string;
+  meta?: string;
+  viewHref?: string;
+  compareHref?: string;
+  retryHref?: string;
+  recoverHref?: string;
+  approveHref?: string;
+  rollbackHref?: string;
+  artifactsHref?: string;
+  copyValue?: string;
+};
+
+export type ListPowerActionInput =
+  | {
+      kind: "link";
+      label: string;
+      href: string;
+      hidden?: boolean;
+    }
+  | {
+      kind: "submit";
+      label: string;
+      action: string;
+      fields?: Array<{ name: string; value: string }>;
+      hidden?: boolean;
+      disabled?: boolean;
+    }
+  | {
+      kind: "compare";
+      label: string;
+      checkboxId: string;
+      hidden?: boolean;
+    }
+  | {
+      kind: "copy";
+      label: string;
+      value: string;
+      hidden?: boolean;
+    };
+
+function sanitizeDomId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "-");
+}
+
+function escapeAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function serializeInlineJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+export function renderListPowerStyle(): string {
+  return `<style>
+.list-power-shell{display:grid;gap:12px}
+.list-power-grid,.list-power-compare-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.list-power-card,.list-power-compare-card{display:grid;gap:8px;padding:12px;border:1px solid #d8e4ec;border-radius:14px;background:linear-gradient(180deg,#fff,#f7fbfc)}
+.list-power-card h3,.list-power-compare-card h3{margin:0;font-size:15px}
+.list-power-card p,.list-power-compare-card p{margin:0;color:#4f6470;line-height:1.5}
+.list-power-chip-row,.list-power-action-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.list-power-chip,.list-power-custom-chip button{border:1px solid #c8d8e5;border-radius:999px;background:#fff;color:#173040;font-size:12px;font-weight:700;padding:6px 10px}
+.list-power-chip.is-active,.list-power-custom-chip button.is-active{border-color:#0f766e;background:#e8f7f5;color:#0f5c58}
+.list-power-custom-chip{display:inline-flex;align-items:center;gap:4px;padding:2px;border:1px solid #d6e2ea;border-radius:999px;background:#fff}
+.list-power-custom-chip [data-remove-view]{border:none;background:transparent;color:#64748b;padding:4px 6px}
+.list-power-action-row form{margin:0}
+.list-power-action,.list-power-action-row button,.list-power-action-row a{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;border-radius:10px;border:1px solid #c7d8e6;background:#fff;color:#173040;font-size:12px;font-weight:700;text-decoration:none}
+.list-power-action:hover,.list-power-action-row button:hover,.list-power-action-row a:hover{text-decoration:none;border-color:#0f766e;background:#eef8f6}
+.list-power-action[aria-disabled="true"],.list-power-action-row [aria-disabled="true"]{opacity:.55;pointer-events:none}
+.list-power-checkbox{display:inline-flex;align-items:center;gap:6px}
+.list-power-checkbox input{margin:0}
+.list-power-checkbox.is-selected{color:#0f766e;font-weight:700}
+.list-power-status{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.list-power-caption{color:#4f6470;line-height:1.45}
+.list-power-compare-panel{display:grid;gap:10px;padding:12px;border:1px solid #d8e4ec;border-radius:16px;background:linear-gradient(180deg,#f8fbfd,#fff)}
+.list-power-compare-card .list-power-meta{color:#4f6470;line-height:1.45}
+.list-power-actions-shell{display:grid;gap:8px}
+.list-power-run-profiles{display:grid;gap:6px;padding-top:6px;border-top:1px dashed #d6e2ea}
+.list-power-inline-note{color:#4f6470;line-height:1.45}
+@media (max-width:720px){.list-power-grid,.list-power-compare-grid{grid-template-columns:1fr}}
+</style>`;
+}
+
+function renderListPowerButton(label: string, attrs: string): string {
+  return `<button type="button" class="list-power-chip" ${attrs}>${label}</button>`;
+}
+
+export function renderListPowerSurface(input: ListPowerSurfaceInput): string {
+  const presetButtons = input.presets
+    .map((preset) =>
+      renderListPowerButton(
+        preset.label,
+        `data-view-id="${escapeAttribute(preset.id)}" data-view-note="${escapeAttribute(preset.note)}"`
+      )
+    )
+    .join("");
+
+  return `<section class="card list-power-shell" id="${input.rootId}" data-list-power-root="1" data-page-key="${escapeAttribute(
+    input.pageKey
+  )}" data-table-id="${escapeAttribute(input.tableId)}" data-view-param="${escapeAttribute(
+    input.viewParam
+  )}" data-compare-param="${escapeAttribute(input.compareParam)}" data-search-inputs="${escapeAttribute(
+    input.searchInputIds.join(",")
+  )}">
+  <div class="section-head">
+    <div>
+      <h2>${input.title}</h2>
+      <p class="section-intro">${input.intro}</p>
+    </div>
+    <div class="list-power-status"><span class="badge muted" data-view-state>all rows</span><span class="badge muted" data-selection-state>0 selected</span></div>
+  </div>
+  <div class="list-power-grid">
+    <article class="list-power-card">
+      <div class="stack">
+        <h3>Saved views</h3>
+        <p>${input.selectionHint}</p>
+      </div>
+      <div class="list-power-chip-row">
+        ${renderListPowerButton("All rows", `data-view-id="all" data-view-note="Reset to the full list"`)}
+        ${presetButtons}
+      </div>
+      <div class="list-power-chip-row" data-custom-views></div>
+      <div class="list-power-action-row">
+        <button type="button" data-save-view>Save current view</button>
+        <button type="button" data-reset-view>Reset view</button>
+      </div>
+      <div class="list-power-caption" data-view-caption>Saved views stay local to this browser, while filters and selections stay mirrored into the URL.</div>
+    </article>
+    <article class="list-power-card">
+      <div class="stack">
+        <h3>Compare selection</h3>
+        <p>${input.compareIntro}</p>
+      </div>
+      <div class="list-power-action-row">
+        <label class="list-power-checkbox"><input type="checkbox" data-select-all/> Select visible rows</label>
+        <a class="list-power-action" href="#${input.rootId}-compare" data-compare-launch aria-disabled="true">Compare selected</a>
+        <button type="button" data-copy-selection data-copy="">Copy ID/path</button>
+      </div>
+      <div class="list-power-caption" data-selection-caption>${input.selectionHint}</div>
+    </article>
+  </div>
+  <div class="list-power-compare-panel" id="${input.rootId}-compare" data-compare-panel hidden>
+    <div class="section-head">
+      <div>
+        <h3>${input.compareTitle}</h3>
+        <p class="section-intro">${input.compareIntro}</p>
+      </div>
+      <div class="list-power-action-row"><button type="button" data-clear-selection>Clear selection</button></div>
+    </div>
+    <div class="list-power-compare-grid" data-compare-grid></div>
+    <div class="notice" data-compare-empty>${input.compareEmpty}</div>
+  </div>
+  <script type="application/json" data-list-presets>${serializeInlineJson(input.presets)}</script>
+</section>`;
+}
+
+function renderHiddenFields(fields: Array<{ name: string; value: string }> = []): string {
+  return fields
+    .map((field) => `<input type="hidden" name="${escapeAttribute(field.name)}" value="${escapeAttribute(field.value)}"/>`)
+    .join("");
+}
+
+function renderCompareDataAttrs(meta: ListPowerCompareMeta): string {
+  const attrs = {
+    "data-compare-select": meta.compareId,
+    "data-compare-label": meta.label,
+    "data-compare-meta": meta.meta ?? "",
+    "data-view-href": meta.viewHref ?? "",
+    "data-compare-href": meta.compareHref ?? "",
+    "data-retry-href": meta.retryHref ?? "",
+    "data-recover-href": meta.recoverHref ?? "",
+    "data-approve-href": meta.approveHref ?? "",
+    "data-rollback-href": meta.rollbackHref ?? "",
+    "data-artifacts-href": meta.artifactsHref ?? "",
+    "data-copy-value": meta.copyValue ?? meta.compareId
+  };
+
+  return Object.entries(attrs)
+    .map(([key, value]) => `${key}="${escapeAttribute(value)}"`)
+    .join(" ");
+}
+
+export function renderListPowerCompareCheckbox(meta: ListPowerCompareMeta): string {
+  return `<label class="list-power-checkbox" for="${escapeAttribute(meta.checkboxId)}"><input id="${escapeAttribute(
+    meta.checkboxId
+  )}" type="checkbox" value="${escapeAttribute(meta.compareId)}" ${renderCompareDataAttrs(meta)}/>Select</label>`;
+}
+
+export function renderListPowerActionBar(actions: ListPowerActionInput[]): string {
+  const actionHtml = actions
+    .filter((action) => !action.hidden)
+    .map((action) => {
+      if (action.kind === "link") {
+        return `<a class="list-power-action" href="${action.href}">${action.label}</a>`;
+      }
+      if (action.kind === "submit") {
+        return `<form method="post" action="${action.action}" class="inline">${renderHiddenFields(action.fields)}<button type="submit" class="list-power-action"${
+          action.disabled ? " disabled" : ""
+        }>${action.label}</button></form>`;
+      }
+      if (action.kind === "compare") {
+        return `<button type="button" class="list-power-action" data-compare-toggle="${escapeAttribute(action.checkboxId)}">${action.label}</button>`;
+      }
+      return `<button type="button" class="list-power-action" data-copy="${escapeAttribute(action.value)}">${action.label}</button>`;
+    })
+    .join("");
+
+  return actionHtml.length > 0 ? `<div class="list-power-action-row">${actionHtml}</div>` : "";
+}
+
+export function renderListPowerScript(): string {
+  return `<script>(() => {
+  if (window.__ecsListPowerBound === '1') return;
+  window.__ecsListPowerBound = '1';
+  const cleanText = (value) => String(value ?? '').trim();
+  const escapeHtml = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const parseJson = (text) => {
+    try {
+      return JSON.parse(String(text || '[]'));
+    } catch {
+      return [];
+    }
+  };
+  const slugify = (value) => cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'saved-view';
+  const storageKey = (pageKey) => 'ecs-ui:list-power:v1:' + pageKey;
+  const parseKoreanDate = (value) => {
+    const match = cleanText(value).match(/^(\\d{4})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})시\\s*(\\d{1,2})분\\s*(\\d{1,2})초$/);
+    if (!match) return null;
+    const [, year, month, day, hour, minute, second] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  };
+  const parseSafeListDate = (value) => {
+    const match = cleanText(value).match(/^(\\d{4})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})[^\\d]+(\\d{1,2})[^\\d]+(\\d{1,2})/);
+    if (!match) return null;
+    const [, year, month, day, hour, minute, second] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  };
+  const readSavedViews = (pageKey) => {
+    try {
+      return parseJson(window.localStorage.getItem(storageKey(pageKey)) || '[]');
+    } catch {
+      return [];
+    }
+  };
+  const writeSavedViews = (pageKey, views) => {
+    try {
+      window.localStorage.setItem(storageKey(pageKey), JSON.stringify(views));
+    } catch {
+      // local storage may be blocked; keep URL-only behavior
+    }
+  };
+  const updateUrlParam = (key, value) => {
+    const nextUrl = new URL(window.location.href);
+    if (cleanText(value)) nextUrl.searchParams.set(key, value);
+    else nextUrl.searchParams.delete(key);
+    window.history.replaceState({}, '', nextUrl.pathname + (nextUrl.searchParams.toString() ? '?' + nextUrl.searchParams.toString() : '') + nextUrl.hash);
+  };
+  const encodeSelection = (values) => values.map((value) => encodeURIComponent(value)).join(',');
+  const decodeSelection = (value) =>
+    cleanText(value)
+      .split(',')
+      .map((item) => {
+        try {
+          return decodeURIComponent(item);
+        } catch {
+          return item;
+        }
+      })
+      .filter(Boolean);
+  const roots = Array.from(document.querySelectorAll('[data-list-power-root="1"]'));
+  const isVisibleRow = (row) => row instanceof HTMLTableRowElement && !row.hidden && row.style.display !== 'none';
+  roots.forEach((root) => {
+    if (!(root instanceof HTMLElement)) return;
+    const tableId = cleanText(root.dataset.tableId);
+    const table = tableId ? document.getElementById(tableId) : null;
+    if (!(table instanceof HTMLTableElement)) return;
+    const pageKey = cleanText(root.dataset.pageKey) || tableId;
+    const viewParam = cleanText(root.dataset.viewParam) || 'view';
+    const compareParam = cleanText(root.dataset.compareParam) || 'compare';
+    const comparePanel = root.querySelector('[data-compare-panel]');
+    const compareGrid = root.querySelector('[data-compare-grid]');
+    const compareEmpty = root.querySelector('[data-compare-empty]');
+    const viewState = root.querySelector('[data-view-state]');
+    const viewCaption = root.querySelector('[data-view-caption]');
+    const selectionState = root.querySelector('[data-selection-state]');
+    const selectionCaption = root.querySelector('[data-selection-caption]');
+    const customViewsRoot = root.querySelector('[data-custom-views]');
+    const compareLaunch = root.querySelector('[data-compare-launch]');
+    const copySelectionButton = root.querySelector('[data-copy-selection]');
+    const selectAll = root.querySelector('[data-select-all]');
+    const searchInputs = cleanText(root.dataset.searchInputs)
+      .split(',')
+      .map((id) => document.getElementById(id))
+      .filter((node) => node instanceof HTMLInputElement);
+    const presetNode = root.querySelector('[data-list-presets]');
+    const presetViews = Array.isArray(parseJson(presetNode && 'textContent' in presetNode ? presetNode.textContent : '[]'))
+      ? parseJson(presetNode && 'textContent' in presetNode ? presetNode.textContent : '[]')
+      : [];
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const checkboxes = () => Array.from(table.querySelectorAll('input[data-compare-select]'));
+    const loadAllViews = () => {
+      const saved = readSavedViews(pageKey);
+      return [{ id: 'all', label: 'All rows', note: 'Reset to the full list', tags: [], search: {} }].concat(presetViews, saved);
+    };
+    const findView = (id) => loadAllViews().find((view) => cleanText(view.id) === cleanText(id)) || null;
+    const markDynamicTags = () => {
+      rows.forEach((row) => {
+        if (!(row instanceof HTMLTableRowElement)) return;
+        const tags = new Set(cleanText(row.dataset.listTags).split(/\\s+/).filter(Boolean));
+        const status = cleanText(row.dataset.listStatus).toUpperCase();
+        const createdAt = parseSafeListDate(row.dataset.listCreatedAt);
+        if (createdAt && ['RUNNING', 'PENDING', 'QUEUED'].includes(status)) {
+          const ageHours = Math.floor((Date.now() - createdAt.getTime()) / 3600000);
+          if (ageHours >= 12) tags.add('stale');
+        }
+        row.dataset.listTags = Array.from(tags).join(' ');
+      });
+    };
+    const setSearchState = (searchStateMap) => {
+      searchInputs.forEach((input) => {
+        if (!(input instanceof HTMLInputElement)) return;
+        const nextValue = Object.prototype.hasOwnProperty.call(searchStateMap || {}, input.id) ? String(searchStateMap[input.id] ?? '') : '';
+        if (input.value === nextValue) return;
+        input.value = nextValue;
+        window.setTimeout(() => {
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }, 0);
+      });
+    };
+    const renderCustomViews = () => {
+      if (!(customViewsRoot instanceof HTMLElement)) return;
+      const activeViewId = cleanText(root.dataset.activeViewId || 'all');
+      const saved = readSavedViews(pageKey);
+      customViewsRoot.innerHTML = saved
+        .map((view) => {
+          const id = cleanText(view.id);
+          const activeClass = id === activeViewId ? 'is-active' : '';
+          return '<span class="list-power-custom-chip"><button type="button" class=\"' + activeClass + '\" data-view-id=\"' + escapeHtml(id) + '\" data-view-note=\"' + escapeHtml(cleanText(view.note || view.label || 'Saved view')) + '\">' + escapeHtml(cleanText(view.label || id)) + '</button><button type="button" data-remove-view=\"' + escapeHtml(id) + '\">x</button></span>';
+        })
+        .join('');
+    };
+    const syncViewButtons = () => {
+      const activeViewId = cleanText(root.dataset.activeViewId || 'all');
+      root.querySelectorAll('[data-view-id]').forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        node.classList.toggle('is-active', cleanText(node.dataset.viewId) === activeViewId);
+      });
+    };
+    const currentSearchState = () =>
+      searchInputs.reduce((acc, input) => {
+        if (input instanceof HTMLInputElement) acc[input.id] = input.value;
+        return acc;
+      }, {});
+    const applyView = (viewId, resetSearch = true) => {
+      markDynamicTags();
+      const activeId = cleanText(viewId) || 'all';
+      root.dataset.activeViewId = activeId;
+      const view = findView(activeId);
+      if (resetSearch && view && typeof view.search === 'object' && Object.keys(view.search).length > 0) {
+        setSearchState(view.search);
+      } else if (resetSearch && activeId === 'all') {
+        setSearchState({});
+      }
+      rows.forEach((row) => {
+        if (!(row instanceof HTMLTableRowElement)) return;
+        const tags = new Set(cleanText(row.dataset.listTags).split(/\\s+/).filter(Boolean));
+        const viewTags = Array.isArray(view && view.tags) ? view.tags.map((tag) => cleanText(tag)).filter(Boolean) : [];
+        const matchMode = cleanText(view && view.match) === 'any' ? 'any' : 'all';
+        const matchesView =
+          viewTags.length === 0 ? true : matchMode === 'any' ? viewTags.some((tag) => tags.has(tag)) : viewTags.every((tag) => tags.has(tag));
+        row.hidden = !matchesView;
+      });
+      updateUrlParam(viewParam, activeId === 'all' ? '' : activeId);
+      const viewLabel = cleanText(view && view.label) || 'All rows';
+      if (viewState instanceof HTMLElement) viewState.textContent = viewLabel;
+      if (viewCaption instanceof HTMLElement) viewCaption.textContent = cleanText(view && view.note) || 'Saved views stay local to this browser, while filters and selections stay mirrored into the URL.';
+      syncViewButtons();
+      renderCustomViews();
+      syncSelection(false);
+    };
+    const selectedBoxes = () => checkboxes().filter((node) => node instanceof HTMLInputElement && node.checked);
+    const syncSelection = (writeUrl = true) => {
+      const selected = selectedBoxes();
+      const visibleBoxes = checkboxes().filter((node) => node instanceof HTMLInputElement && isVisibleRow(node.closest('tr')));
+      if (selectAll instanceof HTMLInputElement) {
+        selectAll.checked = visibleBoxes.length > 0 && visibleBoxes.every((node) => node.checked);
+        selectAll.indeterminate = visibleBoxes.some((node) => node.checked) && !selectAll.checked;
+      }
+      const selectionCount = selected.length;
+      if (selectionState instanceof HTMLElement) selectionState.textContent = selectionCount + ' selected';
+      if (selectionCaption instanceof HTMLElement) {
+        selectionCaption.textContent =
+          selectionCount > 0
+            ? 'Selection is mirrored into the URL so the compare handoff can be reopened safely.'
+            : 'Select rows to build a compare handoff without leaving the list.';
+      }
+      if (copySelectionButton instanceof HTMLElement) {
+        copySelectionButton.setAttribute('data-copy', selected.map((node) => cleanText(node.dataset.copyValue || node.value)).filter(Boolean).join(', '));
+      }
+      if (compareLaunch instanceof HTMLAnchorElement) {
+        const nextUrl = new URL(window.location.href);
+        if (selectionCount > 0) nextUrl.searchParams.set(compareParam, encodeSelection(selected.map((node) => cleanText(node.value)).filter(Boolean)));
+        else nextUrl.searchParams.delete(compareParam);
+        compareLaunch.href = nextUrl.pathname + (nextUrl.searchParams.toString() ? '?' + nextUrl.searchParams.toString() : '') + '#' + (comparePanel instanceof HTMLElement ? comparePanel.id : '');
+        compareLaunch.setAttribute('aria-disabled', selectionCount > 0 ? 'false' : 'true');
+      }
+      checkboxes().forEach((node) => {
+        if (!(node instanceof HTMLInputElement)) return;
+        const label = node.closest('.list-power-checkbox');
+        if (label instanceof HTMLElement) label.classList.toggle('is-selected', node.checked);
+        root.querySelectorAll('[data-compare-toggle="' + node.id + '"]').forEach((toggle) => {
+          if (toggle instanceof HTMLElement) toggle.classList.toggle('is-active', node.checked);
+        });
+      });
+      if (comparePanel instanceof HTMLElement && compareGrid instanceof HTMLElement && compareEmpty instanceof HTMLElement) {
+        compareGrid.innerHTML = selected
+          .map((node) => {
+            const label = escapeHtml(cleanText(node.dataset.compareLabel || node.value));
+            const meta = escapeHtml(cleanText(node.dataset.compareMeta));
+            const actions = [
+              node.dataset.viewHref ? '<a class="list-power-action" href="' + escapeHtml(node.dataset.viewHref) + '">View</a>' : '',
+              node.dataset.compareHref ? '<a class="list-power-action" href="' + escapeHtml(node.dataset.compareHref) + '">Compare</a>' : '',
+              node.dataset.retryHref ? '<a class="list-power-action" href="' + escapeHtml(node.dataset.retryHref) + '">Retry</a>' : '',
+              node.dataset.recoverHref ? '<a class="list-power-action" href="' + escapeHtml(node.dataset.recoverHref) + '">Recover</a>' : '',
+              node.dataset.approveHref ? '<a class="list-power-action" href="' + escapeHtml(node.dataset.approveHref) + '">Approve</a>' : '',
+              node.dataset.rollbackHref ? '<a class="list-power-action" href="' + escapeHtml(node.dataset.rollbackHref) + '">Rollback</a>' : '',
+              node.dataset.artifactsHref ? '<a class="list-power-action" href="' + escapeHtml(node.dataset.artifactsHref) + '">Open artifacts</a>' : '',
+              '<button type="button" class="list-power-action" data-list-copy="' + escapeHtml(cleanText(node.dataset.copyValue || node.value)) + '">Copy ID/path</button>'
+            ]
+              .filter(Boolean)
+              .join('');
+            return '<article class="list-power-compare-card"><h3>' + label + '</h3><p class="list-power-meta">' + (meta || 'Use the object surface first, then follow compare or recovery links.') + '</p><div class="list-power-action-row">' + actions + '</div></article>';
+          })
+          .join('');
+        comparePanel.hidden = selectionCount === 0;
+        compareEmpty.hidden = selectionCount > 0;
+      }
+      if (writeUrl) updateUrlParam(compareParam, selectionCount > 0 ? encodeSelection(selected.map((node) => cleanText(node.value)).filter(Boolean)) : '');
+    };
+    const loadSelectionFromUrl = () => {
+      const fromUrl = new Set(decodeSelection(new URL(window.location.href).searchParams.get(compareParam)));
+      checkboxes().forEach((node) => {
+        if (!(node instanceof HTMLInputElement)) return;
+        node.checked = fromUrl.has(cleanText(node.value));
+      });
+      syncSelection(false);
+    };
+    root.addEventListener('click', (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!target) return;
+      const toggle = target.closest('[data-compare-toggle]');
+      if (toggle instanceof HTMLElement) {
+        const checkbox = document.getElementById(cleanText(toggle.dataset.compareToggle));
+        if (checkbox instanceof HTMLInputElement) {
+          checkbox.checked = !checkbox.checked;
+          syncSelection();
+        }
+        return;
+      }
+      const viewButton = target.closest('[data-view-id]');
+      if (viewButton instanceof HTMLElement) {
+        applyView(cleanText(viewButton.dataset.viewId));
+        return;
+      }
+      const removeView = target.closest('[data-remove-view]');
+      if (removeView instanceof HTMLElement) {
+        const nextViews = readSavedViews(pageKey).filter((view) => cleanText(view.id) !== cleanText(removeView.dataset.removeView));
+        writeSavedViews(pageKey, nextViews);
+        if (cleanText(root.dataset.activeViewId) === cleanText(removeView.dataset.removeView)) applyView('all');
+        else renderCustomViews();
+        syncViewButtons();
+        return;
+      }
+      if (target.closest('[data-save-view]')) {
+        const label = window.prompt('Saved view name');
+        if (!cleanText(label)) return;
+        const activeView = findView(cleanText(root.dataset.activeViewId || 'all'));
+        const nextView = {
+          id: 'saved-' + slugify(label),
+          label: cleanText(label),
+          note: 'Local-only saved view',
+          tags: Array.isArray(activeView && activeView.tags) ? activeView.tags : [],
+          match: cleanText(activeView && activeView.match) === 'any' ? 'any' : 'all',
+          search: currentSearchState()
+        };
+        const savedViews = readSavedViews(pageKey).filter((view) => cleanText(view.id) !== nextView.id);
+        savedViews.push(nextView);
+        writeSavedViews(pageKey, savedViews);
+        applyView(nextView.id, false);
+        return;
+      }
+      if (target.closest('[data-reset-view]')) {
+        applyView('all');
+        return;
+      }
+      if (target.closest('[data-clear-selection]')) {
+        checkboxes().forEach((node) => {
+          if (node instanceof HTMLInputElement) node.checked = false;
+        });
+        syncSelection();
+        return;
+      }
+      if (target.closest('[data-list-copy]')) {
+        const button = target.closest('[data-list-copy]');
+        const value = cleanText(button && button.getAttribute('data-list-copy'));
+        if (!value) return;
+        navigator.clipboard.writeText(value).catch(() => {});
+      }
+    });
+    if (compareLaunch instanceof HTMLAnchorElement) {
+      compareLaunch.addEventListener('click', (event) => {
+        if (compareLaunch.getAttribute('aria-disabled') === 'true') event.preventDefault();
+      });
+    }
+    if (selectAll instanceof HTMLInputElement) {
+      selectAll.addEventListener('change', () => {
+        checkboxes().forEach((node) => {
+          if (!(node instanceof HTMLInputElement)) return;
+          if (!isVisibleRow(node.closest('tr'))) return;
+          node.checked = selectAll.checked;
+        });
+        syncSelection();
+      });
+    }
+    table.addEventListener('change', (event) => {
+      if (event.target instanceof HTMLInputElement && event.target.matches('input[data-compare-select]')) syncSelection();
+    });
+    searchInputs.forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) return;
+      input.addEventListener('input', () => {
+        if (viewState instanceof HTMLElement) viewState.textContent = cleanText(findView(cleanText(root.dataset.activeViewId || 'all'))?.label) || 'All rows';
+        syncSelection(false);
+      });
+    });
+    window.addEventListener('list-power:sync', () => {
+      applyView(cleanText(root.dataset.activeViewId || 'all'), false);
+    });
+    renderCustomViews();
+    syncViewButtons();
+    markDynamicTags();
+    const initialViewId = cleanText(new URL(window.location.href).searchParams.get(viewParam)) || 'all';
+    applyView(initialViewId, initialViewId !== 'all');
+    loadSelectionFromUrl();
+  });
+})();</script>`;
 }
 
 type OpsRailTone = "ok" | "warn" | "bad" | "muted";
@@ -266,7 +848,7 @@ function toneToBadgeClass(tone: OpsRailTone): string {
   }
 }
 
-function renderToneBadge(label: string, tone: OpsRailTone): string {
+export function renderToneBadge(label: string, tone: OpsRailTone): string {
   return `<span class="badge ${toneToBadgeClass(tone)}">${label}</span>`;
 }
 
@@ -280,11 +862,11 @@ function decodeHtmlEntities(value: string): string {
     .replaceAll("&#39;", "'");
 }
 
-function stripHtml(value: string): string {
+export function stripHtml(value: string): string {
   return decodeHtmlEntities(value.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
-function summarizeText(value: string, max = 120): string {
+export function summarizeText(value: string, max = 120): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= max) return normalized;
   return `${normalized.slice(0, Math.max(0, max - 1)).trimEnd()}...`;
@@ -298,7 +880,7 @@ function safeDecode(value: string): string {
   }
 }
 
-function parseTableRows(rowsHtml: string): ParsedTableRow[] {
+export function parseTableRows(rowsHtml: string): ParsedTableRow[] {
   return Array.from(rowsHtml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi))
     .map((match) => ({
       cells: Array.from(match[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)).map((cell) => cell[1].trim())
@@ -306,18 +888,18 @@ function parseTableRows(rowsHtml: string): ParsedTableRow[] {
     .filter((row) => row.cells.length > 0);
 }
 
-function extractLinks(html: string): TableCellLink[] {
+export function extractLinks(html: string): TableCellLink[] {
   return Array.from(html.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)).map((match) => ({
     href: match[1],
     label: stripHtml(match[2])
   }));
 }
 
-function firstLink(html: string): TableCellLink | null {
+export function firstLink(html: string): TableCellLink | null {
   return extractLinks(html)[0] ?? null;
 }
 
-function extractRouteValue(href: string | undefined, segment: string): string {
+export function extractRouteValue(href: string | undefined, segment: string): string {
   if (!href) return "";
   const match = href.match(new RegExp(`/${segment}/([^/?#]+)`));
   return match ? safeDecode(match[1]) : "";
@@ -536,6 +1118,101 @@ function renderJobsTableRows(rowsHtml: string): string {
     .join("");
 }
 
+function renderPoweredJobsTableRows(rowsHtml: string): string {
+  const rows = parseTableRows(rowsHtml).filter((row) => row.cells.length >= 6);
+  if (rows.length === 0) return rowsHtml;
+
+  return rows
+    .map((row) => {
+      const jobLink = firstLink(row.cells[0]);
+      const episodeLink = firstLink(row.cells[1]);
+      const episodeId = extractRouteValue(episodeLink?.href, "episodes");
+      const jobId = jobLink?.label || stripHtml(row.cells[0]) || "-";
+      const typeText = stripHtml(row.cells[2]) || "-";
+      const statusMarkup = row.cells[3] || '<span class="badge muted">unknown</span>';
+      const statusText = stripHtml(statusMarkup) || "unknown";
+      const progressText = stripHtml(row.cells[4]) || "-";
+      const createdText = stripHtml(row.cells[5]) || "-";
+      const lifecycle = describeJobLifecycle(statusText, progressText);
+      const checkboxId = `jobs-compare-${sanitizeDomId(jobId)}`;
+      const rowTags = [
+        "job",
+        lifecycle.shouldRecover ? "failed" : "",
+        lifecycle.shouldRecover ? "recoverable" : "",
+        lifecycle.shouldPublish ? "publish-ready" : "",
+        lifecycle.shouldInspectHealth ? "health-check" : "",
+        /(RUNNING|QUEUED|PENDING)/i.test(statusText) ? "active" : "",
+        /(FAILED|ERROR)/i.test(statusText) ? "failed" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const compareMeta: ListPowerCompareMeta = {
+        checkboxId,
+        compareId: jobId,
+        label: `${jobId} / ${typeText}`,
+        meta: `${statusText} -> ${lifecycle.safeActionLabel}${episodeId ? ` / episode ${episodeId}` : ""}`,
+        viewHref: jobLink?.href,
+        recoverHref: lifecycle.shouldRecover ? (episodeId ? `/ui/hitl?episodeId=${encodeURIComponent(episodeId)}` : "/ui/hitl") : "",
+        approveHref: episodeId && lifecycle.shouldPublish ? `/ui/publish?episodeId=${encodeURIComponent(episodeId)}` : "",
+        artifactsHref: episodeId ? `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}` : "",
+        copyValue: jobId
+      };
+      const linkedObjectLinks = renderActionLinks(
+        [
+          episodeLink ? { href: episodeLink.href, label: "episode" } : null,
+          episodeId ? { href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`, label: "artifacts" } : null,
+          episodeId && lifecycle.shouldPublish ? { href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}`, label: "publish" } : null
+        ],
+        "linked object ?놁쓬"
+      );
+      const followupLinks = renderActionLinks(
+        [
+          lifecycle.shouldRecover ? { href: episodeId ? `/ui/hitl?episodeId=${encodeURIComponent(episodeId)}` : "/ui/hitl", label: "recover" } : null,
+          lifecycle.shouldInspectHealth ? { href: "/ui/health", label: "health" } : null,
+          episodeLink ? { href: episodeLink.href, label: "episode" } : null
+        ],
+        "detail?먯꽌 ?ㅼ쓬 ?≪뀡???뺤씤?섏꽭??"
+      );
+      const rowActions: ListPowerActionInput[] = [];
+      if (jobLink?.href) rowActions.push({ kind: "link", label: "View", href: jobLink.href });
+      rowActions.push({ kind: "compare", label: "Compare", checkboxId });
+      if (lifecycle.shouldRecover && jobId !== "-") {
+        rowActions.push({ kind: "submit", label: "Retry", action: `/ui/jobs/${encodeURIComponent(jobId)}/retry` });
+        rowActions.push({
+          kind: "link",
+          label: "Recover",
+          href: episodeId ? `/ui/hitl?episodeId=${encodeURIComponent(episodeId)}` : "/ui/hitl"
+        });
+      }
+      if (episodeId && lifecycle.shouldPublish) {
+        rowActions.push({ kind: "link", label: "Approve", href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}` });
+      }
+      if (episodeId) {
+        rowActions.push({ kind: "link", label: "Open artifacts", href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}` });
+      }
+      rowActions.push({ kind: "copy", label: "Copy ID/path", value: jobId });
+
+      return `<tr data-list-row="1" data-list-status="${escapeAttribute(statusText.toUpperCase())}" data-list-created-at="${escapeAttribute(
+        createdText
+      )}" data-list-tags="${escapeAttribute(rowTags)}"><td><div class="ops-cell-stack"><div class="ops-cell-title">${renderListPowerCompareCheckbox(
+        compareMeta
+      )}<strong>${jobLink ? `<a href="${jobLink.href}">${jobLink.label}</a>` : jobId}</strong>${renderToneBadge(
+        lifecycle.stageLabel,
+        lifecycle.tone
+      )}</div><span class="ops-cell-meta">list -> detail -> recover ?먮쫫??anchor job object?낅땲??</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${
+        episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : "-"
+      }</strong></div><span class="ops-cell-meta">${
+        episodeId ? `owner episode ${episodeId}` : "?곌껐??owner episode ?뺣낫媛 ?놁뒿?덈떎."
+      }</span>${linkedObjectLinks}</div></td><td><div class="ops-cell-stack"><div class="ops-cell-title"><strong>${typeText}</strong></div><span class="ops-cell-meta">${lifecycle.latestResult}</span></div></td><td><div class="ops-cell-stack"><div class="ops-cell-title">${statusMarkup}${renderToneBadge(
+        lifecycle.retryLabel,
+        lifecycle.shouldRecover ? "bad" : lifecycle.tone
+      )}</div><span class="ops-cell-meta">${lifecycle.retryDetail}</span></div></td><td><div class="ops-cell-stack"><strong>${progressText}</strong><span class="ops-cell-meta">${createdText}</span></div></td><td><div class="ops-cell-stack"><strong>${lifecycle.safeActionLabel}</strong><span class="ops-cell-meta">${lifecycle.safeActionDetail}</span>${renderListPowerActionBar(
+        rowActions
+      )}${followupLinks}</div></td></tr>`;
+    })
+    .join("");
+}
+
 function renderHitlTableRows(rowsHtml: string): string {
   const rows = parseTableRows(rowsHtml).filter((row) => row.cells.length >= 6);
   if (rows.length === 0) return rowsHtml;
@@ -584,7 +1261,7 @@ function renderHitlTableRows(rowsHtml: string): string {
 
 export function buildJobsPageBody(input: JobsPageBodyInput): string {
   const t = UI_TEXT.jobs;
-  const rowsHtml = input.rows ? renderJobsTableRows(input.rows) : "";
+  const rowsHtml = input.rows ? renderPoweredJobsTableRows(input.rows) : "";
 
   return `
 ${renderOpsStyle()}
@@ -610,6 +1287,32 @@ ${renderObjectSummaryHeader({
   ]
 })}
 
+${renderListPowerSurface({
+  rootId: "jobs-list-power",
+  pageKey: "jobs",
+  tableId: "jobs-table",
+  title: "Saved views + compare handoff",
+  intro: "Use one list grammar for saved views, compare selection, retry, and publish handoff. Filters stay in the URL while custom views stay local to this browser.",
+  presets: [
+    { id: "failed-jobs", label: "Failed jobs", note: "Recoverable or failed job objects only.", tags: ["failed"], match: "all" },
+    { id: "active-jobs", label: "Active jobs", note: "Running, queued, or pending jobs that still need monitoring.", tags: ["active"], match: "all" },
+    {
+      id: "publish-ready-jobs",
+      label: "Publish ready",
+      note: "Jobs whose next safe action is publish handoff.",
+      tags: ["publish-ready"],
+      match: "all"
+    }
+  ],
+  searchInputIds: ["jobs-filter"],
+  viewParam: "jobsView",
+  compareParam: "jobsCompare",
+  compareTitle: "Job compare handoff",
+  compareIntro: "Keep selected job objects on the list surface first, then jump into detail, recover, or publish without losing URL state.",
+  compareEmpty: "Select one or more job objects to keep detail, recover, and publish handoffs together.",
+  selectionHint: "Saved views stay local. Search, active view, and compare selection stay mirrored into the URL."
+})}
+
 ${renderRailSection({
   title: "다음 안전 액션",
   intro: "필터, retryability, linked objects를 먼저 고정한 뒤에만 row detail로 내려갑니다.",
@@ -624,6 +1327,7 @@ ${renderRailSection({
         targetId: "jobs-table",
         label: "작업 필터",
         placeholder: t.filterPlaceholder,
+        urlParam: "jobsFilter",
         hint: "이 리스트에 로컬로 적용됩니다. / 로 전역 검색으로 바로 이동할 수 있습니다."
       })
     },
@@ -663,7 +1367,7 @@ ${renderRailSection({
   <div class="table-wrap"><table id="jobs-table"><thead><tr><th>job object / lifecycle</th><th>owner episode / linked objects</th><th>type / latest result</th><th>status / retryability</th><th>progress / created</th><th>next safe action</th></tr></thead><tbody>${
     rowsHtml || renderTableEmptyRow(6, t.noJobs)
   }</tbody></table></div>
-</section>`;
+</section>${renderListPowerScript()}`;
 }
 
 export function buildPublishPageBody(input: PublishPageBodyInput): string {
@@ -996,9 +1700,71 @@ ${renderRailSection({
 </section>`;
 }
 
+function artifactTagList(typeText: string, nameText: string): string[] {
+  const normalizedType = typeText.toLowerCase();
+  const normalizedName = nameText.toLowerCase();
+  return [
+    "artifact",
+    normalizedType.includes("directory") ? "directory" : "file",
+    normalizedName.endsWith(".json") ? "json" : "",
+    normalizedName.endsWith(".mp4") ? "video" : "",
+    normalizedName.includes("manifest") ? "manifest" : "",
+    normalizedName.includes("preview") || normalizedName.includes("final") ? "media" : ""
+  ].filter(Boolean);
+}
+
+function renderPoweredArtifactsTableRows(rowsHtml: string, episodeIdValue: string): string {
+  const rows = parseTableRows(rowsHtml).filter((row) => row.cells.length >= 3);
+  if (rows.length === 0) return rowsHtml;
+
+  return rows
+    .map((row) => {
+      const typeText = stripHtml(row.cells[0]) || "-";
+      const nameText = stripHtml(row.cells[1]) || "-";
+      const pathLink = firstLink(row.cells[2]);
+      const pathText = pathLink?.label || stripHtml(row.cells[2]) || "-";
+      const checkboxId = `artifacts-compare-${sanitizeDomId(pathText)}`;
+      const compareMeta: ListPowerCompareMeta = {
+        checkboxId,
+        compareId: pathText,
+        label: nameText,
+        meta: `${typeText} / ${pathText}`,
+        viewHref: pathLink?.href,
+        approveHref:
+          episodeIdValue && (nameText.toLowerCase().includes("final") || nameText.toLowerCase().includes("manifest"))
+            ? `/ui/publish?episodeId=${encodeURIComponent(episodeIdValue)}`
+            : "",
+        copyValue: pathText
+      };
+      const rowActions: ListPowerActionInput[] = [];
+      if (pathLink?.href) rowActions.push({ kind: "link", label: "View", href: pathLink.href });
+      rowActions.push({ kind: "compare", label: "Compare", checkboxId });
+      if (pathLink?.href) rowActions.push({ kind: "link", label: "Open artifacts", href: pathLink.href });
+      if (compareMeta.approveHref) rowActions.push({ kind: "link", label: "Approve", href: compareMeta.approveHref });
+      rowActions.push({ kind: "copy", label: "Copy ID/path", value: pathText });
+
+      return `<tr data-list-row="1" data-list-status="${escapeAttribute(typeText.toUpperCase())}" data-list-created-at="" data-list-tags="${escapeAttribute(
+        artifactTagList(typeText, nameText).join(" ")
+      )}"><td><div class="ops-cell-stack"><div class="ops-cell-title">${renderListPowerCompareCheckbox(compareMeta)}<strong>${nameText}</strong>${renderToneBadge(
+        typeText,
+        typeText.toLowerCase().includes("directory") ? "muted" : "ok"
+      )}</div><span class="ops-cell-meta">${pathText}</span></div></td><td><div class="ops-cell-stack"><strong>${typeText}</strong><span class="ops-cell-meta">${
+        episodeIdValue ? `episode ${episodeIdValue}` : "global artifact index"
+      }</span></div></td><td><div class="ops-cell-stack"><strong>${pathLink ? `<a href="${pathLink.href}">${pathText}</a>` : pathText}</strong><span class="ops-cell-meta">${
+        nameText.toLowerCase().includes("manifest") ? "publish handoff candidate" : "open artifact or copy the path for downstream review"
+      }</span></div></td><td><div class="ops-cell-stack"><strong>${
+        nameText.toLowerCase().includes("manifest") ? "approve -> publish" : "view -> copy"
+      }</strong><span class="ops-cell-meta">Row actions follow the same view, compare, approve, and copy grammar as the object lists above.</span>${renderListPowerActionBar(
+        rowActions
+      )}</div></td></tr>`;
+    })
+    .join("");
+}
+
 export function buildArtifactsPageBody(input: ArtifactsPageBodyInput): string {
   const t = UI_TEXT.artifacts;
   const hasEpisodeLinks = input.episodeLinks.trim().length > 0;
+  const rowsHtml = input.rows ? renderPoweredArtifactsTableRows(input.rows, input.episodeId.trim()) : "";
   const linkedOutputsHtml = hasEpisodeLinks ? input.episodeLinks : '<div class="notice">아직 에피소드 빠른 링크를 불러오지 않았습니다.</div>';
 
   return `
@@ -1019,6 +1785,26 @@ ${renderOpsStyle()}
     ${renderMetricCard("복구 앵커", "<strong>jobs / episode detail</strong>", "누락 파일은 대개 상위 파이프라인 단계에서 해결됩니다.")}
   </div>
 </section>
+
+${renderListPowerSurface({
+  rootId: "artifacts-list-power",
+  pageKey: "artifacts",
+  tableId: "artifact-index-table",
+  title: "Saved views + path compare",
+  intro: "Keep artifact list power on the same grammar: local saved views, URL-synced filters, compare selection, and publish handoff for manifest or final outputs.",
+  presets: [
+    { id: "media-artifacts", label: "Media outputs", note: "Preview and final media files only.", tags: ["media"], match: "all" },
+    { id: "json-artifacts", label: "JSON objects", note: "Plans, manifests, and supporting JSON files.", tags: ["json"], match: "all" },
+    { id: "manifest-only", label: "Manifest only", note: "Publish handoff candidates.", tags: ["manifest"], match: "all" }
+  ],
+  searchInputIds: ["artifact-index-filter"],
+  viewParam: "artifactsView",
+  compareParam: "artifactsCompare",
+  compareTitle: "Artifact compare handoff",
+  compareIntro: "Select files or directories to keep path review, open-artifact actions, and publish handoff together.",
+  compareEmpty: "Select one or more artifact rows to keep review paths and copy actions in one place.",
+  selectionHint: "Custom views stay in localStorage. Search, active view, and selected paths stay mirrored into the URL."
+})}
 
 ${renderRailSection({
   title: "다음 안전 액션",
@@ -1058,12 +1844,12 @@ ${renderRailSection({
       <h2>원시 산출물 인덱스</h2>
       <p class="section-intro">이 표는 2차 evidence입니다. linked outputs와 recovery anchor를 본 뒤에만 raw index를 확인합니다.</p>
     </div>
-    <input type="search" data-table-filter="artifact-index-table" aria-label="산출물 인덱스 필터" placeholder="${t.indexFilterPlaceholder}"/>
+    <input id="artifact-index-filter" type="search" data-table-filter="artifact-index-table" data-url-param="artifactsFilter" aria-label="산출물 인덱스 필터" placeholder="${t.indexFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="artifact-index-table"><thead><tr><th>타입</th><th>이름</th><th>열기</th></tr></thead><tbody>${
-    input.rows || renderTableEmptyRow(3, t.noArtifacts)
+  <div class="table-wrap"><table id="artifact-index-table"><thead><tr><th>artifact object / selection</th><th>type / owner</th><th>path / handoff</th><th>row actions</th></tr></thead><tbody>${
+    rowsHtml || renderTableEmptyRow(4, t.noArtifacts)
   }</tbody></table></div>
-</section>`;
+</section>${renderListPowerScript()}`;
 }
 
 export function buildRolloutsPageBody(input: RolloutsPageBodyInput): string {
