@@ -11,9 +11,16 @@ type ExplorerPageInput = {
   railTitle?: string;
   railIntro?: string;
   railCards?: ExplorerRailCard[];
+  recoveryTitle?: string;
+  recoveryIntro?: string;
+  recoveryCards?: ExplorerRailCard[];
   factsTitle?: string;
   factsIntro?: string;
   facts?: ExplorerFact[];
+  evidenceTitle?: string;
+  evidenceIntro?: string;
+  evidenceCards?: ExplorerRailCard[];
+  evidenceDrawer?: ExplorerEvidenceDrawer;
   tableId: string;
   tableTitle: string;
   tableSubtitle: string;
@@ -36,6 +43,12 @@ type ExplorerFact = {
   label: string;
   value: string;
   hint?: string;
+};
+
+type ExplorerEvidenceDrawer = {
+  summary: string;
+  bodyHtml: string;
+  open?: boolean;
 };
 
 function explorerTone(value: ExplorerRailCard["tone"]): "ok" | "warn" | "bad" | "muted" {
@@ -78,6 +91,17 @@ function renderExplorerFacts(facts: ExplorerFact[]): string {
     .join("")}</div>`;
 }
 
+function renderExplorerEvidenceDrawer(drawer?: ExplorerEvidenceDrawer): string {
+  if (!drawer) {
+    return '<div class="ops-review-empty">No artifact evidence drawer is available for this explorer yet.</div>';
+  }
+
+  return `<details class="ops-review-drawer"${drawer.open ? " open" : ""}>
+    <summary>${drawer.summary}</summary>
+    <div class="ops-review-drawer-body">${drawer.bodyHtml}</div>
+  </details>`;
+}
+
 function buildExplorerPageBody(input: ExplorerPageInput): string {
   return `
 <section class="card dashboard-shell">
@@ -107,6 +131,11 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
     .ops-chip-grid a{display:inline-flex;align-items:center;padding:7px 11px;border-radius:999px;border:1px solid #c7d9eb;background:#fff;color:#0f4e6a;font-size:12px;font-weight:700}
     .ops-chip-grid a:hover{text-decoration:none;background:#eef7ff}
     .ops-filter-card{display:grid;gap:10px;padding:12px;border:1px solid #dbe7f3;background:#f8fbff;border-radius:14px}
+    .ops-review-drawer{border:1px solid #d8e5ee;border-radius:14px;background:#fff}
+    .ops-review-drawer summary{cursor:pointer;list-style:none;padding:11px 12px;font-weight:800;color:#12344d}
+    .ops-review-drawer summary::-webkit-details-marker{display:none}
+    .ops-review-drawer[open] summary{border-bottom:1px solid #e1ebf4}
+    .ops-review-drawer-body{display:grid;gap:10px;padding:12px}
     .ops-review-shell .mono{word-break:break-all}
     @media (max-width:960px){.ops-review-strip{grid-template-columns:1fr}}
   </style>
@@ -139,10 +168,25 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
       </div>
       <div class="ops-review-panel">
         <div class="ops-review-panel-head">
+          <h3>${input.recoveryTitle ?? "Recovery rail"}</h3>
+          <p class="section-intro">${input.recoveryIntro ?? "Keep recovery order, rollback anchors, and linked objects visible while scanning the queue."}</p>
+        </div>
+        ${renderExplorerRailCards(input.recoveryCards ?? [])}
+      </div>
+      <div class="ops-review-panel">
+        <div class="ops-review-panel-head">
           <h3>${input.factsTitle ?? "Recovery snapshot"}</h3>
           <p class="section-intro">${input.factsIntro ?? "Keep scope, blockers, and rollback anchors visible while scanning the queue."}</p>
         </div>
         ${renderExplorerFacts(input.facts ?? [])}
+      </div>
+      <div class="ops-review-panel">
+        <div class="ops-review-panel-head">
+          <h3>${input.evidenceTitle ?? "Artifact evidence drawer"}</h3>
+          <p class="section-intro">${input.evidenceIntro ?? "Keep artifact-backed evidence close, but push raw payload reading behind a drawer."}</p>
+        </div>
+        ${input.evidenceCards && input.evidenceCards.length > 0 ? renderExplorerRailCards(input.evidenceCards) : ""}
+        ${renderExplorerEvidenceDrawer(input.evidenceDrawer)}
       </div>
       ${input.notes ?? '<div class="ops-review-note"><strong>Artifact-backed view</strong><span class="muted-text">This screen only reads existing benchmark or episode artifacts. It does not re-run worker or renderer logic.</span></div>'}
     </div>
@@ -161,7 +205,10 @@ type RepairAcceptancePageBodyInput = {
   notes?: string;
   linksHtml?: string;
   railCards?: ExplorerRailCard[];
+  recoveryCards?: ExplorerRailCard[];
   facts?: ExplorerFact[];
+  evidenceCards?: ExplorerRailCard[];
+  evidenceDrawer?: ExplorerEvidenceDrawer;
   rows: string;
 };
 
@@ -177,9 +224,16 @@ export function buildRepairAcceptancePageBody(input: RepairAcceptancePageBodyInp
     railTitle: "Decision rail",
     railIntro: "Review blocked acceptance states first, compare candidate evidence before promote, then move to recovery paths.",
     railCards: input.railCards,
+    recoveryTitle: "Recovery rail",
+    recoveryIntro: "Keep rollback order, linked review objects, and operator recovery steps visible above the queue.",
+    recoveryCards: input.recoveryCards,
     factsTitle: "Acceptance snapshot",
     factsIntro: "Keep the current queue shape and rollback anchors above the table scan.",
     facts: input.facts,
+    evidenceTitle: "Artifact evidence drawer",
+    evidenceIntro: "Candidate compare, smoke, plan, and judge artifacts stay adjacent, but raw payload reading remains secondary.",
+    evidenceCards: input.evidenceCards,
+    evidenceDrawer: input.evidenceDrawer,
     tableId: "repair-acceptance-table",
     tableTitle: "Acceptance Queue",
     tableSubtitle: "Review shots where provider, policy, QC run issues, or fallback state need operator attention.",
@@ -198,7 +252,10 @@ type RouteReasonPageBodyInput = {
   notes?: string;
   linksHtml?: string;
   railCards?: ExplorerRailCard[];
+  recoveryCards?: ExplorerRailCard[];
   facts?: ExplorerFact[];
+  evidenceCards?: ExplorerRailCard[];
+  evidenceDrawer?: ExplorerEvidenceDrawer;
   rows: string;
 };
 
@@ -214,9 +271,16 @@ export function buildRouteReasonPageBody(input: RouteReasonPageBodyInput): strin
     railTitle: "Decision rail",
     railIntro: "Trace route decisions first, compare candidate evidence before promote, then open the artifact chain only for rows that still diverge.",
     railCards: input.railCards,
+    recoveryTitle: "Recovery rail",
+    recoveryIntro: "Keep retry order, linked review surfaces, and rollback anchors visible while routing blockers are in scope.",
+    recoveryCards: input.recoveryCards,
     factsTitle: "Route snapshot",
     factsIntro: "Keep route drift, filters, and fallback anchors visible while scanning routed shots.",
     facts: input.facts,
+    evidenceTitle: "Artifact evidence drawer",
+    evidenceIntro: "Route evidence stays artifact-backed and adjacent, while raw payload reading remains behind the drawer.",
+    evidenceCards: input.evidenceCards,
+    evidenceDrawer: input.evidenceDrawer,
     tableId: "route-reason-table",
     tableTitle: "Route Reason Matrix",
     tableSubtitle: "Tie each `route_reason` to concrete runtime shots, selected candidates, and QC-backed artifact trails.",
@@ -235,7 +299,10 @@ type DatasetLineagePageBodyInput = {
   notes?: string;
   linksHtml?: string;
   railCards?: ExplorerRailCard[];
+  recoveryCards?: ExplorerRailCard[];
   facts?: ExplorerFact[];
+  evidenceCards?: ExplorerRailCard[];
+  evidenceDrawer?: ExplorerEvidenceDrawer;
   rows: string;
 };
 
@@ -251,9 +318,16 @@ export function buildDatasetLineagePageBody(input: DatasetLineagePageBodyInput):
     railTitle: "Decision rail",
     railIntro: "Verify lineage before promote, trace the artifact chain, and surface schema gaps before opening low-level payloads.",
     railCards: input.railCards,
+    recoveryTitle: "Recovery rail",
+    recoveryIntro: "Keep provenance retry order, linked explorers, and rollback anchors visible while validating lineage.",
+    recoveryCards: input.recoveryCards,
     factsTitle: "Lineage snapshot",
     factsIntro: "Keep dataset, pack, and schema-gap scope visible while verifying provenance.",
     facts: input.facts,
+    evidenceTitle: "Artifact evidence drawer",
+    evidenceIntro: "Lineage evidence stays artifact-backed first; raw payloads remain behind the drawer when provenance still looks uncertain.",
+    evidenceCards: input.evidenceCards,
+    evidenceDrawer: input.evidenceDrawer,
     tableId: "dataset-lineage-table",
     tableTitle: "Lineage Rows",
     tableSubtitle: "Use this when an ops reviewer needs to confirm which dataset and character sources produced a benchmark bundle.",

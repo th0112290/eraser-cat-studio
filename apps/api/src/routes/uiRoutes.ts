@@ -10,13 +10,11 @@ import type { EpisodeJobPayload } from "@ec/shared";
 import { apiQueueRetentionOptions } from "../services/jobRetention";
 import { renderUiPage } from "./ui/uiPage";
 import {
-  buildBenchmarksPageBody,
   buildArtifactsPageBody,
   buildHitlPageBody,
   buildJobDetailPageBody,
   buildJobsPageBody,
   buildPublishPageBody,
-  buildRolloutsPageBody
 } from "./ui/pages/operationsPages";
 import {
   buildDatasetLineagePageBody,
@@ -2887,15 +2885,21 @@ function decisionSurfaceStyles(): string {
 .decision-item p{margin:0;color:#425466;line-height:1.45}
 .decision-actions{display:flex;flex-wrap:wrap;gap:8px}
 .decision-empty{padding:12px;border:1px dashed #cbd6e2;border-radius:12px;background:#f8fbff;color:#536475}
-.decision-media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
-.decision-media-card{display:grid;gap:8px;padding:12px;border:1px solid #d8e4ed;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#ffffff)}
-.decision-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
-.decision-priority-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px}
-.decision-pill-row{display:flex;flex-wrap:wrap;gap:8px}
-.decision-hero .summary-grid .summary-card{background:#ffffffcc}
-.decision-code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:12px;word-break:break-all}
-@media (max-width:900px){.decision-layout,.decision-priority-grid{grid-template-columns:1fr}.decision-hero{padding:14px}}
-@media (max-width:640px){.decision-surface{gap:10px}.decision-hero{padding:12px}.decision-panel,.decision-media-card{padding:10px}.decision-meta-grid,.decision-compare-grid{grid-template-columns:1fr}.decision-item-title{font-size:14px}}
+	.decision-media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+	.decision-media-card{display:grid;gap:8px;padding:12px;border:1px solid #d8e4ed;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#ffffff)}
+	.decision-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+	.decision-priority-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px}
+	.decision-pill-row{display:flex;flex-wrap:wrap;gap:8px}
+	.decision-drawer{border:1px solid #d8e5ee;border-radius:14px;background:#fff}
+	.decision-drawer>summary{cursor:pointer;list-style:none;padding:11px 12px;font-weight:800;color:#12344d}
+	.decision-drawer>summary::-webkit-details-marker{display:none}
+	.decision-drawer[open]>summary{border-bottom:1px solid #e2ebf4}
+	.decision-drawer-body{display:grid;gap:10px;padding:12px}
+	.decision-copy{font-size:13px;line-height:1.5;color:#415565}
+	.decision-hero .summary-grid .summary-card{background:#ffffffcc}
+	.decision-code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:12px;word-break:break-all}
+	@media (max-width:900px){.decision-layout,.decision-priority-grid{grid-template-columns:1fr}.decision-hero{padding:14px}}
+	@media (max-width:640px){.decision-surface{gap:10px}.decision-hero{padding:12px}.decision-panel,.decision-media-card{padding:10px}.decision-meta-grid,.decision-compare-grid{grid-template-columns:1fr}.decision-item-title{font-size:14px}}
 </style>`;
 }
 
@@ -2951,6 +2955,29 @@ function renderDecisionPanel(title: string, intro: string, body: string, tone: U
   )}</p></div>${body}</section>`;
 }
 
+function renderDecisionDualSection(input: {
+  title: string;
+  intro: string;
+  linksHtml?: string;
+  leftTitle: string;
+  leftIntro: string;
+  leftBody: string;
+  leftTone?: UiBadgeTone;
+  rightTitle: string;
+  rightIntro: string;
+  rightBody: string;
+  rightTone?: UiBadgeTone;
+}): string {
+  return `<section class="card"><div class="section-head"><div><h2>${esc(input.title)}</h2><p class="section-intro">${esc(
+    input.intro
+  )}</p></div>${input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""}</div><div class="decision-priority-grid">${renderDecisionPanel(
+    input.leftTitle,
+    input.leftIntro,
+    input.leftBody,
+    input.leftTone ?? "muted"
+  )}${renderDecisionPanel(input.rightTitle, input.rightIntro, input.rightBody, input.rightTone ?? "muted")}</div></section>`;
+}
+
 function renderDecisionPrioritySection(input: {
   title: string;
   intro: string;
@@ -2966,19 +2993,82 @@ function renderDecisionPrioritySection(input: {
   snapshotEmpty: string;
   snapshotTone?: UiBadgeTone;
 }): string {
-  return `<section class="card"><div class="section-head"><div><h2>${esc(input.title)}</h2><p class="section-intro">${esc(
-    input.intro
-  )}</p></div>${input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""}</div><div class="decision-priority-grid">${renderDecisionPanel(
-    input.railTitle,
-    input.railIntro,
-    renderDecisionCards(input.railCards, input.railEmpty),
-    input.railTone ?? ((input.railCards[0]?.tone ? decisionTone(input.railCards[0].tone) : "muted") as UiBadgeTone)
-  )}${renderDecisionPanel(
-    input.snapshotTitle ?? "복구 스냅샷",
-    input.snapshotIntro,
-    renderDecisionMetaGrid(input.snapshotFacts, input.snapshotEmpty),
-    input.snapshotTone ?? "muted"
-  )}</div></section>`;
+  return renderDecisionDualSection({
+    title: input.title,
+    intro: input.intro,
+    linksHtml: input.linksHtml,
+    leftTitle: input.railTitle,
+    leftIntro: input.railIntro,
+    leftBody: renderDecisionCards(input.railCards, input.railEmpty),
+    leftTone: input.railTone ?? ((input.railCards[0]?.tone ? decisionTone(input.railCards[0].tone) : "muted") as UiBadgeTone),
+    rightTitle: input.snapshotTitle ?? "복구 스냅샷",
+    rightIntro: input.snapshotIntro,
+    rightBody: renderDecisionMetaGrid(input.snapshotFacts, input.snapshotEmpty),
+    rightTone: input.snapshotTone ?? "muted"
+  });
+}
+
+function renderRecoveryRailSection(input: {
+  title: string;
+  intro: string;
+  linksHtml?: string;
+  recoveryTitle: string;
+  recoveryIntro: string;
+  recoveryCards: DecisionCard[];
+  recoveryEmpty: string;
+  recoveryTone?: UiBadgeTone;
+  linkedTitle: string;
+  linkedIntro: string;
+  linkedCards: DecisionCard[];
+  linkedEmpty: string;
+  linkedTone?: UiBadgeTone;
+}): string {
+  return renderDecisionDualSection({
+    title: input.title,
+    intro: input.intro,
+    linksHtml: input.linksHtml,
+    leftTitle: input.recoveryTitle,
+    leftIntro: input.recoveryIntro,
+    leftBody: renderDecisionCards(input.recoveryCards, input.recoveryEmpty),
+    leftTone: input.recoveryTone ?? ((input.recoveryCards[0]?.tone ? decisionTone(input.recoveryCards[0].tone) : "muted") as UiBadgeTone),
+    rightTitle: input.linkedTitle,
+    rightIntro: input.linkedIntro,
+    rightBody: renderDecisionCards(input.linkedCards, input.linkedEmpty),
+    rightTone: input.linkedTone ?? ((input.linkedCards[0]?.tone ? decisionTone(input.linkedCards[0].tone) : "muted") as UiBadgeTone)
+  });
+}
+
+function renderArtifactEvidenceSection(input: {
+  title: string;
+  intro: string;
+  linksHtml?: string;
+  summaryTitle: string;
+  summaryIntro: string;
+  summaryFacts: DecisionFact[];
+  summaryEmpty: string;
+  summaryTone?: UiBadgeTone;
+  drawerTitle: string;
+  drawerIntro: string;
+  drawerSummary: string;
+  drawerBodyHtml: string;
+  drawerTone?: UiBadgeTone;
+  drawerOpen?: boolean;
+}): string {
+  return renderDecisionDualSection({
+    title: input.title,
+    intro: input.intro,
+    linksHtml: input.linksHtml,
+    leftTitle: input.summaryTitle,
+    leftIntro: input.summaryIntro,
+    leftBody: renderDecisionMetaGrid(input.summaryFacts, input.summaryEmpty),
+    leftTone: input.summaryTone ?? "muted",
+    rightTitle: input.drawerTitle,
+    rightIntro: input.drawerIntro,
+    rightBody: `<details class="decision-drawer"${input.drawerOpen ? " open" : ""}><summary>${esc(
+      input.drawerSummary
+    )}</summary><div class="decision-drawer-body">${input.drawerBodyHtml}</div></details>`,
+    rightTone: input.drawerTone ?? "muted"
+  });
 }
 
 function renderObjectHero(input: ObjectHeroInput): string {
@@ -4764,53 +4854,70 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       opsView.mascotProfileId,
       opsView.studioProfileId
     ]);
-    const episodeStatusLabel = String(episode.status ?? "UNKNOWN");
-    const episodeStatusDisplay = statusLabelKo(episodeStatusLabel);
-    const episodeStatusTone = decisionTone(badgeClass(episodeStatusLabel));
-    const channelName =
-      str(isRecord(episode.channel) ? episode.channel.name : undefined) ??
-      str(episode.channelName) ??
-      "-";
+	    const episodeStatusLabel = String(episode.status ?? "UNKNOWN");
+	    const episodeStatusDisplay = statusLabelKo(episodeStatusLabel);
+	    const episodeStatusTone = decisionTone(badgeClass(episodeStatusLabel));
+	    const currentProfileSummary =
+	      summarizeValues([opsView.channelProfileId, opsView.mascotProfileId, opsView.studioProfileId], 3) || "profile unresolved";
+	    const renderPathSummary =
+	      compact(
+	        [
+	          opsView.routeSummary !== "-" ? `route ${opsView.routeSummary}` : null,
+	          opsView.renderModeSummary !== "-" ? `render ${opsView.renderModeSummary}` : null,
+	          opsView.backendSummary !== "-" ? `backend ${opsView.backendSummary}` : null
+	        ],
+	        " | "
+	      ) || "runtime render path unavailable";
+	    const channelName =
+	      str(isRecord(episode.channel) ? episode.channel.name : undefined) ??
+	      str(episode.channelName) ??
+	      "-";
     const characterPackId = str(episode.characterPackId);
     const characterPackVersion = str(episode.characterPackVersion);
     const latestFailedJob = jobs.find((job) => String(job.status ?? "").toUpperCase() === "FAILED") ?? null;
     const latestSucceededJob =
       jobs.find((job) => ["COMPLETED", "SUCCEEDED"].includes(String(job.status ?? "").toUpperCase())) ?? null;
-    const pipelineStateLabel =
-      finalExists && uploadManifestExists
-        ? "최종 패키지 준비 완료"
+	    const pipelineStateLabel =
+	      finalExists && uploadManifestExists
+	        ? "최종 패키지 준비 완료"
         : previewExists
           ? "프리뷰 준비 완료"
           : shotsReady
             ? "샷 컴파일 완료"
             : "스크립트만 준비됨";
-    const outputsReady = [previewExists, finalExists, uploadManifestExists].filter(Boolean).length;
-    const episodeSummaryCards: DecisionStat[] = [
-      {
-        label: "파이프라인 상태",
-        value: pipelineStateLabel,
-        hint: recommendAction.title,
-        tone: outputsReady === 3 ? "ok" : previewExists ? "warn" : "bad"
-      },
-      {
-        label: "QC",
-        value: `${styleQcMain.failCount} 실패 / ${styleQcMain.warnCount} 경고`,
-        hint: `강제 스타일 ${styleQcMain.forcedStyle}`,
-        tone: styleQcMain.failCount > 0 ? "bad" : styleQcMain.warnCount > 0 ? "warn" : "ok"
-      },
-      {
-        label: "출력",
-        value: `${outputsReady}/3`,
-        hint: "프리뷰 / 최종 / 매니페스트",
-        tone: outputsReady === 3 ? "ok" : outputsReady > 0 ? "warn" : "bad"
-      },
-      {
-        label: "폴백 체인",
-        value: String(opsView.fallbackSteps.length),
-        hint: episodeFallbackSummary || "사용된 폴백 없음",
-        tone: opsView.fallbackSteps.length > 0 ? "warn" : "ok"
-      }
-    ];
+	    const outputsReady = [previewExists, finalExists, uploadManifestExists].filter(Boolean).length;
+	    const episodeSummaryCards: DecisionStat[] = [
+	      {
+	        label: "파이프라인 게이트",
+	        value: pipelineStateLabel,
+	        hint: recommendAction.title,
+	        tone: outputsReady === 3 ? "ok" : previewExists ? "warn" : "bad"
+	      },
+	      {
+	        label: "렌더 경로",
+	        value: renderPathSummary,
+	        hint: opsView.visualSummary !== "-" ? `visual ${opsView.visualSummary}` : "route / render / backend summary",
+	        tone: opsView.renderModeSummary.includes("mismatched") || opsView.routeSummary !== "-" ? "warn" : "muted"
+	      },
+	      {
+	        label: "현재 프로필",
+	        value: currentProfileSummary,
+	        hint: "channel / mascot / studio runtime profiles",
+	        tone: currentProfileSummary === "profile unresolved" ? "warn" : "ok"
+	      },
+	      {
+	        label: "QC / 폴백",
+	        value: `${styleQcMain.failCount} 실패 / ${styleQcMain.warnCount} 경고`,
+	        hint: episodeFallbackSummary || `강제 스타일 ${styleQcMain.forcedStyle}`,
+	        tone: styleQcMain.failCount > 0 ? "bad" : styleQcMain.warnCount > 0 || opsView.fallbackSteps.length > 0 ? "warn" : "ok"
+	      },
+	      {
+	        label: "Last Good / Rollback",
+	        value: lastGoodState,
+	        hint: rollbackPoint,
+	        tone: lastGoodState === "none" ? "warn" : "ok"
+	      }
+	    ];
     const blockerCards: DecisionCard[] = [];
     if (latestFailedJob) {
       blockerCards.push({
@@ -4932,16 +5039,24 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         )}"/><button type="submit">스타일 프리뷰 실행</button></form><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교 보기</a>`
       });
     }
-    const linkedObjectCards: DecisionCard[] = [
-      {
-        title: "프로필 브라우저",
-        detail: `채널 ${opsView.channelProfileId ?? "-"} / 마스코트 ${opsView.mascotProfileId ?? "-"} / 스튜디오 ${opsView.studioProfileId ?? "-"}`,
-        tone: "muted",
-        html: `<a href="${episodeProfilesHref}">일치하는 프로필 열기</a>`
-      },
-      {
-        title: "마지막 정상 상태",
-        detail: lastGoodState,
+	    const linkedObjectCards: DecisionCard[] = [
+	      {
+	        title: "현재 프로필 오브젝트",
+	        detail: `채널 ${opsView.channelProfileId ?? "-"} / 마스코트 ${opsView.mascotProfileId ?? "-"} / 스튜디오 ${opsView.studioProfileId ?? "-"}`,
+	        tone: "muted",
+	        badge: "profiles",
+	        html: `<a href="${episodeProfilesHref}">일치하는 프로필 열기</a>`
+	      },
+	      {
+	        title: "렌더 경로 요약",
+	        detail: renderPathSummary,
+	        tone: opsView.renderModeSummary.includes("mismatched") ? "warn" : "muted",
+	        badge: "render path",
+	        html: `<a href="${opsWorkbenchHref}">Ops 워크벤치</a><a href="${episodeProfilesHref}">프로필 브라우저</a>`
+	      },
+	      {
+	        title: "마지막 정상 상태",
+	        detail: lastGoodState,
         tone: lastGoodState === "none" ? "warn" : "ok",
         badge: "last good",
         html: latestSucceededJob?.id ? `<a href="/ui/jobs/${encodeURIComponent(String(latestSucceededJob.id))}">최근 성공 작업</a>` : `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">산출물 인덱스</a>`
@@ -4955,11 +5070,11 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       },
       {
         title: "에피소드 근거",
-        detail: "판단 요약만으로 부족할 때 원시 운영 산출물로 한 번에 이동할 수 있습니다.",
-        tone: "muted",
-        html: opsArtifactLinks || `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">에피소드 산출물 열기</a>`
-      }
-    ];
+	        detail: "판단 요약만으로 부족할 때 원시 운영 산출물로 한 번에 이동할 수 있습니다.",
+	        tone: "muted",
+	        html: opsArtifactLinks || `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">에피소드 산출물 열기</a>`
+	      }
+	    ];
     if (characterPackId) {
       linkedObjectCards.push({
         title: "캐릭터 팩",
@@ -5005,7 +5120,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         hint: editorHistoryState ? `history ${editorHistoryState.pointer + 1}/${editorHistoryState.states.length}` : String(artifacts.outDir ?? localOut.outDir)
       }
     ];
-    const episodeDecisionRail: DecisionCard[] = [
+	    const episodeDecisionRail: DecisionCard[] = [
       {
         title: recommendAction.title,
         detail: `${recommendAction.detail} 현재 기본 경로는 ${runProfileUiLabel(recommendAction.profile)}로 유지하세요.`,
@@ -5026,10 +5141,21 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         tone: lastGoodState === "none" ? "warn" : "ok",
         badge: "rollback",
         html: `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">산출물 인덱스</a><a href="${opsWorkbenchHref}">Ops 워크벤치</a>`
-      }
-    ];
+	      }
+	    ];
+	    const episodeEvidenceFacts: DecisionFact[] = [
+	      { label: "Render Path", value: renderPathSummary, hint: "route / render mode / backend at a glance" },
+	      { label: "Current Profiles", value: currentProfileSummary, hint: "resolved runtime profile set" },
+	      { label: "Last Good", value: lastGoodState, hint: "nearest trusted episode state" },
+	      { label: "Rollback Point", value: rollbackPoint, hint: "operator rollback anchor" }
+	    ];
+	    const episodeEvidenceDrawerBody = `<div class="decision-copy">Use the episode object summary and linked review rails first. Drop into artifact files or raw QC only when the promotion gate, render path, or rollback anchor still feels uncertain.</div>
+	<div class="quick-links">${opsArtifactLinks || `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">에피소드 산출물 인덱스</a>`}</div>
+	<details class="decision-drawer"><summary>Open QC evidence memo</summary><div class="decision-drawer-body"><div class="decision-copy">STYLE_QC 실패 ${esc(
+	      String(styleQcMain.failCount)
+	    )} / 경고 ${esc(String(styleQcMain.warnCount))} / 강제 스타일 ${esc(styleQcMain.forcedStyle)}. Raw qc_report.json stays lower on the page because the operator should decide from the control-plane summary first.</div></div></details>`;
 
-    const episodeBody = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
+	    const episodeBody = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
       eyebrow: "에피소드 제어면",
       title: "에피소드 상세",
       subtitle: "승격 전 비교, last-good state, rollback point를 같은 오브젝트 화면에서 유지하며 에피소드를 운영합니다.",
@@ -5064,9 +5190,9 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       secondaryActions: secondaryActionCards,
       recoveryActions: recoveryActionCards,
       recentActivity: recentActivityCards,
-      linkedObjects: linkedObjectCards
-    })}${renderDecisionPrioritySection({
-      title: "판단 레일",
+	      linkedObjects: linkedObjectCards
+	    })}${renderDecisionPrioritySection({
+	      title: "판단 레일",
       intro: "권장 실행 경로, 승격 전 비교, rollback anchor를 무거운 근거 섹션보다 위에 유지합니다.",
       linksHtml: `<a href="${opsWorkbenchHref}">Ops 워크벤치</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">산출물 인덱스</a>`,
       railTitle: "다음 운영자 액션",
@@ -5075,18 +5201,46 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       railEmpty: "아직 운영자 레일이 없습니다.",
       railTone: episodeStatusTone,
       snapshotIntro: "실패 사유, last-good state, 폴백, 재시도 경로, rollback point를 상단에 유지합니다.",
-      snapshotFacts: recoveryFacts,
-      snapshotEmpty: "복구 데이터가 아직 없습니다.",
-      snapshotTone: episodeStatusTone
-    })}
+	      snapshotFacts: recoveryFacts,
+	      snapshotEmpty: "복구 데이터가 아직 없습니다.",
+	      snapshotTone: episodeStatusTone
+	    })}${renderRecoveryRailSection({
+	      title: "복구 / 연결 오브젝트",
+	      intro: "복구 레일과 linked object rail을 분리해, 재시도 순서와 인접 오브젝트 이동 경로를 같은 높이에 둡니다.",
+	      linksHtml: `<a href="${opsWorkbenchHref}">Ops 워크벤치</a><a href="${episodeProfilesHref}">프로필 브라우저</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">산출물 인덱스</a>`,
+	      recoveryTitle: "복구 레일",
+	      recoveryIntro: "실패, 산출물 누락, QC 경고가 남아 있으면 이 순서대로 복구를 진행합니다.",
+	      recoveryCards: recoveryActionCards,
+	      recoveryEmpty: "지금은 별도 복구 액션이 필요하지 않습니다.",
+	      recoveryTone: recoveryActionCards[0]?.tone ? decisionTone(recoveryActionCards[0].tone) : episodeStatusTone,
+	      linkedTitle: "연결 오브젝트 레일",
+	      linkedIntro: "render path, current profiles, last-good state, rollback point를 연결 오브젝트 맥락으로 유지합니다.",
+	      linkedCards: linkedObjectCards,
+	      linkedEmpty: "연결된 오브젝트가 아직 없습니다.",
+	      linkedTone: linkedObjectCards[1]?.tone ? decisionTone(linkedObjectCards[1].tone) : "muted"
+	    })}${renderArtifactEvidenceSection({
+	      title: "아티팩트 근거 드로어",
+	      intro: "기본 판단 UI를 먼저 보고, artifact-backed evidence는 드로어에서 보조 확인합니다.",
+	      linksHtml: `<a href="${episodeProfilesHref}">프로필 브라우저</a><a href="${opsWorkbenchHref}">Ops 워크벤치</a>`,
+	      summaryTitle: "오브젝트 근거 요약",
+	      summaryIntro: "render path, current profiles, last-good state, rollback point를 한 묶음으로 유지합니다.",
+	      summaryFacts: episodeEvidenceFacts,
+	      summaryEmpty: "아직 에피소드 근거 요약이 없습니다.",
+	      summaryTone: episodeStatusTone,
+	      drawerTitle: "근거 드로어",
+	      drawerIntro: "원시 artifact와 QC는 여기로 밀어 두고, 상단 control plane에서 먼저 결정을 내립니다.",
+	      drawerSummary: "Open episode artifact evidence and raw-evidence policy",
+	      drawerBodyHtml: episodeEvidenceDrawerBody,
+	      drawerTone: "muted"
+	    })}
 <section class="card">
-  <div class="section-head">
-    <div>
-      <h2>오브젝트 근거</h2>
-      <p class="section-intro">판단 요약은 위에 두고, 보조 근거는 여기서 읽기 쉽게 유지합니다.</p>
-    </div>
-    <div class="quick-links"><a href="${episodeProfilesHref}">프로필 브라우저 보기</a><a href="${opsWorkbenchHref}">Ops 워크벤치</a></div>
-  </div>
+	  <div class="section-head">
+	    <div>
+	      <h2>운영 컨텍스트</h2>
+	      <p class="section-intro">판단 요약은 위에 유지하고, 이 섹션은 render path와 shot-level ops context를 읽기 쉽게 정리합니다.</p>
+	    </div>
+	    <div class="quick-links"><a href="${episodeProfilesHref}">프로필 브라우저 보기</a><a href="${opsWorkbenchHref}">Ops 워크벤치</a></div>
+	  </div>
   <p>episodeId: <strong>${esc(episode.id ?? id)}</strong></p>
   <p>주제: <strong>${esc(episode.topic ?? "")}</strong></p>
   <p>상태: <span class="badge ${badgeClass(String(episode.status ?? ""))}">${esc(episodeStatusDisplay)}</span></p>
@@ -5113,11 +5267,11 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       <p><a href="${opsWorkbenchHref}">Ops 워크벤치 열기</a></p>
     </div>
   </div>
-  <div class="card">
-    <h3>에피소드 산출물 점검기</h3>
-    <p class="notice">경로/백엔드/승인 메타데이터의 원문 확인이 필요할 때 이 원시 산출물을 사용하세요.</p>
-    <div class="actions">${opsArtifactLinks || '<span class="notice">에피소드 로컬 운영 산출물이 아직 없습니다.</span>'}</div>
-  </div>
+	  <div class="card">
+	    <h3>에피소드 산출물 점검기</h3>
+	    <p class="notice">경로/백엔드/승인 메타데이터의 원문 확인이 필요할 때만 이 드로어를 여세요.</p>
+	    <details><summary>원시 운영 산출물 열기</summary><div class="actions" style="margin-top:10px">${opsArtifactLinks || '<span class="notice">에피소드 로컬 운영 산출물이 아직 없습니다.</span>'}</div></details>
+	  </div>
   <div class="card">
     <h3>샷별 운영 신호</h3>
     <table>
@@ -5301,38 +5455,55 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const snapshotItems = snapshots.length > 0
       ? snapshots.map((name) => `<a class="editor-chip" href="/artifacts/${encodeURIComponent(id)}/editor_snapshots/${encodeURIComponent(name)}">${esc(name)}</a>`).join("")
       : `<span class="muted-text">No snapshots yet.</span>`;
-    const compareHref = `/ui/episodes/${encodeURIComponent(id)}/ab-compare`;
-    const episodeDetailHref = `/ui/episodes/${encodeURIComponent(id)}`;
-    const shotCount = shotsDoc.shots.length;
-    const workbenchTone: UiBadgeTone =
-      shotCount === 0
-        ? "bad"
+	    const compareHref = `/ui/episodes/${encodeURIComponent(id)}/ab-compare`;
+	    const episodeDetailHref = `/ui/episodes/${encodeURIComponent(id)}`;
+	    const shotCount = shotsDoc.shots.length;
+	    const workbenchProfileSummary =
+	      summarizeValues([opsView.channelProfileId, opsView.mascotProfileId, opsView.studioProfileId], 3) || "profile unresolved";
+	    const workbenchRenderPathSummary =
+	      compact(
+	        [
+	          opsView.routeSummary !== "-" ? `route ${opsView.routeSummary}` : null,
+	          opsView.renderModeSummary !== "-" ? `render ${opsView.renderModeSummary}` : null,
+	          opsView.backendSummary !== "-" ? `backend ${opsView.backendSummary}` : null
+	        ],
+	        " | "
+	      ) || "route / render path unavailable";
+	    const workbenchTone: UiBadgeTone =
+	      shotCount === 0
+	        ? "bad"
         : opsView.fallbackSteps.length > 0 || opsView.repairSummary !== "-" || opsView.qcSummary !== "-" || opsView.renderModeSummary.includes("mismatched")
           ? "warn"
           : "ok";
     const workbenchStatusLabel =
       shotCount === 0 ? "graph missing" : workbenchTone === "warn" ? "compare before promote" : "workbench ready";
-    const workbenchSummaryCards: DecisionStat[] = [
-      { label: "Shots", value: String(shotCount), hint: "timeline rows currently loaded", tone: shotCount > 0 ? "ok" : "bad" },
-      {
-        label: "History",
+	    const workbenchSummaryCards: DecisionStat[] = [
+	      { label: "Shots", value: String(shotCount), hint: "timeline rows currently loaded", tone: shotCount > 0 ? "ok" : "bad" },
+	      {
+	        label: "History",
         value: `${history.pointer + 1}/${history.states.length}`,
         hint: history.states[history.pointer]?.reason ?? "active history checkpoint",
         tone: history.states.length > 1 ? "warn" : "muted"
       },
-      {
-        label: "Rollback snapshots",
-        value: String(snapshots.length),
-        hint: snapshots[0] ?? "no snapshot files yet",
-        tone: snapshots.length > 0 ? "ok" : "warn"
-      },
-      {
-        label: "Ops baggage",
-        value: summarizeValues([opsView.qcSummary, opsView.repairSummary, opsView.renderModeSummary.includes("mismatched") ? "render drift" : null], 3),
-        hint: "signals that still require compare-before-promote review",
-        tone: workbenchTone
-      }
-    ];
+	      {
+	        label: "Rollback Anchor",
+	        value: snapshots[0] ?? `history ${history.pointer + 1}/${history.states.length}`,
+	        hint: snapshots.length > 0 ? "latest snapshot file" : "save a snapshot before rerender",
+	        tone: snapshots.length > 0 ? "ok" : "warn"
+	      },
+	      {
+	        label: "Render Path / Review",
+	        value: workbenchRenderPathSummary,
+	        hint: compact(
+	          [
+	            workbenchProfileSummary !== "profile unresolved" ? workbenchProfileSummary : null,
+	            summarizeValues([opsView.qcSummary, opsView.repairSummary, opsView.renderModeSummary.includes("mismatched") ? "render drift" : null], 3)
+	          ],
+	          " | "
+	        ),
+	        tone: workbenchTone
+	      }
+	    ];
     const workbenchBlockers: DecisionCard[] = [];
     if (shotCount === 0) {
       workbenchBlockers.push({
@@ -5401,22 +5572,29 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         tone: index === 0 ? workbenchTone : ("muted" as UiBadgeTone),
         badge: index === 0 ? "current" : "history"
       }));
-    const workbenchLinkedObjects: DecisionCard[] = [
-      {
-        title: "Episode detail",
-        detail: "Promotion, rollback decision, and last-good state stay anchored in the episode detail surface.",
+	    const workbenchLinkedObjects: DecisionCard[] = [
+	      {
+	        title: "Episode detail",
+	        detail: "Promotion, rollback decision, and last-good state stay anchored in the episode detail surface.",
         tone: "muted",
         badge: "episode",
         html: `<a href="${episodeDetailHref}">Episode Detail</a>`
       },
-      {
-        title: "Profile browser",
-        detail: editorOpsOverview || "linked runtime profile view",
-        tone: "muted",
-        badge: "profiles",
-        html: `<a href="${editorProfilesHref}">Profile Browser</a>`
-      }
-    ];
+	      {
+	        title: "Profile browser",
+	        detail: workbenchProfileSummary === "profile unresolved" ? editorOpsOverview || "linked runtime profile view" : workbenchProfileSummary,
+	        tone: "muted",
+	        badge: "profiles",
+	        html: `<a href="${editorProfilesHref}">Profile Browser</a>`
+	      },
+	      {
+	        title: "Render path summary",
+	        detail: workbenchRenderPathSummary,
+	        tone: opsView.renderModeSummary.includes("mismatched") ? "warn" : "muted",
+	        badge: "render path",
+	        html: `<a href="${compareHref}">A/B Compare</a><a href="/ui/benchmarks">Benchmarks</a>`
+	      }
+	    ];
     const workbenchDecisionRail: DecisionCard[] = [
       {
         title: "Snapshot first",
@@ -5440,16 +5618,25 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         html: `<a href="#editor-snapshots">Snapshots</a>`
       }
     ];
-    const workbenchSnapshotFacts: DecisionFact[] = [
-      { label: "Failure Reason", value: shotCount === 0 ? "shots missing" : compact([opsView.qcSummary !== "-" ? opsView.qcSummary : null, opsView.repairSummary !== "-" ? opsView.repairSummary : null], " | ") || "none", hint: "top workbench blocker" },
-      { label: "Last Known Good", value: snapshots[0] ?? history.states[history.pointer]?.reason ?? "none", hint: "nearest checkpoint or snapshot" },
+	    const workbenchSnapshotFacts: DecisionFact[] = [
+	      { label: "Failure Reason", value: shotCount === 0 ? "shots missing" : compact([opsView.qcSummary !== "-" ? opsView.qcSummary : null, opsView.repairSummary !== "-" ? opsView.repairSummary : null], " | ") || "none", hint: "top workbench blocker" },
+	      { label: "Last Known Good", value: snapshots[0] ?? history.states[history.pointer]?.reason ?? "none", hint: "nearest checkpoint or snapshot" },
       { label: "Fallback Applied", value: opsView.fallbackSteps.length > 0 ? opsView.fallbackSteps.map((step) => humanizeOpsLabel(step)).join(", ") : "none", hint: "current fallback chain" },
       { label: "Retry Path", value: shotCount === 0 ? "compile shots first" : "save snapshot -> rerender preview", hint: "safe rerender order" },
-      { label: "Alternate Path", value: "episode detail / A-B compare / profile browser", hint: "adjacent decision surfaces" },
-      { label: "Rollback Point", value: snapshots[0] ?? `history ${history.pointer + 1}/${history.states.length}`, hint: "explicit workbench rollback anchor" }
-    ];
+	      { label: "Alternate Path", value: "episode detail / A-B compare / profile browser", hint: "adjacent decision surfaces" },
+	      { label: "Rollback Point", value: snapshots[0] ?? `history ${history.pointer + 1}/${history.states.length}`, hint: "explicit workbench rollback anchor" }
+	    ];
+	    const workbenchEvidenceFacts: DecisionFact[] = [
+	      { label: "Current Profiles", value: workbenchProfileSummary, hint: "runtime profile context kept adjacent" },
+	      { label: "Render Path", value: workbenchRenderPathSummary, hint: "route / render mode / backend summary" },
+	      { label: "Last Good", value: snapshots[0] ?? history.states[history.pointer]?.reason ?? "none", hint: "nearest checkpoint" },
+	      { label: "Rollback Point", value: snapshots[0] ?? `history ${history.pointer + 1}/${history.states.length}`, hint: "explicit workbench rollback file or checkpoint" }
+	    ];
+	    const workbenchEvidenceDrawerBody = `<div class="decision-copy">This workbench stays ops-aware by keeping snapshots, compare surfaces, and runtime metadata above the interactive canvas. Raw artifacts are not the default starting point.</div>
+	<div class="quick-links"><a href="#editor-snapshots">Rollback snapshots</a><a href="${compareHref}">A/B Compare</a><a href="${episodeDetailHref}">Episode Detail</a></div>
+	<details class="decision-drawer"><summary>Open workbench evidence order</summary><div class="decision-drawer-body"><div class="decision-copy">Snapshot -> rerender preview -> episode detail or A/B compare -> profile browser. Use benchmark or rollout objects only when the workbench still cannot explain the route or acceptance drift.</div><div class="quick-links"><a href="${editorProfilesHref}">Profile Browser</a><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollouts</a></div></div></details>`;
 
-    const body = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
+	    const body = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
       eyebrow: "Episode Ops Workbench",
       title: "Ops Workbench",
       subtitle: "Use the workbench to inspect shot-level routing and stage timeline edits, but compare before promote and keep rollback anchors explicit.",
@@ -5459,12 +5646,12 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       headerContextHtml: `<span class="muted-text">episode <span class="decision-code">${esc(id)}</span></span><span class="muted-text">history <span class="decision-code">${history.pointer + 1}/${history.states.length}</span></span>`,
       quickLinksHtml: `<a href="${episodeDetailHref}">Episode Detail</a><a href="${compareHref}">A/B Compare</a><a href="${editorProfilesHref}">Profile Browser</a>`,
       summaryCards: workbenchSummaryCards,
-      metaItems: [
-        { label: "Episode", value: id, hint: "workbench owner object" },
-        { label: "Shots", value: String(shotCount), hint: "timeline rows in memory" },
-        { label: "Snapshots", value: String(snapshots.length), hint: snapshots[0] ?? "none" },
-        { label: "Ops context", value: editorOpsOverview || "-", hint: "route / backend / acceptance overview" }
-      ],
+	      metaItems: [
+	        { label: "Episode", value: id, hint: "workbench owner object" },
+	        { label: "Shots", value: String(shotCount), hint: "timeline rows in memory" },
+	        { label: "Current Profiles", value: workbenchProfileSummary, hint: "runtime profile set" },
+	        { label: "Rollback Point", value: snapshots[0] ?? `history ${history.pointer + 1}/${history.states.length}`, hint: editorOpsOverview || "route / backend / acceptance overview" }
+	      ],
       blockers: workbenchBlockers,
       primaryActions: workbenchPrimaryActions,
       secondaryActions: workbenchSecondaryActions,
@@ -5481,10 +5668,38 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       railEmpty: "No workbench actions are available.",
       railTone: workbenchTone,
       snapshotIntro: "Failure reason, last checkpoint, rerender path, and rollback point stay above the editor stage.",
-      snapshotFacts: workbenchSnapshotFacts,
-      snapshotEmpty: "No workbench recovery snapshot is available.",
-      snapshotTone: workbenchTone
-    })}<section class="card editor-shell" id="editor-shell">
+	      snapshotFacts: workbenchSnapshotFacts,
+	      snapshotEmpty: "No workbench recovery snapshot is available.",
+	      snapshotTone: workbenchTone
+	    })}${renderRecoveryRailSection({
+	      title: "Recovery / Linked Objects",
+	      intro: "Keep the rollback path and adjacent decision objects visible before diving into the workbench canvas.",
+	      linksHtml: `<a href="${episodeDetailHref}">Episode Detail</a><a href="${compareHref}">A/B Compare</a><a href="${editorProfilesHref}">Profile Browser</a>`,
+	      recoveryTitle: "Workbench recovery rail",
+	      recoveryIntro: "Snapshot first, then rerender, then compare. The workbench is not the final promotion surface.",
+	      recoveryCards: workbenchRecoveryActions,
+	      recoveryEmpty: "No workbench recovery actions are available.",
+	      recoveryTone: workbenchRecoveryActions[0]?.tone ? decisionTone(workbenchRecoveryActions[0].tone) : workbenchTone,
+	      linkedTitle: "Linked object rail",
+	      linkedIntro: "Keep profile context, render path, and owner objects adjacent to the workbench.",
+	      linkedCards: workbenchLinkedObjects,
+	      linkedEmpty: "No linked workbench objects are available.",
+	      linkedTone: workbenchLinkedObjects[1]?.tone ? decisionTone(workbenchLinkedObjects[1].tone) : "muted"
+	    })}${renderArtifactEvidenceSection({
+	      title: "Artifact Evidence Drawer",
+	      intro: "Runtime metadata and rollback anchors stay readable here; deeper evidence is pushed behind the drawer.",
+	      linksHtml: `<a href="#editor-snapshots">Rollback snapshots</a><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollouts</a>`,
+	      summaryTitle: "Workbench evidence summary",
+	      summaryIntro: "Current profiles, render path, and rollback anchor stay above the canvas.",
+	      summaryFacts: workbenchEvidenceFacts,
+	      summaryEmpty: "No workbench evidence summary is available.",
+	      summaryTone: workbenchTone,
+	      drawerTitle: "Workbench evidence drawer",
+	      drawerIntro: "Use the workbench evidence order before reaching for downstream artifact detail.",
+	      drawerSummary: "Open workbench evidence order and raw-evidence policy",
+	      drawerBodyHtml: workbenchEvidenceDrawerBody,
+	      drawerTone: "muted"
+	    })}<section class="card editor-shell" id="editor-shell">
 <style>
 .editor-shell{padding:14px;display:grid;gap:12px}
 .editor-topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
@@ -6072,12 +6287,100 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           : scoreA < scoreB
             ? `${variantAStyle}를 에피소드 상세로 가져가세요`
             : `${variantBStyle}를 에피소드 상세로 가져가세요`;
-    const promotionTarget =
-      !compareReady ? "none" : qa.failCount === qb.failCount && qa.warnCount === qb.warnCount ? "operator decision" : scoreA < scoreB ? variantAStyle : variantBStyle;
-    const compareLastKnownGood = aExists && bExists ? "paired previews ready" : aExists || bExists ? "single preview ready" : "none";
-    const compareRollbackPoint = aExists ? `${variantAStyle} preview` : bExists ? `${variantBStyle} preview` : "episode detail";
+	    const promotionTarget =
+	      !compareReady ? "none" : qa.failCount === qb.failCount && qa.warnCount === qb.warnCount ? "operator decision" : scoreA < scoreB ? variantAStyle : variantBStyle;
+	    const compareLastKnownGood = aExists && bExists ? "paired previews ready" : aExists || bExists ? "single preview ready" : "none";
+	    const compareRollbackPoint = aExists ? `${variantAStyle} preview` : bExists ? `${variantBStyle} preview` : "episode detail";
+	    const compareBlockers =
+	      !compareReady
+	        ? [{ title: "비교가 차단됨", detail: "프리뷰 산출물 하나 이상이 없어 지금 승인하거나 롤백하기에는 이릅니다.", tone: "bad" as UiBadgeTone, badge: "재실행" }]
+	        : [];
+	    const comparePrimaryActions = [
+	      {
+	        title: "판정을 에피소드로 가져가기",
+	        detail: `${nextDecision} compare gate를 통과한 뒤에만 episode detail에서 승격을 반영하세요.`,
+	        tone: verdictTone,
+	        badge: verdict,
+	        html: `<a href="/ui/episodes/${esc(id)}">에피소드 상세 열기</a><a href="/ui/episodes/${esc(id)}/ab-compare">비교 새로고침</a>`
+	      }
+	    ];
+	    const compareSecondaryActions = [
+	      {
+	        title: "연결된 실행 점검",
+	        detail: "승인하거나 재시도하기 전에 각 변형을 만든 정확한 작업을 확인하세요.",
+	        tone: "muted" as UiBadgeTone,
+	        html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">jobA 열기</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB 열기</a>` : ""}`
+	      }
+	    ];
+	    const compareRecoveryActions = [
+	      {
+	        title: "재시도 / 대체 경로",
+	        detail: compareReady ? "판정이 여전히 불명확하면 새 compare set을 만들거나 episode detail로 돌아가 last-good state와 함께 검토하세요." : "결정하기 전에 비교 세트를 다시 생성하세요.",
+	        tone: compareReady ? ("warn" as UiBadgeTone) : ("bad" as UiBadgeTone),
+	        badge: compareReady ? "대체 경로" : "재시도",
+	        html: `<form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="inline"><input type="hidden" name="styleA" value="${esc(
+	          variantAStyle
+	        )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">A/B 비교 다시 실행</button></form><a href="/ui/episodes/${esc(
+	          id
+	        )}">에피소드 상세</a>`
+	      }
+	    ];
+	    const compareRecentActivity = [
+	      { title: "변형 A 작업", detail: jobA ? `jobA ${jobA}` : "query string에 jobA가 연결되지 않았습니다", tone: jobA ? ("ok" as UiBadgeTone) : ("muted" as UiBadgeTone), badge: "A" },
+	      { title: "변형 B 작업", detail: jobB ? `jobB ${jobB}` : "query string에 jobB가 연결되지 않았습니다", tone: jobB ? ("ok" as UiBadgeTone) : ("muted" as UiBadgeTone), badge: "B" }
+	    ];
+	    const compareLinkedObjects = [
+	      { title: "에피소드 오브젝트", detail: "승격과 롤백 판단은 모두 에피소드 상세에서 이뤄집니다.", tone: "muted" as UiBadgeTone, html: `<a href="/ui/episodes/${esc(id)}">에피소드 상세 열기</a>` },
+	      { title: "Ops 워크벤치", detail: "샷 단위 편집과 snapshot rollback은 workbench에서 처리합니다.", tone: "muted" as UiBadgeTone, html: `<a href="/ui/episodes/${esc(id)}/editor">Ops 워크벤치</a>` }
+	    ];
+	    const compareDecisionRail = [
+	      {
+	        title: "현재 compare gate",
+	        detail: `${nextDecision} promotion target은 ${promotionTarget}입니다.`,
+	        tone: verdictTone,
+	        badge: verdict,
+	        html: `<a href="/ui/episodes/${esc(id)}">판정을 에피소드 상세로 반영</a>`
+	      },
+	      {
+	        title: "비교 세트 재생성",
+	        detail: compareReady ? "판정이 여전히 애매하면 같은 조합을 다시 실행하거나 새 스타일 조합을 비교에 넣으세요." : "프리뷰가 하나 이상 없어 승인이나 롤백 전에 다시 실행해야 합니다.",
+	        tone: compareReady ? ("warn" as UiBadgeTone) : ("bad" as UiBadgeTone),
+	        badge: compareReady ? "재실행" : "차단됨",
+	        html: `<form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="inline"><input type="hidden" name="styleA" value="${esc(
+	          variantAStyle
+	        )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">A/B 비교 다시 실행</button></form>`
+	      },
+	      {
+	        title: "롤백 앵커",
+	        detail: `${compareRollbackPoint}가 현재 비교면의 last-good preview이며, 최종 rollback 반영은 episode detail에서 처리합니다.`,
+	        tone: compareLastKnownGood === "none" ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
+	        badge: "rollback",
+	        html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">jobA 열기</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB 열기</a>` : ""}<a href="/ui/episodes/${esc(id)}">에피소드 상세</a>`
+	      }
+	    ];
+	    const compareSnapshotFacts = [
+	      {
+	        label: "실패 사유",
+	        value: !compareReady ? "프리뷰 산출물 하나 이상이 없습니다" : "강한 차단 요인은 없지만 운영자 판정이 필요합니다",
+	        hint: "최상위 비교 차단 요인"
+	      },
+	      { label: "마지막 정상 지점", value: compareLastKnownGood, hint: "현재 가장 좋은 복구 앵커" },
+	      { label: "적용된 폴백", value: `${qa.forcedStyle} / ${qb.forcedStyle}`, hint: "STYLE_QC가 감지한 강제 스타일" },
+	      { label: "재시도 경로", value: compareReady ? "A/B 재실행 또는 에피소드 상세로 복귀" : "A/B 비교 생성 재실행", hint: nextDecision },
+	      { label: "대체 경로", value: "스타일 프리뷰 / Ops 워크벤치", hint: "비교 결과가 애매할 때 사용" },
+	      { label: "롤백 지점", value: compareRollbackPoint, hint: "승격과 롤백은 episode detail에서 반영됩니다" }
+	    ];
+	    const compareEvidenceFacts = [
+	      { label: "Compare Gate", value: verdict, hint: nextDecision },
+	      { label: "Promotion Target", value: promotionTarget, hint: "episode detail이 최종 승격 오브젝트" },
+	      { label: "Last Good", value: compareLastKnownGood, hint: "paired preview or single preview anchor" },
+	      { label: "Rollback Point", value: compareRollbackPoint, hint: "현재 비교면 기준 rollback anchor" }
+	    ];
+	    const compareEvidenceDrawerBody = `<div class="decision-copy">The compare shell is the default decision surface. Use preview playback, QC deltas, and linked jobs before escalating to lower-level artifacts or rerunning the whole episode flow.</div>
+	<div class="quick-links"><a href="/ui/episodes/${esc(id)}">에피소드 상세</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">jobA</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB</a>` : ""}</div>
+	<details class="decision-drawer"><summary>Open compare evidence order</summary><div class="decision-drawer-body"><div class="decision-copy">Compare shell -> episode detail -> ops workbench. If the gate is still unclear, rerun the compare set before promoting or rolling back.</div><div class="quick-links"><a href="/ui/episodes/${esc(id)}/editor">Ops 워크벤치</a><a href="/ui/jobs">작업</a></div></div></details>`;
 
-    const body = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
+	    const body = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
       eyebrow: "변형 검토",
       title: "A/B 프리뷰 비교",
       subtitle: "compare-before-promote 게이트, promotion target, rollback anchor를 프리뷰 재생보다 먼저 유지합니다.",
@@ -6104,112 +6407,70 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         { label: "에피소드 상태", value: statusLabelKo(String(episodeRow?.status ?? "-")), hint: "연결된 오브젝트 상태" },
         { label: "롤백 앵커", value: compareRollbackPoint, hint: "현재 비교면의 last-good preview" }
       ],
-      blockers: !compareReady
-        ? [{ title: "비교가 차단됨", detail: "프리뷰 산출물 하나 이상이 없어 지금 승인하거나 롤백하기에는 이릅니다.", tone: "bad", badge: "재실행" }]
-        : [],
-      primaryActions: [
-        {
-          title: "판정을 에피소드로 가져가기",
-          detail: `${nextDecision} compare gate를 통과한 뒤에만 episode detail에서 승격을 반영하세요.`,
-          tone: verdictTone,
-          badge: verdict,
-          html: `<a href="/ui/episodes/${esc(id)}">에피소드 상세 열기</a><a href="/ui/episodes/${esc(id)}/ab-compare">비교 새로고침</a>`
-        }
-      ],
-      secondaryActions: [
-        {
-          title: "연결된 실행 점검",
-          detail: "승인하거나 재시도하기 전에 각 변형을 만든 정확한 작업을 확인하세요.",
-          tone: "muted",
-          html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">jobA 열기</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB 열기</a>` : ""}`
-        }
-      ],
-      recoveryActions: [
-        {
-          title: "재시도 / 대체 경로",
-          detail: compareReady ? "판정이 여전히 불명확하면 새 compare set을 만들거나 episode detail로 돌아가 last-good state와 함께 검토하세요." : "결정하기 전에 비교 세트를 다시 생성하세요.",
-          tone: compareReady ? "warn" : "bad",
-          badge: compareReady ? "대체 경로" : "재시도",
-          html: `<form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="inline"><input type="hidden" name="styleA" value="${esc(
-            variantAStyle
-          )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">A/B 비교 다시 실행</button></form><a href="/ui/episodes/${esc(
-            id
-          )}">에피소드 상세</a>`
-        }
-      ],
-      recentActivity: [
-        { title: "변형 A 작업", detail: jobA ? `jobA ${jobA}` : "query string에 jobA가 연결되지 않았습니다", tone: jobA ? "ok" : "muted", badge: "A" },
-        { title: "변형 B 작업", detail: jobB ? `jobB ${jobB}` : "query string에 jobB가 연결되지 않았습니다", tone: jobB ? "ok" : "muted", badge: "B" }
-      ],
-      linkedObjects: [
-        { title: "에피소드 오브젝트", detail: "승격과 롤백 판단은 모두 에피소드 상세에서 이뤄집니다.", tone: "muted", html: `<a href="/ui/episodes/${esc(id)}">에피소드 상세 열기</a>` },
-        { title: "Ops 워크벤치", detail: "샷 단위 편집과 snapshot rollback은 workbench에서 처리합니다.", tone: "muted", html: `<a href="/ui/episodes/${esc(id)}/editor">Ops 워크벤치</a>` }
-      ]
-    })}${renderDecisionPrioritySection({
-      title: "판단 레일",
-      intro: "재생 전에 현재 compare gate, 재실행 경로, episode promotion target을 계속 보이게 유지합니다.",
-      linksHtml: `<a href="/ui/episodes/${esc(id)}">에피소드 상세</a><a href="/ui/episodes/${esc(id)}/ab-compare">비교 새로고침</a>`,
-      railTitle: "비교 액션",
-      railIntro: "대상 문맥을 잃지 않고 compare before promote, compare set 재생성, rollback anchor 검토를 처리하세요.",
-      railCards: [
-        {
-          title: "현재 compare gate",
-          detail: `${nextDecision} promotion target은 ${promotionTarget}입니다.`,
-          tone: verdictTone,
-          badge: verdict,
-          html: `<a href="/ui/episodes/${esc(id)}">판정을 에피소드 상세로 반영</a>`
-        },
-        {
-          title: "비교 세트 재생성",
-          detail: compareReady ? "판정이 여전히 애매하면 같은 조합을 다시 실행하거나 새 스타일 조합을 비교에 넣으세요." : "프리뷰가 하나 이상 없어 승인이나 롤백 전에 다시 실행해야 합니다.",
-          tone: compareReady ? "warn" : "bad",
-          badge: compareReady ? "재실행" : "차단됨",
-          html: `<form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="inline"><input type="hidden" name="styleA" value="${esc(
-            variantAStyle
-          )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">A/B 비교 다시 실행</button></form>`
-        },
-        {
-          title: "롤백 앵커",
-          detail: `${compareRollbackPoint}가 현재 비교면의 last-good preview이며, 최종 rollback 반영은 episode detail에서 처리합니다.`,
-          tone: compareLastKnownGood === "none" ? "warn" : "ok",
-          badge: "rollback",
-          html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">jobA 열기</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB 열기</a>` : ""}<a href="/ui/episodes/${esc(id)}">에피소드 상세</a>`
-        }
-      ],
-      railEmpty: "사용 가능한 비교 액션이 없습니다.",
-      railTone: verdictTone,
-      snapshotIntro: "실패 사유, last-good state, retry path, rollback point를 재생 화면 위에 유지합니다.",
-      snapshotFacts: [
-        {
-          label: "실패 사유",
-          value: !compareReady ? "프리뷰 산출물 하나 이상이 없습니다" : "강한 차단 요인은 없지만 운영자 판정이 필요합니다",
-          hint: "최상위 비교 차단 요인"
-        },
-        { label: "마지막 정상 지점", value: compareLastKnownGood, hint: "현재 가장 좋은 복구 앵커" },
-        { label: "적용된 폴백", value: `${qa.forcedStyle} / ${qb.forcedStyle}`, hint: "STYLE_QC가 감지한 강제 스타일" },
-        { label: "재시도 경로", value: compareReady ? "A/B 재실행 또는 에피소드 상세로 복귀" : "A/B 비교 생성 재실행", hint: nextDecision },
-        { label: "대체 경로", value: "스타일 프리뷰 / Ops 워크벤치", hint: "비교 결과가 애매할 때 사용" },
-        { label: "롤백 지점", value: compareRollbackPoint, hint: "승격과 롤백은 episode detail에서 반영됩니다" }
-      ],
-      snapshotEmpty: "복구 스냅샷이 없습니다.",
-      snapshotTone: verdictTone
-    })}<section class="card"><div class="section-head"><div><h2>변형 재생</h2><p class="section-intro">위 판단 레일이 정리된 뒤에만 두 대상을 나란히 확인하세요.</p></div></div><div class="decision-media-grid"><article class="decision-media-card"><div class="section-head"><div><h3>변형 A</h3><p class="muted-text">${esc(
-      variantAStyle
-    )}</p></div><span class="badge ${aExists ? "ok" : "bad"}">${aExists ? "준비됨" : "없음"}</span></div>${aExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${aUrl}"></video><div class="quick-links"><a href="${aUrl}">preview_A.mp4 열기</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
-      jobA
-    )}">jobA</a>` : ""}</div>` : `<div class="error">preview_A.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qa.failCount}, 경고=${qa.warnCount}, 강제=${esc(
-      qa.forcedStyle
-    )}</p></article><article class="decision-media-card"><div class="section-head"><div><h3>변형 B</h3><p class="muted-text">${esc(
-      variantBStyle
-    )}</p></div><span class="badge ${bExists ? "ok" : "bad"}">${bExists ? "준비됨" : "없음"}</span></div>${bExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${bUrl}"></video><div class="quick-links"><a href="${bUrl}">preview_B.mp4 열기</a>${jobB ? `<a href="/ui/jobs/${encodeURIComponent(
-      jobB
-    )}">jobB</a>` : ""}</div>` : `<div class="error">preview_B.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qb.failCount}, 경고=${qb.warnCount}, 강제=${esc(
-      qb.forcedStyle
-    )}</p></article></div></section><section class="card"><div class="section-head"><div><h2>차이 한눈에 보기</h2><p class="section-intro">승인하거나 재시도하기 전에 한 표에서 비교 대상과 QC 차이를 확인합니다.</p></div></div><div class="table-wrap"><table><thead><tr><th>지표</th><th>변형 A</th><th>변형 B</th></tr></thead><tbody><tr><td>스타일 프리셋</td><td>${esc(
-      variantAStyle
-    )}</td><td>${esc(variantBStyle)}</td></tr><tr><td>STYLE_QC fail_count</td><td>${qa.failCount}</td><td>${qb.failCount}</td></tr><tr><td>STYLE_QC warn_count</td><td>${qa.warnCount}</td><td>${qb.warnCount}</td></tr><tr><td>forced_episode_style</td><td>${esc(
-      qa.forcedStyle
-    )}</td><td>${esc(qb.forcedStyle)}</td></tr></tbody></table></div></section></div>`;
+	      blockers: compareBlockers,
+	      primaryActions: comparePrimaryActions,
+	      secondaryActions: compareSecondaryActions,
+	      recoveryActions: compareRecoveryActions,
+	      recentActivity: compareRecentActivity,
+	      linkedObjects: compareLinkedObjects
+	    })}${renderDecisionPrioritySection({
+	      title: "판단 레일",
+	      intro: "재생 전에 현재 compare gate, 재실행 경로, episode promotion target을 계속 보이게 유지합니다.",
+	      linksHtml: `<a href="/ui/episodes/${esc(id)}">에피소드 상세</a><a href="/ui/episodes/${esc(id)}/ab-compare">비교 새로고침</a>`,
+	      railTitle: "비교 액션",
+	      railIntro: "대상 문맥을 잃지 않고 compare before promote, compare set 재생성, rollback anchor 검토를 처리하세요.",
+	      railCards: compareDecisionRail,
+	      railEmpty: "사용 가능한 비교 액션이 없습니다.",
+	      railTone: verdictTone,
+	      snapshotIntro: "실패 사유, last-good state, retry path, rollback point를 재생 화면 위에 유지합니다.",
+	      snapshotFacts: compareSnapshotFacts,
+	      snapshotEmpty: "복구 스냅샷이 없습니다.",
+	      snapshotTone: verdictTone
+	    })}${renderRecoveryRailSection({
+	      title: "복구 / 연결 오브젝트",
+	      intro: "compare shell과 연결된 recovery path, owner object, and workbench remain visible before playback.",
+	      linksHtml: `<a href="/ui/episodes/${esc(id)}">에피소드 상세</a><a href="/ui/episodes/${esc(id)}/editor">Ops 워크벤치</a>`,
+	      recoveryTitle: "복구 레일",
+	      recoveryIntro: "비교 결과가 막히면 compare set을 다시 만들고, episode detail에서 최종 rollback을 반영합니다.",
+	      recoveryCards: compareRecoveryActions,
+	      recoveryEmpty: "사용 가능한 복구 액션이 없습니다.",
+	      recoveryTone: compareRecoveryActions[0]?.tone ? decisionTone(compareRecoveryActions[0].tone) : verdictTone,
+	      linkedTitle: "연결 오브젝트 레일",
+	      linkedIntro: "owner episode와 workbench를 adjacent object로 유지합니다.",
+	      linkedCards: compareLinkedObjects,
+	      linkedEmpty: "연결된 오브젝트가 없습니다.",
+	      linkedTone: "muted"
+	    })}${renderArtifactEvidenceSection({
+	      title: "아티팩트 근거 드로어",
+	      intro: "compare gate와 rollback anchor를 먼저 보고, deeper evidence는 drawer에서 보조 확인합니다.",
+	      linksHtml: `<a href="/ui/episodes/${esc(id)}">에피소드 상세</a><a href="/ui/jobs">작업</a>`,
+	      summaryTitle: "비교 근거 요약",
+	      summaryIntro: "compare gate, promotion target, last-good state, rollback point를 한 묶음으로 유지합니다.",
+	      summaryFacts: compareEvidenceFacts,
+	      summaryEmpty: "비교 근거 요약이 없습니다.",
+	      summaryTone: verdictTone,
+	      drawerTitle: "근거 드로어",
+	      drawerIntro: "재생과 QC 차이를 먼저 보고, 필요할 때만 더 깊은 증거로 내려갑니다.",
+	      drawerSummary: "Open compare evidence order and raw-evidence policy",
+	      drawerBodyHtml: compareEvidenceDrawerBody,
+	      drawerTone: "muted"
+	    })}<section class="card"><div class="section-head"><div><h2>Compare Shell</h2><p class="section-intro">위 decision and recovery rails가 정리된 뒤에만 두 대상을 같은 문법으로 나란히 확인하세요.</p></div></div><div class="decision-media-grid"><article class="decision-media-card"><div class="section-head"><div><h3>변형 A</h3><p class="muted-text">${esc(
+	      variantAStyle
+	    )}</p></div><span class="badge ${aExists ? "ok" : "bad"}">${aExists ? "준비됨" : "없음"}</span></div>${aExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${aUrl}"></video><div class="quick-links"><a href="${aUrl}">preview_A.mp4 열기</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
+	      jobA
+	    )}">jobA</a>` : ""}</div>` : `<div class="error">preview_A.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qa.failCount}, 경고=${qa.warnCount}, 강제=${esc(
+	      qa.forcedStyle
+	    )}</p></article><article class="decision-media-card"><div class="section-head"><div><h3>변형 B</h3><p class="muted-text">${esc(
+	      variantBStyle
+	    )}</p></div><span class="badge ${bExists ? "ok" : "bad"}">${bExists ? "준비됨" : "없음"}</span></div>${bExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${bUrl}"></video><div class="quick-links"><a href="${bUrl}">preview_B.mp4 열기</a>${jobB ? `<a href="/ui/jobs/${encodeURIComponent(
+	      jobB
+	    )}">jobB</a>` : ""}</div>` : `<div class="error">preview_B.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qb.failCount}, 경고=${qb.warnCount}, 강제=${esc(
+	      qb.forcedStyle
+	    )}</p></article></div></section><section class="card"><div class="section-head"><div><h2>Promotion Matrix</h2><p class="section-intro">승인하거나 재시도하기 전에 한 표에서 compare delta와 QC 차이를 확인합니다.</p></div></div><div class="table-wrap"><table><thead><tr><th>지표</th><th>변형 A</th><th>변형 B</th></tr></thead><tbody><tr><td>스타일 프리셋</td><td>${esc(
+	      variantAStyle
+	    )}</td><td>${esc(variantBStyle)}</td></tr><tr><td>STYLE_QC fail_count</td><td>${qa.failCount}</td><td>${qb.failCount}</td></tr><tr><td>STYLE_QC warn_count</td><td>${qa.warnCount}</td><td>${qb.warnCount}</td></tr><tr><td>forced_episode_style</td><td>${esc(
+	      qa.forcedStyle
+	    )}</td><td>${esc(qb.forcedStyle)}</td></tr></tbody></table></div></section></div>`;
 
     return reply.type("text/html; charset=utf-8").send(page(`A/B 비교 ${id}`, body));
   });
@@ -6707,10 +6968,47 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       str(isRecord(readyTarget) ? readyTarget.target : undefined) ??
       str(isRecord(readyBundle) ? readyBundle.bundle : undefined) ??
       (isRecord(doc) && doc.ready === true ? "artifact is already ready" : "none");
-    const rolloutPromotionGate =
-      artifactTone === "bad" ? "recover before promote" : artifactTone === "warn" ? "compare before promote" : "ready to promote";
-    const rolloutRecommendation = str(isRecord(doc) ? doc.recommendation : undefined) ?? "No explicit recommendation stored in the artifact.";
-    const body = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
+	    const rolloutPromotionGate =
+	      artifactTone === "bad" ? "recover before promote" : artifactTone === "warn" ? "compare before promote" : "ready to promote";
+	    const rolloutRecommendation = str(isRecord(doc) ? doc.recommendation : undefined) ?? "No explicit recommendation stored in the artifact.";
+	    const rolloutRecoveryRail: DecisionCard[] = [
+	      {
+	        title: "Recovery path",
+	        detail: artifactTone === "bad" ? "Inspect the failing target or bundle rows first, then rerun from the owning rollout flow." : "Use bundle and target rows to compare before promote or choose the rollback anchor.",
+	        tone: artifactTone,
+	        badge: artifactTone === "bad" ? "recover" : "review",
+	        html: `<button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button><a href="/ui/rollouts">Rollout Queue</a>`
+	      },
+	      {
+	        title: "Linked review objects",
+	        detail: "Keep rollout queue and benchmark queue adjacent so the operator stays in artifact-backed review instead of dropping into raw JSON.",
+	        tone: "muted",
+	        badge: "objects",
+	        html: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
+	      }
+	    ];
+	    const rolloutLinkedRail: DecisionCard[] = [
+	      { title: "Rollout source", detail: resolved.source.label, tone: "muted", html: `<a href="/ui/rollouts">Open Rollout Queue</a>` },
+	      {
+	        title: "Rollback anchor",
+	        detail: `${lastKnownGood} is the nearest ready bundle or target currently stored in this artifact.`,
+	        tone: lastKnownGood === "none" ? "warn" : "ok",
+	        badge: "anchor",
+	        html: `<a href="/ui/benchmarks">Benchmark Queue</a><a href="/ui/rollouts">Rollout Queue</a>`
+	      }
+	    ];
+	    const rolloutEvidenceFacts: DecisionFact[] = [
+	      { label: "Promotion Gate", value: rolloutPromotionGate, hint: "next operator decision" },
+	      { label: "Recommendation", value: rolloutRecommendation, hint: "stored rollout recommendation" },
+	      { label: "Last Known Good", value: lastKnownGood, hint: "nearest ready target / bundle" },
+	      { label: "Artifact Path", value: artifactRelativePath(resolved.source.outRoot, resolved.resolvedPath), hint: "resolved artifact path" }
+	    ];
+	    const rolloutEvidenceDrawerBody = `<div class="decision-copy">Use the rollout review object, target rows, and bundle rows before opening raw JSON. Raw payloads are intentionally secondary because promotion should be decided from the normalized artifact summary first.</div>
+	<div class="quick-links"><a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a><button type="button" class="secondary" data-copy="${esc(
+	      resolved.resolvedPath
+	    )}">Copy path</button><a href="/ui/rollouts/artifact?path=${encodeURIComponent(resolved.resolvedPath)}">Raw JSON</a></div>
+	<details class="decision-drawer"><summary>Open rollout evidence order</summary><div class="decision-drawer-body"><div class="decision-copy">Rollout detail -> target rows -> bundle rows -> raw artifact payload. Open raw JSON only if the normalized status, recommendation, and issue summary still look inconsistent.</div></div></details>`;
+	    const body = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
       eyebrow: "Rollout Review",
       title: "Rollout Detail",
       subtitle: "Promotion gate, compare-before-promote context, and rollback anchor stay visible before any raw artifact payload.",
@@ -6742,28 +7040,18 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           html: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
         }
       ],
-      secondaryActions: [
-        {
-          title: "Inspect related objects",
-          detail: "Jump to benchmarks or the rollout queue without losing the artifact context. Open raw JSON only if this decision view is insufficient.",
-          tone: "muted",
-          html: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollout Queue</a><a href="/ui/rollouts/artifact?path=${encodeURIComponent(
-            resolved.resolvedPath
-          )}">Raw JSON</a>`
-        }
-      ],
-      recoveryActions: [
-        {
-          title: "Recovery path",
-          detail: artifactTone === "bad" ? "Inspect the failing target/bundle rows below, then rerun from the owning rollout flow." : "Use bundle and target rows below to compare before promote or choose the rollback anchor.",
-          tone: artifactTone,
-          badge: artifactTone === "bad" ? "recover" : "review",
-          html: `<button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button>`
-        }
-      ],
-      recentActivity: detailPairs.slice(0, 4).map((pair) => ({ title: pair.label, detail: pair.value, tone: "muted" })),
-      linkedObjects: [{ title: "Rollout source", detail: resolved.source.label, tone: "muted", html: `<a href="/ui/rollouts">Open Rollout Queue</a>` }]
-    })}${renderDecisionPrioritySection({
+	      secondaryActions: [
+	        {
+	          title: "Inspect related objects",
+	          detail: "Jump to benchmarks or the rollout queue without losing the artifact context. Raw JSON stays behind the evidence drawer below.",
+	          tone: "muted",
+	          html: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollout Queue</a><a href="#rollout-evidence">Evidence Drawer</a>`
+	        }
+	      ],
+	      recoveryActions: rolloutRecoveryRail,
+	      recentActivity: detailPairs.slice(0, 4).map((pair) => ({ title: pair.label, detail: pair.value, tone: "muted" })),
+	      linkedObjects: rolloutLinkedRail
+	    })}${renderDecisionPrioritySection({
       title: "Decision Rail",
       intro: "Keep promotion gate, compare-before-promote context, and rollback anchor visible before target rows or payload detail.",
       linksHtml: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`,
@@ -6777,15 +7065,13 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           badge: rolloutPromotionGate,
           html: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
         },
-        {
-          title: artifactTone === "bad" ? "Rerun or inspect" : "Compare before promote",
-          detail: artifactTone === "bad" ? "Inspect the blocking target or bundle rows first, then rerun the owning rollout flow." : "Inspect bundle and target rows only if promotion still feels uncertain.",
-          tone: artifactTone === "bad" ? "bad" : "warn",
-          badge: artifactTone === "bad" ? "rerun" : "review",
-          html: `<button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button><a href="/ui/rollouts/artifact?path=${encodeURIComponent(
-            resolved.resolvedPath
-          )}">Raw JSON</a>`
-        },
+	        {
+	          title: artifactTone === "bad" ? "Rerun or inspect" : "Compare before promote",
+	          detail: artifactTone === "bad" ? "Inspect the blocking target or bundle rows first, then rerun the owning rollout flow." : "Inspect bundle and target rows only if promotion still feels uncertain.",
+	          tone: artifactTone === "bad" ? "bad" : "warn",
+	          badge: artifactTone === "bad" ? "rerun" : "review",
+	          html: `<button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button><a href="#rollout-evidence">Evidence Drawer</a>`
+	        },
         {
           title: "Rollback anchor",
           detail: `${lastKnownGood} is the closest ready bundle or target available for rollback or confirmation.`,
@@ -6797,31 +7083,59 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       railEmpty: "No rollout actions are available.",
       railTone: artifactTone,
       snapshotIntro: "Failure reason, last known good state, retry path, alternate path, and rollback point stay above raw JSON.",
-      snapshotFacts: [
-        { label: "Failure Reason", value: issues[0] ?? str(isRecord(doc) ? doc.reason : undefined) ?? "none", hint: "top rollout blocker" },
-        { label: "Last Known Good", value: lastKnownGood, hint: "best ready target/bundle in this artifact" },
+	      snapshotFacts: [
+	        { label: "Failure Reason", value: issues[0] ?? str(isRecord(doc) ? doc.reason : undefined) ?? "none", hint: "top rollout blocker" },
+	        { label: "Last Known Good", value: lastKnownGood, hint: "best ready target/bundle in this artifact" },
         { label: "Fallback Applied", value: str(isRecord(doc) ? doc.recommendation : undefined) ?? "-", hint: "recommended fallback / promotion" },
         { label: "Retry Path", value: artifactTone === "bad" ? "rerun from rollout flow" : "confirm promotion from rollout queue", hint: rolloutStatusLabel(artifactStatus) },
         { label: "Alternate Path", value: "benchmark queue / rollout queue", hint: "linked object review path" },
         { label: "Rollback Point", value: lastKnownGood, hint: "nearest ready anchor" }
       ],
-      snapshotEmpty: "No rollout recovery snapshot available.",
-      snapshotTone: artifactTone
-    })}
+	      snapshotEmpty: "No rollout recovery snapshot available.",
+	      snapshotTone: artifactTone
+	    })}${renderRecoveryRailSection({
+	      title: "Recovery / Linked Objects",
+	      intro: "Recovery order and linked review objects stay visible before target rows or raw payload detail.",
+	      linksHtml: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`,
+	      recoveryTitle: "Recovery rail",
+	      recoveryIntro: "Use recovery order and rerun guidance before escalating to raw artifact inspection.",
+	      recoveryCards: rolloutRecoveryRail,
+	      recoveryEmpty: "No rollout recovery actions are available.",
+	      recoveryTone: artifactTone,
+	      linkedTitle: "Linked object rail",
+	      linkedIntro: "Keep source and rollback anchors adjacent to the rollout detail object.",
+	      linkedCards: rolloutLinkedRail,
+	      linkedEmpty: "No linked rollout objects are available.",
+	      linkedTone: "muted"
+	    })}${renderArtifactEvidenceSection({
+	      title: "Artifact Evidence Drawer",
+	      intro: "Artifact-backed rollout evidence stays adjacent; raw JSON is pushed behind the drawer.",
+	      linksHtml: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`,
+	      summaryTitle: "Rollout evidence summary",
+	      summaryIntro: "Promotion gate, recommendation, last known good state, and artifact path stay above payload detail.",
+	      summaryFacts: rolloutEvidenceFacts,
+	      summaryEmpty: "No rollout evidence summary is available.",
+	      summaryTone: artifactTone,
+	      drawerTitle: "Rollout evidence drawer",
+	      drawerIntro: "Open raw JSON only after target rows, bundle rows, and normalized evidence still feel insufficient.",
+	      drawerSummary: "Open rollout evidence order and raw-evidence policy",
+	      drawerBodyHtml: rolloutEvidenceDrawerBody,
+	      drawerTone: "muted"
+	    })}
 <section class="card dashboard-shell">
-  <div class="section-head"><h2>Key Fields</h2><span class="muted-text">Top-level artifact metadata extracted from the JSON.</span></div>
-  <div class="status-list">${metricRows}</div>
+	  <div class="section-head"><h2>Key Fields</h2><span class="muted-text">Top-level artifact metadata extracted from the JSON.</span></div>
+	  <div class="status-list">${metricRows}</div>
 </section>
 <section class="card dashboard-shell">
   <div class="section-head"><h2>Decision Evidence</h2><span class="muted-text">Warnings, validation issues, and divergence hints that explain the current promotion gate.</span></div>
   ${issueList}
 </section>
-${targetRows ? `<section class="card"><div class="section-head"><h2>Target Results</h2><span class="muted-text">Per-target rollout validation rows.</span></div><div class="table-wrap"><table><thead><tr><th>Target</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th></tr></thead><tbody>${targetRows}</tbody></table></div></section>` : ""}
-${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Results</h2><span class="muted-text">Per-bundle multi-channel validation rows.</span></div><div class="table-wrap"><table><thead><tr><th>Bundle</th><th>Status</th><th>Score</th><th>Verdict</th><th>Issues</th></tr></thead><tbody>${bundleRows}</tbody></table></div></section>` : ""}
-<section class="card">
-  <div class="section-head"><h2>Raw Artifact Payload</h2><button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button></div>
-  <details><summary>Open raw JSON only if the decision view above is insufficient.</summary><pre>${esc(rawJson)}</pre></details>
-</section></div>`;
+	${targetRows ? `<section class="card"><div class="section-head"><h2>Target Results</h2><span class="muted-text">Per-target rollout validation rows.</span></div><div class="table-wrap"><table><thead><tr><th>Target</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th></tr></thead><tbody>${targetRows}</tbody></table></div></section>` : ""}
+	${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Results</h2><span class="muted-text">Per-bundle multi-channel validation rows.</span></div><div class="table-wrap"><table><thead><tr><th>Bundle</th><th>Status</th><th>Score</th><th>Verdict</th><th>Issues</th></tr></thead><tbody>${bundleRows}</tbody></table></div></section>` : ""}
+	<section class="card" id="rollout-evidence">
+	  <div class="section-head"><h2>Raw Artifact Payload</h2><button type="button" class="secondary" data-copy="${esc(resolved.resolvedPath)}">Copy path</button></div>
+	  <details><summary>Open raw JSON only if the decision view above is insufficient.</summary><pre>${esc(rawJson)}</pre></details>
+	</section></div>`;
     return reply.type("text/html; charset=utf-8").send(page("Rollout Detail", body));
   });
 
@@ -6863,50 +7177,37 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
     }
   });
 
-  app.get("/ui/benchmarks", async (request, reply) => {
-    const { sources, backendScenarios, regressions } = collectBenchmarkViewerData();
-    const backendReady = backendScenarios.filter((row) => normalizeRolloutStatus(row.status) === "ready").length;
-    const regressionBlocked = regressions.filter((row) => normalizeRolloutStatus(row.status) === "blocked").length;
-    const regressionWarn = regressions.filter((row) => normalizeRolloutStatus(row.status) === "warn").length;
-    const mismatchTotal = regressions.reduce((sum, row) => sum + row.mismatchCount, 0);
-    const summaryCards = [
-      {
-        label: "Backend Scenarios",
-        value: String(backendScenarios.length),
-        tone: "muted" as UiBadgeTone,
-        hint: `${sources.filter((source) => source.exists).length}/${sources.length} artifact roots available`
-      },
-      {
-        label: "Backend Ready",
-        value: String(backendReady),
-        tone: "ok" as UiBadgeTone,
-        hint: "benchmark scenarios with usable outputs"
-      },
-      {
-        label: "Regression Blocked",
-        value: String(regressionBlocked),
-        tone: "bad" as UiBadgeTone,
-        hint: "episode regression reports with errors or failed final check"
-      },
-      {
-        label: "Regression Warn",
-        value: String(regressionWarn),
-        tone: "warn" as UiBadgeTone,
-        hint: "reports that passed but still need operator review"
-      },
-      {
-        label: "Render Drift",
-        value: String(mismatchTotal),
-        tone: mismatchTotal > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
-        hint: "stored vs recommended render-mode mismatches"
-      }
-    ]
-      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
-      .join("");
+	  app.get("/ui/benchmarks", async (request, reply) => {
+	    const { sources, backendScenarios, regressions } = collectBenchmarkViewerData();
+	    const backendReady = backendScenarios.filter((row) => normalizeRolloutStatus(row.status) === "ready").length;
+	    const regressionBlocked = regressions.filter((row) => normalizeRolloutStatus(row.status) === "blocked").length;
+	    const regressionWarn = regressions.filter((row) => normalizeRolloutStatus(row.status) === "warn").length;
+	    const mismatchTotal = regressions.reduce((sum, row) => sum + row.mismatchCount, 0);
+	    const availableSources = sources.filter((source) => source.exists).length;
+	    const benchmarkCompareLinks =
+	      backendScenarios.reduce((sum, row) => sum + row.candidateCompareItems.length, 0) +
+	      regressions.reduce((sum, row) => sum + row.candidateCompareItems.length, 0);
+	    const benchmarkTone: UiBadgeTone =
+	      regressionBlocked > 0 ? "bad" : regressionWarn > 0 || mismatchTotal > 0 ? "warn" : backendScenarios.length > 0 ? "ok" : "muted";
+	    const benchmarkStatusLabel =
+	      regressionBlocked > 0
+	        ? "recovery queue active"
+	        : regressionWarn > 0 || mismatchTotal > 0
+	          ? "compare before promote"
+	          : backendScenarios.length > 0
+	            ? "benchmark queue ready"
+	            : "artifact queue empty";
+	    const benchmarkSummaryCards: DecisionStat[] = [
+	      { label: "Backend Objects", value: String(backendScenarios.length), hint: `${availableSources}/${sources.length} artifact roots available`, tone: "muted" },
+	      { label: "Ready Backends", value: String(backendReady), hint: "usable benchmark scenarios", tone: backendReady > 0 ? "ok" : "warn" },
+	      { label: "Regression Queue", value: String(regressions.length), hint: `${regressionBlocked} blocked / ${regressionWarn} warn`, tone: benchmarkTone },
+	      { label: "Compare Links", value: String(benchmarkCompareLinks), hint: "candidate compare surfaces adjacent to queue review", tone: benchmarkCompareLinks > 0 ? "warn" : "muted" },
+	      { label: "Render Drift", value: String(mismatchTotal), hint: "stored vs recommended render-mode mismatches", tone: mismatchTotal > 0 ? "warn" : "ok" }
+	    ];
 
-    const sourceRows = sources
-      .map((source) => {
-        const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
+	    const sourceRows = sources
+	      .map((source) => {
+	        const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
         const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} artifacts` : "empty";
         const meta = compact([
           source.exists ? "scan ok" : "root missing",
@@ -6916,20 +7217,19 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       })
       .join("");
 
-    const backendRows = backendScenarios
-      .map((row) => {
-        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.detailArtifactPath)}`;
-        const rawHref = `/ui/rollouts/artifact?path=${encodeURIComponent(row.detailArtifactPath)}`;
-        const smokeHref = row.smokeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}` : "";
-        const planHref = row.planArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.planArtifactPath)}` : "";
-        const candidateLinks = row.candidateCompareItems
-          .map((item) => `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(item.path)}">${esc(item.label)}</a>`)
-          .join("");
-        return `<tr>
-          <td><div class="table-note"><strong>${esc(row.backend)}</strong><span class="muted-text">${esc(`${row.benchmarkKind} / ${row.renderer}`)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${rawHref}">Raw JSON</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.detailArtifactPath)}">Copy path</button></div></div></td>
-          <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
-          <td>${esc(row.latencyMs)}</td>
-          <td>${esc(row.acceptanceRate)}</td>
+	    const backendRows = backendScenarios
+	      .map((row) => {
+	        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.detailArtifactPath)}`;
+	        const smokeHref = row.smokeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}` : "";
+	        const planHref = row.planArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.planArtifactPath)}` : "";
+	        const candidateLinks = row.candidateCompareItems
+	          .map((item) => `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(item.path)}">${esc(item.label)}</a>`)
+	          .join("");
+	        return `<tr>
+	          <td><div class="table-note"><strong>${esc(row.backend)}</strong><span class="muted-text">${esc(`${row.benchmarkKind} / ${row.renderer}`)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Decision Detail</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.detailArtifactPath)}">Copy path</button></div></div></td>
+	          <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
+	          <td>${esc(row.latencyMs)}</td>
+	          <td>${esc(row.acceptanceRate)}</td>
           <td>${esc(row.failureRate)}</td>
           <td>${esc(row.notes)}</td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
@@ -6937,26 +7237,25 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       })
       .join("");
 
-    const regressionRows = regressions
-      .map((row) => {
-        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.artifactPath)}`;
-        const rawHref = `/ui/rollouts/artifact?path=${encodeURIComponent(row.artifactPath)}`;
-        const smokeHref = row.smokeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}` : "";
-        const renderModeHref = row.renderModeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.renderModeArtifactPath)}` : "";
-        const rowRepairParams = new URLSearchParams({ q: row.episodeId, source: row.sourcePath });
-        const rowRouteParams = new URLSearchParams({ q: row.episodeId, source: row.sourcePath });
+	    const regressionRows = regressions
+	      .map((row) => {
+	        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.artifactPath)}`;
+	        const smokeHref = row.smokeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}` : "";
+	        const renderModeHref = row.renderModeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.renderModeArtifactPath)}` : "";
+	        const rowRepairParams = new URLSearchParams({ q: row.episodeId, source: row.sourcePath });
+	        const rowRouteParams = new URLSearchParams({ q: row.episodeId, source: row.sourcePath });
         const rowLineageParams = new URLSearchParams({ episodeId: row.episodeId, source: row.sourcePath });
         const rowRepairHref = `/ui/benchmarks/repair-acceptance?${rowRepairParams.toString()}`;
         const rowRouteHref = `/ui/benchmarks/route-reasons?${rowRouteParams.toString()}`;
         const rowLineageHref = `/ui/benchmarks/dataset-lineage?${rowLineageParams.toString()}`;
-        const candidateLinks = row.candidateCompareItems
-          .map((item) => `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(item.path)}">${esc(item.label)}</a>`)
-          .join("");
-        return `<tr>
-          <td><div class="table-note"><strong>${esc(row.benchmarkName)}</strong><span class="muted-text">${esc(row.bundlePath)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${rawHref}">Raw JSON</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}<a href="${rowRepairHref}">Repair</a><a href="${rowRouteHref}">route_reason</a><a href="${rowLineageHref}">Lineage</a>${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.artifactPath)}">Copy path</button></div></div></td>
-          <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
-          <td>${esc(`${row.warningCount} warn / ${row.errorCount} err`)}</td>
-          <td>${esc(row.profileSummary)}</td>
+	        const candidateLinks = row.candidateCompareItems
+	          .map((item) => `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(item.path)}">${esc(item.label)}</a>`)
+	          .join("");
+	        return `<tr>
+	          <td><div class="table-note"><strong>${esc(row.benchmarkName)}</strong><span class="muted-text">${esc(row.bundlePath)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Decision Detail</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}<a href="${rowRepairHref}">Repair</a><a href="${rowRouteHref}">route_reason</a><a href="${rowLineageHref}">Lineage</a>${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.artifactPath)}">Copy path</button></div></div></td>
+	          <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
+	          <td>${esc(`${row.warningCount} warn / ${row.errorCount} err`)}</td>
+	          <td>${esc(row.profileSummary)}</td>
           <td>${esc(row.renderModeSummary)}</td>
           <td>${esc(row.issueSummary)}</td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
@@ -6964,15 +7263,162 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       })
       .join("");
 
-    const benchmarksBody = buildBenchmarksPageBody({
-      flash: flashHtml(request.query),
-      summaryCards,
-      sourceRows: sourceRows || `<div class="notice">No benchmark artifact sources configured.</div>`,
-      backendRows,
-      regressionRows
-    });
-    return reply.type("text/html; charset=utf-8").send(page("Benchmarks", benchmarksBody));
-  });
+	    const benchmarkBlockers: DecisionCard[] = [];
+	    if (regressionBlocked > 0) {
+	      benchmarkBlockers.push({
+	        title: "Regression blockers in queue",
+	        detail: `${regressionBlocked} regression objects are blocked or failed. Clear those before treating backend-ready rows as promotable evidence.`,
+	        tone: "bad",
+	        badge: "blocked"
+	      });
+	    }
+	    if (availableSources < sources.length) {
+	      benchmarkBlockers.push({
+	        title: "Artifact roots missing",
+	        detail: `${sources.length - availableSources} configured roots are missing, so queue coverage is incomplete for this review object.`,
+	        tone: "warn",
+	        badge: "sources"
+	      });
+	    }
+	    const benchmarkPrimaryActions: DecisionCard[] = [
+	      {
+	        title: "Start with blocked regression rows",
+	        detail: regressionBlocked > 0 ? `${regressionBlocked} blocked rows should be cleared before backend-ready scenarios are treated as promotion candidates.` : "Regression blockers are clear. Use the queue to confirm compare-before-promote readiness.",
+	        tone: benchmarkTone,
+	        badge: regressionBlocked > 0 ? "recover" : "ready",
+	        html: `<a href="#benchmark-regressions">Regression Queue</a><a href="/ui/rollouts">Rollouts</a>`
+	      }
+	    ];
+	    const benchmarkSecondaryActions: DecisionCard[] = [
+	      {
+	        title: "Compare before promote",
+	        detail: benchmarkCompareLinks > 0 ? `${benchmarkCompareLinks} candidate compare links are attached to the queue. Stay in those review objects before dropping to raw evidence.` : "Candidate compare artifacts are sparse in this queue, so rely on rollout detail, smoke, and route explorers instead.",
+	        tone: benchmarkCompareLinks > 0 ? "warn" : "muted",
+	        badge: "compare",
+	        html: `<a href="/ui/benchmarks/repair-acceptance">Acceptance Explorer</a><a href="/ui/benchmarks/route-reasons">Route Explorer</a>`
+	      }
+	    ];
+	    const benchmarkRecoveryActions: DecisionCard[] = [
+	      {
+	        title: "Recovery path",
+	        detail: "Acceptance, route reason, and lineage explorers stay adjacent so blocked bundles recover without forcing the operator into raw JSON.",
+	        tone: benchmarkTone,
+	        badge: "recover",
+	        html: `<a href="/ui/benchmarks/repair-acceptance">Acceptance</a><a href="/ui/benchmarks/dataset-lineage">Lineage</a>`
+	      }
+	    ];
+	    const benchmarkLinkedObjects: DecisionCard[] = [
+	      { title: "Rollout queue", detail: "Benchmark review hands off to rollout review once a candidate is promotion-ready.", tone: "muted", html: `<a href="/ui/rollouts">Open Rollouts</a>` },
+	      { title: "Artifact sources", detail: `${availableSources}/${sources.length} roots are readable for this queue object.`, tone: availableSources === sources.length ? "ok" : "warn", badge: "sources", html: `<a href="#benchmark-sources">Artifact Sources</a>` }
+	    ];
+	    const benchmarkDecisionRail: DecisionCard[] = [
+	      {
+	        title: regressionBlocked > 0 ? "Recover blocked regressions" : "Benchmark queue gate",
+	        detail: regressionBlocked > 0 ? "Blocked regressions stay ahead of backend browsing. Recover those rows before treating the queue as promotable." : "If the regression queue is clean, use backend and compare objects to confirm promotable benchmark outputs.",
+	        tone: benchmarkTone,
+	        badge: regressionBlocked > 0 ? "recover" : "gate",
+	        html: `<a href="#benchmark-regressions">Regression Queue</a><a href="#benchmark-backends">Backend Objects</a>`
+	      },
+	      {
+	        title: "Compare before promote",
+	        detail: benchmarkCompareLinks > 0 ? `${benchmarkCompareLinks} compare links remain available from the queue. Use them before opening deeper artifact evidence.` : "Stay in rollout detail, smoke, and route explorers when compare artifacts are missing.",
+	        tone: benchmarkCompareLinks > 0 ? "warn" : "muted",
+	        badge: "compare",
+	        html: `<a href="/ui/rollouts">Rollouts</a><a href="/ui/benchmarks/route-reasons">Route Explorer</a>`
+	      },
+	      {
+	        title: "Rollback anchor",
+	        detail: backendReady > 0 ? `${backendReady} backend scenarios are currently usable as the cleanest queue-side benchmark anchor.` : "No backend-ready scenario is available yet, so regression recovery remains the current anchor.",
+	        tone: backendReady > 0 ? "ok" : "warn",
+	        badge: "rollback",
+	        html: `<a href="/ui/benchmarks/repair-acceptance">Acceptance Explorer</a><a href="/ui/rollouts">Rollouts</a>`
+	      }
+	    ];
+	    const benchmarkSnapshotFacts: DecisionFact[] = [
+	      { label: "Failure Reason", value: regressionBlocked > 0 ? `${regressionBlocked} blocked regression rows` : regressionWarn > 0 ? `${regressionWarn} warning regression rows` : "none", hint: "top benchmark blocker" },
+	      { label: "Last Known Good", value: backendReady > 0 ? `${backendReady} ready backend scenarios` : "no ready backend scenario", hint: "queue-side clean anchor" },
+	      { label: "Fallback Applied", value: mismatchTotal > 0 ? `${mismatchTotal} render drift mismatches` : "no render drift", hint: "current compare baggage" },
+	      { label: "Retry Path", value: regressionBlocked > 0 ? "repair explorer -> rollout detail -> candidate compare" : "benchmark queue -> rollout detail", hint: benchmarkStatusLabel },
+	      { label: "Alternate Path", value: "repair / route / lineage explorers", hint: "adjacent review surfaces" },
+	      { label: "Rollback Point", value: backendReady > 0 ? "ready backend scenarios" : "regression recovery queue", hint: "benchmark queue rollback anchor" }
+	    ];
+	    const benchmarkEvidenceFacts: DecisionFact[] = [
+	      { label: "Sources", value: `${availableSources}/${sources.length}`, hint: "configured artifact roots available" },
+	      { label: "Backend Objects", value: String(backendScenarios.length), hint: "artifact-backed backend scenarios" },
+	      { label: "Regression Objects", value: String(regressions.length), hint: `${regressionBlocked} blocked / ${regressionWarn} warn` },
+	      { label: "Compare Links", value: String(benchmarkCompareLinks), hint: "candidate compare surfaces attached to queue" }
+	    ];
+	    const benchmarkEvidenceDrawerBody = `<div class="decision-copy">This queue is an artifact-backed benchmark review object. Use decision detail, smoke, render modes, and compare surfaces before raw artifact payloads.</div><div class="status-list">${sourceRows || '<div class="notice">No benchmark artifact sources configured.</div>'}</div><details class="decision-drawer"><summary>Open benchmark evidence order</summary><div class="decision-drawer-body"><div class="decision-copy">Benchmark queue -> regression queue -> rollout detail -> candidate compare -> raw artifact payloads. Raw evidence should be the fallback, not the default queue workflow.</div><div class="quick-links"><a href="/ui/rollouts">Rollouts</a><a href="/ui/artifacts">Artifacts</a></div></div></details>`;
+	    const benchmarksBody = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
+	      eyebrow: "Benchmark Review",
+	      title: "Benchmarks",
+	      subtitle: "Treat benchmarks as artifact-backed review objects: blocked regressions, compare-before-promote context, and rollback anchors stay above source rows and raw evidence.",
+	      statusLabel: benchmarkStatusLabel,
+	      statusTone: benchmarkTone,
+	      flash: flashHtml(request.query),
+	      quickLinksHtml: `<a href="/ui/rollouts">Open Rollouts</a><a href="/ui/benchmarks/repair-acceptance">Acceptance</a><a href="/ui/benchmarks/route-reasons">Route Explorer</a><a href="/ui/benchmarks/dataset-lineage">Lineage</a>`,
+	      summaryCards: benchmarkSummaryCards,
+	      metaItems: [
+	        { label: "Artifact Sources", value: `${availableSources}/${sources.length}`, hint: "configured roots available" },
+	        { label: "Ready Backends", value: String(backendReady), hint: "usable backend scenarios" },
+	        { label: "Regression Blocked", value: String(regressionBlocked), hint: "blocked or failed regression objects" },
+	        { label: "Rollout Handoff", value: benchmarkCompareLinks > 0 ? "candidate compare ready" : "detail-first review", hint: "queue-side handoff to rollout objects" }
+	      ],
+	      blockers: benchmarkBlockers,
+	      primaryActions: benchmarkPrimaryActions,
+	      secondaryActions: benchmarkSecondaryActions,
+	      recoveryActions: benchmarkRecoveryActions,
+	      recentActivity: regressions.slice(0, 4).map((row) => ({
+	        title: row.benchmarkName,
+	        detail: `${rolloutStatusLabel(row.status)} | ${row.issueSummary} | ${fmtDate(row.generatedAt)}`,
+	        tone: row.tone,
+	        badge: row.episodeId
+	      })),
+	      linkedObjects: benchmarkLinkedObjects
+	    })}${renderDecisionPrioritySection({
+	      title: "Decision Rail",
+	      intro: "Blocked regressions, compare-before-promote rules, and rollback anchors stay above queue scanning.",
+	      linksHtml: `<a href="#benchmark-regressions">Regression Queue</a><a href="#benchmark-backends">Backend Objects</a><a href="/ui/rollouts">Rollouts</a>`,
+	      railTitle: "Benchmark actions",
+	      railIntro: "Recover blocked rows first, compare before promote, then use the cleanest ready scenario as the queue-side rollback anchor.",
+	      railCards: benchmarkDecisionRail,
+	      railEmpty: "No benchmark actions are available.",
+	      railTone: benchmarkTone,
+	      snapshotIntro: "Failure reason, last-known-good queue anchor, retry path, and rollback point stay above queue tables.",
+	      snapshotFacts: benchmarkSnapshotFacts,
+	      snapshotEmpty: "No benchmark recovery snapshot is available.",
+	      snapshotTone: benchmarkTone
+	    })}${renderRecoveryRailSection({
+	      title: "Recovery / Linked Objects",
+	      intro: "Recovery explorers and linked queues stay visible before table-heavy evidence.",
+	      linksHtml: `<a href="/ui/benchmarks/repair-acceptance">Acceptance</a><a href="/ui/benchmarks/route-reasons">Route Explorer</a><a href="/ui/benchmarks/dataset-lineage">Lineage</a>`,
+	      recoveryTitle: "Recovery rail",
+	      recoveryIntro: "Keep acceptance, route, and lineage explorers adjacent to the queue so review stays at the decision layer.",
+	      recoveryCards: benchmarkRecoveryActions,
+	      recoveryEmpty: "No benchmark recovery rail is available.",
+	      recoveryTone: benchmarkTone,
+	      linkedTitle: "Linked object rail",
+	      linkedIntro: "Rollout queue and artifact sources remain attached to the benchmark queue object.",
+	      linkedCards: benchmarkLinkedObjects,
+	      linkedEmpty: "No linked benchmark objects are available.",
+	      linkedTone: "muted"
+	    })}${renderArtifactEvidenceSection({
+	      title: "Artifact Evidence Drawer",
+	      intro: "Artifact sources and raw evidence stay available, but the queue remains the primary review surface.",
+	      linksHtml: `<a href="/ui/rollouts">Rollouts</a><a href="/ui/artifacts">Artifacts</a>`,
+	      summaryTitle: "Benchmark evidence summary",
+	      summaryIntro: "Source availability, queue counts, and compare links stay above source rows.",
+	      summaryFacts: benchmarkEvidenceFacts,
+	      summaryEmpty: "No benchmark evidence summary is available.",
+	      summaryTone: benchmarkTone,
+	      drawerTitle: "Benchmark evidence drawer",
+	      drawerIntro: "Open source roots and evidence order only after the queue still looks inconclusive.",
+	      drawerSummary: "Open benchmark evidence order and raw-evidence policy",
+	      drawerBodyHtml: benchmarkEvidenceDrawerBody,
+	      drawerTone: "muted"
+	    })}<section class="card" id="benchmark-backends"><div class="section-head"><div><h2>Backend Review Objects</h2><p class="section-intro">Use backend artifacts as the primary compare-before-promote surface.</p></div><input type="search" data-table-filter="benchmark-backend-table" aria-label="Filter backend benchmark objects" placeholder="Search backend, renderer, detail path..."/></div><div class="table-wrap"><table id="benchmark-backend-table"><thead><tr><th>Scenario / Next Action</th><th>Status</th><th>Latency</th><th>Acceptance</th><th>Failure</th><th>Notes</th><th>Source</th></tr></thead><tbody>${backendRows || '<tr><td colspan="7"><div class="notice">No backend benchmark scenarios were found.</div></td></tr>'}</tbody></table></div></section><section class="card" id="benchmark-regressions"><div class="section-head"><div><h2>Regression Review Queue</h2><p class="section-intro">Blocked and warning regression objects stay explicit so recovery starts here.</p></div><input type="search" data-table-filter="benchmark-regression-table" aria-label="Filter benchmark regression objects" placeholder="Search bundle, episode, issue, render drift..."/></div><div class="table-wrap"><table id="benchmark-regression-table"><thead><tr><th>Regression Object / Next Action</th><th>Status</th><th>Warnings / Errors</th><th>Profiles</th><th>Render Path</th><th>Issue Summary</th><th>Source</th></tr></thead><tbody>${regressionRows || '<tr><td colspan="7"><div class="notice">No regression artifacts were found.</div></td></tr>'}</tbody></table></div></section><section class="card" id="benchmark-sources"><div class="section-head"><div><h2>Artifact Sources</h2><p class="section-intro">Source roots remain available as supporting evidence, but they no longer lead the page narrative.</p></div></div><div class="status-list">${sourceRows || '<div class="notice">No benchmark artifact sources configured.</div>'}</div></section></div>`;
+	    return reply.type("text/html; charset=utf-8").send(page("Benchmarks", benchmarksBody));
+	  });
 
   app.get("/ui/benchmarks/repair-acceptance", async (request, reply) => {
     const statusFilter = (q(request.query, "status") ?? "").toLowerCase();
@@ -7103,6 +7549,54 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         hint: "open the compare surface before promote when it exists"
       }
     ];
+    const repairRecoveryRail = [
+      {
+        title: "Recovery order",
+        detail: "Open Smoke first, then Plan or QC, then Actual Judge when acceptance, final state, and selected candidate diverge.",
+        tone: rejectedCount > 0 || qcFailedCount > 0 ? ("warn" as UiBadgeTone) : ("muted" as UiBadgeTone),
+        badge: "recover",
+        html: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmark Queue</a>`
+      },
+      {
+        title: "Linked review objects",
+        detail: "Keep acceptance, route, and lineage views adjacent so the operator does not have to jump straight into raw payloads.",
+        tone: "muted" as UiBadgeTone,
+        badge: "objects",
+        html: `<a href="/ui/benchmarks/route-reasons">Route Explorer</a><a href="/ui/benchmarks/dataset-lineage">Lineage Explorer</a>`
+      },
+      {
+        title: "Rollback anchor",
+        detail: compareCount > 0 ? "Candidate compare remains the first rollback proof before falling back to smoke, plan, and QC." : "Smoke, then Plan, then QC remains the rollback order for the current scope.",
+        tone: compareCount > 0 ? ("ok" as UiBadgeTone) : ("warn" as UiBadgeTone),
+        badge: "rollback",
+        html: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollouts</a>`
+      }
+    ];
+    const repairEvidenceCards = [
+      {
+        title: "Artifact-backed review",
+        detail: `${rows.length} acceptance rows are in scope. Use compare, smoke, plan, and judge detail before opening raw evidence.`,
+        tone: "muted" as UiBadgeTone,
+        badge: "evidence"
+      },
+      {
+        title: "Raw payload policy",
+        detail: "Raw JSON is intentionally pushed behind detail pages. Escalate only when the operator still cannot reconcile the acceptance gate.",
+        tone: compareCount > 0 ? ("ok" as UiBadgeTone) : ("warn" as UiBadgeTone),
+        badge: "defer"
+      }
+    ];
+    const repairEvidenceDrawer = {
+      summary: "Open the acceptance evidence order and raw-evidence policy",
+      bodyHtml: `<div class="ops-review-fact-grid">
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Primary order</span><strong>${esc(
+          compareCount > 0 ? "Candidate Compare -> Smoke -> Plan" : "Smoke -> Plan -> QC"
+        )}</strong><span class="muted-text">keep compare-first review ahead of raw payloads</span></article>
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Judge fallback</span><strong>Actual Judge -> Visual Judge</strong><span class="muted-text">open judge artifacts only after compare or smoke still looks inconclusive</span></article>
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Review objects</span><strong>Acceptance -> Route -> Lineage</strong><span class="muted-text">linked explorers stay adjacent for operator review</span></article>
+      </div>
+      <div class="ops-review-note"><strong>Evidence rule</strong><span class="muted-text">Use detail surfaces first. Raw JSON remains a last resort because the operator should not have to parse payload shape to understand the acceptance gate.</span></div>`
+    };
     const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Some artifacts do not emit an explicit <code>acceptance_status</code> or normalized <code>repair_reasons[]</code>. This explorer derives acceptance from <code>accepted</code>, <code>judge_accepted</code>, and <code>judge_decision</code>, and derives repair signals from presets, rejection reasons, and QC output.</span></div>`;
     const body = buildRepairAcceptancePageBody({
       flash: flashHtml(request.query),
@@ -7110,7 +7604,10 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       summaryCards,
       linksHtml: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/benchmarks/route-reasons">Route Explorer</a><a href="/ui/benchmarks/dataset-lineage">Lineage Explorer</a><a href="/ui/rollouts">Rollouts</a>`,
       railCards: repairRail,
+      recoveryCards: repairRecoveryRail,
       facts: repairFacts,
+      evidenceCards: repairEvidenceCards,
+      evidenceDrawer: repairEvidenceDrawer,
       notes,
       rows: tableRows
     });
@@ -7245,6 +7742,54 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         hint: "keep route evidence ahead of raw payloads"
       }
     ];
+    const routeRecoveryRail = [
+      {
+        title: "Recovery order",
+        detail: "Open Runtime Shots first, then Plan, then Render Modes to decide whether route_reason drift or candidate drift is driving the mismatch.",
+        tone: mismatchedCount > 0 ? ("warn" as UiBadgeTone) : ("muted" as UiBadgeTone),
+        badge: mismatchedCount > 0 ? "drift" : "inspect",
+        html: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
+      },
+      {
+        title: "Linked review objects",
+        detail: "Keep acceptance and lineage review adjacent so route_reason never loses the surrounding decision context.",
+        tone: "muted" as UiBadgeTone,
+        badge: "objects",
+        html: `<a href="/ui/benchmarks/repair-acceptance">Acceptance Explorer</a><a href="/ui/benchmarks/dataset-lineage">Lineage Explorer</a>`
+      },
+      {
+        title: "Rollback anchor",
+        detail: compareCount > 0 ? "Candidate compare plus runtime shots remains the safest rollback proof for route drift." : "Runtime shots plus render modes remains the fallback proof when compare artifacts are unavailable.",
+        tone: compareCount > 0 ? ("ok" as UiBadgeTone) : ("warn" as UiBadgeTone),
+        badge: "rollback",
+        html: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollouts</a>`
+      }
+    ];
+    const routeEvidenceCards = [
+      {
+        title: "Artifact-backed route proof",
+        detail: `${rows.length} routed shots are in scope. Keep route_reason, runtime, render mode, and compare evidence adjacent before falling back to raw payloads.`,
+        tone: "muted" as UiBadgeTone,
+        badge: "evidence"
+      },
+      {
+        title: "Raw payload policy",
+        detail: "Use route detail pages only when the route_reason, render path, and candidate evidence still fail to line up.",
+        tone: compareCount > 0 ? ("ok" as UiBadgeTone) : ("warn" as UiBadgeTone),
+        badge: "defer"
+      }
+    ];
+    const routeEvidenceDrawer = {
+      summary: "Open the route evidence order and raw-evidence policy",
+      bodyHtml: `<div class="ops-review-fact-grid">
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Primary order</span><strong>${esc(
+          compareCount > 0 ? "Candidate Compare -> Runtime Shots" : "Runtime Shots -> Render Modes"
+        )}</strong><span class="muted-text">trace route proof before dropping to raw payloads</span></article>
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Drift checks</span><strong>Plan -> QC -> Render Log</strong><span class="muted-text">confirm whether route drift is downstream or upstream</span></article>
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Review objects</span><strong>Route -> Acceptance -> Lineage</strong><span class="muted-text">linked explorers stay available as adjacent proof</span></article>
+      </div>
+      <div class="ops-review-note"><strong>Evidence rule</strong><span class="muted-text">Keep route_reason readable at the decision layer. Raw payloads should only appear when the route stack still feels inconsistent after the artifact-backed compare path.</span></div>`
+    };
     const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">This explorer depends on <code>shot_grammar.route_reason</code> inside runtime shots. If route reasons are missing, benchmark smoke output needs to persist that field for every shot, not only episode-local previews.</span></div>`;
     const body = buildRouteReasonPageBody({
       flash: flashHtml(request.query),
@@ -7252,7 +7797,10 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       summaryCards,
       linksHtml: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/benchmarks/repair-acceptance">Acceptance Explorer</a><a href="/ui/benchmarks/dataset-lineage">Lineage Explorer</a><a href="/ui/rollouts">Rollouts</a>`,
       railCards: routeRail,
+      recoveryCards: routeRecoveryRail,
       facts: routeFacts,
+      evidenceCards: routeEvidenceCards,
+      evidenceDrawer: routeEvidenceDrawer,
       notes,
       rows: tableRows
     });
@@ -7376,6 +7924,56 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         hint: "use lineage proof before promote when schema gaps remain"
       }
     ];
+    const lineageRecoveryRail = [
+      {
+        title: "Recovery order",
+        detail: schemaGapCount > 0 ? "Use Smoke first, then Runtime Shots, then manifest-backed references until lossless dataset revision fields are restored." : "Manifest-backed lineage is available first, with smoke and runtime shots as the fallback proof chain.",
+        tone: schemaGapCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
+        badge: schemaGapCount > 0 ? "recover" : "ready",
+        html: `<a href="/ui/rollouts">Rollout Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
+      },
+      {
+        title: "Linked review objects",
+        detail: "Keep route_reason and acceptance explorers adjacent so provenance checks do not lose the actual decision context.",
+        tone: "muted" as UiBadgeTone,
+        badge: "objects",
+        html: `<a href="/ui/benchmarks/route-reasons">Route Explorer</a><a href="/ui/benchmarks/repair-acceptance">Acceptance Explorer</a>`
+      },
+      {
+        title: "Rollback anchor",
+        detail: schemaGapCount > 0 ? "Smoke, runtime shots, and manifest references remain the current rollback proof while schema gaps are open." : "Manifest-backed lineage remains the safest rollback proof for bundle provenance.",
+        tone: schemaGapCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
+        badge: "rollback",
+        html: `<a href="/ui/artifacts">Artifacts</a><a href="/ui/rollouts">Rollouts</a>`
+      }
+    ];
+    const lineageEvidenceCards = [
+      {
+        title: "Artifact-backed provenance",
+        detail: `${rows.length} lineage rows are in scope. Use manifest paths, selected-image references, smoke, and runtime shots before raw payload inspection.`,
+        tone: "muted" as UiBadgeTone,
+        badge: "evidence"
+      },
+      {
+        title: "Raw payload policy",
+        detail: "If provenance still looks uncertain, escalate only after the manifest-backed chain and linked explorers have been exhausted.",
+        tone: schemaGapCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
+        badge: "defer"
+      }
+    ];
+    const lineageEvidenceDrawer = {
+      summary: "Open the lineage evidence order and raw-evidence policy",
+      bodyHtml: `<div class="ops-review-fact-grid">
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Primary order</span><strong>${esc(
+          schemaGapCount > 0 ? "Smoke -> Runtime Shots -> Manifest" : "Manifest-backed lineage"
+        )}</strong><span class="muted-text">prove provenance before dropping to raw payloads</span></article>
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Reference chain</span><strong>${esc(
+          manifestBackedRows > 0 ? `${manifestBackedRows} manifest-backed rows` : "selected images or manifests are thin"
+        )}</strong><span class="muted-text">selected-image and manifest references stay ahead of raw JSON</span></article>
+        <article class="ops-review-fact"><span class="ops-review-fact-label">Review objects</span><strong>Lineage -> Route -> Acceptance</strong><span class="muted-text">linked explorers stay adjacent for operator review</span></article>
+      </div>
+      <div class="ops-review-note"><strong>Evidence rule</strong><span class="muted-text">Raw payloads stay behind the drawer because provenance should first be proven from smoke, runtime, manifest, and linked review surfaces.</span></div>`
+    };
     const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Current artifacts expose <code>dataset_id</code>, <code>pack_id</code>, <code>bible_ref</code>, and sidecar reference manifest paths. They do not consistently expose <code>dataset_version_id</code>, source URIs, or manifest versions, so this viewer cannot prove lossless dataset revisions yet.</span></div>`;
     const body = buildDatasetLineagePageBody({
       flash: flashHtml(request.query),
@@ -7383,7 +7981,10 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       summaryCards,
       linksHtml: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/benchmarks/route-reasons">Route Explorer</a><a href="/ui/benchmarks/repair-acceptance">Acceptance Explorer</a><a href="/ui/rollouts">Rollouts</a>`,
       railCards: lineageRail,
+      recoveryCards: lineageRecoveryRail,
       facts: lineageFacts,
+      evidenceCards: lineageEvidenceCards,
+      evidenceDrawer: lineageEvidenceDrawer,
       notes,
       rows: tableRows
     });
@@ -7628,13 +8229,47 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
     const comparisonAligned = Boolean(plannedSelectionId) && plannedSelectionId === actualSelectionId;
     const comparisonTone: UiBadgeTone = !actualSelectionId ? "bad" : comparisonAligned ? "ok" : "warn";
     const comparisonVerdict = !actualSelectionId ? "retry actual judge" : comparisonAligned ? "ready to promote" : "compare before promote";
-    const comparisonNextDecision = !actualSelectionId
-      ? "actual winner is missing, so rerun or inspect actual judge artifacts first"
-      : comparisonAligned
-        ? `approve ${humanizeOpsLabel(actualWinner)} if QC stays clean`
-        : `decide between prompt ${humanizeOpsLabel(promptWinner)} and actual ${humanizeOpsLabel(actualWinner)}`;
-    const promotionTarget = comparisonAligned ? humanizeOpsLabel(actualWinner) : humanizeOpsLabel(promptWinner);
-    const topCandidate = visibleCandidateRows[0] ?? candidateRows[0] ?? null;
+	    const comparisonNextDecision = !actualSelectionId
+	      ? "actual winner is missing, so rerun or inspect actual judge artifacts first"
+	      : comparisonAligned
+	        ? `approve ${humanizeOpsLabel(actualWinner)} if QC stays clean`
+	        : `decide between prompt ${humanizeOpsLabel(promptWinner)} and actual ${humanizeOpsLabel(actualWinner)}`;
+	    const promotionTarget = comparisonAligned ? humanizeOpsLabel(actualWinner) : humanizeOpsLabel(promptWinner);
+	    const topCandidate = visibleCandidateRows[0] ?? candidateRows[0] ?? null;
+	    const candidateRecoveryRail: DecisionCard[] = [
+	      {
+	        title: "Retry / rollback path",
+	        detail: !actualSelectionId ? "Retry actual judge generation or reopen the benchmark flow before approving or rolling back." : "Rollback means preferring the prompt winner and inspecting its artifacts before promotion.",
+	        tone: comparisonTone,
+	        badge: !actualSelectionId ? "retry" : "rollback",
+	        html: `<a href="/ui/benchmarks">Benchmark Queue</a>${topCandidate?.resultPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(topCandidate.resultPath)}">Inspect Top Result</a>` : ""}`
+	      },
+	      {
+	        title: "Linked review objects",
+	        detail: "Keep the owning rollout bundle and episode object adjacent so compare-before-promote does not collapse into raw payload reading.",
+	        tone: "muted",
+	        badge: "objects",
+	        html: `<a href="/ui/rollouts">Rollouts</a>${episodeId !== "-" ? `<a href="/ui/episodes/${encodeURIComponent(episodeId)}">Episode Detail</a>` : ""}`
+	      }
+	    ];
+	    const candidateLinkedRail: DecisionCard[] = [
+	      { title: "Rollout bundle", detail: bundle.stem, tone: "muted", html: topLinks || `<a href="/ui/rollouts">Rollouts</a>` },
+	      {
+	        title: "Episode object",
+	        detail: episodeId !== "-" ? `promotion and rollback resolve in episode ${episodeId}` : "episode id unavailable",
+	        tone: "muted",
+	        html: episodeId !== "-" ? `<a href="/ui/episodes/${encodeURIComponent(episodeId)}">Episode Detail</a>` : ""
+	      }
+	    ];
+	    const candidateEvidenceFacts: DecisionFact[] = [
+	      { label: "Prompt Winner", value: humanizeOpsLabel(promptWinner), hint: "prompt-side approved candidate" },
+	      { label: "Actual Winner", value: humanizeOpsLabel(actualWinner), hint: "actual-side chosen candidate" },
+	      { label: "Promotion Gate", value: comparisonVerdict, hint: comparisonNextDecision },
+	      { label: "Rollback Point", value: humanizeOpsLabel(promptWinner), hint: "prompt winner remains the safest rollback anchor" }
+	    ];
+	    const candidateEvidenceDrawerBody = `<div class="decision-copy">Use the compare shell, candidate score matrix, and linked artifact detail before reading lower-level request payloads. Raw prompt text stays intentionally below the gate.</div>
+	<div class="quick-links">${topLinks || `<a href="/ui/rollouts">Open Rollouts</a>`}</div>
+	<details class="decision-drawer"><summary>Open compare evidence order</summary><div class="decision-drawer-body"><div class="decision-copy">Compare shell -> candidate score matrix -> top candidate detail -> prompt preview. Only open prompt or request payloads if the compare gate still looks uncertain.</div><div class="quick-links"><a href="/ui/benchmarks">Benchmark Queue</a><a href="/ui/rollouts">Rollouts</a></div></div></details>`;
 
     const compareTableRows = visibleCandidateRows
       .map((row) => {
@@ -7768,8 +8403,8 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
           html: episodeId !== "-" ? `<a href="/ui/episodes/${encodeURIComponent(episodeId)}">Episode Detail</a>` : ""
         }
       ]
-    })}${renderDecisionPrioritySection({
-      title: "Decision Rail",
+	    })}${renderDecisionPrioritySection({
+	      title: "Decision Rail",
       intro: "Keep compare-before-promote, retry, and rollback logic visible before the candidate matrix or prompt payload.",
       linksHtml: `<a href="/ui/benchmarks">Benchmark Queue</a><a href="/ui/rollouts">Rollouts</a>${focusSelected ? `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(bundle.requestedPath)}">Show Full Matrix</a>` : ""}`,
       railTitle: "Compare actions",
@@ -7808,17 +8443,45 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         { label: "Alternate Path", value: "benchmark queue / rollout detail", hint: "linked object review path" },
         { label: "Rollback Point", value: promptWinner, hint: "prompt winner remains the safest rollback anchor" }
       ],
-      snapshotEmpty: "No candidate recovery snapshot available.",
-      snapshotTone: comparisonTone
-    })}
+	      snapshotEmpty: "No candidate recovery snapshot available.",
+	      snapshotTone: comparisonTone
+	    })}${renderRecoveryRailSection({
+	      title: "Recovery / Linked Objects",
+	      intro: "Retry, rollback, and linked object rails stay visible before the candidate matrix or prompt payload.",
+	      linksHtml: `<a href="/ui/benchmarks">Benchmark Queue</a><a href="/ui/rollouts">Rollouts</a>${focusSelected ? `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(bundle.requestedPath)}">Show Full Matrix</a>` : ""}`,
+	      recoveryTitle: "Recovery rail",
+	      recoveryIntro: "Retry actual judge or use the prompt-side rollback anchor before promoting the bundle.",
+	      recoveryCards: candidateRecoveryRail,
+	      recoveryEmpty: "No candidate recovery rail is available.",
+	      recoveryTone: comparisonTone,
+	      linkedTitle: "Linked object rail",
+	      linkedIntro: "Keep rollout bundle and episode object context adjacent to the compare shell.",
+	      linkedCards: candidateLinkedRail,
+	      linkedEmpty: "No linked objects are available for this compare bundle.",
+	      linkedTone: "muted"
+	    })}${renderArtifactEvidenceSection({
+	      title: "Artifact Evidence Drawer",
+	      intro: "Artifact-backed compare evidence stays adjacent, but raw prompt payloads remain behind the drawer.",
+	      linksHtml: `<a href="/ui/benchmarks">Benchmark Queue</a><a href="/ui/rollouts">Rollouts</a>`,
+	      summaryTitle: "Compare evidence summary",
+	      summaryIntro: "Prompt winner, actual winner, promotion gate, and rollback point stay above the matrix.",
+	      summaryFacts: candidateEvidenceFacts,
+	      summaryEmpty: "No compare evidence summary is available.",
+	      summaryTone: comparisonTone,
+	      drawerTitle: "Compare evidence drawer",
+	      drawerIntro: "Use linked judge, plan, request, and result detail only after the compare gate remains uncertain.",
+	      drawerSummary: "Open compare evidence order and raw-evidence policy",
+	      drawerBodyHtml: candidateEvidenceDrawerBody,
+	      drawerTone: "muted"
+	    })}
 <section class="card dashboard-shell">
-  <div class="section-head">
-    <div>
-      <h2>Decision Context</h2>
-      <p class="section-intro">Prompt candidate scoring vs actual sidecar output scoring for one shot. Compare-before-promote logic stays above the matrix.</p>
-    </div>
-    <div class="quick-links"><a href="/ui/benchmarks">Back to Benchmarks</a><a href="/ui/rollouts">Open Rollouts</a></div>
-  </div>
+	  <div class="section-head">
+	    <div>
+	      <h2>Compare Shell</h2>
+	      <p class="section-intro">Prompt candidate scoring vs actual sidecar output scoring for one shot. Compare-before-promote logic stays above the matrix.</p>
+	    </div>
+	    <div class="quick-links"><a href="/ui/benchmarks">Back to Benchmarks</a><a href="/ui/rollouts">Open Rollouts</a></div>
+	  </div>
   ${focusBanner}
   <p>episodeId: <strong>${esc(episodeId)}</strong> | shotId: <strong>${esc(shotId)}</strong></p>
   <p>renderer: <strong>${esc(renderer)}</strong> | backend: <strong>${esc(backend)}</strong></p>
@@ -7832,7 +8495,7 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
   <div class="table-wrap"><table><thead><tr><th>Candidate</th><th>Prompt Score</th><th>Actual Score</th><th>Delta</th><th>QC</th><th>Latency</th><th>Visual Signal</th><th>Artifacts</th></tr></thead><tbody>${compareTableRows || '<tr><td colspan="8"><div class="notice">No candidate judge rows found.</div></td></tr>'}</tbody></table></div>
 </section>
 <section class="card">
-  <div class="section-head"><h2>Artifact Context</h2><span class="muted-text">Prompt and reference bundle that produced this candidate set. Raw prompt text stays behind a disclosure.</span></div>
+	  <div class="section-head"><h2>Artifact Evidence Drawer</h2><span class="muted-text">Prompt and reference bundle that produced this candidate set. Raw prompt text stays behind a disclosure.</span></div>
   <div class="grid two">
     <div class="form-card">
       <h3>Reference Bundle</h3>
@@ -7852,52 +8515,36 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
     return reply.type("text/html; charset=utf-8").send(page(`Candidate Compare ${shotId}`, body));
   });
 
-  app.get("/ui/rollouts", async (request, reply) => {
-    const { sources, signals } = collectRolloutSignals();
-    const stats = {
-      total: signals.length,
+	  app.get("/ui/rollouts", async (request, reply) => {
+	    const { sources, signals } = collectRolloutSignals();
+	    const stats = {
+	      total: signals.length,
       ready: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "ready").length,
       blocked: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "blocked").length,
-      belowMinScore: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "below_min_score").length,
-      divergence: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "divergence").length
-    };
-    const summaryCards = [
-      {
-        label: "Signals",
-        value: String(stats.total),
-        tone: "muted" as UiBadgeTone,
-        hint: `${sources.filter((source) => source.exists).length}/${sources.length} artifact roots available`
-      },
-      {
-        label: "Ready",
-        value: String(stats.ready),
-        tone: "ok" as UiBadgeTone,
-        hint: "usable or no-change rollout states"
-      },
-      {
-        label: "Blocked",
-        value: String(stats.blocked),
-        tone: "bad" as UiBadgeTone,
-        hint: "failed promotion or inspection states"
-      },
-      {
-        label: "Below Min",
-        value: String(stats.belowMinScore),
-        tone: "bad" as UiBadgeTone,
-        hint: "scores under rollout threshold"
-      },
-      {
-        label: "Divergence",
-        value: String(stats.divergence),
-        tone: "warn" as UiBadgeTone,
-        hint: "cross-channel drift to inspect"
-      }
-    ]
-      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
-      .join("");
+	      belowMinScore: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "below_min_score").length,
+	      divergence: signals.filter((signal) => normalizeRolloutStatus(signal.status) === "divergence").length
+	    };
+	    const availableSources = sources.filter((source) => source.exists).length;
+	    const rolloutTone: UiBadgeTone =
+	      stats.blocked > 0 || stats.belowMinScore > 0 ? "bad" : stats.divergence > 0 ? "warn" : stats.ready > 0 ? "ok" : "muted";
+	    const rolloutQueueStatusLabel =
+	      stats.blocked > 0 || stats.belowMinScore > 0
+	        ? "recovery queue active"
+	        : stats.divergence > 0
+	          ? "compare before promote"
+	          : stats.ready > 0
+	            ? "promotion queue ready"
+	            : "artifact queue empty";
+	    const rolloutSummaryCards: DecisionStat[] = [
+	      { label: "Signals", value: String(stats.total), hint: `${availableSources}/${sources.length} artifact roots available`, tone: "muted" },
+	      { label: "Ready", value: String(stats.ready), hint: "usable or no-change rollout states", tone: stats.ready > 0 ? "ok" : "warn" },
+	      { label: "Blocked", value: String(stats.blocked), hint: "failed promotion or inspection states", tone: stats.blocked > 0 ? "bad" : "ok" },
+	      { label: "Below Min", value: String(stats.belowMinScore), hint: "scores under rollout threshold", tone: stats.belowMinScore > 0 ? "bad" : "ok" },
+	      { label: "Divergence", value: String(stats.divergence), hint: "cross-channel drift to inspect", tone: stats.divergence > 0 ? "warn" : "ok" }
+	    ];
 
-    const sourceRows = sources
-      .map((source) => {
+	    const sourceRows = sources
+	      .map((source) => {
         const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
         const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} signals` : "empty";
         const meta = compact([
@@ -7908,22 +8555,168 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       })
       .join("");
 
-    const rows = signals
-      .map((signal) => {
-        const artifactHref = `/ui/rollouts/artifact?path=${encodeURIComponent(signal.artifactPath)}`;
-        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(signal.artifactPath)}`;
-        return `<tr><td><div class="table-note"><strong>${esc(signal.kind)}</strong><span class="muted-text">${esc(`${signal.scope} / ${signal.target}`)}</span><span class="mono">${esc(signal.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${artifactHref}">Raw JSON</a><button type="button" class="secondary" data-copy="${esc(signal.artifactPath)}">Copy path</button></div></div></td><td><span class="badge ${signal.tone}">${esc(rolloutStatusLabel(signal.status))}</span></td><td>${esc(signal.score)}</td><td>${esc(signal.verdict)}</td><td>${esc(signal.reason || "-")}</td><td>${fmtDate(signal.generatedAt)}</td><td><div class="stack"><strong>${esc(signal.sourceLabel)}</strong><span class="mono">${esc(signal.sourcePath)}</span></div></td></tr>`;
-      })
-      .join("");
-
-    const rolloutsBody = buildRolloutsPageBody({
-      flash: flashHtml(request.query),
-      summaryCards,
-      sourceRows: sourceRows || `<div class="notice">No rollout artifact sources configured.</div>`,
-      rows
-    });
-    return reply.type("text/html; charset=utf-8").send(page("Rollouts", rolloutsBody));
-  });
+	    const rows = signals
+	      .map((signal) => {
+	        const detailHref = `/ui/rollouts/detail?path=${encodeURIComponent(signal.artifactPath)}`;
+	        return `<tr><td><div class="table-note"><strong>${esc(signal.kind)}</strong><span class="muted-text">${esc(`${signal.scope} / ${signal.target}`)}</span><span class="mono">${esc(signal.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Decision Detail</a><button type="button" class="secondary" data-copy="${esc(signal.artifactPath)}">Copy path</button></div></div></td><td><span class="badge ${signal.tone}">${esc(rolloutStatusLabel(signal.status))}</span></td><td>${esc(signal.score)}</td><td>${esc(signal.verdict)}</td><td>${esc(signal.reason || "-")}</td><td>${fmtDate(signal.generatedAt)}</td><td><div class="stack"><strong>${esc(signal.sourceLabel)}</strong><span class="mono">${esc(signal.sourcePath)}</span></div></td></tr>`;
+	      })
+	      .join("");
+	    const rolloutBlockers: DecisionCard[] = [];
+	    if (stats.blocked > 0 || stats.belowMinScore > 0) {
+	      rolloutBlockers.push({
+	        title: "Blocked rollout signals",
+	        detail: `${stats.blocked} blocked and ${stats.belowMinScore} below-min signals remain in the queue. Recover those before treating ready signals as promotable.`,
+	        tone: "bad",
+	        badge: "blocked"
+	      });
+	    }
+	    if (availableSources < sources.length) {
+	      rolloutBlockers.push({
+	        title: "Artifact roots missing",
+	        detail: `${sources.length - availableSources} rollout roots are missing, so the queue cannot prove full rollout coverage yet.`,
+	        tone: "warn",
+	        badge: "sources"
+	      });
+	    }
+	    const rolloutPrimaryActions: DecisionCard[] = [
+	      {
+	        title: stats.blocked > 0 || stats.belowMinScore > 0 ? "Recover queue first" : "Promotion queue gate",
+	        detail: stats.blocked > 0 || stats.belowMinScore > 0 ? "Blocked or below-min rollout signals should be cleared before ready signals are treated as promotion candidates." : "Use the rollout queue as the first promotion gate, then drill into detail only for the signals that still diverge.",
+	        tone: rolloutTone,
+	        badge: stats.blocked > 0 || stats.belowMinScore > 0 ? "recover" : "gate",
+	        html: `<a href="#rollout-signal-table">Signal Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
+	      }
+	    ];
+	    const rolloutSecondaryActions: DecisionCard[] = [
+	      {
+	        title: "Compare before promote",
+	        detail: stats.divergence > 0 ? `${stats.divergence} signals still show divergence. Use rollout detail and benchmark objects before opening raw evidence.` : "Divergence is currently quiet, so use detail pages only when a ready signal still feels suspicious.",
+	        tone: stats.divergence > 0 ? "warn" : "muted",
+	        badge: "compare",
+	        html: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a>`
+	      }
+	    ];
+	    const rolloutRecoveryActions: DecisionCard[] = [
+	      {
+	        title: "Recovery path",
+	        detail: "Rollout detail remains the recovery object. Open it before raw JSON when a signal is blocked, below minimum, or divergent.",
+	        tone: rolloutTone,
+	        badge: "recover",
+	        html: `<a href="#rollout-signal-table">Signal Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
+	      }
+	    ];
+	    const rolloutLinkedObjects: DecisionCard[] = [
+	      { title: "Benchmark queue", detail: "Rollout review stays adjacent to benchmark review so compare-before-promote keeps upstream context.", tone: "muted", html: `<a href="/ui/benchmarks">Open Benchmarks</a>` },
+	      { title: "Artifact sources", detail: `${availableSources}/${sources.length} roots are readable for this queue object.`, tone: availableSources === sources.length ? "ok" : "warn", badge: "sources", html: `<a href="#rollout-sources">Artifact Sources</a>` }
+	    ];
+	    const rolloutDecisionRail: DecisionCard[] = [
+	      {
+	        title: stats.blocked > 0 || stats.belowMinScore > 0 ? "Recover blocked signals" : "Current promotion gate",
+	        detail: stats.blocked > 0 || stats.belowMinScore > 0 ? "Blocked and below-min signals stay ahead of ready rows. Recover those first." : "Use the queue as the normalized promotion gate before moving into rollout detail.",
+	        tone: rolloutTone,
+	        badge: stats.blocked > 0 || stats.belowMinScore > 0 ? "recover" : "gate",
+	        html: `<a href="#rollout-signal-table">Signal Queue</a><a href="/ui/benchmarks">Benchmarks</a>`
+	      },
+	      {
+	        title: "Compare before promote",
+	        detail: stats.divergence > 0 ? `${stats.divergence} divergence signals still need compare-before-promote review.` : "No divergence signals remain. Open detail only for edge cases that still feel inconsistent.",
+	        tone: stats.divergence > 0 ? "warn" : "ok",
+	        badge: "compare",
+	        html: `<a href="/ui/benchmarks">Benchmark Queue</a>`
+	      },
+	      {
+	        title: "Rollback anchor",
+	        detail: stats.ready > 0 ? `${stats.ready} ready signals remain as the cleanest queue-side rollback anchor.` : "No ready signal is available yet, so blocked or divergent rows remain the active review anchor.",
+	        tone: stats.ready > 0 ? "ok" : "warn",
+	        badge: "rollback",
+	        html: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a>`
+	      }
+	    ];
+	    const rolloutSnapshotFacts: DecisionFact[] = [
+	      { label: "Failure Reason", value: stats.blocked > 0 ? `${stats.blocked} blocked signals` : stats.belowMinScore > 0 ? `${stats.belowMinScore} below-min signals` : stats.divergence > 0 ? `${stats.divergence} divergence signals` : "none", hint: "top rollout queue blocker" },
+	      { label: "Last Known Good", value: stats.ready > 0 ? `${stats.ready} ready signals` : "no ready signal", hint: "queue-side clean anchor" },
+	      { label: "Fallback Applied", value: stats.divergence > 0 ? "compare before promote" : "detail-first review", hint: "current rollout queue mode" },
+	      { label: "Retry Path", value: "rollout detail -> benchmark queue -> evidence drawer", hint: rolloutQueueStatusLabel },
+	      { label: "Alternate Path", value: "benchmark queue / artifact sources", hint: "adjacent review surfaces" },
+	      { label: "Rollback Point", value: stats.ready > 0 ? "ready rollout signals" : "signal recovery queue", hint: "rollout queue rollback anchor" }
+	    ];
+	    const rolloutEvidenceFacts: DecisionFact[] = [
+	      { label: "Sources", value: `${availableSources}/${sources.length}`, hint: "configured rollout roots available" },
+	      { label: "Signals", value: String(stats.total), hint: `${stats.ready} ready / ${stats.blocked} blocked` },
+	      { label: "Divergence", value: String(stats.divergence), hint: "signals needing compare-before-promote review" },
+	      { label: "Below Min", value: String(stats.belowMinScore), hint: "signals under rollout threshold" }
+	    ];
+	    const rolloutEvidenceDrawerBody = `<div class="decision-copy">This queue is the normalized rollout review object. Use decision detail and linked benchmark objects before reading raw artifact payloads.</div><div class="status-list">${sourceRows || '<div class="notice">No rollout artifact sources configured.</div>'}</div><details class="decision-drawer"><summary>Open rollout queue evidence order</summary><div class="decision-drawer-body"><div class="decision-copy">Rollout queue -> rollout detail -> benchmark queue -> raw artifact payloads. Raw JSON should be the fallback, not the first-line review surface.</div><div class="quick-links"><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a></div></div></details>`;
+	    const rolloutsBody = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
+	      eyebrow: "Rollout Review",
+	      title: "Rollouts",
+	      subtitle: "Treat rollout signals as artifact-backed review objects: blocked states, compare-before-promote context, and rollback anchors stay above raw evidence.",
+	      statusLabel: rolloutQueueStatusLabel,
+	      statusTone: rolloutTone,
+	      flash: flashHtml(request.query),
+	      quickLinksHtml: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/health">Health</a>`,
+	      summaryCards: rolloutSummaryCards,
+	      metaItems: [
+	        { label: "Artifact Sources", value: `${availableSources}/${sources.length}`, hint: "configured roots available" },
+	        { label: "Ready Signals", value: String(stats.ready), hint: "usable promotion candidates" },
+	        { label: "Blocked Signals", value: String(stats.blocked), hint: "failed or inspection-required states" },
+	        { label: "Queue Mode", value: stats.divergence > 0 ? "compare before promote" : "detail-first review", hint: "current rollout review stance" }
+	      ],
+	      blockers: rolloutBlockers,
+	      primaryActions: rolloutPrimaryActions,
+	      secondaryActions: rolloutSecondaryActions,
+	      recoveryActions: rolloutRecoveryActions,
+	      recentActivity: signals.slice(0, 4).map((signal) => ({
+	        title: `${signal.kind} / ${signal.target}`,
+	        detail: `${rolloutStatusLabel(signal.status)} | ${signal.verdict} | ${fmtDate(signal.generatedAt)}`,
+	        tone: signal.tone,
+	        badge: signal.scope
+	      })),
+	      linkedObjects: rolloutLinkedObjects
+	    })}${renderDecisionPrioritySection({
+	      title: "Decision Rail",
+	      intro: "Blocked states, compare-before-promote rules, and rollback anchors stay above signal scanning.",
+	      linksHtml: `<a href="#rollout-signal-table">Signal Queue</a><a href="/ui/benchmarks">Benchmarks</a>`,
+	      railTitle: "Rollout actions",
+	      railIntro: "Recover blocked signals first, compare before promote, then hold on the cleanest ready signal as the queue-side rollback anchor.",
+	      railCards: rolloutDecisionRail,
+	      railEmpty: "No rollout actions are available.",
+	      railTone: rolloutTone,
+	      snapshotIntro: "Failure reason, last-known-good queue anchor, retry path, and rollback point stay above the table.",
+	      snapshotFacts: rolloutSnapshotFacts,
+	      snapshotEmpty: "No rollout recovery snapshot is available.",
+	      snapshotTone: rolloutTone
+	    })}${renderRecoveryRailSection({
+	      title: "Recovery / Linked Objects",
+	      intro: "Recovery order and linked queues stay visible before signal tables or source roots.",
+	      linksHtml: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a>`,
+	      recoveryTitle: "Recovery rail",
+	      recoveryIntro: "Use rollout detail as the recovery object and keep benchmark context adjacent while recovering blocked signals.",
+	      recoveryCards: rolloutRecoveryActions,
+	      recoveryEmpty: "No rollout recovery rail is available.",
+	      recoveryTone: rolloutTone,
+	      linkedTitle: "Linked object rail",
+	      linkedIntro: "Benchmark queue and artifact sources remain attached to the rollout queue object.",
+	      linkedCards: rolloutLinkedObjects,
+	      linkedEmpty: "No linked rollout objects are available.",
+	      linkedTone: "muted"
+	    })}${renderArtifactEvidenceSection({
+	      title: "Artifact Evidence Drawer",
+	      intro: "Source roots and raw evidence remain available, but the queue stays the primary rollout review surface.",
+	      linksHtml: `<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a>`,
+	      summaryTitle: "Rollout evidence summary",
+	      summaryIntro: "Source availability, signal counts, and compare pressure stay above source rows.",
+	      summaryFacts: rolloutEvidenceFacts,
+	      summaryEmpty: "No rollout evidence summary is available.",
+	      summaryTone: rolloutTone,
+	      drawerTitle: "Rollout queue evidence drawer",
+	      drawerIntro: "Open source roots and evidence order only after the normalized queue still feels inconclusive.",
+	      drawerSummary: "Open rollout queue evidence order and raw-evidence policy",
+	      drawerBodyHtml: rolloutEvidenceDrawerBody,
+	      drawerTone: "muted"
+	    })}<section class="card" id="rollout-signal-table"><div class="section-head"><div><h2>Signal Queue</h2><p class="section-intro">Each signal remains an artifact-backed review object. Open decision detail only for rows that still need deeper proof.</p></div><input type="search" data-table-filter="rollouts-table" aria-label="Filter rollout signals" placeholder="Search signal kind, scope, target, verdict, reason..."/></div><div class="table-wrap"><table id="rollouts-table"><thead><tr><th>Object / Next Action</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th><th>Generated</th><th>Source</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">No rollout signals were found.</div></td></tr>'}</tbody></table></div></section><section class="card" id="rollout-sources"><div class="section-head"><div><h2>Artifact Sources</h2><p class="section-intro">Source roots remain visible as supporting evidence, but they no longer lead the queue narrative.</p></div></div><div class="status-list">${sourceRows || '<div class="notice">No rollout artifact sources configured.</div>'}</div></section></div>`;
+	    return reply.type("text/html; charset=utf-8").send(page("Rollouts", rolloutsBody));
+	  });
 
   app.get("/ui/artifacts", async (request, reply) => {
     const episodeId = q(request.query, "episodeId");
