@@ -2366,7 +2366,7 @@ function renderWorkflowSampleArtifactsFallback(): string {
     ? toArtifactUrlFromAbsolutePath(tunedCompareReportPath)
     : null;
 
-  return `<section class="card"><h2>Local Workflow Samples</h2><div class="notice">DB揶쎛 ??곷선????由??筌욊낯????밴쉐??ComfyUI workflow JSON????????됰뮸??덈뼄. <strong>workflow_gui.json</strong>????쇱뒲嚥≪뮆諭??곴퐣 ComfyUI 筌?뗀苡??쇰퓠 ??뺤삋域밸챸釉?쭖??紐껊굡 域밸챶??袁? 癰귣똻???덈뼄.</div>${
+  return `<section class="card"><h2>Local Workflow Samples</h2><div class="notice">DB?�쎛? ??곷선???????筌욊?????밴쉐??ComfyUI workflow JSON?????????��????�뼄. <strong>workflow_gui.json</strong>?????�뒲?�≪뮆諭??곴퐣 ComfyUI �??�????�퓠 ??뺤삋?�밸챸釉?�??紐껊�??�밸�??�? ?�귣?????�뼄.</div>${
     compareReportUrl
       ? `<p><a href="${compareReportUrl}">Open pose-guided compare report</a></p>`
       : ""
@@ -6810,7 +6810,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const selectedSection = selectedJob
       ? `<section class="card" id="cg-active-job"><div id="cg-active-job-meta" hidden data-current-run-id="${escHtml(
           selectedJob.id
-        )}" data-current-pack-id="${escHtml(selectedManifest?.characterPackId ?? "")}"></div><h2>Generation Run object</h2><p>Stage 04?癒?퐣 ????Generation Run object??낅빍?? ?怨밴묶?? ?袁る퓮???믪눘? ??꾪? next safe action??linked routes???⑥쥙?????Compare?? Approve/Rollback ??됱뵥??곗쨮 ??띾┛?紐꾩뒄.</p><div class="cg-context-grid">${renderGeneratorObjectCard(
+        )}" data-current-pack-id="${escHtml(selectedManifest?.characterPackId ?? "")}"></div><h2>Generation Run object</h2><p>Stage 04??????????Generation Run object???�빍?? ??�밴�?? ?袁る????믪눘? ??꾪? next safe action??linked routes????�쥙?????Compare?? Approve/Rollback ???�뵥??곗쨮 ???�┛?紐꾩??</p><div class="cg-context-grid">${renderGeneratorObjectCard(
           "Generation Run",
           `${selectedJob.status} / ${selectedJob.progress}%`,
           `jobId=${selectedJob.id} / episode=${
@@ -6860,7 +6860,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           selectedPrimaryActionTitle
         )}</strong></p><p>${escHtml(selectedPrimaryActionScope)}</p><p>${escHtml(selectedPrimaryActionDetail)}</p><p>reasons: ${escHtml(
           selectedPrimaryActionReasonSummary
-        )}</p>${selectedPrimaryActionControl}</article><article class="cg-context-card"><h3>Linked routes</h3><p><strong>Follow the object, not the page.</strong></p><p>Studio????쥓????깆뒭??낆춸 筌띯넄?? compare/approve/rollback?? ?袁⑥삋 ?袁⑹뒠 surface?癒?퐣 ??щ뮸??덈뼄.</p><div class="cg-link-list">${selectedLinkedRoutes
+        )}</p>${selectedPrimaryActionControl}</article><article class="cg-context-card"><h3>Linked routes</h3><p><strong>Follow the object, not the page.</strong></p><p>Studio????�????깆뒭???�춸 筌띯??? compare/approve/rollback?? ?袁⑥???袁⑹??surface????????�???�뼄.</p><div class="cg-link-list">${selectedLinkedRoutes
           .map((link) => `<a href="${escHtml(link.href)}">${escHtml(link.label)}</a>`)
           .join("")}</div></article><article class="cg-context-card"><h3>Artifact handoff</h3><p><strong>${escHtml(
           selectedManifest?.characterPackId ?? "Generation Run only"
@@ -6885,7 +6885,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const recommendedActionsSection =
       selectedJob && selectedManifest
-        ? `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><p>????됱뵥?? compare ??꾩뜎?癒?춸 ??덈뮉 ??됱읈????쇱벉 ??뤿떄???? Candidate set??Character Pack object 餓??얜똻毓????筌욊낯?わ쭪? ?믪눘? ??뺤쑎??욱? 繹먮봿? preview/QC/lineage ?癒?뼊?? Characters surface嚥???랁돥??덈뼄.</p>${
+        ? `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><p>?????�뵥?? compare ??꾩뜎???�????�뮉 ???�읈?????�벉 ??뤿떄????? Candidate set??Character Pack object �???�똻�????筌욊???��?? ?믪눘? ??뺤쑎???�? 繹먮�? preview/QC/lineage ???�?? Characters surface?????�돥???�뼄.</p>${
             selectedDecisionOutcome || selectedSelectionRisk || selectedAutoReroute || selectedFinalQualityFirewall
               ? `<div class="notice">decision: outcome=${escHtml(
                   selectedDecisionOutcome?.status ?? "unknown"
@@ -6977,15 +6977,15 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         : `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><div class="notice">Select a generation run to see targeted candidate-regenerate, pack-recreate, or compare actions.</div></section>`;
 
     const regenerateSection = selectedJob
-      ? `<section class="card" id="regenerate-view"><h2>Candidate Set / regenerate one view</h2><p>???됯퀣??candidate set筌???쇰뻻 ??밴쉐??Compare lane??곗쨮 ??롫즼?????????몃빍?? Pack ?袁⑷퍥????쇰뻻 ??щ툡????뺣뼄筌?recreate???????뤾쉭??</p><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="regenerate-view"><h2>Candidate Set / regenerate one view</h2><p>?????�??candidate set�????�뻻 ??밴쉐??Compare lane??곗쨮 ??롫즼?????????몃빍?? Pack ?袁⑷??????�뻻 ????????뺣뼄�?recreate???????뤾쉭??</p><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
-        )}"/>${hiddenGeneratorSelfNavFields}<label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Same seed ?醫?</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 揶쏅벤??/label><div class="actions" style="grid-column:1/-1"><button type="submit">Candidate set ??쇰뻻 ??밴쉐</button></div></form></section>`
+        )}"/>${hiddenGeneratorSelfNavFields}<label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Same seed ???</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt ?�쏅�??/label><div class="actions" style="grid-column:1/-1"><button type="submit">Candidate set ???�뻻 ??밴쉐</button></div></form></section>`
       : "";
 
     const recreateSection = selectedJob
-      ? `<section class="card" id="recreate-pack"><h2>Character Pack / recreate from current run</h2><p>?袁⑹삺 Generation Run??policy?? reference ?얜챶苡???醫???筌?Character Pack object??筌ｌ꼷?ч겫?????쇰뻻 ?????덈뼄. compare?? approval????疫꿸퀣???곗쨮 ??쇰뻻 ??ろ???좎뱽 ???????몃빍??</p><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="recreate-pack"><h2>Character Pack / recreate from current run</h2><p>?袁⑹??Generation Run??policy?? reference ??�챶????????�?Character Pack object??筌ｌ�??�??????�뻻 ??????�뼄. compare?? approval?????�꿸????곗쨮 ???�뻻 ???�???좎뱽 ???????몃빍??</p><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
-        )}"/>${hiddenGeneratorSelfNavFields}<label>Candidate Count<input name="candidateCount" value="6"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true"/> Same seed ?醫?</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 揶쏅벤??/label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Character Pack ??源??/button></div></form></section>`
+        )}"/>${hiddenGeneratorSelfNavFields}<label>Candidate Count<input name="candidateCount" value="6"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true"/> Same seed ???</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt ?�쏅�??/label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Character Pack ??�??/button></div></form></section>`
       : "";
 
     const candidateOptions = (view: CharacterGenerationView): string => {
@@ -7007,7 +7007,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         ? (() => {
             const pickBlocked =
               selectedFinalQualityFirewall?.level === "block" || selectedDecisionOutcome?.status === "blocked";
-            return `<section class="card" id="pick-candidates"><h2>Candidate Set / HITL compare</h2><p>???됯퀣??candidate set????쑨?????Character Pack build????쇰선揶?鈺곌퀬鍮??筌뤿굞??怨몄몵嚥??醫뤾문??몃빍?? ??由??Compare????ろ???롢늺 approval lane??곗쨮 ??猷??몃빍??</p>${
+            return `<section class="card" id="pick-candidates"><h2>Candidate Set / HITL compare</h2><p>?????�??candidate set??????????Character Pack build?????�선???�곌?�鍮???筌뤿�???�몄몵嚥???�뤾�??몃빍?? ?????Compare?????�???�?�� approval lane??곗쨮 ??????몃빍??</p>${
               pickBlocked
                 ? `<div class="notice">Direct pick is blocked because the selected pack still fails the final gate. Use regenerate/recreate first, or replace blocked views.</div>`
                 : ""
@@ -7019,7 +7019,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             "profile"
           )}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit"${
             pickBlocked ? " disabled" : ""
-          }>?醫뤾문 ?怨몄뒠 + Character Pack build</button></div></form>${candidateCardsForView(
+          }>??�뤾�???�몄??+ Character Pack build</button></div></form>${candidateCardsForView(
             "front"
           )}${candidateCardsForView("threeQuarter")}${candidateCardsForView("profile")}</section>`;
           })()
@@ -7031,7 +7031,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             const artifacts = getCharacterArtifacts(selectedManifest.characterPackId);
             const previewExists = fs.existsSync(artifacts.previewPath);
             const qcExists = fs.existsSync(artifacts.qcReportPath);
-            return `<section class="card" id="pack-preview-handoff"><h2>Character Pack object / handoff</h2><p>compare?癒?퐣 ??? Character Pack object??review?? active-baseline approval嚥???띾┛??handoff surface??낅빍?? ??繹먮봿? preview/QC/lineage/jobs inspection?? Characters?癒?퐣 ??щ뮸??덈뼄.</p><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
+            return `<section class="card" id="pack-preview-handoff"><h2>Character Pack object / handoff</h2><p>compare???????? Character Pack object??review?? active-baseline approval?????�┛??handoff surface???�빍?? ??繹먮�? preview/QC/lineage/jobs inspection?? Characters????????�???�뼄.</p><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
               selectedManifest.characterPackId
             )}">${escHtml(selectedManifest.characterPackId)}</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
               selectedManifest.characterPackId
@@ -7059,29 +7059,29 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
               selectedManifest.characterPackId
             )}">Characters review</a><a href="#compare-approved-packs">Approved compare</a><a href="${escHtml(studioFastFlowHref)}">Studio fast flow</a></div><form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
               selectedManifest.characterPackId
-            )}"/>${selectedPackGeneratorNavFields}<button type="submit" class="secondary">????뱀뱽 active baseline??곗쨮 ?諭??/button></form></section>`;
+            )}"/>${selectedPackGeneratorNavFields}<button type="submit" class="secondary">????뱀�?active baseline??곗쨮 ?�?�??/button></form></section>`;
           })()
         : "";
 
     const rollbackSection =
       approvedPacks.length > 0
-        ? `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><p>?袁⑹삺 active baseline????곸읈 approved Character Pack??곗쨮 ??롫즼?깆럥??? compare?? review????멸땋 ?? ?袁⑹삺 active pack癰귣?????됱읈????곸읈 疫꿸퀣????브쑬梨?????춸 ?????뤾쉭??</p><form method="post" action="/ui/character-generator/rollback-active" class="grid two">${selectedPackGeneratorNavFields}<label>Target Pack<select name="targetCharacterPackId">${approvedPacks
+        ? `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><p>?袁⑹??active baseline????곸읈 approved Character Pack??곗쨮 ??롫즼?깆럥??? compare?? review????멸땋 ?? ?袁⑹??active pack?�귣??????�읈????곸읈 ?�꿸?????브쑬�?????�??????뤾쉭??</p><form method="post" action="/ui/character-generator/rollback-active" class="grid two">${selectedPackGeneratorNavFields}<label>Target Pack<select name="targetCharacterPackId">${approvedPacks
             .map(
               (pack) =>
                 `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
             )
-            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Active baseline 嚥▲끇媛?/button></div></form></section>`
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Active baseline ?�▲?�媛?/button></div></form></section>`
         : `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><div class="notice">No approved packs available.</div></section>`;
 
     const compareSection =
       approvedPacks.length >= 2
-        ? `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><p>?諭???Character Pack baseline??겸봺 preview/QC/lineage/jobs ?온?④쑬? ??덈뮉 dedicated compare surface????덈빍??</p><form method="get" action="/ui/character-generator/compare" class="grid two"><input type="hidden" name="returnTo" value="${escHtml(currentPageReturnTo)}"/><input type="hidden" name="currentObject" value="${escHtml(selectedManifest?.characterPackId ? `pack:${selectedManifest.characterPackId}` : generatorSelfNav.currentObject ?? "")}"/><input type="hidden" name="focus" value="pack-compare-hero"/><label>Left Pack<select name="leftPackId">${approvedPacks
+        ? `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><p>?�?�???Character Pack baseline??겸봺 preview/QC/lineage/jobs ??�??�쑬? ???�뮉 dedicated compare surface?????�빍??</p><form method="get" action="/ui/character-generator/compare" class="grid two"><input type="hidden" name="returnTo" value="${escHtml(currentPageReturnTo)}"/><input type="hidden" name="currentObject" value="${escHtml(selectedManifest?.characterPackId ? `pack:${selectedManifest.characterPackId}` : generatorSelfNav.currentObject ?? "")}"/><input type="hidden" name="focus" value="pack-compare-hero"/><label>Left Pack<select name="leftPackId">${approvedPacks
             .map((pack) => `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)})</option>`)
             .join("")}</select></label><label>Right Pack<select name="rightPackId">${approvedPacks
             .map((pack, index) => `<option value="${escHtml(pack.id)}"${index === 1 ? " selected" : ""}>${escHtml(
               pack.id
             )} (v${escHtml(pack.version)})</option>`)
-            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Approved Pack A/B compare ??용┛</button></div></form></section>`
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Approved Pack A/B compare ???�┛</button></div></form></section>`
         : `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><div class="notice">At least two approved packs are required.</div></section>`;
 
     const rows = recentJobs
@@ -7582,17 +7582,17 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       const latestEpisode = pack.episodes[0];
       const latestJobs = latestEpisode?.jobs ?? [];
       const latestJobSummary =
-        latestJobs.length > 0 ? latestJobs.map((job) => `${job.type} / ${job.status} / ${job.progress}%`).join(" | ") : "?怨뚭퍙??jobs ??곸벉";
+        latestJobs.length > 0 ? latestJobs.map((job) => `${job.type} / ${job.status} / ${job.progress}%`).join(" | ") : "No jobs yet";
       return `<section class="pack-compare-panel"><h2>${escHtml(side)}: ${escHtml(
         pack.id
-      )}</h2><p>preview -> QC -> lineage -> jobs???怨뺤뵬 ??????뱀뱽 ??쇱벉 review / approval surface嚥???띾쭔筌왖 ?癒?뼊??뤾쉭??</p><div class="pack-compare-stats"><div class="pack-compare-stat"><span>甕곌쑴??/ ?怨밴묶</span><strong>v${escHtml(
+      )}</h2><p>Use this panel to compare pack evidence before approval or rollback. Keep preview, QC, lineage, and jobs readable without leaving the compare surface.</p><div class="pack-compare-stats"><div class="pack-compare-stat"><span>Version / Status</span><strong>v${escHtml(
         pack.version
       )} / <span class="badge ${uiBadge(pack.status)}">${escHtml(pack.status)}</span></strong></div><div class="pack-compare-stat"><span>Preview / QC</span><strong>preview=${escHtml(
         previewExists ? "exists" : "missing"
       )} / qc=${escHtml(qcExists ? "exists" : "missing")}</strong></div><div class="pack-compare-stat"><span>Lineage Gate</span><strong>${escHtml(
         lineage?.acceptanceStatus ?? "unknown"
       )} / repair=${escHtml(lineage ? String(lineage.repairOpenCount) : "-")}</strong></div><div class="pack-compare-stat"><span>Latest Episode</span><strong>${escHtml(
-        latestEpisode ? `${latestEpisode.id} / ${latestEpisode.topic ?? "-"}` : "?怨뚭퍙 ??곸벉"
+        latestEpisode ? `${latestEpisode.id} / ${latestEpisode.topic ?? "-"}` : "No episode yet"
       )}</strong></div></div>${
         previewExists
           ? `<div class="pack-compare-player"><video controls preload="metadata"><source src="/artifacts/characters/${encodeURIComponent(
@@ -7624,22 +7624,20 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           : ""
       }</section>`;
     };
-
     const compareNavScript = `<script>(function(){const ns="ecs.ui.creation.nav.v1";const parse=(value,fallback)=>{try{const parsed=JSON.parse(String(value||""));return parsed==null?fallback:parsed;}catch{return fallback;}};const readList=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return [];}const parsed=parse(window.localStorage.getItem(ns+".recent."+kind),[]);return Array.isArray(parsed)?parsed:[];};const writeList=(kind,items)=>{try{window.localStorage.setItem(ns+".recent."+kind,JSON.stringify(items.slice(0,6)));}catch{}};const pushRecent=(kind,item)=>{if(!item||!item.id){return;}const next=[item].concat(readList(kind).filter((entry)=>entry&&entry.id!==item.id));writeList(kind,next);};pushRecent("packs",{id:${JSON.stringify(
       leftPack.id
     )},label:${JSON.stringify(`Pack ${leftPack.id}`)},href:${JSON.stringify(leftReviewHref)}});pushRecent("packs",{id:${JSON.stringify(
       rightPack.id
     )},label:${JSON.stringify(`Pack ${rightPack.id}`)},href:${JSON.stringify(rightReviewHref)}});document.getElementById("pack-compare-copy")?.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(window.location.href);}catch{}});})();</script>`;
-    const html = `${compareStyle}<div class="pack-compare-shell"><section class="pack-compare-hero" id="pack-compare-hero"><p class="eyebrow">Pack Compare Surface</p><h1>筌?Ŧ???????쑨??/h1><p>??surface??winner???類λ릭????쑨?놂쭖?곸뵠?? preview???????癰귣떯?? QC ?怨쀭뀱?얠눘???類ㅼ뵥??랁? lineage?? jobs????? ?? ?諭??rollback?? <a href="${escHtml(compareGeneratorHref)}">Character Generator</a>?癒?퐣, 繹먮봿? ??롫짗 野꺜??롫뮉 <a href="${escHtml(leftReviewHref)}">Characters</a>?癒?퐣 ??ъ몵?紐꾩뒄.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="${escHtml(compareGeneratorHref)}">Character Generator</a><a class="pack-compare-link" href="${escHtml(leftReviewHref)}">A pack review</a><a class="pack-compare-link" href="${escHtml(rightReviewHref)}">B pack review</a>${
+    const html = `${compareStyle}<div class="pack-compare-shell"><section class="pack-compare-hero" id="pack-compare-hero"><p class="eyebrow">Pack Compare Surface</p><h1>Character Pack Compare</h1><p>Use this compare surface to choose the pack that should move forward. Read preview, QC, lineage, and jobs here first, then reopen Character Generator for approval or Characters for deeper inspection.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="${escHtml(compareGeneratorHref)}">Character Generator</a><a class="pack-compare-link" href="${escHtml(leftReviewHref)}">A pack review</a><a class="pack-compare-link" href="${escHtml(rightReviewHref)}">B pack review</a>${
       creationNav.returnTo ? `<a class="pack-compare-link" href="${escHtml(creationNav.returnTo)}">Return</a>` : ""
-    }<button type="button" class="pack-compare-link" id="pack-compare-copy">Copy deep link</button></div><div class="pack-compare-flow"><div class="pack-compare-step"><strong>01 Preview</strong><span>????뱀벥 preview?? ?怨밴묶?????????쑨???몃빍??</span></div><div class="pack-compare-step"><strong>02 QC</strong><span>qc_report.json 鈺곕똻??????? pack ?怨밴묶????ｍ뜞 ?딅굝???</span></div><div class="pack-compare-step"><strong>03 Lineage</strong><span>acceptance status?? repair task???類ㅼ뵥??provenance risk????뚮뮸??덈뼄.</span></div><div class="pack-compare-step"><strong>04 Jobs</strong><span>latest episode/jobs???怨뺤뵬 ??堉?review surface嚥???띾쭔筌왖 野껉퀣???몃빍??</span></div></div></section><section class="pack-compare-next"><h2>??쇱벉 ??る?/h2><p>??쑨??癒?퐣 ?諭?꾤몴??類λ립 ??쇰퓠??Generator?癒?퐣 approval/rollback????ろ? ??繹먮봿? QC/lineage/jobs inspection???袁⑹뒄??롢늺 揶???뱀벥 Characters review嚥???猷??뤾쉭??</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="${escHtml(compareGeneratorHref)}">?諭??/ 嚥▲끇媛???용┛</a><a class="pack-compare-link" href="${escHtml(leftReviewHref)}">A pack review</a><a class="pack-compare-link" href="${escHtml(rightReviewHref)}">B pack review</a></div></section><div class="pack-compare-grid">${panel(
+    }<button type="button" class="pack-compare-link" id="pack-compare-copy">Copy deep link</button></div><div class="pack-compare-flow"><div class="pack-compare-step"><strong>01 Preview</strong><span>Check visual handoff quality before deciding which pack should survive compare.</span></div><div class="pack-compare-step"><strong>02 QC</strong><span>Read QC evidence without leaving the compare shell.</span></div><div class="pack-compare-step"><strong>03 Lineage</strong><span>Confirm acceptance state, provenance, and repair pressure before approval.</span></div><div class="pack-compare-step"><strong>04 Jobs</strong><span>Keep the latest episode and job history visible while you compare.</span></div></div></section><section class="pack-compare-next"><h2>Next step</h2><p>Once a winner is clear, reopen Character Generator for approval or rollback. If the pack still needs slower evidence reading, continue in Characters review.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="${escHtml(compareGeneratorHref)}">Open approval lane</a><a class="pack-compare-link" href="${escHtml(leftReviewHref)}">A pack review</a><a class="pack-compare-link" href="${escHtml(rightReviewHref)}">B pack review</a></div></section><div class="pack-compare-grid">${panel(
       "A",
       leftPack,
       leftPreviewExists,
       leftQcExists,
       leftLineage
-    )}${panel("B", rightPack, rightPreviewExists, rightQcExists, rightLineage)}</div></div>${compareNavScript}`;
-    return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329 \uBE44\uAD50", html));
+    )}${panel("B", rightPack, rightPreviewExists, rightQcExists, rightLineage)}</div></div>${compareNavScript}`;    return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329 \uBE44\uAD50", html));
   });
 
   app.get("/ui/characters/generated-file", async (request, reply) => {
@@ -7858,7 +7856,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     });
     const charactersNavSection = `<section class="pack-review-rail" id="pack-review-creation-nav" data-current-pack-id="${escHtml(
       selectedPack?.id ?? ""
-    )}"><p class="eyebrow">Creation Handoff</p><h2>Return / current pack / reopen</h2><p>Characters는 pack detail surface입니다. compare, lineage, generator approval lane, studio dispatch hub로 다시 들어갈 때 현재 pack deep link를 먼저 고정합니다.</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(
+    )}"><p class="eyebrow">Creation Handoff</p><h2>Return / current pack / reopen</h2><p>Characters??pack detail surface?�니?? compare, lineage, generator approval lane, studio dispatch hub�??�시 ?�어�????�재 pack deep link�?먼�? 고정?�니??</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(
       charactersStudioHref
     )}">Studio</a><a class="pack-review-link" href="${escHtml(
       charactersGeneratorHref
@@ -7898,21 +7896,19 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .pack-review-manual summary{cursor:pointer;font-weight:700}
       @media (max-width:1080px){.pack-review-grid,.pack-review-summary,.pack-review-flow{grid-template-columns:1fr}}
     </style>`;
-    const manualCreateSection = `<details class="pack-review-panel pack-review-manual"><summary>??롫짗 ????밴쉐 (??됱뇚 野껋럥以?</summary><p>??surface??雅???釉?? ??밴쉐 ??덊닏揶쎛 ?袁⑤빍??pack review / inspection???? ???怨뚮궢 compare / approval / rollback?? <a href="${escHtml(
-      charactersGeneratorHref
-    )}">Character Generator</a>揶쎛 疫꿸퀡??野껋럥以??흭, ????? ??됱뇚?怨몄뵥 ??롫짗 ??밴쉐?癒?춸 ?????뤾쉭??</p><form method="post" action="/ui/characters/create" class="grid">${charactersCreateNavFields}<div class="grid two"><label>Front Asset<select name="front" required>${
+    const manualCreateSection = `<details class="pack-review-panel pack-review-manual"><summary>Manual create exception path</summary><p>Use this only when you need to assemble a new pack directly from ready assets without going through the main Generator lane first. After creation, reopen the resulting pack here for preview, QC, lineage, and jobs review.</p><form method="post" action="/ui/characters/create" class="grid">${charactersCreateNavFields}<div class="grid two"><label>Front Asset<select name="front" required>${
       assetOptions || '<option value="">No READY assets available</option>'
     }</select></label><label>ThreeQuarter Asset<select name="threeQuarter" required>${
       assetOptions || '<option value="">No READY assets available</option>'
     }</select></label><label>Profile Asset<select name="profile" required>${
       assetOptions || '<option value="">No READY assets available</option>'
     }</select></label><label>Topic (optional)<input name="topic" placeholder="character preview"/></label></div><button type="submit">Create character pack + enqueue preview</button></form></details>`;
-    const roleSplitRail = `<section class="pack-review-rail"><p class="eyebrow">Role Split</p><h2>??surface揶쎛 筌띲볥뮉 ??/h2><p>??쥓???癒?カ?? <a href="${escHtml(charactersStudioHref)}">Studio</a>, ???怨뚮궢 approval / rollback?? <a href="${escHtml(charactersGeneratorHref)}">Character Generator</a>, ????륁뵠筌왖??preview, QC, lineage, jobs????ｍ뜞 ??덈뮉 繹먮봿? ??롫짗 ??review???????몃빍??</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(charactersStudioHref)}">Studio</a><a class="pack-review-link" href="${escHtml(charactersGeneratorHref)}">Character Generator</a>${
+    const roleSplitRail = `<section class="pack-review-rail"><p class="eyebrow">Role Split</p><h2>Studio routes, Generator approves, Characters reviews</h2><p>Use <a href="${escHtml(charactersStudioHref)}">Studio</a> for dispatch, <a href="${escHtml(charactersGeneratorHref)}">Character Generator</a> for compare and approval, and this surface for the slower read of preview, QC, lineage, and jobs.</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(charactersStudioHref)}">Studio</a><a class="pack-review-link" href="${escHtml(charactersGeneratorHref)}">Character Generator</a>${
       compareHref ? `<a class="pack-review-link" href="${escHtml(compareHref)}">Active Pack Compare</a>` : ""
-    }</div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>01 Preview</strong><span>visual check???믪눘? ??щ뮸??덈뼄.</span></article><article class="pack-review-flow-item"><strong>02 QC</strong><span>qc_report.json????곷뭼 severity????뚮뮸??덈뼄.</span></article><article class="pack-review-flow-item"><strong>03 Lineage</strong><span>source, manifest, repair provenance???곕뗄???몃빍??</span></article><article class="pack-review-flow-item"><strong>04 Jobs</strong><span>????뱀뱽 筌띾슢諭?episode/jobs history???類ㅼ뵥??몃빍??</span></article></div></section>`;
+    }</div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>01 Preview</strong><span>Check the visual output before leaving this surface.</span></article><article class="pack-review-flow-item"><strong>02 QC</strong><span>Read qc_report.json evidence with severity still visible.</span></article><article class="pack-review-flow-item"><strong>03 Lineage</strong><span>Confirm source, manifest, and repair provenance.</span></article><article class="pack-review-flow-item"><strong>04 Jobs</strong><span>Keep the latest episode and job history close while reviewing.</span></article></div></section>`;
 
     const selectedSection = selectedPack
-      ? `<section class="pack-review-panel" id="pack-review-current"><p class="eyebrow">Pack Review Surface</p><h2>?醫뤾문?????귐됰윮</h2><p>??surface??pack??筌띾슢諭???⑤끃???袁⑤빍??pack????덈뮉 ?⑤끃??? preview, QC, lineage, jobs?????癒?カ?癒?퐣 野꺜?醫뤿립 ??compare ?癒?뮉 approval / rollback surface嚥???띾┛?紐꾩뒄.</p><div class="pack-review-actions"><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
+      ? `<section class="pack-review-panel" id="pack-review-current"><p class="eyebrow">Pack Review Surface</p><h2>Current pack</h2><p>This is the deep inspection surface for the current Character Pack object. Keep preview, QC, lineage, and jobs visible before reopening compare or the approval lane.</p><div class="pack-review-actions"><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
           selectedPack.id
         )}/pack.json">pack.json</a><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
           selectedPack.id
@@ -7927,14 +7923,14 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         )}</strong><p>v${escHtml(selectedPack.version)} / <span class="badge ${uiBadge(selectedPack.status)}">${escHtml(
           selectedPack.status
         )}</span></p></article><article class="pack-review-card"><span>Latest Episode</span><strong>${escHtml(
-          selectedPack.episodes[0] ? `${selectedPack.episodes[0].id} / ${selectedPack.episodes[0].topic ?? "-"}` : "?怨뚭퍙 ??곸벉"
+          selectedPack.episodes[0] ? `${selectedPack.episodes[0].id} / ${selectedPack.episodes[0].topic ?? "-"}` : "No episode yet"
         )}</strong><p>active compare: ${escHtml(compareHref ? "available" : "none")}</p></article><article class="pack-review-card"><span>Preview / QC</span><strong>preview=${escHtml(
           selectedPreviewExists ? "exists" : "missing"
         )} / qc=${escHtml(selectedQcExists ? "exists" : "missing")}</strong><p>issues=${escHtml(String(selectedQcIssues.length))}</p></article><article class="pack-review-card"><span>Lineage / Jobs</span><strong>${escHtml(
           selectedGeneratedLineage?.acceptanceStatus ?? "unknown"
         )} / jobs=${escHtml(String(selectedPack.episodes[0]?.jobs.length ?? 0))}</strong><p>repair=${escHtml(
           selectedGeneratedLineage ? String(selectedGeneratedLineage.repairOpenCount) : "-"
-        )}</p></article></div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>Preview</strong><span>?怨멸맒??pack.json 筌띻낱寃뺟몴????퉸 visual handoff???믪눘? ?癒???몃빍??</span></article><article class="pack-review-flow-item"><strong>QC</strong><span>?얜챷??severity?? details????뚮선 compare ?袁⑸퓠 ?袁る퓮???브쑬???몃빍??</span></article><article class="pack-review-flow-item"><strong>Lineage</strong><span>manifest, proposal, repair provenance嚥???밴쉐 筌띘살뵭??癰귣벀???몃빍??</span></article><article class="pack-review-flow-item"><strong>Jobs</strong><span>??堉?episode/jobs揶쎛 ????뱀뱽 筌띾슢諭??덈뮉筌왖 ??살쨮 ?怨뺤뵬揶쏅쵎???</span></article></div>${
+        )}</p></article></div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>Preview</strong><span>Confirm the visual handoff before you leave for compare or approval.</span></article><article class="pack-review-flow-item"><strong>QC</strong><span>Read severity and details before a pack moves forward.</span></article><article class="pack-review-flow-item"><strong>Lineage</strong><span>Use provenance to understand where this pack came from and what repair pressure remains.</span></article><article class="pack-review-flow-item"><strong>Jobs</strong><span>Keep the latest episode and jobs visible while the review stays open.</span></article></div>${
           selectedPreviewExists && selectedPreviewUrl
             ? `<section class="card"><h3>Preview Player</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
                 selectedPreviewUrl
@@ -7950,23 +7946,21 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   JSON.stringify(selectedQcReport, null, 2)
                 )}</pre></section>`
             : `<section class="card"><h3>QC Report</h3><div class="error">qc_report.json is not generated yet.</div></section>`
-        }<div id="pack-review-lineage">${selectedLineageSection}</div><section class="card"><h3>Jobs Behind This Pack</h3><p>preview, QC, lineage ?癒?뼊??筌띾슢諭???쎈뻬 ???????由??獄쏅뗀以???뚮뮸??덈뼄.</p><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
+        }<div id="pack-review-lineage">${selectedLineageSection}</div><section class="card"><h3>Jobs Behind This Pack</h3><p>Keep the jobs that produced this pack readable beside preview, QC, and lineage.</p><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
           selectedJobs || '<tr><td colspan="5">No jobs</td></tr>'
         }</tbody></table></section><details><summary>View pack.json</summary><pre>${escHtml(
           JSON.stringify(selectedPack.json, null, 2)
         )}</pre></details></section>`
-      : `<section class="pack-review-panel" id="pack-review-current"><p class="eyebrow">Pack Review Surface</p><h2>?醫뤾문??????곸벉</h2><p>筌ㅼ뮄????筌뤴뫖以?癒?퐣 ??????⑥쥓?ㅿ쭖?preview, QC, lineage, jobs inspection surface揶쎛 ?????덈뼄.</p></section>`;
-
-    const html = `${reviewStyle}<div class="pack-review-shell"><section class="pack-review-hero"><p class="eyebrow">Deep Manual Review</p><h1>筌?Ŧ??????귐됰윮</h1><p>??쥓???癒?カ?? <a href="${escHtml(charactersStudioHref)}">Studio</a>, ???怨뚮궢 compare / approval / rollback?? <a href="${escHtml(charactersGeneratorHref)}">Character Generator</a>, ????륁뵠筌왖??preview / QC / lineage / jobs?????⑤끃肉????덈뮉 pack inspection surface??</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(charactersStudioHref)}">Studio</a><a class="pack-review-link" href="${escHtml(charactersGeneratorHref)}">Character Generator</a>${
-      selectedPack ? `<a class="pack-review-link" href="${escHtml(selectedPackSelfHref ?? "")}">?袁⑹삺 ???⑥쥙??/a>` : ""
+      : `<section class="pack-review-panel" id="pack-review-current"><p class="eyebrow">Pack Review Surface</p><h2>No pack selected</h2><p>Select one pack from the review queue to open preview, QC, lineage, and jobs in this inspection surface.</p></section>`;
+    const html = `${reviewStyle}<div class="pack-review-shell"><section class="pack-review-hero"><p class="eyebrow">Deep Manual Review</p><h1>Character Pack Review</h1><p>Use this surface for the slower inspection pass across preview, QC, lineage, and jobs. Reopen Studio for dispatch and Character Generator for compare, approval, or rollback.</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(charactersStudioHref)}">Studio</a><a class="pack-review-link" href="${escHtml(charactersGeneratorHref)}">Character Generator</a>${
+      selectedPack ? `<a class="pack-review-link" href="${escHtml(selectedPackSelfHref ?? "")}">review reopen</a>` : ""
     }${
       selectedLatestJob ? `<a class="pack-review-link" href="/ui/jobs/${encodeURIComponent(selectedLatestJob.id)}">Latest Job</a>` : ""
-    }</div><div class="pack-review-summary"><article class="pack-review-card"><span>筌ㅼ뮄????/span><strong>${escHtml(String(packs.length))}</strong><p>review queue</p></article><article class="pack-review-card"><span>Ready Assets</span><strong>${escHtml(String(readyAssets.length))}</strong><p>manual create exception path</p></article><article class="pack-review-card"><span>?醫뤾문????/span><strong>${escHtml(selectedPack?.id ?? "??곸벉")}</strong><p>${escHtml(selectedPack ? String(selectedPack.status) : "choose one from the list")}</p></article><article class="pack-review-card"><span>Active Compare</span><strong>${escHtml(compareHref ? "available" : "none")}</strong><p>approval surface = Character Generator</p></article></div>${
+    }</div><div class="pack-review-summary"><article class="pack-review-card"><span>Review Queue</span><strong>${escHtml(String(packs.length))}</strong><p>pack inspection candidates</p></article><article class="pack-review-card"><span>Ready Assets</span><strong>${escHtml(String(readyAssets.length))}</strong><p>manual create exception path</p></article><article class="pack-review-card"><span>Current Pack</span><strong>${escHtml(selectedPack?.id ?? "None")}</strong><p>${escHtml(selectedPack ? String(selectedPack.status) : "choose one from the list")}</p></article><article class="pack-review-card"><span>Active Compare</span><strong>${escHtml(compareHref ? "available" : "none")}</strong><p>approval surface = Character Generator</p></article></div>${
       message ? `<div class="notice">${escHtml(message)}</div>` : ""
-    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}</section>${selectedSection}<div class="pack-review-grid"><section class="pack-review-stage"><section class="pack-review-panel"><h2>筌ㅼ뮄??筌?Ŧ?????/h2><p>??筌뤴뫖以?? review queue?? ??뱀뱽 ?⑥쥓?ㅿ쭖???inspection surface揶쎛 preview -> QC -> lineage -> jobs ??뽮퐣嚥??????덈뼄.</p><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created At</th></tr></thead><tbody>${
+    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}</section>${selectedSection}<div class="pack-review-grid"><section class="pack-review-stage"><section class="pack-review-panel"><h2>Review Queue</h2><p>Select one pack to pin it into the inspection surface. This queue is for reopening review, not for deep evidence reading inside the table itself.</p><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created At</th></tr></thead><tbody>${
       packRows || '<tr><td colspan="6">No character packs</td></tr>'
-    }</tbody></table></section></section><aside class="pack-review-stage">${charactersNavSection}${roleSplitRail}${manualCreateSection}</aside></div></div>${charactersNavScript}`;
-    return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329", html));
+    }</tbody></table></section></section><aside class="pack-review-stage">${charactersNavSection}${roleSplitRail}${manualCreateSection}</aside></div></div>${charactersNavScript}`;    return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329", html));
   });
 
   app.post("/ui/characters/create", async (request, reply) => {
@@ -8024,3 +8018,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     }
   });
 }
+
+
+
+

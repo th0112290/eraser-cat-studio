@@ -54,6 +54,7 @@ function buildCharacterGeneratorPageStyles(): string {
 .cg-link-list a,.cg-link-list button,.cg-inline-links a,.cg-inline-links button{display:inline-flex;align-items:center;padding:7px 11px;border-radius:999px;border:1px solid #bed5dd;background:#fff;color:#0f4e6a;font-size:12px;font-weight:800}
 .cg-link-list button,.cg-inline-links button{appearance:none;cursor:pointer}
 .cg-link-list a:hover,.cg-link-list button:hover,.cg-inline-links a:hover,.cg-inline-links button:hover{text-decoration:none;background:#eef7ff}
+.cg-link-list a:focus-visible,.cg-link-list button:focus-visible,.cg-inline-links a:focus-visible,.cg-inline-links button:focus-visible,.cg-form-shell button:focus-visible,.cg-form-shell input:focus-visible,.cg-form-shell select:focus-visible,.cg-form-shell textarea:focus-visible,.cg-advanced-shell summary:focus-visible{outline:2px solid #0f766e;outline-offset:2px}
 .cg-form-shell{display:grid;gap:14px;padding:0 24px 24px}
 .cg-form-block{display:grid;gap:14px;padding:18px;border:1px solid #d3e2e7;border-radius:18px;background:linear-gradient(180deg,#ffffffeb,#f7fbfb)}
 .cg-form-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
@@ -64,8 +65,8 @@ function buildCharacterGeneratorPageStyles(): string {
 .cg-field-grid.tight{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
 .cg-field-grid label,.cg-form-block>label,.cg-advanced-body label{display:grid;gap:6px;font-size:13px;font-weight:700;color:#223846}
 .cg-field-grid label small,.cg-form-block>label small,.cg-advanced-body label small{font-weight:500;color:#5a6d7a;line-height:1.45}
-.cg-form-shell input,.cg-form-shell select,.cg-form-shell textarea{background:#fff;border-color:#c7d7df}
-.cg-form-shell textarea{min-height:128px}
+.cg-form-shell input,.cg-form-shell select,.cg-form-shell textarea{background:#fff;border:1px solid #c7d7df;border-radius:12px;padding:10px 12px;color:#142033;box-sizing:border-box;width:100%}
+.cg-form-shell textarea{min-height:128px;resize:vertical}
 .cg-context-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .cg-context-card{display:grid;gap:10px;padding:14px;border-radius:16px;border:1px solid #d7e6ea;background:linear-gradient(180deg,#fbfdfd,#f2f7f8)}
 .cg-context-card h3{margin:0;font-size:14px}
@@ -81,9 +82,9 @@ function buildCharacterGeneratorPageStyles(): string {
 .cg-advanced-shell{border:1px solid #d3e2e7;border-radius:18px;background:linear-gradient(180deg,#ffffffea,#f7fbfb);overflow:hidden}
 .cg-advanced-shell summary{list-style:none;cursor:pointer;padding:18px;display:flex;align-items:flex-start;gap:12px}
 .cg-advanced-shell summary::-webkit-details-marker{display:none}
-.cg-advanced-shell summary::after{content:"??關履??;margin-left:auto;display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #cfe0e3;background:#f4fbfa;color:#21545d;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.cg-advanced-shell summary::after{content:"Show advanced";margin-left:auto;display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #cfe0e3;background:#f4fbfa;color:#21545d;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .cg-advanced-shell[open] summary{border-bottom:1px solid #dbe8ea}
-.cg-advanced-shell[open] summary::after{content:"???쒋닪??}
+.cg-advanced-shell[open] summary::after{content:"Hide advanced"}
 .cg-advanced-body{padding:0 18px 18px;display:grid;gap:12px}
 .cg-submit-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:16px 18px;border:1px solid #d4e3e8;border-radius:18px;background:linear-gradient(180deg,#fff,#f7fbfb)}
 .cg-submit-copy{font-size:13px;color:#516371;max-width:720px;line-height:1.55}
@@ -124,8 +125,8 @@ function buildCharacterGeneratorPageStyles(): string {
 #pick-candidates details.card{padding:0;overflow:hidden;border-radius:16px;box-shadow:none;background:#fcfeff}
 #pick-candidates details.card summary{padding:14px 16px;cursor:pointer;list-style:none}
 #pick-candidates details.card summary::-webkit-details-marker{display:none}
-#pick-candidates details.card summary::after{content:"???";float:right;color:#0f766e;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-#pick-candidates details[open].card summary::after{content:"???쒋닪??}
+#pick-candidates details.card summary::after{content:"Open";float:right;color:#0f766e;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+#pick-candidates details[open].card summary::after{content:"Hide"}
 #pick-candidates details.card>*:not(summary){padding:0 14px 14px}
 #pick-candidates .asset-table-wrap{margin-top:0!important}
 @media (max-width:1160px){.cg-top-layout,.cg-main-grid,.cg-flow-grid{grid-template-columns:1fr}.cg-stage-track{grid-template-columns:repeat(2,minmax(0,1fr))}.cg-ops-rail{border-left:none;border-top:1px solid #d8e8e5}}
@@ -147,69 +148,68 @@ function renderPhaseCard(step: string, title: string, copy: string, content: str
   }
   const idAttribute = id ? ` id="${id}"` : "";
   const extraClass = className ? ` ${className}` : "";
-  return `<section class="cg-phase-card${extraClass}"${idAttribute}><div class="cg-phase-head"><div><div class="cg-section-kicker">??影?됀?${esc(
+  return `<section class="cg-phase-card${extraClass}"${idAttribute}><div class="cg-phase-head"><div><div class="cg-section-kicker">Stage ${esc(
     step
   )}</div><h2>${esc(title)}</h2><p class="cg-phase-copy">${esc(copy)}</p></div><span class="cg-phase-badge">${esc(
     step
   )}</span></div><div class="cg-phase-stack">${content}</div></section>`;
 }
-
 function buildCharacterGeneratorStageMap(): string {
   const tiles = [
     {
       step: "01",
       title: "Inputs",
-      copy: "癲ル슢?꾤땟??? ??癰궽블뀬?? ??ш끽諭욥걡?? ?? ??낆뒩??影?곷퓠?Generation Run object??????곸죷 ?濡ろ뜑??嚥▲룗???沃섅굥?? ??關履???筌뤾퍓???",
+      copy: "Set the run mode, provider, preset, species, and topic before creating a new generation object.",
       links: [
-        { href: "#cg-stage-basic", label: "??れ삀???????곸죷" },
+        { href: "#cg-stage-basic", label: "Open inputs" },
         { href: "/ui/studio", label: "Studio" }
       ]
     },
     {
       step: "02",
       title: "References",
-      copy: "????녿군???Β?レ릇 ?????얜?????癲ル슢????????됰Ŧ??????Β?援???關履????寃뗏? ??嚥싲갭큔?? ????곸죷 ???????ш끽維???嚥???Assets???????믩쨬??놃꺇???",
+      copy: "Bind the best reference asset and keep the handoff to downstream review surfaces obvious.",
       links: [
-        { href: "#cg-stage-context", label: "????녿군???Β?レ릇" },
+        { href: "#cg-stage-context", label: "Open references" },
         { href: "/ui/assets", label: "Assets" }
       ]
     },
     {
       step: "03",
       title: "Workflow Policy",
-      copy: "??ш끽維亦??? HITL, ??좊읈???筌먦끉???繹먮끏援??沃섅굥?? ??? Candidate set????熬곣뫖??Approve/Rollback ?????????? ??좊읈??濚왿몾??燁?癲ル슢???由????덊렡.",
-      links: [{ href: "#cg-stage-policy", label: "Workflow policy" }]
+      copy: "Set candidate volume, auto-pick rules, and HITL expectations before compare starts.",
+      links: [{ href: "#cg-stage-policy", label: "Open policy" }]
     },
     {
       step: "04",
       title: "Candidates",
-      copy: "Generation Run object??좊읈? 癲ル슢?????candidate workset, route diagnostics, workflow export????熬곥걿??Compare?????怨룸／????덊렡.",
+      copy: "Read the active Generation Run object, route diagnostics, and the next safe action in one place.",
       links: [
-        { href: "#cg-active-job", label: "Generation Run" },
+        { href: "#cg-active-job", label: "Current run" },
         { href: "#cg-recent-jobs", label: "Recent runs" }
       ]
     },
     {
       step: "05",
       title: "Compare",
-      copy: "Candidate compare?? Character Pack handoff??????됀? ??嚥싲갭큔?? ??????????ш끽維???嚥???Characters?????怨룸／????덊렡.",
+      copy: "Move candidate compare and pack handoff here before deeper inspection in Characters.",
       links: [
-        { href: "#pick-candidates", label: "HITL compare" },
+        { href: "#pick-candidates", label: "Open compare" },
         { href: "/ui/characters", label: "Characters" }
       ]
     },
     {
       step: "06",
       title: "Approve / Rollback",
-      copy: "Character Pack approve, rollback, regenerate, recreate??approval lane????節뉗땡??嶺뚮ㅎ?????怨뚮옖甕걔?????뽮덧?????關履???筌뤾퍓???",
+      copy: "Use the dedicated approval lane for regenerate, recreate, approve, and rollback decisions.",
       links: [
-        { href: "#cg-approval-lane", label: "?????????源낅뜲" },
+        { href: "#cg-approval-lane", label: "Approval lane" },
         { href: "/ui/studio", label: "Studio" }
       ]
     }
   ];
 
-  return `<section class="card cg-stage-map"><div class="cg-stage-map-head"><div><div class="cg-section-kicker">Stage Rail</div><h2>Inputs -> References -> Workflow Policy -> Candidates -> Compare -> Approve / Rollback</h2></div><p>Studio????鴉????繹먮끏裕????곷뼰 ???????寃뗏? ?????쒓낮?꾬┼??넊???Generation Run??Character Pack object????筌?留????????レ툗 surface????낇돲?? 嚥싲갭큔?? preview/QC/lineage/jobs ?濡ろ떟???嚥▲꺂痢?<a href="/ui/characters">Characters</a>?????怨룸／????덊렡.</p></div><div class="cg-stage-track">${tiles
+  return `<section class="card cg-stage-map"><div class="cg-stage-map-head"><div><div class="cg-section-kicker">Stage Rail</div><h2>Inputs -> References -> Workflow Policy -> Candidates -> Compare -> Approve / Rollback</h2></div><p>This workbench keeps the run object readable from creation through compare. Use Studio for dispatch, Generator for staged run control, and Characters for deeper preview, QC, lineage, and jobs review.</p></div><div class="cg-stage-track">${tiles
     .map(
       (tile) =>
         `<article class="cg-stage-tile"><span class="cg-stage-index">${esc(tile.step)}</span><div class="cg-stage-title">${esc(
@@ -228,63 +228,63 @@ export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopIn
         <div class="cg-eyebrow">Generation Run / staged decision flow</div>
         <div class="cg-title-row">
           <div class="cg-title-block">
-            <h1>癲???????獄쏅똻???/h1>
-            <p class="cg-subtitle">Character Generator??Generation Run object????筌?留????????レ툗 ??影?됀??surface????낇돲?? Inputs?? References?????類?????끹걫???關履????寃뗏? Workflow Policy?????ル㎣????Candidate set??癲ル슢?????琉뮻? Compare?????Character Pack handoff????熬곥걿?? 癲ル슢???癲ル슢??쭕?듦덩?Approve/Rollback???⑥???濡ろ뜏????癲ル슢??袁ъÞ?域밸Ŧ肉ョ뵳?嶺뚮ㅎ??? ??鴉????繹먮끏裕??? <a href="/ui/studio">Studio</a>, 嚥싲갭큔?? evidence ?濡ろ떟???嚥▲꺂痢?<a href="/ui/characters">Characters</a>??좊읈? 癲ル슢???????덊렡.</p>
+            <h1>Character Generator</h1>
+            <p class="cg-subtitle">Use this surface as the staged run workbench for creation. Keep Inputs, References, Workflow Policy, Candidates, Compare, and Approve / Rollback separate so the current Generation Run stays readable before the handoff into Characters.</p>
           </div>
         </div>
         <div class="cg-metric-grid">
-          <div class="cg-metric"><span class="cg-metric-label">1癲?????щ빘???됰씭肄?/span><span class="cg-metric-value">Generation Run</span></div>
-          <div class="cg-metric"><span class="cg-metric-label">2癲?????щ빘???됰씭肄?/span><span class="cg-metric-value">Character Pack</span></div>
-          <div class="cg-metric"><span class="cg-metric-label">??????????/span><span class="cg-metric-value">Candidates -> Compare -> Approve</span></div>
-          <div class="cg-metric"><span class="cg-metric-label">??れ삀?????筌먲퐡??/span><span class="cg-metric-value">${esc(
+          <div class="cg-metric"><span class="cg-metric-label">Primary object</span><span class="cg-metric-value">Generation Run</span></div>
+          <div class="cg-metric"><span class="cg-metric-label">Approval object</span><span class="cg-metric-value">Character Pack</span></div>
+          <div class="cg-metric"><span class="cg-metric-label">Decision path</span><span class="cg-metric-value">Candidates -> Compare -> Approve</span></div>
+          <div class="cg-metric"><span class="cg-metric-label">Default seed</span><span class="cg-metric-value">${esc(
             input.defaultSeed
           )}</span></div>
         </div>
         <div class="cg-flow-grid">
-          <div class="cg-flow-step"><strong>01 Inputs</strong><span>癲ル슢?꾤땟??? ??癰궽블뀬?? ??ш끽諭욥걡?? ?? ??낆뒩??影?놁씀? ????????Β?爰?????곸죷 ?濡ろ뜑??嚥▲룗???濡ろ뜏????筌뤾퍓???</span></div>
-          <div class="cg-flow-step"><strong>02 References</strong><span>????녿군???Β?レ릇 ?????얜?????癲ル슢????????됰Ŧ???Generation Run object??????筌????獒????關履???筌뤾퍓???</span></div>
-          <div class="cg-flow-step"><strong>03 Workflow Policy</strong><span>??ш끽維亦???? ???????嶺뚮Ĳ?????沃섅굥?? ??? compare ??熬곣뫖???????????뽮덧?????關履???筌뤾퍓???</span></div>
-          <div class="cg-flow-step"><strong>04 Candidates</strong><span>??筌믨퉭????Generation Run object??좊읈? candidate workset, risk, next safe action?????됰텑??????????덊렡.</span></div>
-          <div class="cg-flow-step"><strong>05 Compare</strong><span>candidate set??Character Pack handoff????熬곥걿?? deep review??좊읈? ??ш끽維???嚥???Characters?????怨룸／????덊렡.</span></div>
-          <div class="cg-flow-step"><strong>06 Approve / Rollback</strong><span>??????濡ろ뜏????뽰씀? ??됰슣維딁춯???⑤챷?????怨좊군癲?regenerate, recreate, rollback???⑥????????筌뤾퍓???</span></div>
+          <div class="cg-flow-step"><strong>01 Inputs</strong><span>Declare the run mode, provider, preset, species, and topic before creating a new object.</span></div>
+          <div class="cg-flow-step"><strong>02 References</strong><span>Choose the reference asset that should stay attached to compare, approval, and reopen travel.</span></div>
+          <div class="cg-flow-step"><strong>03 Workflow Policy</strong><span>Set candidate count and HITL expectations before the candidate set arrives.</span></div>
+          <div class="cg-flow-step"><strong>04 Candidates</strong><span>Read the Generation Run object, risk summary, and next safe action before taking action.</span></div>
+          <div class="cg-flow-step"><strong>05 Compare</strong><span>Compare candidates here, then hand the chosen pack off to Characters for deep inspection.</span></div>
+          <div class="cg-flow-step"><strong>06 Approve / Rollback</strong><span>Keep regenerate, recreate, approve, and rollback controls in the dedicated approval lane.</span></div>
         </div>
         <div class="cg-status-stack">
           ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}
           ${input.error ? `<div class="error">${esc(input.error)}</div>` : ""}
-          <div class="cg-summary-note"><strong>???⑤㈇猿????嚥▲꺃??</strong> page?怨뚮옖???Generation Run??Character Pack object???沃섅굥?? ??熬곣뫗踰?癲ル슢?????琉뮻? object summary -> next safe action -> linked routes -> evidence ??筌?留???????????⑥???????筌뤾퍓???</div>
+          <div class="cg-summary-note"><strong>Summary-first pattern.</strong> Keep the current object, next safe action, linked routes, and evidence in that order. Raw detail belongs behind the main decision UI, not ahead of it.</div>
         </div>
       </div>
       <aside class="cg-ops-rail">
         <div class="cg-ops-card">
-          <h2>???⑤㈇猿 ???源낅럡</h2>
+          <h2>Ops-aware workbench</h2>
           <div class="cg-ops-list">
-            <div class="cg-ops-item"><strong>Inputs -> References</strong><span>?沃섅굥?? ????ш끽維곩ㅇ??ш끽維쀨キ??嶺뚮쮳?년봼?? ??숆강筌??????????????Generation Run????れ삀?????????⑤；????嚥▲꺂痢롳┼??넊? ??關履???筌뤾퍓???</span></div>
-            <div class="cg-ops-item"><strong>Policy -> Candidates</strong><span>??ш끽維亦???? HITL ?嶺뚮Ĳ??????關履?????Candidate set??compare ??影?됀?????怨쀪퐨??濚욌꼬裕뼘???? ??筌???? ?????????덊렡.</span></div>
-            <div class="cg-ops-item"><strong>Compare -> Character Pack</strong><span>candidate set??????????Character Pack handoff?? review route???濡ろ뜏????筌뤾퍓???</span></div>
-            <div class="cg-ops-item"><strong>Approve -> Rollback</strong><span>?怨뚮옖甕걔?????뽮덧??? approval lane???????影??탿?? 嚥싲갭큔?? evidence ?濡ろ떟???嚥▲꺂痢?Characters????됰슣維???筌뤾퍓???</span></div>
+            <div class="cg-ops-item"><strong>Inputs -> References</strong><span>Make the run setup legible before you create anything. A weak reference choice will echo into compare and approval.</span></div>
+            <div class="cg-ops-item"><strong>Policy -> Candidates</strong><span>Candidate count and HITL rules are policy, not evidence. Keep them visible before you read scores or diagnostics.</span></div>
+            <div class="cg-ops-item"><strong>Compare -> Character Pack</strong><span>Treat compare as the handoff bridge from run object to pack object.</span></div>
+            <div class="cg-ops-item"><strong>Approve -> Rollback</strong><span>Approval closes the Generator lane. Deep preview, QC, lineage, and jobs review belong in Characters.</span></div>
           </div>
         </div>
         <div class="cg-ops-card">
-          <h2>?袁⑸즴??繞???좊읈???/h2>
+          <h2>Quick jumps</h2>
           <div class="cg-link-list">
-            <a href="#cg-stage-basic">??れ삀???????곸죷</a>
-            <a href="#cg-stage-context">????녿군???Β?レ릇 癲ル슢?????/a>
-            <a href="#cg-stage-policy">???⑤슣????鸚??嶺뚮Ĳ???/a>
-            <a href="#cg-stage-advanced">?嶺뚮Ĳ????嶺? ?釉뚰???/a>
-            <a href="#cg-active-job">Generation Run</a>
-            <a href="#cg-approval-lane">?????????源낅뜲</a>
+            <a href="#cg-stage-basic">Inputs</a>
+            <a href="#cg-stage-context">References</a>
+            <a href="#cg-stage-policy">Policy</a>
+            <a href="#cg-stage-advanced">Advanced</a>
+            <a href="#cg-active-job">Current run</a>
+            <a href="#cg-approval-lane">Approval lane</a>
             <a href="/ui/characters">Characters</a>
-            <a href="#cg-recent-jobs">癲ル슔?됭짆????/a>
+            <a href="#cg-recent-jobs">Recent runs</a>
           </div>
         </div>
         <div class="cg-ops-card" id="cg-creation-nav">
-          <h2>Creation Handoff</h2>
-          <p class="cg-nav-note">returnTo, current object, focus??URL??localStorage癲ル슢?????肉??????筌뤾퍓???</p>
+          <h2>Creation handoff</h2>
+          <p class="cg-nav-note">Use URL state only. Keep returnTo, current object, focus, pinned reopen links, and recent reopen links visible in the rail.</p>
           <div class="cg-link-list" id="cg-nav-actions"></div>
           <div class="cg-nav-stack">
-            <div class="cg-ops-item"><strong>Current Object</strong><span id="cg-nav-current">???ャ뀕???run, pack, reference asset???????⑥궡異????????關履???筌뤾퍓???</span></div>
-            <div class="cg-ops-item"><strong>Pinned Reopen</strong><div class="cg-link-list" id="cg-nav-pins"></div></div>
-            <div class="cg-ops-item"><strong>Recent Reopen</strong><div class="cg-link-list" id="cg-nav-recents"></div></div>
+            <div class="cg-ops-item"><strong>Current object</strong><span id="cg-nav-current">No current run, pack, or reference asset is pinned yet.</span></div>
+            <div class="cg-ops-item"><strong>Pinned reopen</strong><div class="cg-link-list" id="cg-nav-pins"></div></div>
+            <div class="cg-ops-item"><strong>Recent reopen</strong><div class="cg-link-list" id="cg-nav-recents"></div></div>
           </div>
         </div>
       </aside>
@@ -297,39 +297,39 @@ export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopIn
         <div class="cg-form-head">
           <span class="cg-step">01</span>
           <div>
-            <h2>??れ삀???????곸죷</h2>
-            <p class="cg-form-copy">?怨뚮옖甕걔???嶺뚮ㅎ????癲ル슢???????ш끽維?? ?????Generation Run object??좊읈? ??????濡ろ뜑??????怨좊군????癲ル슣???援????嚥▲꺂痢롳┼??넊? ?沃섅굥?? ??關履???筌뚯뼚???</p>
+            <h2>Inputs</h2>
+            <p class="cg-form-copy">Create a new Generation Run only after the mode, provider, preset, species, and topic are explicit. This keeps compare and approval travel predictable later.</p>
           </div>
         </div>
         <div class="cg-field-grid tight">
-          <label>癲ル슢?꾤땟???select name="mode"><option value="new">new (??ш끽維???ш낄援θキ?</option><option value="reference">reference (??????癲ル슣?? ????</option></select><small>????녿군???Β?レ릇 癲ル슢?꾤땟???????ャ뀕???????????獄쏅똻???濡ろ뜑?灌鍮????낆뒩????筌뤾퍓???</small></label>
-          <label>??癰궽블뀬??<span class="hint" data-tooltip="?嶺? ??癰궽블뀬??? ????됰꽡??嚥???mock???⑥????????筌뤾퍓???>?</span><select name="provider"><option value="mock">mock (??れ삀??????嶺?</option><option value="comfyui">comfyui (???ャ뀕??</option><option value="remoteApi">remoteApi (???ャ뀕??</option></select><small>??癰궽블뀬???????? ?????筌뤾퍓??? ?嶺? ??癰궽블뀬??? ????덈뭷??繹먮끏??????mock???⑥????嚥▲꺃???ш낄猷귡뜮????덊렡.</small></label>
-          <label>??ш끽維???ш낄援θキ???ш끽諭욥걡??select name="promptPreset">${input.styleOptions}</select><small>Character Pack?????ㅼ굡????⑤；????????뱀낄???嶺뚮ㅎ??????關履??嶺뚮ㅎ???</small></label>
-          <label>??select name="species">${input.speciesOptions}</select><small>????좊즴???癲ル슢?뤸뤃??????????熬곣뫖??compare ?????????????곕쿊 ?????筌뤾퍓???</small></label>
-          <label>??낆뒩???(???ャ뀕??<input name="topic" placeholder="癲ル슣?????ㅼ뒩筌???關履???癲ル슢?????뉙??????/><small>癲ル슣?㎫뙴? ??낆뒩??????⑤슢???run history?? compare surface?????????????????덊렡.</small></label>
+          <label>Run mode<select name="mode"><option value="new">new</option><option value="reference">reference</option></select><small>Use reference mode when the run must stay visibly anchored to an existing asset.</small></label>
+          <label>Provider<select name="provider"><option value="mock">mock</option><option value="comfyui">comfyui</option><option value="remoteApi">remoteApi</option></select><small>Keep mock available for fallback or local validation when the full image pipeline is not ready.</small></label>
+          <label>Prompt preset<select name="promptPreset">${input.styleOptions}</select><small>Presets should carry the stable styling intent that later compare and approval decisions inherit.</small></label>
+          <label>Species<select name="species">${input.speciesOptions}</select><small>Make species explicit early so compare does not need to recover from basic intent drift.</small></label>
+          <label>Topic<input name="topic" placeholder="Introduce the current character angle or episode need"/><small>This topic appears again in run history, reopen travel, and linked review surfaces.</small></label>
         </div>
       </section>
       <section class="cg-form-block" id="cg-stage-context">
         <div class="cg-form-head">
           <span class="cg-step">02</span>
           <div>
-            <h2>????녿군???Β?レ릇 / ??癲ル슢?????/h2>
-            <p class="cg-form-copy">????덈틖 ??ш끽維??????筌????獒?????Β?援???關履????寃뗏? Character Pack review route??좊읈? 雅?퍔瑗띰㎖???怨뚮옖????ш끽維곩ㅇ??????筌뚯뼚???</p>
+            <h2>References</h2>
+            <p class="cg-form-copy">Choose the reference asset that should travel with this run. Keep the reference obvious so Studio, Generator, and Characters can reopen the same object chain later.</p>
           </div>
         </div>
         <div class="cg-field-grid tight">
-          <label>????녿군???Β?レ릇 ?????select name="referenceAssetId"><option value="">(???⑤챶苡?</option>${input.referenceOptions}</select><small>???? ????노젵?? 癲ル슢?????뉙?????????Β?ろ떗?濚밸Ŧ?김キ???醫딅땻??????뫢????ル∥援???????겾????モ뵲 ?????????ャ뀕???筌뤾퍓???</small></label>
+          <label>Reference asset<select name="referenceAssetId"><option value="">No reference selected</option>${input.referenceOptions}</select><small>Use the asset that should stay attached to candidate compare and later pack review.</small></label>
         </div>
         <div class="cg-context-grid">
           <article class="cg-context-card">
-            <h3>????녿군???Β?レ릇 ????곸죷</h3>
-            <p>????? ??筌믨퀣援?????癲ル슣????QC ??????沃섅굥?? ??ш끽維???嚥??????????釉먮뻤????⑥????? ?嶺??????⑥レ툓????濡ろ떟????ャ뀖????????좊즴甕겹끃??????녿군???Β?レ릇??????????λ룵??</p>
-            <div class="cg-inline-links"><a href="/ui/assets">?????????깅탿</a><a href="/ui/studio">Studio ????깅탿</a></div>
+            <h3>Asset handoff</h3>
+            <p>Reference quality still matters before any candidate score exists. Reopen Assets when the current object needs a faster QC or preview check.</p>
+            <div class="cg-inline-links"><a href="/ui/assets">Assets</a><a href="/ui/studio">Studio</a></div>
           </article>
           <article class="cg-context-card">
-            <h3>嚥싲갭큔?? ???域밸Ŧ留???濡ろ뜑?灌鍮?/h3>
-            <p>?????쒓낮?꾬┼??넊?????獄쏅똻???compare?????????寃뗏? preview/QC/lineage/jobs??????곴데 ????덉툗 ??嚥▲꺃彛??濡ろ떟???嚥▲꺂痢?Characters??좊읈? ??????筌뤾퍓??? ?????????嚥싲갭큔?딆띁??????苑????嚥?????숆강筌????⑥??????꾨탿?嶺뚮ㅎ???</p>
-            <div class="cg-inline-links"><a href="/ui/characters">Characters ????깅탿</a><a href="/ui/studio">??鴉?????????⑥???怨뚮옖甕걔?</a></div>
+            <h3>Characters handoff</h3>
+            <p>Generator owns staged compare and approval. Characters owns the slower read of preview, QC, lineage, and jobs after a pack exists.</p>
+            <div class="cg-inline-links"><a href="/ui/characters">Characters</a><a href="/ui/studio">Studio dispatch</a></div>
           </article>
         </div>
       </section>
@@ -337,49 +337,49 @@ export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopIn
         <div class="cg-form-head">
           <span class="cg-step">03</span>
           <div>
-            <h2>???⑤슣????鸚??嶺뚮Ĳ???/h2>
-            <p class="cg-form-copy">Candidate set???????ⓦ꺂糾???ш끽維???濡ろ떟????ル늉??????????嶺뚮Ĳ?????嶺뚮쮳?듬뤅 compare?? recover ??影?됀嚥▲룗?????? ??좊읈??濚왿몾??燁??????筌뚯뼚???</p>
+            <h2>Workflow Policy</h2>
+            <p class="cg-form-copy">Configure the candidate set before scores, compare, or repair decisions appear. Policy should be legible on its own.</p>
           </div>
         </div>
         <div class="cg-field-grid tight">
-          <label>??ш끽維亦???<span class="hint" data-tooltip="??ш끽維亦낅쉠琉??쎛 ????癲ル슢?????좎떵??????琉뮻???癰????癲ル슣鍮섌뜮???筌뤾퍓???>?</span><input name="candidateCount" value="4" inputmode="numeric"/><small>??좊즵獒??븍９苡? 癲ル슢?????嚥?흮 ??????類?????????醫귥땡?堉온癲ル슣??癲????⑤㈇猿???甕??濡ろ떟?????딅텑????????節뗪콬鶯????덊렡.</small></label>
-          <label>???筌????ャ뀕??select name="autoPick"><option value="false">false (??嚥▲꺃彛????ャ뀕??</option><option value="true">true (???筌????ャ뀕??</option></select><small>??嚥▲꺃????ㅼ굣??compare ??影?됀嚥▲룗????誘⑦←뵳?異???嚥▲꺃彛????ャ뀕????????筌뚯뼚???</small></label>
-          <label>HITL ???ャ뀕????釉먮윥??select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select><small>???源낅?????덉쉐????筌????? 癲ル슢?뤸뤃???????????ш끽維?醫귥땡????勇?嶺뚮ㅎ?????筌먲퐢?뀐┼?????????????????</small></label>
+          <label>Candidate count<input name="candidateCount" value="4" inputmode="numeric"/><small>Use enough coverage for compare without hiding the decision in an oversized workset.</small></label>
+          <label>Auto-pick<select name="autoPick"><option value="false">false</option><option value="true">true</option></select><small>Auto-pick stays useful for fallback, but compare still needs a readable manual lane.</small></label>
+          <label>Require HITL pick<select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select><small>Keep the review contract explicit when approval should not proceed without a manual choice.</small></label>
         </div>
         <div class="cg-guardrail-grid">
-          <div class="cg-guardrail"><strong>??ヂ?????/strong><span>${esc(input.forbiddenTermsSummary)}</span></div>
-          <div class="cg-guardrail"><strong>???됰슦源???ㅻ깽????獄쏅챷苑?/strong><span>${esc(input.negativeTermsSummary)}</span></div>
+          <div class="cg-guardrail"><strong>Forbidden terms</strong><span>${esc(input.forbiddenTermsSummary)}</span></div>
+          <div class="cg-guardrail"><strong>Negative prompt baseline</strong><span>${esc(input.negativeTermsSummary)}</span></div>
         </div>
       </section>
       <details class="cg-advanced-shell" id="cg-stage-advanced">
-        <summary><span class="cg-step">?????/span><div><h2>?嶺뚮Ĳ????嶺? ?釉뚰???/h2><p class="cg-form-copy">?濡ろ뜏???怨몃퓠??モ??????? ??ш끽維???ш낄援θキ????쒓낯?? ?????ъ땡?????됰꽡 癲ル슢?꾤땟?????????쨬??쎛 ??ш끽維????????????? staged flow??????影?됀???????Candidates -> Compare -> Approve / Rollback????낇돲??</p></div></summary>
+        <summary><span class="cg-step">A</span><div><h2>Advanced controls</h2><p class="cg-form-copy">Open only when the staged run really needs prompt overrides, seed pinning, or stronger negative prompting. Keep the default path easy to scan.</p></div></summary>
         <div class="cg-advanced-body">
           <div class="cg-field-grid">
-            <label>??筌먲퐡??<span class="hint" data-tooltip="??좊즵?? ????곸죷????筌먲퐡??????ㅽ떝???濡ろ뜏???怨몃퓠??モ???濡ろ뜏???醫듽걫??????筌뤾퍓???>?</span><input name="seed" value="${esc(
+            <label>Seed<input name="seed" value="${esc(
               input.defaultSeed
-            )}" inputmode="numeric"/><small>??좊즵?? ??ш끽維???ш낄援θキ?롮뒙??濡ろ뜏???怨몃퓠??モ?????????誘⑦∽쭕????獒???筌먲퐡?????雅???됰씭??嶺뚮ㅎ???</small></label>
-            <label>??????ㅻ깽????ш끽維???ш낄援θキ?(???ャ뀕??<textarea name="positivePrompt" rows="4" placeholder="???????????醫됱쉥 ?沃섃뫗援????關履???癲ル슢?????뉙?????? ???쑦욆???繹먮끏???ш낄援θキ? ??癲ル슢?꾤땟怨⑹젂??? 癲ル슣?????ㅼ뒩筌???좊읈?????臾먮쭕??></textarea><small>??ш끽維?????⑤베堉? 癲ル슣????筌먦끉???壤굿????嶺뚮ㅎ??? ??れ삀??????????嚥▲꺃??????? ??ш끽諭욥걡??????????筌뚯슦苑????怨?????덊렡.</small></label>
-            <label>???됰슦源???ㅻ깽????ш끽維???ш낄援θキ?(???ャ뀕??<textarea name="negativePrompt" rows="4" placeholder="????????? ???뱁꺎濚????ル늅??씤異?에?ル씔??????野? ??????? ??癲? ????몄릇??></textarea><small>??????QC???????좊즵?? ????됰꽡??좊읈? ?袁⑸즵???????嶺? ??????獄?筌뤿뱶???????筌뤾퍓???</small></label>
+            )}" inputmode="numeric"/><small>Pin the seed when the compare surface needs controlled reruns instead of a fresh exploration.</small></label>
+            <label>Positive prompt override<textarea name="positivePrompt" rows="4" placeholder="Add only the extra direction that should override the current preset."></textarea><small>Use this sparingly. The main preset should still carry most of the stable styling intent.</small></label>
+            <label>Negative prompt override<textarea name="negativePrompt" rows="4" placeholder="List the failure patterns or unwanted traits that should be suppressed."></textarea><small>Reserve this for repeated QC or compare failure patterns, not routine runs.</small></label>
           </div>
           <div class="cg-toggle-list">
-            <label class="cg-toggle"><input type="checkbox" name="boostNegativePrompt" value="true"/><span>?? ????몄릇?? ???⑤슣?됵┼??뵯??먯물???좊즵?? ?????ъ땡?????됰꽡 癲ル슢?꾤땟????ｏ쭗?????좊즴甕겹끃??燁???????嚥▲꺃??????됰슦源???ㅻ깽????ш끽維???ш낄援θキ????좊즴甕???筌뤾퍓???</span></label>
+            <label class="cg-toggle"><input type="checkbox" name="boostNegativePrompt" value="true"/><span>Strengthen the negative prompt when repeated failure families need a stronger block.</span></label>
           </div>
         </div>
       </details>
       <div class="cg-submit-row">
-        <p class="cg-submit-copy">??筌믨퉭???嚥???Stage 04 Candidates??좊읈? ?????⑥궡異? Generation Run object??좊읈? ???ㅺ컼?? risk, next safe action, linked routes, evidence????影?얠맽 ?嶺뚮ㅎ????筌뤾퍓??? ComfyUI????????????⑤챶?뺧┼???? ??れ삀?????????嶺뚮Ĳ???????ㅻ깹??mock???⑥????繹먮끏裕?????????덊렡.</p>
-        <button type="submit" data-primary-action="1" data-primary-label="癲???????ш끽維亦???獄쏅똻??????덈틖">癲???????ш끽維亦???獄쏅똻??????덈틖</button>
+        <p class="cg-submit-copy">Submitting here creates the Generation Run object and moves the page into the candidate lane. Keep summary, next safe action, linked routes, and evidence readable before compare starts.</p>
+        <button type="submit" data-primary-action="1" data-primary-label="Create generation run">Create generation run</button>
       </div>
       <div class="cg-context-grid">
         <article class="cg-context-card">
           <h3>Stage 04 / Generation Run object</h3>
-          <p>??筌믨퉭??????嚥▲꺂??Candidates ??影?됀?????run status, policy snapshot, next safe action, evidence????좊즵?? surface??????????????덊렡.</p>
-          <div class="cg-inline-links"><a href="#cg-active-job">Generation Run ????깅탿</a><a href="#cg-recent-jobs">癲ル슔?됭짆?????怨뚮옖??逾?/a></div>
+          <p>Once the run exists, read status, route summary, risk, and next safe action in the same lane before leaving the page.</p>
+          <div class="cg-inline-links"><a href="#cg-active-job">Current run</a><a href="#cg-recent-jobs">Recent runs</a></div>
         </article>
         <article class="cg-context-card">
           <h3>Stage 05-06 / Character Pack object</h3>
-          <p>Pack build ??熬곣뫖????獒?Compare?????handoff????熬곥걿?? Approve/Rollback?? approval lane????????獒????덊렡. 嚥싲갭큔?? preview/QC/lineage/jobs ?濡ろ떟???嚥▲꺂痢?Characters?????怨룸／????덊렡.</p>
-          <div class="cg-inline-links"><a href="#cg-approval-lane">?????????源낅뜲</a><a href="/ui/characters">Characters ????깅탿</a></div>
+          <p>Pack compare and approval stay here first. After the handoff, Characters becomes the deep inspection surface for preview, QC, lineage, and jobs.</p>
+          <div class="cg-inline-links"><a href="#cg-approval-lane">Approval lane</a><a href="/ui/characters">Characters</a></div>
         </article>
       </div>
     </form>
@@ -387,11 +387,10 @@ export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopIn
 }
 
 export function buildCharacterGeneratorStatusScript(): string {
-  return `<script>(function(){const el=document.getElementById("generation-status");if(!(el instanceof HTMLElement)){return;}const retryBtn=document.getElementById("generation-retry");const jobId=String(el.dataset.jobId||"");if(!jobId){return;}let timer=null;let failCount=0;const stageLabel=(status)=>{switch(String(status||"").toUpperCase()){case"QUEUED":return"대기";case"RUNNING":return"실행 중";case"SUCCEEDED":return"성공";case"FAILED":return"실패";case"CANCELLED":return"취소";default:return String(status||"unknown");}};const formatScore=(value)=>typeof value==="number"&&Number.isFinite(value)?value.toFixed(2):"-";const shortView=(view)=>view==="threeQuarter"?"3/4":view==="profile"?"profile":"front";const summarizePreflight=(stage)=>{if(!stage||!stage.preflightByView){return"";}const entries=["front","threeQuarter","profile"].filter((view)=>stage.preflightByView&&stage.preflightByView[view]).map((view)=>{const diagnostics=stage.preflightByView[view];const detail=(Array.isArray(diagnostics&&diagnostics.missingStructureKinds)?diagnostics.missingStructureKinds.slice(0,2).join("+"):"")||(Array.isArray(diagnostics&&diagnostics.missingReferenceRoles)?diagnostics.missingReferenceRoles.slice(0,1).join("+"):"")||(Array.isArray(diagnostics&&diagnostics.reasonCodes)?diagnostics.reasonCodes[0]:"")||"";return shortView(view)+":"+String(diagnostics&&diagnostics.status||"unknown")+(detail?":"+detail:"");});return entries.length>0?" / 사전점검="+entries.join(","):"";};const schedule=(ms)=>{if(timer){clearTimeout(timer);}timer=setTimeout(()=>{void tick();},ms);};const toast=(title,msg,tone)=>{if(typeof window.__ecsToast==="function"){window.__ecsToast(title,msg,tone||"warn");}};const speak=(msg)=>{if(typeof window.__ecsSpeak==="function"){window.__ecsSpeak(msg);}};const tick=async()=>{try{const res=await fetch("/api/character-generator/jobs/"+encodeURIComponent(jobId));if(!res.ok){throw new Error("작업 상태 조회 실패: "+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error("작업 상태 응답이 비어 있습니다.");}failCount=0;if(retryBtn instanceof HTMLElement){retryBtn.style.display="none";}const manifestStatus=data.manifest&&data.manifest.status?" / manifest="+String(data.manifest.status):"";const packCoherence=data.packCoherence||data.manifest&&data.manifest.packCoherence?data.packCoherence||data.manifest.packCoherence:null;const autoReroute=data.autoReroute||data.manifest&&data.manifest.autoReroute?data.autoReroute||data.manifest.autoReroute:null;const selectionRisk=data.selectionRisk||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.selectionRisk||data.manifest.providerMeta.selectionDiagnostics.selectionRisk:null;const qualityEmbargo=data.qualityEmbargo||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.qualityEmbargo||data.manifest.providerMeta.selectionDiagnostics.qualityEmbargo:null;const finalQualityFirewall=data.finalQualityFirewall||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.finalQualityFirewall||data.manifest.providerMeta.selectionDiagnostics.finalQualityFirewall:null;const decisionOutcome=data.decisionOutcome||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.decisionOutcome||data.manifest.providerMeta.selectionDiagnostics.decisionOutcome:null;const coherenceSummary=packCoherence?" / 일관성="+String(packCoherence.severity||"none")+":"+formatScore(packCoherence.score):"";const rerouteSummary=autoReroute&&autoReroute.attempted?" / 재라우팅="+String(autoReroute.recovered===true?"recovered":autoReroute.recovered===false?"failed":"attempted")+(autoReroute.strategy?"@"+String(autoReroute.strategy):""):"";const selectionRiskSummary=selectionRisk&&selectionRisk.level&&String(selectionRisk.level)!=="none"?" / 선택위험="+String(selectionRisk.level)+(selectionRisk.suggestedAction?"@"+String(selectionRisk.suggestedAction):""):"";const qualityEmbargoSummary=qualityEmbargo&&qualityEmbargo.level&&String(qualityEmbargo.level)!=="none"?" / 품질보류="+String(qualityEmbargo.level)+(qualityEmbargo.suggestedAction?"@"+String(qualityEmbargo.suggestedAction):""):"";const firewallSummary=finalQualityFirewall&&finalQualityFirewall.level&&String(finalQualityFirewall.level)!=="none"?" / 최종방화벽="+String(finalQualityFirewall.level)+(finalQualityFirewall.suggestedAction?"@"+String(finalQualityFirewall.suggestedAction):""):"";const decisionSummary=decisionOutcome&&decisionOutcome.status?" / 판단="+String(decisionOutcome.status)+(decisionOutcome.kind?"@"+String(decisionOutcome.kind):""):"";const selectionSource=data.finalSelectionSource?" / 선택원천="+String(data.finalSelectionSource):"";const routeSummary=data.selectedWorkflowRuntimeSummary&&String(data.selectedWorkflowRuntimeSummary)!=="-"?" / 경로="+String(data.selectedWorkflowRuntimeSummary):"";const lastStage=Array.isArray(data.workflowStages)&&data.workflowStages.length>0?data.workflowStages[data.workflowStages.length-1]:null;const stageVariant=lastStage?[String(lastStage.origin||""),String(lastStage.passLabel||"")].filter((value)=>value&&value!=="").join("@"):"";const stageExit=lastStage?"pass="+String(Array.isArray(lastStage.passedViews)?lastStage.passedViews.length:0)+"/fail="+String(Array.isArray(lastStage.failedViews)?lastStage.failedViews.length:0):"";const stageSummary=lastStage?" / 단계="+String(lastStage.stage||"unknown")+(stageVariant?"@"+stageVariant:"")+"#"+String(lastStage.roundsAttempted||0)+(stageExit?":"+stageExit:""):Array.isArray(data.workflowStages)&&data.workflowStages.length>0?" / 단계="+String(data.workflowStages.length):"";const preflightSummary=summarizePreflight(lastStage);const triageSummary=lastStage&&lastStage.repairTriageByView?(()=>{const entries=["front","threeQuarter","profile"].filter((view)=>lastStage.repairTriageByView&&lastStage.repairTriageByView[view]).map((view)=>shortView(view)+":"+String(lastStage.repairTriageByView[view].decision||"unknown"));return entries.length>0?" / repairTriage="+entries.join(","):"";})():"";const repairSummary=lastStage&&lastStage.repairAcceptanceByView?(()=>{const entries=["front","threeQuarter","profile"].filter((view)=>lastStage.repairAcceptanceByView&&lastStage.repairAcceptanceByView[view]).map((view)=>shortView(view)+":"+String(lastStage.repairAcceptanceByView[view].decision||"unknown"));return entries.length>0?" / repairAcceptance="+entries.join(","):"";})():"";const nextAction=Array.isArray(data.recommendedActions)&&data.recommendedActions.length>0&&data.recommendedActions[0]&&data.recommendedActions[0].label?" / 다음="+String(data.recommendedActions[0].label):"";const text="작업="+stageLabel(data.status)+" 진행률="+String(data.progress)+"%"+manifestStatus+coherenceSummary+rerouteSummary+selectionRiskSummary+qualityEmbargoSummary+firewallSummary+decisionSummary+selectionSource+routeSummary+stageSummary+preflightSummary+triageSummary+repairSummary+nextAction;el.textContent=text;speak(text);if(data.status==="SUCCEEDED"||data.status==="FAILED"||data.status==="CANCELLED"){if(data.manifestExists){toast("Generation Run","결과가 확정되었습니다. 현재 run object를 다시 엽니다.",data.status==="SUCCEEDED"?"ok":"warn");setTimeout(()=>{window.location.href="/ui/character-generator?jobId="+encodeURIComponent(jobId);},500);}return;}schedule(2000);}catch(error){failCount+=1;const wait=Math.min(15000,2000*Math.pow(2,failCount));el.textContent="상태 확인 실패. "+wait+"ms 뒤 다시 시도합니다.";if(retryBtn instanceof HTMLElement){retryBtn.style.display="inline-block";}toast("Generation Run",String(error),"warn");schedule(wait);}};if(retryBtn instanceof HTMLElement){retryBtn.addEventListener("click",()=>{failCount=0;void tick();});}void tick();})();</script>`;
+  return `<script>(function(){const el=document.getElementById("generation-status");if(!(el instanceof HTMLElement)){return;}const retryBtn=document.getElementById("generation-retry");const jobId=String(el.dataset.jobId||"");if(!jobId){return;}let timer=null;let failCount=0;const stageLabel=(status)=>{switch(String(status||"").toUpperCase()){case"QUEUED":return"Queued";case"RUNNING":return"Running";case"SUCCEEDED":return"Succeeded";case"FAILED":return"Failed";case"CANCELLED":return"Cancelled";default:return String(status||"unknown");}};const formatScore=(value)=>typeof value==="number"&&Number.isFinite(value)?value.toFixed(2):"-";const shortView=(view)=>view==="threeQuarter"?"3/4":view==="profile"?"profile":"front";const summarizePreflight=(stage)=>{if(!stage||!stage.preflightByView){return"";}const entries=["front","threeQuarter","profile"].filter((view)=>stage.preflightByView&&stage.preflightByView[view]).map((view)=>{const diagnostics=stage.preflightByView[view];const detail=(Array.isArray(diagnostics&&diagnostics.missingStructureKinds)?diagnostics.missingStructureKinds.slice(0,2).join("+"):"")||(Array.isArray(diagnostics&&diagnostics.missingReferenceRoles)?diagnostics.missingReferenceRoles.slice(0,1).join("+"):"")||(Array.isArray(diagnostics&&diagnostics.reasonCodes)?diagnostics.reasonCodes[0]:"")||"";return shortView(view)+":"+String(diagnostics&&diagnostics.status||"unknown")+(detail?":"+detail:"");});return entries.length>0?" / preflight="+entries.join(","):"";};const schedule=(ms)=>{if(timer){clearTimeout(timer);}timer=setTimeout(()=>{void tick();},ms);};const toast=(title,msg,tone)=>{if(typeof window.__ecsToast==="function"){window.__ecsToast(title,msg,tone||"warn");}};const speak=(msg)=>{if(typeof window.__ecsSpeak==="function"){window.__ecsSpeak(msg);}};const tick=async()=>{try{const res=await fetch("/api/character-generator/jobs/"+encodeURIComponent(jobId));if(!res.ok){throw new Error("Failed to read job status: "+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error("The job status response was empty.");}failCount=0;if(retryBtn instanceof HTMLElement){retryBtn.style.display="none";}const manifestStatus=data.manifest&&data.manifest.status?" / manifest="+String(data.manifest.status):"";const packCoherence=data.packCoherence||data.manifest&&data.manifest.packCoherence?data.packCoherence||data.manifest.packCoherence:null;const autoReroute=data.autoReroute||data.manifest&&data.manifest.autoReroute?data.autoReroute||data.manifest.autoReroute:null;const selectionRisk=data.selectionRisk||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.selectionRisk||data.manifest.providerMeta.selectionDiagnostics.selectionRisk:null;const qualityEmbargo=data.qualityEmbargo||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.qualityEmbargo||data.manifest.providerMeta.selectionDiagnostics.qualityEmbargo:null;const finalQualityFirewall=data.finalQualityFirewall||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.finalQualityFirewall||data.manifest.providerMeta.selectionDiagnostics.finalQualityFirewall:null;const decisionOutcome=data.decisionOutcome||data.manifest&&data.manifest.providerMeta&&data.manifest.providerMeta.selectionDiagnostics?data.decisionOutcome||data.manifest.providerMeta.selectionDiagnostics.decisionOutcome:null;const coherenceSummary=packCoherence?" / coherence="+String(packCoherence.severity||"none")+":"+formatScore(packCoherence.score):"";const rerouteSummary=autoReroute&&autoReroute.attempted?" / reroute="+String(autoReroute.recovered===true?"recovered":autoReroute.recovered===false?"failed":"attempted")+(autoReroute.strategy?"@"+String(autoReroute.strategy):""):"";const selectionRiskSummary=selectionRisk&&selectionRisk.level&&String(selectionRisk.level)!=="none"?" / selection-risk="+String(selectionRisk.level)+(selectionRisk.suggestedAction?"@"+String(selectionRisk.suggestedAction):""):"";const qualityEmbargoSummary=qualityEmbargo&&qualityEmbargo.level&&String(qualityEmbargo.level)!=="none"?" / quality-embargo="+String(qualityEmbargo.level)+(qualityEmbargo.suggestedAction?"@"+String(qualityEmbargo.suggestedAction):""):"";const firewallSummary=finalQualityFirewall&&finalQualityFirewall.level&&String(finalQualityFirewall.level)!=="none"?" / final-firewall="+String(finalQualityFirewall.level)+(finalQualityFirewall.suggestedAction?"@"+String(finalQualityFirewall.suggestedAction):""):"";const decisionSummary=decisionOutcome&&decisionOutcome.status?" / decision="+String(decisionOutcome.status)+(decisionOutcome.kind?"@"+String(decisionOutcome.kind):""):"";const selectionSource=data.finalSelectionSource?" / selection-source="+String(data.finalSelectionSource):"";const routeSummary=data.selectedWorkflowRuntimeSummary&&String(data.selectedWorkflowRuntimeSummary)!=="-"?" / route="+String(data.selectedWorkflowRuntimeSummary):"";const lastStage=Array.isArray(data.workflowStages)&&data.workflowStages.length>0?data.workflowStages[data.workflowStages.length-1]:null;const stageVariant=lastStage?[String(lastStage.origin||""),String(lastStage.passLabel||"")].filter((value)=>value&&value!=="").join("@"):"";const stageExit=lastStage?"pass="+String(Array.isArray(lastStage.passedViews)?lastStage.passedViews.length:0)+"/fail="+String(Array.isArray(lastStage.failedViews)?lastStage.failedViews.length:0):"";const stageSummary=lastStage?" / stage="+String(lastStage.stage||"unknown")+(stageVariant?"@"+stageVariant:"")+"#"+String(lastStage.roundsAttempted||0)+(stageExit?":"+stageExit:""):Array.isArray(data.workflowStages)&&data.workflowStages.length>0?" / stage="+String(data.workflowStages.length):"";const preflightSummary=summarizePreflight(lastStage);const triageSummary=lastStage&&lastStage.repairTriageByView?(()=>{const entries=["front","threeQuarter","profile"].filter((view)=>lastStage.repairTriageByView&&lastStage.repairTriageByView[view]).map((view)=>shortView(view)+":"+String(lastStage.repairTriageByView[view].decision||"unknown"));return entries.length>0?" / repair-triage="+entries.join(","):"";})():"";const repairSummary=lastStage&&lastStage.repairAcceptanceByView?(()=>{const entries=["front","threeQuarter","profile"].filter((view)=>lastStage.repairAcceptanceByView&&lastStage.repairAcceptanceByView[view]).map((view)=>shortView(view)+":"+String(lastStage.repairAcceptanceByView[view].decision||"unknown"));return entries.length>0?" / repair-acceptance="+entries.join(","):"";})():"";const nextAction=Array.isArray(data.recommendedActions)&&data.recommendedActions.length>0&&data.recommendedActions[0]&&data.recommendedActions[0].label?" / next="+String(data.recommendedActions[0].label):"";const text="job="+stageLabel(data.status)+" progress="+String(data.progress)+"%"+manifestStatus+coherenceSummary+rerouteSummary+selectionRiskSummary+qualityEmbargoSummary+firewallSummary+decisionSummary+selectionSource+routeSummary+stageSummary+preflightSummary+triageSummary+repairSummary+nextAction;el.textContent=text;speak(text);if(data.status==="SUCCEEDED"||data.status==="FAILED"||data.status==="CANCELLED"){if(data.manifestExists){toast("Generation Run","The run settled. Reopening the current object now.",data.status==="SUCCEEDED"?"ok":"warn");setTimeout(()=>{window.location.href="/ui/character-generator?jobId="+encodeURIComponent(jobId);},500);}return;}schedule(2000);}catch(error){failCount+=1;const wait=Math.min(15000,2000*Math.pow(2,failCount));el.textContent="Status refresh failed. Retrying in "+wait+"ms.";if(retryBtn instanceof HTMLElement){retryBtn.style.display="inline-block";}toast("Generation Run",String(error),"warn");schedule(wait);}};if(retryBtn instanceof HTMLElement){retryBtn.addEventListener("click",()=>{failCount=0;void tick();});}void tick();})();</script>`;
 }
-
 function buildCharacterGeneratorNavScript(): string {
-  return `<script>(function(){const ns="ecs.ui.creation.nav.v1";const parse=(value,fallback)=>{try{const parsed=JSON.parse(String(value||""));return parsed==null?fallback:parsed;}catch{return fallback;}};const readList=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return [];}const parsed=parse(window.localStorage.getItem(ns+".recent."+kind),[]);return Array.isArray(parsed)?parsed:[];};const writeList=(kind,items)=>{try{window.localStorage.setItem(ns+".recent."+kind,JSON.stringify(items.slice(0,6)));}catch{}};const readPin=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return null;}const parsed=parse(window.localStorage.getItem(ns+".pin."+kind),null);return parsed&&typeof parsed==="object"?parsed:null;};const writePin=(kind,item)=>{try{window.localStorage.setItem(ns+".pin."+kind,JSON.stringify(item));}catch{}};const pushRecent=(kind,item)=>{if(!item||!item.id){return;}const next=[item].concat(readList(kind).filter((entry)=>entry&&entry.id!==item.id));writeList(kind,next);};const buildHref=(pathname,params)=>{const url=new URL(pathname,window.location.origin);Object.entries(params||{}).forEach(([key,value])=>{if(value!==undefined&&value!==null&&String(value).trim()!==""){url.searchParams.set(key,String(value));}});return url.pathname+url.search;};const renderLinks=(rootId,items,empty)=>{const root=document.getElementById(rootId);if(!(root instanceof HTMLElement)){return;}const valid=Array.isArray(items)?items.filter((entry)=>entry&&entry.href&&entry.label):[];root.innerHTML=valid.length?valid.map((entry)=>'<a href="'+String(entry.href).replaceAll('"',"&quot;")+'">'+String(entry.label).replaceAll("<","&lt;").replaceAll(">","&gt;")+'</a>').join(""):'<span class="cg-nav-note">'+empty+"</span>";};const params=new URLSearchParams(window.location.search);const currentUrl=window.location.pathname+window.location.search;const returnTo=params.get("returnTo")||"";const focus=params.get("focus")||"cg-active-job";const referenceAssetId=params.get("referenceAssetId")||params.get("assetId")||"";const activeJob=document.getElementById("cg-active-job-meta")||document.getElementById("cg-active-job");const currentRunId=activeJob&&activeJob.dataset?String(activeJob.dataset.currentRunId||params.get("jobId")||""):String(params.get("jobId")||"");const currentPackId=activeJob&&activeJob.dataset?String(activeJob.dataset.currentPackId||""):"";const currentObject=params.get("currentObject")||(currentRunId?"run:"+currentRunId:referenceAssetId?"asset:"+referenceAssetId:currentPackId?"pack:"+currentPackId:"");const referenceSelect=document.querySelector('select[name="referenceAssetId"]');if(referenceSelect instanceof HTMLSelectElement&&referenceAssetId&&!referenceSelect.value){referenceSelect.value=referenceAssetId;}const returnToInput=document.getElementById("cg-return-to");if(returnToInput instanceof HTMLInputElement){returnToInput.value=returnTo;}const currentObjectInput=document.getElementById("cg-current-object");if(currentObjectInput instanceof HTMLInputElement){currentObjectInput.value=currentObject;}const focusInput=document.getElementById("cg-focus");if(focusInput instanceof HTMLInputElement){focusInput.value=focus;}if(referenceAssetId){pushRecent("assets",{id:referenceAssetId,label:"Asset "+referenceAssetId,href:buildHref("/ui/assets",{assetId:referenceAssetId,currentObject:"asset:"+referenceAssetId,focus:"asset-selected-detail"})});}if(currentRunId){pushRecent("runs",{id:currentRunId,label:"Run "+currentRunId,href:buildHref("/ui/character-generator",{jobId:currentRunId,currentObject:"run:"+currentRunId,focus:"cg-active-job"})});}if(currentPackId){pushRecent("packs",{id:currentPackId,label:"Pack "+currentPackId,href:buildHref("/ui/characters",{characterPackId:currentPackId,returnTo:currentUrl,currentObject:"pack:"+currentPackId,focus:"pack-review-current"})});}const actions=[];if(returnTo){actions.push('<a href="'+returnTo.replaceAll('"',"&quot;")+'">Return</a>');}actions.push('<button type="button" id="cg-copy-link">Copy deep link</button>');if(currentRunId){actions.push('<button type="button" id="cg-pin-run">Pin current run</button>');}if(currentPackId){actions.push('<button type="button" id="cg-pin-pack">Pin current pack</button>');}const actionRoot=document.getElementById("cg-nav-actions");if(actionRoot instanceof HTMLElement){actionRoot.innerHTML=actions.join("");}const currentRoot=document.getElementById("cg-nav-current");if(currentRoot instanceof HTMLElement){currentRoot.textContent=currentRunId?"Generation Run "+currentRunId+(currentPackId?" -> Pack "+currentPackId:""):referenceAssetId?"Reference Asset "+referenceAssetId:currentObject||"???ャ뀕???????щ빘???됰씭肄??좊읈? ??ш끽維쀧빊????⑤８?????덊렡.";}document.getElementById("cg-copy-link")?.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(window.location.href);if(typeof window.__ecsToast==="function"){window.__ecsToast("Generator","Deep link copied.","ok");}}catch(error){if(typeof window.__ecsToast==="function"){window.__ecsToast("Generator",String(error),"warn");}}});document.getElementById("cg-pin-run")?.addEventListener("click",()=>{if(!currentRunId){return;}writePin("run",{id:currentRunId,label:"Run "+currentRunId,href:buildHref("/ui/character-generator",{jobId:currentRunId,currentObject:"run:"+currentRunId,focus:"cg-active-job"})});renderLinks("cg-nav-pins",[readPin("run"),readPin("pack")].filter(Boolean),"Pinned run?????pack?????⑤８?????덊렡.");});document.getElementById("cg-pin-pack")?.addEventListener("click",()=>{if(!currentPackId){return;}writePin("pack",{id:currentPackId,label:"Pack "+currentPackId,href:buildHref("/ui/characters",{characterPackId:currentPackId,returnTo:currentUrl,currentObject:"pack:"+currentPackId,focus:"pack-review-current"})});renderLinks("cg-nav-pins",[readPin("run"),readPin("pack")].filter(Boolean),"Pinned run?????pack?????⑤８?????덊렡.");});renderLinks("cg-nav-pins",[readPin("run"),readPin("pack")].filter(Boolean),"Pinned run?????pack?????⑤８?????덊렡.");renderLinks("cg-nav-recents",readList("runs").slice(0,3).concat(readList("packs").slice(0,3)),"癲ル슔?됭짆??reopen 癲ル슢??湲룹물筌먯빘苡? ??ш끽維쀧빊????⑤８?????덊렡.");if(focus&&!window.location.hash){const focusTarget=document.getElementById(focus);if(focusTarget instanceof HTMLElement){setTimeout(()=>focusTarget.scrollIntoView({block:"start",behavior:"smooth"}),120);}}})();</script>`;
+  return `<script>(function(){const ns="ecs.ui.creation.nav.v1";const parse=(value,fallback)=>{try{const parsed=JSON.parse(String(value||""));return parsed==null?fallback:parsed;}catch{return fallback;}};const readList=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return [];}const parsed=parse(window.localStorage.getItem(ns+".recent."+kind),[]);return Array.isArray(parsed)?parsed:[];};const writeList=(kind,items)=>{try{window.localStorage.setItem(ns+".recent."+kind,JSON.stringify(items.slice(0,6)));}catch{}};const readPin=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return null;}const parsed=parse(window.localStorage.getItem(ns+".pin."+kind),null);return parsed&&typeof parsed==="object"?parsed:null;};const writePin=(kind,item)=>{try{window.localStorage.setItem(ns+".pin."+kind,JSON.stringify(item));}catch{}};const pushRecent=(kind,item)=>{if(!item||!item.id){return;}const next=[item].concat(readList(kind).filter((entry)=>entry&&entry.id!==item.id));writeList(kind,next);};const buildHref=(pathname,params)=>{const url=new URL(pathname,window.location.origin);Object.entries(params||{}).forEach(([key,value])=>{if(value!==undefined&&value!==null&&String(value).trim()!==""){url.searchParams.set(key,String(value));}});return url.pathname+url.search;};const renderLinks=(rootId,items,empty)=>{const root=document.getElementById(rootId);if(!(root instanceof HTMLElement)){return;}const valid=Array.isArray(items)?items.filter((entry)=>entry&&entry.href&&entry.label):[];root.innerHTML=valid.length?valid.map((entry)=>'<a href="'+String(entry.href).replaceAll('"',"&quot;")+'">'+String(entry.label).replaceAll("<","&lt;").replaceAll(">","&gt;")+'</a>').join(""):'<span class="cg-nav-note">'+empty+"</span>";};const params=new URLSearchParams(window.location.search);const currentUrl=window.location.pathname+window.location.search;const returnTo=params.get("returnTo")||"";const focus=params.get("focus")||"cg-active-job";const referenceAssetId=params.get("referenceAssetId")||params.get("assetId")||"";const activeJob=document.getElementById("cg-active-job-meta")||document.getElementById("cg-active-job");const currentRunId=activeJob&&activeJob.dataset?String(activeJob.dataset.currentRunId||params.get("jobId")||""):String(params.get("jobId")||"");const currentPackId=activeJob&&activeJob.dataset?String(activeJob.dataset.currentPackId||""):"";const currentObject=params.get("currentObject")||(currentRunId?"run:"+currentRunId:referenceAssetId?"asset:"+referenceAssetId:currentPackId?"pack:"+currentPackId:"");const referenceSelect=document.querySelector('select[name="referenceAssetId"]');if(referenceSelect instanceof HTMLSelectElement&&referenceAssetId&&!referenceSelect.value){referenceSelect.value=referenceAssetId;}const returnToInput=document.getElementById("cg-return-to");if(returnToInput instanceof HTMLInputElement){returnToInput.value=returnTo;}const currentObjectInput=document.getElementById("cg-current-object");if(currentObjectInput instanceof HTMLInputElement){currentObjectInput.value=currentObject;}const focusInput=document.getElementById("cg-focus");if(focusInput instanceof HTMLInputElement){focusInput.value=focus;}if(referenceAssetId){pushRecent("assets",{id:referenceAssetId,label:"Asset "+referenceAssetId,href:buildHref("/ui/assets",{assetId:referenceAssetId,currentObject:"asset:"+referenceAssetId,focus:"asset-selected-detail"})});}if(currentRunId){pushRecent("runs",{id:currentRunId,label:"Run "+currentRunId,href:buildHref("/ui/character-generator",{jobId:currentRunId,currentObject:"run:"+currentRunId,focus:"cg-active-job"})});}if(currentPackId){pushRecent("packs",{id:currentPackId,label:"Pack "+currentPackId,href:buildHref("/ui/characters",{characterPackId:currentPackId,returnTo:currentUrl,currentObject:"pack:"+currentPackId,focus:"pack-review-current"})});}const actions=[];if(returnTo){actions.push('<a href="'+returnTo.replaceAll('"',"&quot;")+'">Return</a>');}actions.push('<button type="button" id="cg-copy-link">Copy deep link</button>');if(currentRunId){actions.push('<button type="button" id="cg-pin-run">Pin current run</button>');}if(currentPackId){actions.push('<button type="button" id="cg-pin-pack">Pin current pack</button>');}const actionRoot=document.getElementById("cg-nav-actions");if(actionRoot instanceof HTMLElement){actionRoot.innerHTML=actions.join("");}const currentRoot=document.getElementById("cg-nav-current");if(currentRoot instanceof HTMLElement){currentRoot.textContent=currentRunId?"Generation Run "+currentRunId+(currentPackId?" -> Pack "+currentPackId:""):referenceAssetId?"Reference Asset "+referenceAssetId:currentObject||"No current object is pinned yet.";}document.getElementById("cg-copy-link")?.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(window.location.href);if(typeof window.__ecsToast==="function"){window.__ecsToast("Generator","Deep link copied.","ok");}}catch(error){if(typeof window.__ecsToast==="function"){window.__ecsToast("Generator",String(error),"warn");}}});document.getElementById("cg-pin-run")?.addEventListener("click",()=>{if(!currentRunId){return;}writePin("run",{id:currentRunId,label:"Run "+currentRunId,href:buildHref("/ui/character-generator",{jobId:currentRunId,currentObject:"run:"+currentRunId,focus:"cg-active-job"})});renderLinks("cg-nav-pins",[readPin("run"),readPin("pack")].filter(Boolean),"No pinned run or pack yet.");});document.getElementById("cg-pin-pack")?.addEventListener("click",()=>{if(!currentPackId){return;}writePin("pack",{id:currentPackId,label:"Pack "+currentPackId,href:buildHref("/ui/characters",{characterPackId:currentPackId,returnTo:currentUrl,currentObject:"pack:"+currentPackId,focus:"pack-review-current"})});renderLinks("cg-nav-pins",[readPin("run"),readPin("pack")].filter(Boolean),"No pinned run or pack yet.");});renderLinks("cg-nav-pins",[readPin("run"),readPin("pack")].filter(Boolean),"No pinned run or pack yet.");renderLinks("cg-nav-recents",readList("runs").slice(0,3).concat(readList("packs").slice(0,3)),"No recent reopen links yet.");if(focus&&!window.location.hash){const focusTarget=document.getElementById(focus);if(focusTarget instanceof HTMLElement){setTimeout(()=>focusTarget.scrollIntoView({block:"start",behavior:"smooth"}),120);}}})();</script>`;
 }
 
 type CharacterGeneratorPageBodyInput = {
@@ -409,15 +408,15 @@ type CharacterGeneratorPageBodyInput = {
 };
 
 export function buildCharacterGeneratorPageBody(input: CharacterGeneratorPageBodyInput): string {
-  const jobsSection = `<section class="card cg-history-card" id="cg-recent-jobs"><div class="cg-section-head"><div><div class="cg-section-kicker">Recent Objects</div><h2>최근 생성 작업</h2></div><p>최근 Generation Run object를 다시 열고 compare, recover, approve 흐름으로 재진입할 수 있는 reopen rail입니다.</p></div><div class="cg-history-tools"><div class="quick-links"><a href="#cg-active-job">Generation Run</a><a href="#recommended-actions">Next safe actions</a><a href="#pick-candidates">HITL compare</a><a href="#cg-approval-lane">Approve / Rollback</a></div><input type="search" data-table-filter="cg-jobs-table" placeholder="최근 작업 검색 (job / episode / topic / status)"/></div><div class="cg-table-wrap"><table id="cg-jobs-table"><thead><tr><th>Job</th><th>Episode</th><th>Topic</th><th>Status</th><th>Progress</th><th>Manifest</th><th>Created At</th></tr></thead><tbody>${
+  const jobsSection = `<section class="card cg-history-card" id="cg-recent-jobs"><div class="cg-section-head"><div><div class="cg-section-kicker">Recent Objects</div><h2>Recent Generation Runs</h2></div><p>Use this reopen rail to jump back into the current Generation Run, compare, recover, or approval flow without rebuilding context.</p></div><div class="cg-history-tools"><div class="quick-links"><a href="#cg-active-job">Current run</a><a href="#recommended-actions">Next safe actions</a><a href="#pick-candidates">HITL compare</a><a href="#cg-approval-lane">Approve / Rollback</a></div><input type="search" data-table-filter="cg-jobs-table" placeholder="Filter recent runs by job, episode, topic, or status"/></div><div class="cg-table-wrap"><table id="cg-jobs-table"><thead><tr><th>Job</th><th>Episode</th><th>Topic</th><th>Status</th><th>Progress</th><th>Manifest</th><th>Created At</th></tr></thead><tbody>${
     input.rows ||
-    '<tr><td colspan="7"><div class="notice">최근 생성 작업이 아직 없습니다. 새 run object를 만든 뒤 reopen rail로 다시 돌아오세요.</div></td></tr>'
+    '<tr><td colspan="7"><div class="notice">No recent generation runs yet. Once a run exists, reopen it here for compare, recovery, or approval work.</div></td></tr>'
   }</tbody></table></div></section>`;
 
   const compareLane = renderPhaseCard(
     "05",
     "Compare",
-    "Generation Run and candidate compare lane. Move Pack handoff to this stage first, then continue to Characters for deeper preview, QC, lineage, and jobs review.",
+    "Keep the run object readable through candidate compare, then hand the chosen pack into Characters for deeper review.",
     `${renderSlot(input.selectedSection, "cg-slot", "cg-active-job")}${renderSlot(
       input.pickSection,
       "cg-slot"
@@ -426,7 +425,7 @@ export function buildCharacterGeneratorPageBody(input: CharacterGeneratorPageBod
   const approvalLane = renderPhaseCard(
     "06",
     "Approve / Rollback",
-    "Use this lane only after compare is closed. Expose the next safe action first, then run regenerate, recreate, approve, or rollback from the dedicated controls.",
+    "Use this lane only after compare is clear. Expose the next safe action first, then run regenerate, recreate, approve, or rollback from the dedicated controls.",
     `${renderSlot(input.recommendedActionsSection, "cg-slot")}${renderSlot(input.regenerateSection, "cg-slot")}${renderSlot(
       input.recreateSection,
       "cg-slot"
