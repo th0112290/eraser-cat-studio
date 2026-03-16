@@ -1,4 +1,17 @@
 import { renderTableEmptyRow, UI_TEXT } from "./uiText";
+import {
+  extractRouteValue,
+  firstLink,
+  type ListPowerActionInput,
+  parseTableRows,
+  renderListPowerActionBar,
+  renderListPowerCompareCheckbox,
+  renderListPowerScript,
+  renderListPowerStyle,
+  renderListPowerSurface,
+  renderToneBadge,
+  stripHtml
+} from "./operationsPages";
 
 type DashboardPageBodyInput = {
   flash: string;
@@ -55,7 +68,7 @@ const OPERATOR_PATTERN_STYLE = `<style>
 </style>`;
 
 function renderOpsStyle(): string {
-  return OPERATOR_PATTERN_STYLE;
+  return OPERATOR_PATTERN_STYLE + renderListPowerStyle();
 }
 
 type OpsRailTone = "ok" | "warn" | "bad" | "muted";
@@ -92,8 +105,11 @@ function renderSearchCluster(input: {
   label: string;
   placeholder: string;
   hint: string;
+  urlParam?: string;
 }): string {
-  return `<div class="search-cluster"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}" placeholder="${input.placeholder}" autocomplete="off"/><span class="muted-text">${input.hint}</span></div>`;
+  return `<div class="search-cluster"><label for="${input.id}">${input.label}</label><input id="${input.id}" name="q" type="search" data-table-filter="${input.targetId}"${
+    input.urlParam ? ` data-url-param="${input.urlParam}"` : ""
+  } placeholder="${input.placeholder}" autocomplete="off"/><span class="muted-text">${input.hint}</span></div>`;
 }
 
 function renderRailItems(items: OpsRailItem[]): string {
@@ -123,6 +139,85 @@ function renderRailSection(input: {
   return `<section class="card"><div class="section-head"><div><h2>${input.title}</h2><p class="section-intro">${input.intro}</p></div>${
     input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""
   }</div><div class="ops-rail-grid">${input.cards.map(renderRailCard).join("")}</div></section>`;
+}
+
+function sanitizeDomId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "-");
+}
+
+function latestJobStatus(latestText: string): string {
+  const match = latestText.match(/\(([^)]+)\)\s*$/);
+  return match?.[1]?.trim().toUpperCase() ?? "";
+}
+
+function episodeRowTags(statusText: string, latestStatus: string): string[] {
+  return [
+    "episode",
+    /(FAILED|ERROR)/i.test(statusText) || /(FAILED|ERROR)/i.test(latestStatus) ? "failed" : "",
+    /(RUNNING|QUEUED|PENDING)/i.test(statusText) || /(RUNNING|QUEUED|PENDING)/i.test(latestStatus) ? "active" : "",
+    /(SUCCEEDED|COMPLETED|READY)/i.test(latestStatus) ? "publish-ready" : ""
+  ].filter(Boolean);
+}
+
+function renderPoweredEpisodeRows(rowsHtml: string): string {
+  const rows = parseTableRows(rowsHtml).filter((row) => row.cells.length >= 9);
+  if (rows.length === 0) return rowsHtml;
+
+  return rows
+    .map((row) => {
+      const episodeLink = firstLink(row.cells[0]);
+      const episodeId = extractRouteValue(episodeLink?.href, "episodes") || stripHtml(row.cells[0]) || "-";
+      const topicText = stripHtml(row.cells[1]) || "-";
+      const statusMarkup = row.cells[2] || '<span class="badge muted">unknown</span>';
+      const statusText = stripHtml(statusMarkup) || "unknown";
+      const channelText = stripHtml(row.cells[3]) || "-";
+      const styleText = stripHtml(row.cells[4]) || "-";
+      const latestText = stripHtml(row.cells[5]) || "-";
+      const latestStatus = latestJobStatus(latestText);
+      const durationText = stripHtml(row.cells[6]) || "-";
+      const createdText = stripHtml(row.cells[7]) || "-";
+      const runProfilesHtml = row.cells[8] ?? "";
+      const checkboxId = `episodes-compare-${sanitizeDomId(episodeId)}`;
+      const rowActions: ListPowerActionInput[] = [];
+      if (episodeLink?.href) rowActions.push({ kind: "link", label: "View", href: episodeLink.href });
+      rowActions.push({ kind: "compare", label: "Compare", checkboxId });
+      rowActions.push({ kind: "link", label: "Rollback", href: `/ui/episodes/${encodeURIComponent(episodeId)}/editor` });
+      if (latestStatus && /(SUCCEEDED|COMPLETED|READY)/i.test(latestStatus)) {
+        rowActions.push({ kind: "link", label: "Approve", href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}` });
+      }
+      rowActions.push({ kind: "link", label: "Open artifacts", href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}` });
+      rowActions.push({ kind: "copy", label: "Copy ID/path", value: episodeId });
+
+      return `<tr data-list-row="1" data-episode-row="${episodeId}" data-list-status="${statusText.toUpperCase()}" data-list-created-at="${createdText}" data-list-tags="${episodeRowTags(
+        statusText,
+        latestStatus
+      ).join(" ")}"><td><div class="ops-cell-stack"><div class="ops-cell-title">${renderListPowerCompareCheckbox({
+        checkboxId,
+        compareId: episodeId,
+        label: `${episodeId} / ${topicText}`,
+        meta: `${statusText} / ${latestText}`,
+        viewHref: episodeLink?.href,
+        compareHref: `/ui/episodes/${encodeURIComponent(episodeId)}/ab-compare`,
+        rollbackHref: `/ui/episodes/${encodeURIComponent(episodeId)}/editor`,
+        approveHref: latestStatus && /(SUCCEEDED|COMPLETED|READY)/i.test(latestStatus) ? `/ui/publish?episodeId=${encodeURIComponent(episodeId)}` : "",
+        artifactsHref: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}`,
+        copyValue: episodeId
+      })}<strong>${episodeLink ? `<a href="${episodeLink.href}">${episodeLink.label}</a>` : episodeId}</strong>${renderToneBadge(
+        latestStatus && /(FAILED|ERROR)/i.test(latestStatus) ? "recover" : latestStatus && /(SUCCEEDED|COMPLETED|READY)/i.test(latestStatus) ? "ready" : "episode",
+        latestStatus && /(FAILED|ERROR)/i.test(latestStatus) ? "bad" : latestStatus && /(SUCCEEDED|COMPLETED|READY)/i.test(latestStatus) ? "ok" : "muted"
+      )}</div><span class="ops-cell-meta">Episode object stays above compare, artifacts, and publish handoff.</span></div></td><td><div class="ops-cell-stack"><strong>${topicText}</strong><span class="ops-cell-meta">${channelText}</span></div></td><td data-col="status"><div class="ops-cell-stack"><div class="ops-cell-title">${statusMarkup}</div><span class="ops-cell-meta">${
+        /ACTIVE|RUNNING|QUEUED|PENDING/i.test(statusText) ? "Watch for stale active episodes and jump into detail before rerunning." : "Use the object status before dropping into lower-level evidence."
+      }</span></div></td><td data-col="latestJob"><div class="ops-cell-stack"><strong>${latestText}</strong><span class="ops-cell-meta">${
+        latestStatus && /(FAILED|ERROR)/i.test(latestStatus) ? "Latest job failed. Compare, recover, and artifacts stay adjacent." : "Latest job remains the lifecycle anchor for compare and publish."
+      }</span></div></td><td><div class="ops-cell-stack"><strong>${styleText}</strong><span class="ops-cell-meta">${durationText}</span></div></td><td><div class="ops-cell-stack"><strong>${createdText}</strong><span class="ops-cell-meta">${
+        latestStatus && /(FAILED|ERROR)/i.test(latestStatus)
+          ? "next safe action: detail -> recover"
+          : latestStatus && /(SUCCEEDED|COMPLETED|READY)/i.test(latestStatus)
+            ? "next safe action: compare -> approve"
+            : "next safe action: view -> run profile"
+      }</span></div></td><td><div class="ops-cell-stack">${renderListPowerActionBar(rowActions)}<div class="list-power-run-profiles"><span class="list-power-inline-note">Safe runs stay on the row for preview, full, and render-only refresh.</span><div class="ops-link-row">${runProfilesHtml}</div></div></div></td></tr>`;
+    })
+    .join("");
 }
 
 function buildDashboardRecentObjectsScript(): string {
@@ -275,16 +370,18 @@ function buildEpisodesLiveMonitorScript(): string {
       const latestCell = tr.querySelector('td[data-col="latestJob"]');
       if (statusCell instanceof HTMLTableCellElement) {
         const status = String(row.status || 'UNKNOWN');
-        statusCell.innerHTML = '<span class="badge ' + badgeClass(status) + '">' + esc(status) + '</span>';
+        tr.dataset.listStatus = status;
+        statusCell.innerHTML = '<div class="ops-cell-stack"><div class="ops-cell-title"><span class="badge ' + badgeClass(status) + '">' + esc(status) + '</span></div><span class="ops-cell-meta">' + (/(RUNNING|QUEUED|PENDING)/.test(status) ? 'Watch for stale active episodes and jump into detail before rerunning.' : 'Use the object status before dropping into lower-level evidence.') + '</span></div>';
       }
       if (latestCell instanceof HTMLTableCellElement) {
         const latest = Array.isArray(row.jobs) && row.jobs.length > 0 ? row.jobs[0] : null;
         const latestText = latest && typeof latest === 'object'
           ? String(latest.type || '-') + ' (' + String(latest.status || '-') + ')'
           : '-';
-        latestCell.textContent = latestText;
+        latestCell.innerHTML = '<div class="ops-cell-stack"><strong>' + esc(latestText) + '</strong><span class="ops-cell-meta">' + (/(FAILED|ERROR)/.test(latestText) ? 'Latest job failed. Compare, recover, and artifacts stay adjacent.' : 'Latest job remains the lifecycle anchor for compare and publish.') + '</span></div>';
       }
     });
+    window.dispatchEvent(new Event('list-power:sync'));
   };
   const stamp = () => {
     if (!(lastUpdated instanceof HTMLElement)) return;
@@ -459,14 +556,82 @@ ${renderRailSection({
     }
   ]
 })}
+
+${renderRailSection({
+  title: "Saved view launchpad",
+  intro: "Use the dashboard as the entry point for URL-backed list views. Jobs and episodes apply the full local saved-view contract, while benchmark and rollout presets deep-link into the shell search contract that already exists.",
+  cards: [
+    {
+      title: "Failed jobs",
+      intro: "Open the jobs list with the failed-job preset and keep retry, recover, and publish handoff in one URL.",
+      tone: "bad",
+      items: [
+        { label: "saved view", detail: "jobsView=failed-jobs keeps the failed-job tag filter active." },
+        { label: "compare selection", detail: "Bulk compare stays on the jobs list and hands off through jobsCompare in the URL." }
+      ],
+      linksHtml: '<a href="/ui/jobs?jobsView=failed-jobs">View</a><a href="/ui/jobs?jobsView=failed-jobs#jobs-list-power">Compare</a>'
+    },
+    {
+      title: "Stale episodes",
+      intro: "Open episodes with the stale preset so active rows older than the safe window stay above fresh work.",
+      tone: "warn",
+      items: [
+        { label: "saved view", detail: "episodesView=stale-episodes keeps stale active rows pinned without changing the global queue." },
+        { label: "deep links", detail: "Row actions still hand off to detail, A/B compare, rollback, artifacts, and publish." }
+      ],
+      linksHtml: '<a href="/ui/episodes?episodesView=stale-episodes">View</a><a href="/ui/episodes?episodesView=stale-episodes#episodes-list-power">Compare</a>'
+    },
+    {
+      title: "Benchmark regressions",
+      intro: "This route is still rendered in uiRoutes.ts, so the dashboard exposes a URL-backed regression deep link instead of an in-file saved-view implementation.",
+      tone: "warn",
+      items: [
+        { label: "shell contract", detail: "The shell search field already hydrates from filter-benchmark-regression-table." },
+        { label: "handoff", detail: "Use the benchmark regression section before candidate compare or rollout detail." }
+      ],
+      linksHtml: '<a href="/ui/benchmarks?filter-benchmark-regression-table=blocked#benchmark-regressions">View</a>'
+    },
+    {
+      title: "Rollout blocked only",
+      intro: "Rollouts also stay owned by uiRoutes.ts today, so the dashboard uses the existing shell search param to launch blocked-only review.",
+      tone: "bad",
+      items: [
+        { label: "shell contract", detail: "The rollout queue search already mirrors its filter into the URL." },
+        { label: "handoff", detail: "Review blocked signals before compare-before-promote or artifact detail." }
+      ],
+      linksHtml: '<a href="/ui/rollouts?filter=blocked#rollout-signal-table">View</a>'
+    }
+  ]
+})}
 ${buildDashboardRecentObjectsScript()}`;
 }
 
 export function buildEpisodesPageBody(input: EpisodesPageBodyInput): string {
   const t = UI_TEXT.episodes;
+  const rowsHtml = input.rows ? renderPoweredEpisodeRows(input.rows) : "";
+  const listPowerSurface = renderListPowerSurface({
+    rootId: "episodes-list-power",
+    pageKey: "episodes",
+    tableId: "episodes-table",
+    title: "Saved views + compare handoff",
+    intro: "Keep episode list power on the same contract as jobs: local saved views, URL-synced filters, compare selection, rollback handoff, and publish approval when the latest job is clean.",
+    presets: [
+      { id: "stale-episodes", label: "Stale episodes", note: "Active episodes older than the safe window.", tags: ["active", "stale"], match: "all" },
+      { id: "failed-episodes", label: "Failed latest jobs", note: "Episodes whose latest known job failed and should recover first.", tags: ["failed"], match: "all" },
+      { id: "publish-ready-episodes", label: "Publish ready", note: "Episodes whose latest job is ready for artifacts and publish handoff.", tags: ["publish-ready"], match: "all" }
+    ],
+    searchInputIds: ["episodes-filter"],
+    viewParam: "episodesView",
+    compareParam: "episodesCompare",
+    compareTitle: "Episode compare handoff",
+    compareIntro: "Selection stays on the list surface first. Jump into detail, A/B compare, rollback, artifacts, or publish without losing the current filter state.",
+    compareEmpty: "Select one or more episode objects to keep compare, rollback, and publish handoffs together.",
+    selectionHint: "Saved views stay local. Search, active view, and compare selection stay mirrored into the URL."
+  });
 
   return `
 ${renderOpsStyle()}
+${listPowerSurface}
 <section class="card dashboard-shell ops-shell">
   ${input.flash}
   <div class="ops-titlebar">
@@ -497,6 +662,7 @@ ${renderRailSection({
         targetId: "episodes-table",
         label: "에피소드 필터",
         placeholder: t.tableFilterPlaceholder,
+        urlParam: "episodesFilter",
         hint: `${t.localFilterHint} / 필요하면 전역 검색으로 바로 이동할 수 있습니다.`
       })
     },
@@ -527,8 +693,8 @@ ${renderRailSection({
     </div>
     <div class="quick-links"><a href="/ui/jobs">${t.quickLinksJobs}</a><a href="/ui/hitl">HITL</a><a href="/ui/health">상태</a></div>
   </div>
-  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>오브젝트</th><th>주제</th><th>상태</th><th>채널</th><th>스타일 / 훅</th><th>최근 작업</th><th>길이</th><th>생성 시각</th><th>다음 액션</th></tr></thead><tbody>${
-    input.rows || renderTableEmptyRow(9, t.noEpisodes)
+  <div class="table-wrap"><table id="episodes-table"><thead><tr><th>episode object / selection</th><th>topic / channel</th><th>status</th><th>latest job / lifecycle</th><th>style / duration</th><th>created / next safe action</th><th>row actions / run profiles</th></tr></thead><tbody>${
+    rowsHtml || renderTableEmptyRow(7, t.noEpisodes)
   }</tbody></table></div>
 </section>
 
@@ -565,5 +731,5 @@ ${renderRailSection({
       linksHtml: '<a href="/ui/episodes">에피소드</a><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a>'
     }
   ]
-})}${buildEpisodesLiveMonitorScript()}`;
+})}${buildEpisodesLiveMonitorScript()}${renderListPowerScript()}`;
 }
