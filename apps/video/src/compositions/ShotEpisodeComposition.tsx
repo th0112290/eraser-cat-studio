@@ -16,6 +16,8 @@ import { ShotFinishPass } from "../effects/ShotFinishPass";
 import { ShotTransition, type ShotTransitionType } from "../effects/ShotTransition";
 import { ScribbleHighlight } from "../effects/ScribbleHighlight";
 import { FlashCut } from "../effects/Transitions";
+import { VisualObjectRendererAdapter } from "../renderers/VisualObjectRendererAdapter";
+import type { RendererFinishProfile, RendererVisualObject } from "../renderers/types";
 
 export type ShotChartRow = {
   label: string;
@@ -1659,6 +1661,72 @@ function resolveSecondaryVisualObject(
   })[0];
 }
 
+function supportsRendererAdapterKind(kind: ShotVisualObject["kind"] | undefined): boolean {
+  return (
+    kind === "line_chart" ||
+    kind === "kpi_card" ||
+    kind === "summary_card" ||
+    kind === "timeline" ||
+    kind === "comparison_board" ||
+    kind === "icon_grid" ||
+    kind === "process_flow" ||
+    kind === "anatomy_diagram"
+  );
+}
+
+function toRendererFinishProfile(finishProfile: ShotFinishProfile | undefined): RendererFinishProfile {
+  const profileId = finishProfile?.id?.toLowerCase() ?? "";
+  const tone: RendererFinishProfile["tone"] = profileId.includes("medical")
+    ? "medical_soft"
+    : profileId.includes("economy")
+      ? "economy_crisp"
+      : "studio_balanced";
+  const tintColor =
+    finishProfile?.toneOverlayColor ??
+    (tone === "medical_soft" ? "rgba(126, 231, 200, 0.42)" : tone === "economy_crisp" ? "rgba(255, 209, 102, 0.4)" : "rgba(138, 214, 255, 0.38)");
+
+  return {
+    tone,
+    textureMatch:
+      finishProfile?.renderPathCompensation === "deterministic"
+        ? "deterministic_clean"
+        : finishProfile?.renderPathCompensation
+          ? "sidecar_matched"
+          : "balanced_soft",
+    brightness: 1,
+    contrast: 1 + (finishProfile?.sharpenOpacity ?? 0) * 0.16,
+    saturation: 1 + (finishProfile?.tintOpacity ?? 0) * 0.2,
+    lineSharpenStrength: finishProfile?.sharpenOpacity ?? 0,
+    bloomOpacity: finishProfile?.bloomOpacity ?? 0,
+    grainOpacity: finishProfile?.grainOpacity ?? 0,
+    vignetteOpacity: finishProfile?.vignetteOpacity ?? 0,
+    tintOpacity: finishProfile?.tintOpacity ?? 0,
+    tintGradient: `radial-gradient(circle at 18% 18%, ${tintColor} 0%, rgba(255,255,255,0) 62%)`
+  };
+}
+
+function toRendererVisualObject(visualObject: ShotVisualObject): RendererVisualObject {
+  return {
+    objectId: visualObject.objectId,
+    kind:
+      visualObject.kind === "icon_grid" || visualObject.kind === "anatomy_diagram"
+        ? visualObject.kind
+        : (visualObject.kind as RendererVisualObject["kind"]),
+    semanticRole: visualObject.semanticRole,
+    title: visualObject.title,
+    body: visualObject.body,
+    items: visualObject.items,
+    dataRef: visualObject.dataRef
+      ? {
+          chartId: visualObject.dataRef.chartId,
+          datasetId: visualObject.dataRef.datasetId,
+          timeRange: visualObject.dataRef.timeRange
+        }
+      : undefined,
+    selectionReason: visualObject.selection?.selection_reason
+  };
+}
+
 function formatMetricValue(value: number, unit?: string): string {
   return `${Math.round(value)}${unit ? ` ${unit}` : ""}`;
 }
@@ -3187,7 +3255,11 @@ const ShotLayer = ({ sequence, freezeCharacterPose, characterPacks, profiles, fr
   const occluderBox = resolveOccluderBox(sequence);
   const primaryVisualObject = resolvePrimaryVisualObject(sequence);
   const secondaryVisualObject = resolveSecondaryVisualObject(sequence, primaryVisualObject);
+  const supportingVisualObjects = (sequence.visualObjects ?? []).filter(
+    (object) => object.objectId !== primaryVisualObject?.objectId
+  );
   const primaryVisualKind = primaryVisualObject?.kind ?? sequence.primaryVisualKind;
+  const renderAdapterPrimaryView = !!primaryVisualObject && supportsRendererAdapterKind(primaryVisualObject.kind);
   const renderChartView = primaryVisualKind
     ? primaryVisualKind === "bar_chart"
     : sequence.hasChart && sequence.visualMode === "chart";
@@ -3196,9 +3268,12 @@ const ShotLayer = ({ sequence, freezeCharacterPose, characterPacks, profiles, fr
     : sequence.hasChart && sequence.visualMode === "table";
   const renderObjectPrimaryView =
     !!primaryVisualObject &&
+    !renderAdapterPrimaryView &&
     primaryVisualObject.kind !== "bar_chart" &&
     primaryVisualObject.kind !== "table";
+  const renderSecondaryObjectView = !!secondaryVisualObject && !renderAdapterPrimaryView;
   const renderLegacyInsertAsset = !!sequence.insertAsset && !secondaryVisualObject;
+  const rendererFinishProfile = toRendererFinishProfile(sequence.finishProfile);
   const pointerTargetCount = resolvePrimaryVisualPointerTargetCountLocal(sequence);
 
   const bars = computeBarGeometry(sequence.chartData ?? [], visualBox);
@@ -3397,6 +3472,56 @@ const ShotLayer = ({ sequence, freezeCharacterPose, characterPacks, profiles, fr
             />
           ) : null}
 
+          {renderAdapterPrimaryView && primaryVisualObject ? (
+            <div
+              style={{
+                position: "absolute",
+                left: visualBox.x,
+                top: visualBox.y,
+                width: visualBox.width,
+                height: visualBox.height
+              }}
+            >
+              <VisualObjectRendererAdapter
+                width={visualBox.width}
+                height={visualBox.height}
+                visualMode={sequence.visualMode}
+                hasChart={sequence.hasChart || primaryVisualObject.kind === "line_chart"}
+                chartData={sequence.chartData}
+                primaryKind={
+                  primaryVisualKind === "icon_grid"
+                    ? "icon_array"
+                    : primaryVisualKind === "anatomy_diagram"
+                      ? "labeled_diagram"
+                      : (primaryVisualKind as never)
+                }
+                primaryObject={toRendererVisualObject(primaryVisualObject)}
+                supportingObjects={supportingVisualObjects.map((object) => toRendererVisualObject(object))}
+                visualPlan={
+                  sequence.visualPlan
+                    ? {
+                        channelDomain: sequence.visualPlan.channel_domain,
+                        educationalMode:
+                          sequence.visualPlan.educational_mode === "data_explainer" ||
+                          sequence.visualPlan.educational_mode === "summary_explainer"
+                            ? sequence.visualPlan.educational_mode
+                            : "generic",
+                        selectionReason: sequence.visualPlan.selection_reason
+                      }
+                    : undefined
+                }
+                finishProfile={rendererFinishProfile}
+                annotationsEnabled={sequence.annotationsEnabled}
+                chartCallout={sequence.chartCallout}
+                localFrame={animationFrame}
+                fps={fps}
+                emphasisAtFrame={emphasisAtFrame}
+                pointerIndex={effectivePointerIndex}
+                highlightIndices={highlightIndices}
+              />
+            </div>
+          ) : null}
+
           {renderObjectPrimaryView && primaryVisualObject ? (
             <ExplainerObjectView
               sequence={sequence}
@@ -3409,7 +3534,7 @@ const ShotLayer = ({ sequence, freezeCharacterPose, characterPacks, profiles, fr
             />
           ) : null}
 
-          {secondaryVisualObject && insertBox ? (
+          {renderSecondaryObjectView && secondaryVisualObject && insertBox ? (
             <ExplainerObjectView
               sequence={sequence}
               visualObject={secondaryVisualObject}

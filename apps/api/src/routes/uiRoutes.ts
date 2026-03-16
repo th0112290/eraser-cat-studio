@@ -18,6 +18,11 @@ import {
   buildPublishPageBody,
   buildRolloutsPageBody
 } from "./ui/pages/operationsPages";
+import {
+  buildDatasetLineagePageBody,
+  buildRepairAcceptancePageBody,
+  buildRouteReasonPageBody
+} from "./ui/pages/opsReviewPages";
 import { buildDashboardPageBody, buildEpisodesPageBody } from "./ui/pages/dashboardEpisodesPages";
 
 type JsonRecord = Record<string, unknown>;
@@ -113,6 +118,161 @@ type RegressionReportView = {
   renderModeArtifactPath: string | null;
   candidateCompareItems: Array<{ label: string; path: string }>;
   artifactRelativePath: string;
+};
+
+type SmokeArtifactBundle = {
+  source: RolloutArtifactSource;
+  smokePath: string;
+  smokeDoc: JsonRecord;
+  generatedAt: string;
+  scenario: string;
+  bundle: string;
+  episodeId: string;
+  runtimePath: string | null;
+  runtimeDoc: unknown | null;
+  sidecarPlanPath: string | null;
+  sidecarPlanDoc: unknown | null;
+  renderModePath: string | null;
+  renderModeDoc: unknown | null;
+  qcPath: string | null;
+  qcDoc: unknown | null;
+  renderLogPath: string | null;
+  renderLogDoc: unknown | null;
+};
+
+type RepairAcceptanceRow = {
+  scenario: string;
+  bundle: string;
+  episodeId: string;
+  shotId: string;
+  shotType: string;
+  backend: string;
+  renderer: string;
+  providerSummary: string;
+  policySummary: string;
+  attemptSummary: string;
+  selectedCandidateId: string;
+  acceptanceStatus: string;
+  acceptanceTone: UiBadgeTone;
+  qcStatus: string;
+  qcTone: UiBadgeTone;
+  judgeSummary: string;
+  repairSignals: string[];
+  repairSummary: string;
+  qcSummary: string;
+  issueSummary: string;
+  issueCount: number;
+  finalPassed: boolean | null;
+  finalStage: string | null;
+  fallbackSteps: string[];
+  fallbackSummary: string;
+  failureSummary: string;
+  generatedAt: string;
+  sourceLabel: string;
+  sourcePath: string;
+  smokeArtifactPath: string;
+  planArtifactPath: string | null;
+  qcArtifactPath: string | null;
+  renderLogPath: string | null;
+  actualJudgePath: string | null;
+  visualJudgePath: string | null;
+  candidateComparePath: string | null;
+  artifactRelativePath: string;
+};
+
+type RouteReasonExplorerRow = {
+  scenario: string;
+  bundle: string;
+  episodeId: string;
+  shotId: string;
+  shotType: string;
+  routeReason: string;
+  routeReasonLabel: string;
+  renderModeSummary: string;
+  backend: string;
+  providerSummary: string;
+  policySummary: string;
+  attemptSummary: string;
+  selectedCandidateId: string;
+  acceptanceStatus: string;
+  acceptanceTone: UiBadgeTone;
+  qcSummary: string;
+  issueSummary: string;
+  issueCount: number;
+  repairSummary: string;
+  finalPassed: boolean | null;
+  finalStage: string | null;
+  fallbackSteps: string[];
+  fallbackSummary: string;
+  generatedAt: string;
+  sourceLabel: string;
+  sourcePath: string;
+  smokeArtifactPath: string;
+  runtimePath: string | null;
+  planArtifactPath: string | null;
+  qcArtifactPath: string | null;
+  renderLogPath: string | null;
+  actualJudgePath: string | null;
+  visualJudgePath: string | null;
+  candidateComparePath: string | null;
+  renderModeArtifactPath: string | null;
+  artifactRelativePath: string;
+};
+
+type DatasetLineageRow = {
+  scenario: string;
+  bundle: string;
+  episodeId: string;
+  generatedAt: string;
+  sourceLabel: string;
+  sourcePath: string;
+  smokeArtifactPath: string;
+  artifactRelativePath: string;
+  bibleRef: string;
+  datasetIds: string[];
+  packIds: string[];
+  beatCount: number;
+  routeReasons: string[];
+  inputShotsPath: string | null;
+  runtimeShotsPath: string | null;
+  renderLogPath: string | null;
+  qcReportPath: string | null;
+  sidecarPlanPath: string | null;
+  renderModeArtifactPath: string | null;
+  manifestPaths: string[];
+  selectedImagePaths: string[];
+  schemaGaps: string[];
+};
+
+type ReviewIssueEntry = {
+  code: string;
+  severity: string;
+  message: string;
+  shotId: string | null;
+  stage: string | null;
+  detailsSummary: string | null;
+};
+
+type BundleReviewState = {
+  finalPassed: boolean | null;
+  finalStage: string | null;
+  fallbackSteps: string[];
+  qcArtifactPath: string | null;
+  renderLogPath: string | null;
+  issuesByShot: Map<string, ReviewIssueEntry[]>;
+};
+
+type SidecarPlanReviewEntry = {
+  providerSummary: string;
+  policySummary: string;
+  attemptSummary: string;
+  selectedCandidateId: string;
+  requestPath: string | null;
+  candidateJudgePath: string | null;
+  actualJudgePath: string | null;
+  visualJudgePath: string | null;
+  preflightPath: string | null;
+  resultPath: string | null;
 };
 
 type ProfileBrowserBundleCard = {
@@ -1149,6 +1309,652 @@ function collectBenchmarkViewerData(): {
   return { sources, backendScenarios, regressions };
 }
 
+function collectSmokeArtifactBundles(): SmokeArtifactBundle[] {
+  const bundles: SmokeArtifactBundle[] = [];
+  const seen = new Set<string>();
+  for (const source of getRolloutArtifactSources()) {
+    if (!fs.existsSync(source.outRoot)) {
+      continue;
+    }
+    const smokePaths = findFilesByName(source.outRoot, "smoke_report.json", 8);
+    for (const smokePath of smokePaths) {
+      const key = path.resolve(smokePath).toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const smokeDoc = readJsonFileSafe(smokePath);
+      if (!isRecord(smokeDoc)) {
+        continue;
+      }
+      const runtimePath =
+        safeJsonArtifactPath(source, smokeDoc.runtime_fixture_path) ??
+        safeJsonArtifactPath(source, smokeDoc.input_path);
+      const sidecarPlanPath = safeJsonArtifactPath(source, smokeDoc.sidecar_plan_path);
+      const renderModePath = safeJsonArtifactPath(source, smokeDoc.shot_render_mode_report_path);
+      const qcPath = safeJsonArtifactPath(source, smokeDoc.qc_report_path);
+      const renderLogPath = safeJsonArtifactPath(source, smokeDoc.render_log_path);
+      bundles.push({
+        source,
+        smokePath,
+        smokeDoc,
+        generatedAt: str(smokeDoc.generated_at) ?? "-",
+        scenario: str(smokeDoc.smoke_label) ?? artifactRelativePath(source.outRoot, path.dirname(smokePath)),
+        bundle: str(smokeDoc.profile_bundle) ?? str(smokeDoc.channel_domain) ?? "-",
+        episodeId: str(smokeDoc.episode_id) ?? "-",
+        runtimePath,
+        runtimeDoc: runtimePath ? readJsonFileSafe(runtimePath) : null,
+        sidecarPlanPath,
+        sidecarPlanDoc: sidecarPlanPath ? readJsonFileSafe(sidecarPlanPath) : null,
+        renderModePath,
+        renderModeDoc: renderModePath ? readJsonFileSafe(renderModePath) : null,
+        qcPath,
+        qcDoc: qcPath ? readJsonFileSafe(qcPath) : null,
+        renderLogPath,
+        renderLogDoc: renderLogPath ? readJsonFileSafe(renderLogPath) : null
+      });
+    }
+  }
+  bundles.sort((left, right) => {
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    if (left.bundle !== right.bundle) {
+      return left.bundle.localeCompare(right.bundle);
+    }
+    return left.scenario.localeCompare(right.scenario);
+  });
+  return bundles;
+}
+
+function readBooleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function safePlanArtifactPath(source: RolloutArtifactSource, artifact: unknown): string | null {
+  if (!isRecord(artifact)) return null;
+  const candidatePath = artifact.path;
+  const kind = (str(artifact.kind) ?? path.extname(str(candidatePath) ?? "").replace(".", "")).toLowerCase();
+  if (kind === "video") {
+    return safeRolloutVideoPath(source, candidatePath);
+  }
+  if (kind === "plan" || path.extname(str(candidatePath) ?? "").toLowerCase() === ".txt") {
+    return safeRolloutTextPath(source, candidatePath);
+  }
+  return safeJsonArtifactPath(source, candidatePath) ?? safeRolloutTextPath(source, candidatePath);
+}
+
+function pickPlanArtifactPath(source: RolloutArtifactSource, plan: JsonRecord, fragments: string[]): string | null {
+  const normalized = fragments.map((value) => value.toLowerCase());
+  for (const artifact of recordList(plan.artifacts)) {
+    const label = (str(artifact.label) ?? "").toLowerCase();
+    if (!normalized.some((fragment) => label.includes(fragment))) {
+      continue;
+    }
+    const resolvedPath = safePlanArtifactPath(source, artifact);
+    if (resolvedPath) {
+      return resolvedPath;
+    }
+  }
+  return null;
+}
+
+function buildSidecarPlanReviewMap(
+  source: RolloutArtifactSource,
+  sidecarPlan: unknown
+): Map<string, SidecarPlanReviewEntry> {
+  const reviewByShot = new Map<string, SidecarPlanReviewEntry>();
+  if (!isRecord(sidecarPlan)) {
+    return reviewByShot;
+  }
+
+  for (const plan of recordList(sidecarPlan.plans)) {
+    const shotId = str(plan.shotId);
+    if (!shotId) continue;
+    const metadata = isRecord(plan.metadata) ? plan.metadata : {};
+    const policyTags = uniqueStrings((Array.isArray(metadata.policyTags) ? metadata.policyTags : []).map((value) => str(value)));
+    const attempt = num(metadata.attempt);
+    const maxAttempts = num(metadata.maxAttempts);
+    reviewByShot.set(shotId, {
+      providerSummary:
+        compact(
+          [
+            str(metadata.actualBackendCapability) ?? str(metadata.backendCapability) ?? str(metadata.requestedBackend),
+            str(metadata.actualRenderer) ?? str(plan.renderer) ?? str(metadata.requestedRenderer)
+          ],
+          " / "
+        ) || "-",
+      policySummary:
+        compact(
+          [
+            str(metadata.controlnetPreset),
+            str(metadata.impactPreset),
+            str(metadata.qcPreset),
+            policyTags.length > 0 ? `tags ${summarizeValues(policyTags, 3)}` : null
+          ],
+          " | "
+        ) || "-",
+      attemptSummary:
+        attempt === null
+          ? "-"
+          : maxAttempts !== null
+            ? `${formatNumber(attempt, 0)}/${formatNumber(maxAttempts, 0)}`
+            : formatNumber(attempt, 0),
+      selectedCandidateId:
+        str(metadata.premiumActualSelectedCandidateId) ??
+        str(metadata.premiumSelectedCandidateId) ??
+        str(isRecord(plan.judge) ? plan.judge.candidateId : undefined) ??
+        "-",
+      requestPath: pickPlanArtifactPath(source, plan, ["request"]),
+      candidateJudgePath:
+        safeJsonArtifactPath(source, metadata.premiumCandidateJudgePath) ??
+        pickPlanArtifactPath(source, plan, ["candidate-judge"]),
+      actualJudgePath:
+        safeJsonArtifactPath(source, metadata.premiumActualJudgePath) ??
+        pickPlanArtifactPath(source, plan, ["actual-judge"]),
+      visualJudgePath:
+        safeJsonArtifactPath(source, metadata.premiumActualVisualSignalReportPath) ??
+        pickPlanArtifactPath(source, plan, ["visual-judge"]),
+      preflightPath: pickPlanArtifactPath(source, plan, ["preflight"]),
+      resultPath: pickPlanArtifactPath(source, plan, ["result"])
+    });
+  }
+
+  return reviewByShot;
+}
+
+function collectReviewIssuesByShot(report: unknown): Map<string, ReviewIssueEntry[]> {
+  const issuesByShot = new Map<string, ReviewIssueEntry[]>();
+  const pushIssue = (raw: unknown, stage: string | null): void => {
+    if (!isRecord(raw)) return;
+    const shotId = str(raw.shotId) ?? str(raw.shot_id) ?? "*";
+    const entry: ReviewIssueEntry = {
+      code: str(raw.code) ?? str(raw.check) ?? str(raw.rule) ?? str(raw.name) ?? "issue",
+      severity: str(raw.severity) ?? "INFO",
+      message: str(raw.message) ?? str(raw.reason) ?? str(raw.details) ?? "-",
+      shotId: shotId === "*" ? null : shotId,
+      stage,
+      detailsSummary: rolloutDetailItems(raw.details, 2)[0] ?? null
+    };
+    const bucket = issuesByShot.get(shotId) ?? [];
+    const duplicate = bucket.some(
+      (item) =>
+        item.code === entry.code &&
+        item.severity === entry.severity &&
+        item.message === entry.message &&
+        item.stage === entry.stage
+    );
+    if (!duplicate) {
+      bucket.push(entry);
+      issuesByShot.set(shotId, bucket);
+    }
+  };
+
+  if (!isRecord(report)) {
+    return issuesByShot;
+  }
+
+  for (const issue of recordList(report.issues)) {
+    pushIssue(issue, null);
+  }
+  for (const run of recordList(report.runs)) {
+    const stage = str(run.stage);
+    for (const issue of recordList(run.issues)) {
+      pushIssue(issue, stage);
+    }
+  }
+  return issuesByShot;
+}
+
+function reviewIssuesForShot(issuesByShot: Map<string, ReviewIssueEntry[]>, shotId: string): ReviewIssueEntry[] {
+  return [...(issuesByShot.get(shotId) ?? []), ...(issuesByShot.get("*") ?? [])];
+}
+
+function summarizeReviewIssues(entries: ReviewIssueEntry[], limit = 2): string {
+  if (entries.length === 0) return "-";
+  const summary = entries
+    .slice(0, limit)
+    .map((entry) => compact([entry.severity, entry.code, entry.message], " / "))
+    .join("; ");
+  return entries.length > limit ? `${summary} (+${entries.length - limit})` : summary;
+}
+
+function collectBundleReviewState(input: {
+  qcDoc: unknown;
+  renderLogDoc: unknown;
+  qcArtifactPath: string | null;
+  renderLogPath: string | null;
+}): BundleReviewState {
+  const qcDoc = isRecord(input.qcDoc) ? input.qcDoc : {};
+  const renderLogDoc = isRecord(input.renderLogDoc) ? input.renderLogDoc : {};
+  const regressionSummary = isRecord(renderLogDoc.episode_regression_summary) ? renderLogDoc.episode_regression_summary : {};
+  return {
+    finalPassed:
+      readBooleanOrNull(qcDoc.final_passed) ??
+      readBooleanOrNull(regressionSummary.final_passed) ??
+      readBooleanOrNull(renderLogDoc.qc_passed),
+    finalStage: str(qcDoc.final_stage) ?? str(renderLogDoc.final_stage) ?? null,
+    fallbackSteps: uniqueStrings([
+      ...(Array.isArray(qcDoc.fallback_steps_applied) ? qcDoc.fallback_steps_applied : []).map((value) => str(value)),
+      ...(Array.isArray(renderLogDoc.fallback_steps_applied) ? renderLogDoc.fallback_steps_applied : []).map((value) => str(value))
+    ]),
+    qcArtifactPath: input.qcArtifactPath,
+    renderLogPath: input.renderLogPath,
+    issuesByShot: collectReviewIssuesByShot(input.qcDoc)
+  };
+}
+
+function collectReferenceLineage(
+  source: RolloutArtifactSource,
+  baseDir: string
+): { manifestPaths: string[]; selectedImagePaths: string[] } {
+  const shotSidecarDir = path.basename(baseDir).toLowerCase() === "shot_sidecar" ? baseDir : path.join(baseDir, "shot_sidecar");
+  if (!fs.existsSync(shotSidecarDir)) {
+    return { manifestPaths: [], selectedImagePaths: [] };
+  }
+
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(shotSidecarDir)
+      .filter((name) => name.endsWith(".request.json") || name.endsWith(".plan.json"))
+      .map((name) => path.join(shotSidecarDir, name))
+      .slice(0, 12);
+  } catch {
+    return { manifestPaths: [], selectedImagePaths: [] };
+  }
+
+  const manifestPaths: string[] = [];
+  const selectedImagePaths: string[] = [];
+  for (const filePath of entries) {
+    const doc = readJsonFileSafe(filePath);
+    if (!isRecord(doc)) {
+      continue;
+    }
+    const referenceBundle = isRecord(doc.reference_bundle) ? doc.reference_bundle : {};
+    const candidateManifest = str(referenceBundle.generation_manifest_path);
+    const candidateImage = str(referenceBundle.selected_image_path) ?? str(doc.first_frame);
+    if (candidateManifest) {
+      manifestPaths.push(candidateManifest);
+    }
+    if (candidateImage) {
+      selectedImagePaths.push(candidateImage);
+    }
+    const requestPath = safeJsonArtifactPath(source, doc.request_path);
+    if (requestPath && requestPath !== filePath) {
+      const requestDoc = readJsonFileSafe(requestPath);
+      if (isRecord(requestDoc) && isRecord(requestDoc.reference_bundle)) {
+        const nestedReference = requestDoc.reference_bundle;
+        const nestedManifest = str(nestedReference.generation_manifest_path);
+        const nestedImage = str(nestedReference.selected_image_path) ?? str(requestDoc.first_frame);
+        if (nestedManifest) {
+          manifestPaths.push(nestedManifest);
+        }
+        if (nestedImage) {
+          selectedImagePaths.push(nestedImage);
+        }
+      }
+    }
+  }
+
+  return {
+    manifestPaths: uniqueStrings(manifestPaths),
+    selectedImagePaths: uniqueStrings(selectedImagePaths)
+  };
+}
+
+function buildCandidateCompareMap(source: RolloutArtifactSource, baseDir: string): Map<string, string> {
+  const candidateMap = new Map<string, string>();
+  for (const item of findCandidateCompareItems(source, baseDir)) {
+    const doc = readJsonFileSafe(item.path);
+    const shotId = str(isRecord(doc) ? doc.shot_id : undefined) ?? candidateCompareStem(item.path);
+    candidateMap.set(shotId, item.path);
+  }
+  return candidateMap;
+}
+
+function acceptanceStatusFromArtifact(raw: JsonRecord): string {
+  const explicit = str(raw.acceptance_status);
+  if (explicit) {
+    return explicit;
+  }
+  if (raw.accepted === true || raw.judge_accepted === true) {
+    return "accepted";
+  }
+  if (raw.accepted === false || raw.judge_accepted === false) {
+    return "rejected";
+  }
+  return str(raw.judge_decision) ?? str(raw.status) ?? "unknown";
+}
+
+function acceptanceTone(status: string): UiBadgeTone {
+  const normalized = status.trim().toLowerCase();
+  if (["accepted", "ready", "resolved", "passed", "ok"].includes(normalized)) return "ok";
+  if (["rejected", "failed", "blocked", "error"].includes(normalized)) return "bad";
+  if (["warn", "warning", "review"].includes(normalized)) return "warn";
+  return "muted";
+}
+
+function qcStatusFromArtifact(raw: JsonRecord): { status: string; tone: UiBadgeTone; summary: string } {
+  const reasons = uniqueStrings([
+    ...(Array.isArray(raw.qc_reasons) ? raw.qc_reasons : []).map((item) => str(item)),
+    ...(Array.isArray(isRecord(raw.qc_evaluation) ? raw.qc_evaluation.reasons : undefined)
+      ? ((raw.qc_evaluation as JsonRecord).reasons as unknown[]).map((item) => str(item))
+      : [])
+  ]);
+  const warnings = uniqueStrings([
+    ...(Array.isArray(raw.qc_warnings) ? raw.qc_warnings : []).map((item) => str(item)),
+    ...(Array.isArray(isRecord(raw.qc_evaluation) ? raw.qc_evaluation.warnings : undefined)
+      ? ((raw.qc_evaluation as JsonRecord).warnings as unknown[]).map((item) => str(item))
+      : [])
+  ]);
+  if (raw.qc_passed === true) {
+    return {
+      status: warnings.length > 0 ? "passed_with_warnings" : "passed",
+      tone: warnings.length > 0 ? "warn" : "ok",
+      summary: warnings.length > 0 ? summarizeValues(warnings, 3) : "passed"
+    };
+  }
+  if (raw.qc_passed === false || reasons.length > 0) {
+    return {
+      status: "failed",
+      tone: "bad",
+      summary: summarizeValues(reasons, 3)
+    };
+  }
+  return { status: "unknown", tone: "muted", summary: "-" };
+}
+
+function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
+  const rows: RepairAcceptanceRow[] = [];
+  for (const bundle of collectSmokeArtifactBundles()) {
+    const baseDir = path.dirname(bundle.sidecarPlanPath ?? bundle.smokePath);
+    const compareMap = buildCandidateCompareMap(bundle.source, baseDir);
+    const planReviewByShot = buildSidecarPlanReviewMap(bundle.source, bundle.sidecarPlanDoc);
+    const bundleReview = collectBundleReviewState({
+      qcDoc: bundle.qcDoc,
+      renderLogDoc: bundle.renderLogDoc,
+      qcArtifactPath: bundle.qcPath,
+      renderLogPath: bundle.renderLogPath
+    });
+    for (const raw of recordList(bundle.smokeDoc.sidecar_artifacts)) {
+      const shotId = str(raw.shot_id);
+      if (!shotId) continue;
+      const qcState = qcStatusFromArtifact(raw);
+      const planReview = planReviewByShot.get(shotId);
+      const issueEntries = reviewIssuesForShot(bundleReview.issuesByShot, shotId);
+      const repairSignals = uniqueStrings([
+        str(raw.impact_preset),
+        ...(Array.isArray(raw.preset_policy_tags) ? raw.preset_policy_tags : []).map((item) => str(item)),
+        ...(Array.isArray(raw.premium_actual_policy_rejection_reasons) ? raw.premium_actual_policy_rejection_reasons : []).map((item) => str(item)),
+        ...(qcState.summary !== "-" ? [qcState.summary] : [])
+      ])
+        .filter((value) => value.toLowerCase().includes("repair") || value.toLowerCase().includes("identity") || value.toLowerCase().includes("reject"));
+      const failureSummary = compact([
+        str(raw.failure),
+        str(raw.error),
+        Array.isArray(raw.visual_signal_warnings) && raw.visual_signal_warnings.length > 0
+          ? summarizeValues((raw.visual_signal_warnings as unknown[]).map((item) => str(item)), 2)
+          : null
+      ]);
+      const acceptanceStatus = acceptanceStatusFromArtifact(raw);
+      rows.push({
+        scenario: bundle.scenario,
+        bundle: bundle.bundle,
+        episodeId: bundle.episodeId,
+        shotId,
+        shotType: str(raw.shot_type) ?? "-",
+        backend: str(raw.backend) ?? str(raw.actual_backend) ?? "-",
+        renderer: str(raw.renderer) ?? str(raw.expected_renderer) ?? "-",
+        providerSummary:
+          planReview?.providerSummary && planReview.providerSummary !== "-"
+            ? planReview.providerSummary
+            : compact([str(raw.actual_backend) ?? str(raw.backend), str(raw.renderer) ?? str(raw.expected_renderer)], " / ") || "-",
+        policySummary:
+          planReview?.policySummary && planReview.policySummary !== "-"
+            ? planReview.policySummary
+            : compact(
+                [
+                  str(raw.controlnet_preset),
+                  str(raw.impact_preset),
+                  str(raw.qc_preset),
+                  Array.isArray(raw.preset_policy_tags) && raw.preset_policy_tags.length > 0
+                    ? `tags ${summarizeValues((raw.preset_policy_tags as unknown[]).map((item) => str(item)), 3)}`
+                    : null
+                ],
+                " | "
+              ) || "-",
+        attemptSummary: planReview?.attemptSummary && planReview.attemptSummary !== "-" ? planReview.attemptSummary : "-",
+        selectedCandidateId:
+          str(raw.premium_actual_selected_candidate_id) ??
+          str(raw.premium_selected_candidate_id) ??
+          (planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : null) ??
+          "-",
+        acceptanceStatus,
+        acceptanceTone: acceptanceTone(acceptanceStatus),
+        qcStatus: qcState.status,
+        qcTone: qcState.tone,
+        judgeSummary: compact([
+          str(raw.judge_decision),
+          num(raw.judge_score) === null ? null : `score ${formatNumber(raw.judge_score)}`,
+          num(raw.retake_count) === null ? null : `${formatNumber(raw.retake_count, 0)} retake`
+        ]),
+        repairSignals,
+        repairSummary: summarizeValues(repairSignals, 4),
+        qcSummary: qcState.summary,
+        issueSummary: summarizeReviewIssues(issueEntries, 2),
+        issueCount: issueEntries.length,
+        finalPassed: bundleReview.finalPassed,
+        finalStage: bundleReview.finalStage,
+        fallbackSteps: bundleReview.fallbackSteps,
+        fallbackSummary: summarizeValues(bundleReview.fallbackSteps, 4),
+        failureSummary: failureSummary || "-",
+        generatedAt: bundle.generatedAt,
+        sourceLabel: bundle.source.label,
+        sourcePath: bundle.source.outRoot,
+        smokeArtifactPath: bundle.smokePath,
+        planArtifactPath: bundle.sidecarPlanPath,
+        qcArtifactPath: bundleReview.qcArtifactPath,
+        renderLogPath: bundleReview.renderLogPath,
+        actualJudgePath: safeJsonArtifactPath(bundle.source, raw.premium_actual_judge_path) ?? planReview?.actualJudgePath ?? null,
+        visualJudgePath:
+          safeJsonArtifactPath(bundle.source, raw.premium_actual_visual_signal_report_path) ?? planReview?.visualJudgePath ?? null,
+        candidateComparePath: compareMap.get(shotId) ?? null,
+        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath)
+      });
+    }
+  }
+
+  rows.sort((left, right) => {
+    const toneOrder = new Map<UiBadgeTone, number>([
+      ["bad", 0],
+      ["warn", 1],
+      ["ok", 2],
+      ["muted", 3]
+    ]);
+    const leftTone = toneOrder.get(left.acceptanceTone) ?? 9;
+    const rightTone = toneOrder.get(right.acceptanceTone) ?? 9;
+    if (leftTone !== rightTone) return leftTone - rightTone;
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    return left.shotId.localeCompare(right.shotId);
+  });
+  return rows;
+}
+
+function collectRouteReasonRows(): RouteReasonExplorerRow[] {
+  const rows: RouteReasonExplorerRow[] = [];
+  for (const bundle of collectSmokeArtifactBundles()) {
+    const baseDir = path.dirname(bundle.sidecarPlanPath ?? bundle.smokePath);
+    const compareMap = buildCandidateCompareMap(bundle.source, baseDir);
+    const planReviewByShot = buildSidecarPlanReviewMap(bundle.source, bundle.sidecarPlanDoc);
+    const bundleReview = collectBundleReviewState({
+      qcDoc: bundle.qcDoc,
+      renderLogDoc: bundle.renderLogDoc,
+      qcArtifactPath: bundle.qcPath,
+      renderLogPath: bundle.renderLogPath
+    });
+    const shotItems = buildShotOpsItems({
+      shotsDoc: bundle.runtimeDoc,
+      qcReport: bundle.qcDoc,
+      sidecarPlan: bundle.sidecarPlanDoc,
+      renderModeReport: bundle.renderModeDoc
+    });
+    for (const item of shotItems) {
+      const acceptanceStatus = item.acceptanceStatus ?? item.sidecarStatus ?? "-";
+      const planReview = planReviewByShot.get(item.shotId);
+      const issueEntries = reviewIssuesForShot(bundleReview.issuesByShot, item.shotId);
+      rows.push({
+        scenario: bundle.scenario,
+        bundle: bundle.bundle,
+        episodeId: bundle.episodeId,
+        shotId: item.shotId,
+        shotType: item.shotType,
+        routeReason: item.routeReason ?? "-",
+        routeReasonLabel: item.routeReasonLabel,
+        renderModeSummary: item.renderModeSummary,
+        backend: item.backend ?? "-",
+        providerSummary: planReview?.providerSummary && planReview.providerSummary !== "-" ? planReview.providerSummary : item.backend ?? "-",
+        policySummary: planReview?.policySummary && planReview.policySummary !== "-" ? planReview.policySummary : "-",
+        attemptSummary: planReview?.attemptSummary && planReview.attemptSummary !== "-" ? planReview.attemptSummary : "-",
+        selectedCandidateId:
+          planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : "-",
+        acceptanceStatus,
+        acceptanceTone: acceptanceTone(acceptanceStatus),
+        qcSummary: item.qcSummary,
+        issueSummary: summarizeReviewIssues(issueEntries, 2),
+        issueCount: issueEntries.length,
+        repairSummary: item.repairSummary,
+        finalPassed: bundleReview.finalPassed,
+        finalStage: bundleReview.finalStage,
+        fallbackSteps: bundleReview.fallbackSteps,
+        fallbackSummary:
+          compact(
+            [
+              item.fallbackSummary !== "-" ? item.fallbackSummary : null,
+              bundleReview.fallbackSteps.length > 0 ? `bundle ${summarizeValues(bundleReview.fallbackSteps, 3)}` : null
+            ],
+            " | "
+          ) || "-",
+        generatedAt: bundle.generatedAt,
+        sourceLabel: bundle.source.label,
+        sourcePath: bundle.source.outRoot,
+        smokeArtifactPath: bundle.smokePath,
+        runtimePath: bundle.runtimePath,
+        planArtifactPath: bundle.sidecarPlanPath,
+        qcArtifactPath: bundleReview.qcArtifactPath,
+        renderLogPath: bundleReview.renderLogPath,
+        actualJudgePath: planReview?.actualJudgePath ?? null,
+        visualJudgePath: planReview?.visualJudgePath ?? null,
+        candidateComparePath: compareMap.get(item.shotId) ?? null,
+        renderModeArtifactPath: bundle.renderModePath,
+        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath)
+      });
+    }
+  }
+
+  rows.sort((left, right) => {
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    if (left.routeReason !== right.routeReason) {
+      return left.routeReason.localeCompare(right.routeReason);
+    }
+    return left.shotId.localeCompare(right.shotId);
+  });
+  return rows;
+}
+
+function collectDatasetLineageRows(): DatasetLineageRow[] {
+  const rows: DatasetLineageRow[] = [];
+  for (const bundle of collectSmokeArtifactBundles()) {
+    if (!isShotsDocLike(bundle.runtimeDoc)) {
+      continue;
+    }
+    const datasetIds = uniqueStrings(
+      recordList(bundle.runtimeDoc.shots).map((shot) => {
+        const chart = isRecord(shot.chart) ? shot.chart : {};
+        return str(chart.dataset_id) ?? str(chart.datasetId);
+      })
+    );
+    const packIds = uniqueStrings(
+      recordList(bundle.runtimeDoc.shots).map((shot) => {
+        const character = isRecord(shot.character) ? shot.character : {};
+        return str(character.pack_id) ?? str(character.packId);
+      })
+    );
+    const beatIds = new Set<string>();
+    const routeReasons = uniqueStrings(
+      recordList(bundle.runtimeDoc.shots).flatMap((shot) => {
+        const beats = Array.isArray(shot.beat_ids) ? shot.beat_ids : [];
+        for (const beatId of beats) {
+          const normalized = str(beatId);
+          if (normalized) {
+            beatIds.add(normalized);
+          }
+        }
+        const shotGrammar = isRecord(shot.shot_grammar) ? shot.shot_grammar : {};
+        return [str(shotGrammar.route_reason) ?? str(shot.route_reason)];
+      })
+    );
+    const episodeInfo = isRecord(bundle.runtimeDoc.episode) ? bundle.runtimeDoc.episode : {};
+    const referenceLineage = collectReferenceLineage(bundle.source, path.dirname(bundle.sidecarPlanPath ?? bundle.smokePath));
+    const schemaGaps = uniqueStrings([
+      datasetIds.length > 0 ? "chart dataset version/hash is not recorded; showing dataset_id only" : "chart dataset ids are missing in runtime shots",
+      str(episodeInfo.bible_ref) ? null : "episode.bible_ref is missing in runtime shots",
+      packIds.length > 0 && referenceLineage.manifestPaths.length === 0
+        ? "sidecar request does not expose generation manifest path for the character source"
+        : null
+    ]);
+    rows.push({
+      scenario: bundle.scenario,
+      bundle: bundle.bundle,
+      episodeId: bundle.episodeId,
+      generatedAt: bundle.generatedAt,
+      sourceLabel: bundle.source.label,
+      sourcePath: bundle.source.outRoot,
+      smokeArtifactPath: bundle.smokePath,
+      artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath),
+      bibleRef: str(episodeInfo.bible_ref) ?? "-",
+      datasetIds,
+      packIds,
+      beatCount: beatIds.size,
+      routeReasons,
+      inputShotsPath:
+        str(bundle.smokeDoc.fixture_path) ??
+        str(isRecord(bundle.renderLogDoc) ? bundle.renderLogDoc.shots_path : undefined) ??
+        null,
+      runtimeShotsPath: bundle.runtimePath,
+      renderLogPath: bundle.renderLogPath,
+      qcReportPath: bundle.qcPath,
+      sidecarPlanPath: bundle.sidecarPlanPath,
+      renderModeArtifactPath: bundle.renderModePath,
+      manifestPaths: referenceLineage.manifestPaths,
+      selectedImagePaths: referenceLineage.selectedImagePaths,
+      schemaGaps
+    });
+  }
+
+  rows.sort((left, right) => {
+    const leftTime = new Date(left.generatedAt).getTime();
+    const rightTime = new Date(right.generatedAt).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    if (left.bundle !== right.bundle) {
+      return left.bundle.localeCompare(right.bundle);
+    }
+    return left.episodeId.localeCompare(right.episodeId);
+  });
+  return rows;
+}
+
 function readStringAtPath(root: unknown, keys: string[]): string | null {
   let current: unknown = root;
   for (const key of keys) {
@@ -1982,6 +2788,46 @@ function humanizeOpsLabel(value: string): string {
   return value.replaceAll("_", " ").replace(/\s+/g, " ").trim();
 }
 
+function runProfileUiLabel(value: RunProfileId): string {
+  if (value === "full") return "전체";
+  if (value === "render_only") return "렌더 전용";
+  return "프리뷰";
+}
+
+function statusLabelKo(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return "-";
+  const labels: Record<string, string> = {
+    ACCEPTED: "승인됨",
+    BLOCKED: "차단됨",
+    CANCELLED: "취소됨",
+    CANCELED: "취소됨",
+    COMPLETED: "완료됨",
+    DEBUG: "디버그",
+    DOWN: "중단됨",
+    ENQUEUED: "큐 등록됨",
+    ERROR: "오류",
+    FAILED: "실패",
+    GENERATING: "생성 중",
+    INFO: "정보",
+    OK: "정상",
+    PENDING: "보류",
+    PREVIEW_READY: "프리뷰 준비 완료",
+    QUEUED: "대기 중",
+    READY: "준비 완료",
+    REJECTED: "거절됨",
+    RESOLVED: "해결됨",
+    RUNNING: "실행 중",
+    SUCCEEDED: "성공",
+    UNKNOWN: "알 수 없음",
+    UP: "정상",
+    WARN: "경고",
+    WARNING: "경고",
+    WAITING: "대기 중"
+  };
+  return labels[normalized] ?? humanizeOpsLabel(value);
+}
+
 function summarizeValues(values: Array<string | null | undefined>, limit = 3): string {
   const items = uniqueStrings(values).map((value) => humanizeOpsLabel(value));
   if (items.length === 0) return "-";
@@ -2128,7 +2974,7 @@ function renderDecisionPrioritySection(input: {
     renderDecisionCards(input.railCards, input.railEmpty),
     input.railTone ?? ((input.railCards[0]?.tone ? decisionTone(input.railCards[0].tone) : "muted") as UiBadgeTone)
   )}${renderDecisionPanel(
-    input.snapshotTitle ?? "Recovery Snapshot",
+    input.snapshotTitle ?? "복구 스냅샷",
     input.snapshotIntro,
     renderDecisionMetaGrid(input.snapshotFacts, input.snapshotEmpty),
     input.snapshotTone ?? "muted"
@@ -2138,43 +2984,43 @@ function renderDecisionPrioritySection(input: {
 function renderObjectHero(input: ObjectHeroInput): string {
   const leftPanels = [
     renderDecisionPanel(
-      "Important Metadata",
-      "Identity, current state, and control-plane context for this object.",
-      renderDecisionMetaGrid(input.metaItems ?? [], "No object metadata captured yet.")
+      "핵심 메타데이터",
+      "이 오브젝트의 식별자, 현재 상태, 제어면 맥락입니다.",
+      renderDecisionMetaGrid(input.metaItems ?? [], "아직 수집된 오브젝트 메타데이터가 없습니다.")
     ),
     renderDecisionPanel(
-      "Warnings / Blockers",
-      "Keep the blocking reason above the fold so the next operator decision is immediate.",
-      renderDecisionCards(input.blockers ?? [], "No active blockers detected."),
+      "경고 / 차단 요인",
+      "차단 사유를 상단에 유지해 다음 운영 판단을 바로 내릴 수 있게 합니다.",
+      renderDecisionCards(input.blockers ?? [], "현재 활성 차단 요인이 없습니다."),
       (input.blockers ?? []).length > 0 ? decisionTone(input.blockers?.[0]?.tone) : "ok"
     ),
     renderDecisionPanel(
-      "Recent Activity",
-      "Latest movement on this object without dropping into raw logs.",
-      renderDecisionCards(input.recentActivity ?? [], "No recent activity was captured yet.")
+      "최근 활동",
+      "원시 로그로 내려가지 않고도 최근 흐름을 확인합니다.",
+      renderDecisionCards(input.recentActivity ?? [], "아직 수집된 최근 활동이 없습니다.")
     )
   ].join("");
   const rightPanels = [
     renderDecisionPanel(
-      "Primary Actions",
-      "The main actions operators should take from this detail surface.",
-      renderDecisionCards(input.primaryActions ?? [], "No primary actions available.")
+      "주요 액션",
+      "이 상세 화면에서 운영자가 우선 수행해야 할 핵심 액션입니다.",
+      renderDecisionCards(input.primaryActions ?? [], "사용 가능한 주요 액션이 없습니다.")
     ),
     renderDecisionPanel(
-      "Secondary Actions",
-      "Deeper inspection and alternate review paths.",
-      renderDecisionCards(input.secondaryActions ?? [], "No secondary actions available.")
+      "보조 액션",
+      "더 깊은 점검과 대체 검토 경로입니다.",
+      renderDecisionCards(input.secondaryActions ?? [], "사용 가능한 보조 액션이 없습니다.")
     ),
     renderDecisionPanel(
-      "Recovery Actions",
-      "Retry, fallback, rollback, and alternate-path controls stay visible in failed states.",
-      renderDecisionCards(input.recoveryActions ?? [], "No recovery action is required right now."),
+      "복구 액션",
+      "실패 상태에서도 재시도, 폴백, 롤백, 대체 경로 제어를 바로 볼 수 있습니다.",
+      renderDecisionCards(input.recoveryActions ?? [], "지금은 복구 액션이 필요하지 않습니다."),
       (input.recoveryActions ?? []).length > 0 ? decisionTone(input.recoveryActions?.[0]?.tone) : "ok"
     ),
     renderDecisionPanel(
-      "Linked Objects",
-      "Jump directly to related objects and evidence instead of returning to list pages.",
-      renderDecisionCards(input.linkedObjects ?? [], "No linked objects were discovered.")
+      "연결된 오브젝트",
+      "목록으로 돌아가지 않고 관련 오브젝트와 근거로 바로 이동합니다.",
+      renderDecisionCards(input.linkedObjects ?? [], "연결된 오브젝트가 아직 없습니다.")
     )
   ].join("");
 
@@ -2227,6 +3073,119 @@ function collectShotIssueMap(report: unknown): Map<string, string[]> {
     }
   }
   return issuesByShot;
+}
+
+function buildShotOpsItems(input: {
+  shotsDoc: unknown;
+  qcReport: unknown;
+  sidecarPlan: unknown;
+  renderModeReport: unknown;
+}): EpisodeShotOpsView[] {
+  if (!isShotsDocLike(input.shotsDoc)) {
+    return [];
+  }
+
+  const shotIssueMap = collectShotIssueMap(input.qcReport);
+  const renderModeByShot = new Map<
+    string,
+    {
+      recommendedRenderMode: string | null;
+      blockers: string[];
+    }
+  >();
+  if (isRecord(input.renderModeReport)) {
+    for (const shot of recordList(input.renderModeReport.shots)) {
+      const shotId = str(shot.shot_id);
+      if (!shotId) continue;
+      renderModeByShot.set(shotId, {
+        recommendedRenderMode: str(shot.recommended_render_mode),
+        blockers: uniqueStrings((Array.isArray(shot.blockers) ? shot.blockers : []).map((value) => str(value)))
+      });
+    }
+  }
+
+  const sidecarPlanByShot = new Map<
+    string,
+    {
+      renderer: string | null;
+      acceptanceStatus: string | null;
+      status: string | null;
+    }
+  >();
+  if (isRecord(input.sidecarPlan)) {
+    for (const plan of recordList(input.sidecarPlan.plans)) {
+      const shotId = str(plan.shotId);
+      if (!shotId) continue;
+      const metadata = isRecord(plan.metadata) ? plan.metadata : {};
+      sidecarPlanByShot.set(shotId, {
+        renderer: str(plan.renderer) ?? str(metadata.modelName),
+        acceptanceStatus: str(metadata.acceptanceStatus),
+        status: str(plan.status)
+      });
+    }
+  }
+
+  const shotItems: EpisodeShotOpsView[] = [];
+  for (const rawShot of input.shotsDoc.shots ?? []) {
+    if (!isRecord(rawShot)) continue;
+    const shotId = str(rawShot.shot_id) ?? `shot_${shotItems.length + 1}`;
+    const shotType = str(rawShot.shot_type) ?? "-";
+    const renderMode = str(rawShot.render_mode) ?? "-";
+    const renderModeMeta = renderModeByShot.get(shotId);
+    const shotGrammar = isRecord(rawShot.shot_grammar) ? rawShot.shot_grammar : {};
+    const visualObjects = recordList(rawShot.visual_objects);
+    const sourcePack = isRecord(rawShot.source_pack) ? rawShot.source_pack : {};
+    const sidecarPreset = isRecord(rawShot.sidecar_preset) ? rawShot.sidecar_preset : {};
+    const sidecarMeta = sidecarPlanByShot.get(shotId);
+    const routeReason = str(shotGrammar.route_reason) ?? str(rawShot.route_reason);
+    const visualKinds = uniqueStrings(visualObjects.map((item) => str(item.kind)));
+    const fallbackPolicies = uniqueStrings(visualObjects.map((item) => str(item.fallback_policy)));
+    const qcReasons = shotIssueMap.get(shotId) ?? [];
+    const policyTags = uniqueStrings((Array.isArray(sidecarPreset.policy_tags) ? sidecarPreset.policy_tags : []).map((item) => str(item)));
+    const repairSignals = uniqueStrings([
+      str(sidecarPreset.impact_preset),
+      ...policyTags.filter((value) => value.toLowerCase().includes("repair")),
+      ...qcReasons.filter((value) => value.toLowerCase().includes("repair"))
+    ]);
+    const blockers = renderModeMeta?.blockers ?? [];
+    const backend = sidecarMeta?.renderer ?? str(rawShot.sidecar_renderer);
+    const acceptanceStatus = sidecarMeta?.acceptanceStatus ?? str(sourcePack.acceptance_status) ?? str(rawShot.acceptance_status);
+    const recommendedRenderMode = renderModeMeta?.recommendedRenderMode ?? null;
+    const renderModeSummary =
+      recommendedRenderMode && recommendedRenderMode !== renderMode
+        ? `${renderMode} -> ${recommendedRenderMode}`
+        : renderMode;
+
+    shotItems.push({
+      shotId,
+      shotType,
+      renderMode,
+      renderModeSummary,
+      recommendedRenderMode,
+      backend,
+      acceptanceStatus,
+      sidecarStatus: sidecarMeta?.status ?? null,
+      routeReason,
+      routeReasonLabel: routeReason ? humanizeOpsLabel(routeReason) : "-",
+      visualKinds,
+      visualSummary: summarizeValues(visualKinds, 4),
+      fallbackPolicies,
+      fallbackSummary: summarizeValues(
+        [
+          ...fallbackPolicies,
+          blockers.length > 0 ? `render blockers: ${blockers.map((value) => humanizeOpsLabel(value)).join(", ")}` : null
+        ],
+        4
+      ),
+      qcReasons,
+      qcSummary: summarizeValues(qcReasons, 2),
+      repairSignals,
+      repairSummary: summarizeValues(repairSignals, 3),
+      blockers
+    });
+  }
+
+  return shotItems;
 }
 
 function buildEpisodeOpsView(episodeId: string, preferredDoc: unknown): EpisodeOpsView {
@@ -2704,7 +3663,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const serviceRows = serviceEntries
       .map(
         (entry) =>
-          `<tr><td>${esc(entry.name)}</td><td><span class="badge ${badgeClass(entry.status)}">${esc(entry.status)}</span></td><td><pre>${esc(entry.detail)}</pre></td></tr>`
+          `<tr><td>${esc(entry.name)}</td><td><span class="badge ${badgeClass(entry.status)}">${esc(statusLabelKo(entry.status))}</span></td><td><pre>${esc(entry.detail)}</pre></td></tr>`
       )
       .join("");
 
@@ -2712,23 +3671,23 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const commandRows = fixEntries
       .map(
         ([key, command]) =>
-          `<tr><td>${esc(key)}</td><td><code>${esc(command)}</code></td><td><button type="button" class="secondary" data-copy="${esc(command)}">Copy</button></td></tr>`
+          `<tr><td>${esc(key)}</td><td><code>${esc(command)}</code></td><td><button type="button" class="secondary" data-copy="${esc(command)}">복사</button></td></tr>`
       )
       .join("");
     const recoveryCards = fixEntries
       .map(
         ([key, command]) =>
-          `<article class="summary-card"><span class="caption">${esc(key)}</span><div class="mono">${esc(command)}</div><div class="actions"><button type="button" class="secondary" data-copy="${esc(command)}">Copy command</button></div></article>`
+          `<article class="summary-card"><span class="caption">${esc(key)}</span><div class="mono">${esc(command)}</div><div class="actions"><button type="button" class="secondary" data-copy="${esc(command)}">명령 복사</button></div></article>`
       )
       .join("");
     const degradedSummary = degradedServices.length
       ? degradedServices
           .map(
             (entry) =>
-              `<article class="summary-card"><span class="caption">${esc(entry.name)}</span><div class="metric">${esc(entry.status)}</div><div class="section-intro">Inspect this service before retrying work that depends on it.</div></article>`
+              `<article class="summary-card"><span class="caption">${esc(entry.name)}</span><div class="metric">${esc(statusLabelKo(entry.status))}</div><div class="section-intro">이 서비스에 의존하는 작업을 재시도하기 전에 먼저 상태를 점검하세요.</div></article>`
           )
           .join("")
-      : `<article class="summary-card"><span class="caption">Degraded services</span><div class="metric">0</div><div class="section-intro">No blocked dependencies right now.</div></article>`;
+      : `<article class="summary-card"><span class="caption">저하된 서비스</span><div class="metric">0</div><div class="section-intro">현재 차단된 의존성이 없습니다.</div></article>`;
 
     const baseHealthData = isRecord(health.body) && isRecord(health.body.data) ? health.body.data : {};
     const nowMs = Date.now();
@@ -2738,14 +3697,14 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       .slice(0, 10)
       .map(([key, value]) => {
         const ageSec = Math.max(0, Math.floor((nowMs - value.at) / 1000));
-        return `<tr><td><code>${esc(key)}</code></td><td>${esc(value.jobId ?? "-")}</td><td>${ageSec}s ago</td></tr>`;
+        return `<tr><td><code>${esc(key)}</code></td><td>${esc(value.jobId ?? "-")}</td><td>${ageSec}초 전</td></tr>`;
       })
       .join("");
 
     return reply.type("text/html; charset=utf-8").send(
       page(
-        "Health",
-        `<section class="card dashboard-shell"><div class="section-head"><div><h1>Health Report</h1><p class="section-intro">Keep degraded dependencies and recovery commands above the fold so retry and rollback decisions stay immediate.</p></div><div class="quick-links"><a href="/health">Open /health JSON</a><a href="/ui/jobs">Open Jobs</a><a href="/ui/rollouts">Open Rollouts</a></div></div><div class="summary-grid"><article class="summary-card"><span class="caption">Overall</span><div class="metric">${overallOk ? "up" : "down"}</div><div class="section-intro">checkedAt ${esc(checkedAt || "-")}</div></article><article class="summary-card"><span class="caption">Queue</span><div class="metric">${esc(String(baseHealthData.queue ?? "-"))}</div><div class="section-intro">redis ${esc(String(baseHealthData.redis ?? "-"))} / ready ${esc(String(baseHealthData.queueReady ?? "-"))}</div></article><article class="summary-card"><span class="caption">Recovery commands</span><div class="metric">${fixEntries.length}</div><div class="section-intro">Copy the right command before retrying pipeline work.</div></article>${degradedSummary}</div>${overallOk ? '<div class="notice">Core services are healthy. Use the tables below only when you need deeper evidence.</div>' : '<div class="error">One or more services are degraded. Pick a recovery command first, then inspect service details before rerunning work.</div>'}<section class="table-shell"><div class="section-head"><div><h2>Recovery Rail</h2><p class="section-intro">Quick actions stay above the raw service payloads.</p></div><div class="quick-links"><a href="/ui/hitl">Open HITL</a><a href="/ui/artifacts">Open Artifacts</a></div></div>${recoveryCards ? `<div class="quick-grid">${recoveryCards}</div>` : '<div class="notice">No recovery commands configured.</div>'}</section></section><section class="card"><div class="section-head"><div><h2>Run Profile Dedup Guard</h2><p class="section-intro">Reset the dedup state only when the queue has stalled and you have already inspected the recent jobs list.</p></div><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">Reset dedup cache/stats</button></form></div></div><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><table><thead><tr><th>Dedup Key</th><th>Job</th><th>Age</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">No recent dedup entries.</div></td></tr>'}</tbody></table></section><section class="card"><h2>Service Status</h2><table><thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>Recovery Commands (PowerShell)</h2><table><thead><tr><th>Name</th><th>Command</th><th>Copy</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
+        "상태",
+        `<section class="card dashboard-shell"><div class="section-head"><div><h1>상태 리포트</h1><p class="section-intro">저하된 의존성과 복구 명령을 상단에 유지해 재시도와 롤백 판단을 바로 내릴 수 있게 합니다.</p></div><div class="quick-links"><a href="/health">/health JSON 열기</a><a href="/ui/jobs">작업 열기</a><a href="/ui/rollouts">롤아웃 열기</a></div></div><div class="summary-grid"><article class="summary-card"><span class="caption">전체</span><div class="metric">${overallOk ? "정상" : "저하"}</div><div class="section-intro">checkedAt ${esc(checkedAt || "-")}</div></article><article class="summary-card"><span class="caption">큐</span><div class="metric">${esc(String(baseHealthData.queue ?? "-"))}</div><div class="section-intro">redis ${esc(statusLabelKo(String(baseHealthData.redis ?? "-")))} / 준비 ${esc(String(baseHealthData.queueReady ?? "-"))}</div></article><article class="summary-card"><span class="caption">복구 명령</span><div class="metric">${fixEntries.length}</div><div class="section-intro">파이프라인 작업을 재시도하기 전에 올바른 명령을 복사하세요.</div></article>${degradedSummary}</div>${overallOk ? '<div class="notice">핵심 서비스는 정상입니다. 더 깊은 근거가 필요할 때만 아래 표를 확인하세요.</div>' : '<div class="error">하나 이상의 서비스가 저하되었습니다. 먼저 복구 명령을 고르고, 작업을 다시 실행하기 전에 서비스 상세를 확인하세요.</div>'}<section class="table-shell"><div class="section-head"><div><h2>복구 레일</h2><p class="section-intro">빠른 액션을 원시 서비스 페이로드보다 위에 유지합니다.</p></div><div class="quick-links"><a href="/ui/hitl">HITL 열기</a><a href="/ui/artifacts">산출물 열기</a></div></div>${recoveryCards ? `<div class="quick-grid">${recoveryCards}</div>` : '<div class="notice">설정된 복구 명령이 없습니다.</div>'}</section></section><section class="card"><div class="section-head"><div><h2>실행 프로필 중복 방지 가드</h2><p class="section-intro">큐가 멈췄고 최근 작업 목록을 이미 확인한 경우에만 중복 상태를 초기화하세요.</p></div><div class="actions"><form method="post" action="/ui/health/dedup/reset" class="inline"><button type="submit" class="secondary">중복 캐시/통계 초기화</button></form></div></div><p>window: ${RUN_PROFILE_DEDUP_WINDOW_MS}ms / active keys: ${runProfileDedupCache.size} / hits: ${runProfileDedupStats.hits} / enqueues: ${runProfileDedupStats.enqueues}</p><table><thead><tr><th>중복 키</th><th>작업</th><th>경과 시간</th></tr></thead><tbody>${dedupEntries || '<tr><td colspan="3"><div class="notice">최근 중복 항목이 없습니다.</div></td></tr>'}</tbody></table></section><section class="card"><h2>서비스 상태</h2><table><thead><tr><th>서비스</th><th>상태</th><th>상세</th></tr></thead><tbody>${serviceRows}</tbody></table></section><section class="card"><h2>복구 명령 (PowerShell)</h2><table><thead><tr><th>이름</th><th>명령</th><th>복사</th></tr></thead><tbody>${commandRows}</tbody></table></section>`
       )
     );
   });
@@ -2754,7 +3713,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     runProfileDedupCache.clear();
     runProfileDedupStats.hits = 0;
     runProfileDedupStats.enqueues = 0;
-    return reply.redirect(`/ui/health?message=${encodeURIComponent("Run profile dedup cache/stats reset.")}`);
+    return reply.redirect(`/ui/health?message=${encodeURIComponent("실행 프로필 중복 캐시/통계를 초기화했습니다.")}`);
   });
 
   app.post("/ui/actions/demo-extreme", async (_request, reply) => {
@@ -3369,7 +4328,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     );
 
     const rows = jobs
-      .map((job) => `<tr><td><a href="/ui/jobs/${esc(job.id)}">${esc(job.id)}</a></td><td>${esc(job.type)}</td><td><span class="badge ${badgeClass(String(job.status ?? ""))}">${esc(job.status)}</span></td><td>${esc(job.progress)}%</td><td>${esc(job.attemptsMade ?? 0)} / ${esc(job.maxAttempts ?? "-")}</td><td>${esc(job.retryBackoffMs ?? "-")}ms</td><td>${fmtDate(job.createdAt)}</td></tr>`)
+      .map((job) => `<tr><td><a href="/ui/jobs/${esc(job.id)}">${esc(job.id)}</a></td><td>${esc(job.type)}</td><td><span class="badge ${badgeClass(String(job.status ?? ""))}">${esc(statusLabelKo(String(job.status ?? "")))}</span></td><td>${esc(job.progress)}%</td><td>${esc(job.attemptsMade ?? 0)} / ${esc(job.maxAttempts ?? "-")}</td><td>${esc(job.retryBackoffMs ?? "-")}ms</td><td>${fmtDate(job.createdAt)}</td></tr>`)
       .join("");
 
     const styleOptions = STYLE_PRESET_VALUES
@@ -3392,10 +4351,10 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       .map((profileId) => {
         const label =
           profileId === "preview"
-            ? "preview (recommended)"
+            ? "preview (권장)"
             : profileId === "full"
-              ? "full (final/package)"
-              : "render_only (quick render)";
+              ? "full (최종/패키지)"
+              : "render_only (빠른 렌더)";
         return `<option value="${profileId}" ${profileId === selectedRunProfile ? "selected" : ""}>${label}</option>`;
       })
       .join("");
@@ -3411,48 +4370,48 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         const status = String(job.status ?? "UNKNOWN");
         const progress = typeof job.progress === "number" ? job.progress : Number.parseInt(String(job.progress ?? "0"), 10) || 0;
         const jobId = String(job.id ?? "");
-        return `<tr><td>${esc(type)}</td><td><span class="badge ${badgeClass(status)}">${esc(status)}</span></td><td>${esc(progress)}%</td><td>${jobId ? `<a href="/ui/jobs/${esc(jobId)}">${esc(jobId)}</a>` : "-"}</td></tr>`;
+        return `<tr><td>${esc(type)}</td><td><span class="badge ${badgeClass(status)}">${esc(statusLabelKo(status))}</span></td><td>${esc(progress)}%</td><td>${jobId ? `<a href="/ui/jobs/${esc(jobId)}">${esc(jobId)}</a>` : "-"}</td></tr>`;
       })
       .join("");
     const recommendAction = (() => {
       if (styleQcMain.failCount > 0) {
         return {
-          title: "Recommended: resolve STYLE_QC fails with Style Preview",
-          detail: `STYLE_QC fail=${styleQcMain.failCount}. Adjust style preset/hookBoost before full run.`,
+          title: "권장: STYLE_QC 실패를 스타일 프리뷰로 해결",
+          detail: `STYLE_QC 실패=${styleQcMain.failCount}. 전체 실행 전에 스타일 프리셋과 hookBoost를 조정하세요.`,
           profile: "preview" as RunProfileId
         };
       }
       if (styleQcMain.warnCount > 0) {
         return {
-          title: "Recommended: review remaining warnings with A/B compare",
-          detail: `STYLE_QC warn=${styleQcMain.warnCount}. Run A/B preview compare before full run.`,
+          title: "권장: 남은 경고를 A/B 비교로 검토",
+          detail: `STYLE_QC 경고=${styleQcMain.warnCount}. 전체 실행 전에 A/B 프리뷰 비교를 돌려보세요.`,
           profile: "preview" as RunProfileId
         };
       }
       if (!shotsReady) {
         return {
-          title: "Recommended: run COMPILE_SHOTS first",
-          detail: "shots.json is missing and render may fail. Run COMPILE_SHOTS first.",
+          title: "권장: 먼저 COMPILE_SHOTS 실행",
+          detail: "shots.json이 없어 렌더가 실패할 수 있습니다. 먼저 COMPILE_SHOTS를 실행하세요.",
           profile: "preview" as RunProfileId
         };
       }
       if (!previewExists) {
         return {
-          title: "Recommended: run Preview render",
-          detail: "preview.mp4 is not available yet. Run profile as preview first.",
+          title: "권장: 프리뷰 렌더 실행",
+          detail: "preview.mp4가 아직 없습니다. 먼저 preview 프로필로 실행하세요.",
           profile: "preview" as RunProfileId
         };
       }
       if (!finalExists || !uploadManifestExists) {
         return {
-          title: "Recommended: run Full pipeline",
-          detail: "Final outputs (final/manifest) are not ready yet. Finish with full profile.",
+          title: "권장: 전체 파이프라인 실행",
+          detail: "최종 출력(final/manifest)이 아직 준비되지 않았습니다. full 프로필로 마무리하세요.",
           profile: "full" as RunProfileId
         };
       }
       return {
-        title: "Pipeline outputs are ready",
-        detail: "preview/final/manifest are all present. Run style A/B compare if needed, then publish.",
+        title: "파이프라인 출력 준비 완료",
+        detail: "preview/final/manifest가 모두 존재합니다. 필요하면 스타일 A/B 비교 후 퍼블리시하세요.",
         profile: "full" as RunProfileId
       };
     })();
@@ -3462,6 +4421,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       opsView.studioProfileId
     ]);
     const episodeStatusLabel = String(episode.status ?? "UNKNOWN");
+    const episodeStatusDisplay = statusLabelKo(episodeStatusLabel);
     const episodeStatusTone = decisionTone(badgeClass(episodeStatusLabel));
     const channelName =
       str(isRecord(episode.channel) ? episode.channel.name : undefined) ??
@@ -3474,277 +4434,277 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       jobs.find((job) => ["COMPLETED", "SUCCEEDED"].includes(String(job.status ?? "").toUpperCase())) ?? null;
     const pipelineStateLabel =
       finalExists && uploadManifestExists
-        ? "final package ready"
+        ? "최종 패키지 준비 완료"
         : previewExists
-          ? "preview ready"
+          ? "프리뷰 준비 완료"
           : shotsReady
-            ? "shots compiled"
-            : "script only";
+            ? "샷 컴파일 완료"
+            : "스크립트만 준비됨";
     const outputsReady = [previewExists, finalExists, uploadManifestExists].filter(Boolean).length;
     const episodeSummaryCards: DecisionStat[] = [
       {
-        label: "Pipeline State",
+        label: "파이프라인 상태",
         value: pipelineStateLabel,
         hint: recommendAction.title,
         tone: outputsReady === 3 ? "ok" : previewExists ? "warn" : "bad"
       },
       {
         label: "QC",
-        value: `${styleQcMain.failCount} fail / ${styleQcMain.warnCount} warn`,
-        hint: `forced style ${styleQcMain.forcedStyle}`,
+        value: `${styleQcMain.failCount} 실패 / ${styleQcMain.warnCount} 경고`,
+        hint: `강제 스타일 ${styleQcMain.forcedStyle}`,
         tone: styleQcMain.failCount > 0 ? "bad" : styleQcMain.warnCount > 0 ? "warn" : "ok"
       },
       {
-        label: "Outputs",
+        label: "출력",
         value: `${outputsReady}/3`,
-        hint: "preview / final / manifest",
+        hint: "프리뷰 / 최종 / 매니페스트",
         tone: outputsReady === 3 ? "ok" : outputsReady > 0 ? "warn" : "bad"
       },
       {
-        label: "Fallback Chain",
+        label: "폴백 체인",
         value: String(opsView.fallbackSteps.length),
-        hint: episodeFallbackSummary || "no fallback used",
+        hint: episodeFallbackSummary || "사용된 폴백 없음",
         tone: opsView.fallbackSteps.length > 0 ? "warn" : "ok"
       }
     ];
     const blockerCards: DecisionCard[] = [];
     if (latestFailedJob) {
       blockerCards.push({
-        title: `Failed job ${str(latestFailedJob.type) ?? "job"}`,
-        detail: str(latestFailedJob.lastError) ?? "Latest failed job did not capture a lastError message.",
+        title: `실패 작업 ${str(latestFailedJob.type) ?? "job"}`,
+        detail: str(latestFailedJob.lastError) ?? "최근 실패 작업에 lastError 메시지가 기록되지 않았습니다.",
         tone: "bad",
-        badge: String(latestFailedJob.status ?? "FAILED"),
-        html: `<a href="/ui/jobs/${encodeURIComponent(String(latestFailedJob.id ?? ""))}">Open Failed Job</a>`
+        badge: statusLabelKo(String(latestFailedJob.status ?? "FAILED")),
+        html: `<a href="/ui/jobs/${encodeURIComponent(String(latestFailedJob.id ?? ""))}">실패 작업 열기</a>`
       });
     }
     if (!shotsReady) {
       blockerCards.push({
-        title: "shots.json missing",
-        detail: "Compile the shot graph first or preview/full renders will fail with weak rollback points.",
+        title: "shots.json 누락",
+        detail: "샷 그래프를 먼저 컴파일하지 않으면 프리뷰/전체 렌더가 안정적인 롤백 지점 없이 실패할 수 있습니다.",
         tone: "bad",
-        badge: "compile first"
+        badge: "먼저 컴파일"
       });
     }
     if (!previewExists) {
       blockerCards.push({
-        title: "Preview artifact missing",
-        detail: "No preview.mp4 is available, so compare/recovery decisions are blocked until a preview render lands.",
+        title: "프리뷰 산출물 누락",
+        detail: "preview.mp4가 없어 프리뷰 렌더가 완료되기 전까지 비교/복구 판단이 막혀 있습니다.",
         tone: "warn",
-        badge: "preview required"
+        badge: "프리뷰 필요"
       });
     }
     if (styleQcMain.failCount > 0 || styleQcMain.warnCount > 0) {
       blockerCards.push({
-        title: styleQcMain.failCount > 0 ? "STYLE_QC failures detected" : "STYLE_QC warnings need review",
+        title: styleQcMain.failCount > 0 ? "STYLE_QC 실패 감지" : "STYLE_QC 경고 검토 필요",
         detail:
           styleQcMain.failCount > 0
-            ? `STYLE_QC fail=${styleQcMain.failCount}. Adjust stylePreset/hookBoost before full render.`
-            : `STYLE_QC warn=${styleQcMain.warnCount}. Review A/B compare before promoting this episode.`,
+            ? `STYLE_QC 실패=${styleQcMain.failCount}. 전체 렌더 전에 stylePreset과 hookBoost를 조정하세요.`
+            : `STYLE_QC 경고=${styleQcMain.warnCount}. 이 에피소드를 승격하기 전에 A/B 비교를 검토하세요.`,
         tone: styleQcMain.failCount > 0 ? "bad" : "warn",
-        badge: styleQcMain.failCount > 0 ? "repair" : "review"
+        badge: styleQcMain.failCount > 0 ? "복구" : "검토"
       });
     }
     if (episodeFallbackSummary) {
       blockerCards.push({
-        title: "Fallback path applied",
+        title: "폴백 경로 적용됨",
         detail: episodeFallbackSummary,
         tone: "warn",
-        badge: "fallback"
+        badge: "폴백"
       });
     }
     const primaryActionCards: DecisionCard[] = [
       {
         title: recommendAction.title,
-        detail: `${recommendAction.detail} Recommended profile: ${recommendAction.profile}.`,
+        detail: `${recommendAction.detail} 권장 프로필: ${runProfileUiLabel(recommendAction.profile)}.`,
         tone: recommendAction.profile === "full" && !previewExists ? "warn" : "ok",
-        badge: recommendAction.profile,
+        badge: runProfileUiLabel(recommendAction.profile),
         html: `<form method="post" action="/ui/episodes/${esc(id)}/run-profile" class="inline"><input type="hidden" name="profile" value="${esc(
           recommendAction.profile
         )}"/><input type="hidden" name="stylePresetId" value="${esc(style.stylePresetId)}"/><input type="hidden" name="hookBoost" value="${esc(
           style.hookBoost.toFixed(2)
-        )}"/><input type="hidden" name="returnTo" value="episode"/><button type="submit">Run ${esc(
-          humanizeOpsLabel(recommendAction.profile)
-        )}</button></form><a href="/ui/jobs">Job Monitor</a>`
+        )}"/><input type="hidden" name="returnTo" value="episode"/><button type="submit">${esc(
+          runProfileUiLabel(recommendAction.profile)
+        )} 실행</button></form><a href="/ui/jobs">작업 모니터</a>`
       }
     ];
     const secondaryActionCards: DecisionCard[] = [
       {
-        title: "Compare and review",
-        detail: "Decision work happens here: compare variants, inspect profile routing, then promote or recover.",
+        title: "비교 및 검토",
+        detail: "여기서 판단을 진행합니다. 변형을 비교하고 프로필 라우팅을 점검한 뒤 승격하거나 복구하세요.",
         tone: "muted",
-        html: `<a href="/ui/episodes/${esc(id)}/ab-compare">A/B Compare</a><a href="${episodeProfilesHref}">Profile Browser</a>`
+        html: `<a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교</a><a href="${episodeProfilesHref}">프로필 브라우저</a>`
       },
       {
-        title: "Inspect the shot graph",
-        detail: "Use the editor when route reasons, render modes, or rollback need shot-level context.",
+        title: "샷 그래프 점검",
+        detail: "경로 사유, 렌더 모드, 롤백 판단에 샷 단위 문맥이 필요하면 에디터를 사용하세요.",
         tone: "muted",
-        html: `<a href="/ui/episodes/${esc(id)}/editor">Shot Editor</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(
+        html: `<a href="/ui/episodes/${esc(id)}/editor">샷 에디터</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(
           id
-        )}">Artifact Index</a>`
+        )}">산출물 인덱스</a>`
       }
     ];
     const recoveryActionCards: DecisionCard[] = [];
     if (latestFailedJob?.id) {
       recoveryActionCards.push({
-        title: "Retry the last failed job",
-        detail: "Replay the recorded failing step before rebuilding the pipeline by hand.",
+        title: "마지막 실패 작업 재시도",
+        detail: "파이프라인을 수동으로 다시 조립하기 전에 기록된 실패 단계를 먼저 재실행하세요.",
         tone: "bad",
         badge: String(latestFailedJob.type ?? "retry"),
-        html: `<form method="post" action="/ui/jobs/${encodeURIComponent(String(latestFailedJob.id))}/retry" class="inline"><button type="submit">Retry Failed Job</button></form><a href="/ui/jobs/${encodeURIComponent(
+        html: `<form method="post" action="/ui/jobs/${encodeURIComponent(String(latestFailedJob.id))}/retry" class="inline"><button type="submit">실패 작업 재시도</button></form><a href="/ui/jobs/${encodeURIComponent(
           String(latestFailedJob.id)
-        )}">Inspect Failure</a>`
+        )}">실패 상세 보기</a>`
       });
     }
     if (!shotsReady) {
       recoveryActionCards.push({
-        title: "Restore the shot graph",
-        detail: "Rebuild shots.json before preview or full render attempts.",
+        title: "샷 그래프 복구",
+        detail: "프리뷰나 전체 렌더를 다시 시도하기 전에 shots.json을 재생성하세요.",
         tone: "bad",
-        badge: "compile",
-        html: `<form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit">Run COMPILE_SHOTS</button></form>`
+        badge: "컴파일",
+        html: `<form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit">COMPILE_SHOTS 실행</button></form>`
       });
     }
     if (!previewExists) {
       recoveryActionCards.push({
-        title: "Regenerate preview",
-        detail: "Recreate the main review artifact so compare and rollback decisions are credible again.",
+        title: "프리뷰 재생성",
+        detail: "비교와 롤백 판단을 다시 신뢰할 수 있도록 주요 검토 산출물을 복원하세요.",
         tone: "warn",
-        badge: "preview",
-        html: `<form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">Run Preview Render</button></form>`
+        badge: "프리뷰",
+        html: `<form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit">프리뷰 렌더 실행</button></form>`
       });
     }
     if (styleQcMain.failCount > 0 || styleQcMain.warnCount > 0) {
       recoveryActionCards.push({
-        title: "Take the alternate review path",
-        detail: "Run style preview or variant compare before committing to a full rerun.",
+        title: "대체 검토 경로 사용",
+        detail: "전체 재실행을 확정하기 전에 스타일 프리뷰나 변형 비교를 먼저 수행하세요.",
         tone: "warn",
-        badge: "alternate",
+        badge: "대체 경로",
         html: `<form method="post" action="/ui/episodes/${esc(id)}/style-preview" class="inline"><input type="hidden" name="stylePresetId" value="${esc(
           style.stylePresetId
         )}"/><input type="hidden" name="hookBoost" value="${esc(
           style.hookBoost.toFixed(2)
-        )}"/><button type="submit">Run Style Preview</button></form><a href="/ui/episodes/${esc(id)}/ab-compare">Inspect A/B Compare</a>`
+        )}"/><button type="submit">스타일 프리뷰 실행</button></form><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교 보기</a>`
       });
     }
     const linkedObjectCards: DecisionCard[] = [
       {
-        title: "Profile Browser",
-        detail: `channel ${opsView.channelProfileId ?? "-"} / mascot ${opsView.mascotProfileId ?? "-"} / studio ${opsView.studioProfileId ?? "-"}`,
+        title: "프로필 브라우저",
+        detail: `채널 ${opsView.channelProfileId ?? "-"} / 마스코트 ${opsView.mascotProfileId ?? "-"} / 스튜디오 ${opsView.studioProfileId ?? "-"}`,
         tone: "muted",
-        html: `<a href="${episodeProfilesHref}">Open Matching Profiles</a>`
+        html: `<a href="${episodeProfilesHref}">일치하는 프로필 열기</a>`
       },
       {
-        title: "Recent successful state",
+        title: "최근 성공 상태",
         detail: latestSucceededJob
-          ? `${str(latestSucceededJob.type) ?? "job"} succeeded at ${fmtDate(latestSucceededJob.createdAt)}`
-          : "No successful job recorded yet.",
+          ? `${str(latestSucceededJob.type) ?? "job"} 성공 시각 ${fmtDate(latestSucceededJob.createdAt)}`
+          : "아직 기록된 성공 작업이 없습니다.",
         tone: latestSucceededJob ? "ok" : "muted",
-        html: latestSucceededJob?.id ? `<a href="/ui/jobs/${encodeURIComponent(String(latestSucceededJob.id))}">Open Successful Job</a>` : ""
+        html: latestSucceededJob?.id ? `<a href="/ui/jobs/${encodeURIComponent(String(latestSucceededJob.id))}">성공 작업 열기</a>` : ""
       },
       {
-        title: "Episode evidence",
-        detail: "Raw ops artifacts stay one jump away when the decision summary is not enough.",
+        title: "에피소드 근거",
+        detail: "판단 요약만으로 부족할 때 원시 운영 산출물로 한 번에 이동할 수 있습니다.",
         tone: "muted",
-        html: opsArtifactLinks || `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">Open Episode Artifacts</a>`
+        html: opsArtifactLinks || `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">에피소드 산출물 열기</a>`
       }
     ];
     if (characterPackId) {
       linkedObjectCards.push({
-        title: "Character Pack",
-        detail: `characterPackId ${characterPackId}${characterPackVersion ? ` / version ${characterPackVersion}` : ""}`,
+        title: "캐릭터 팩",
+        detail: `characterPackId ${characterPackId}${characterPackVersion ? ` / 버전 ${characterPackVersion}` : ""}`,
         tone: "muted",
-        html: `<a href="/ui/characters?characterPackId=${encodeURIComponent(characterPackId)}">Open Character Pack Detail</a>`
+        html: `<a href="/ui/characters?characterPackId=${encodeURIComponent(characterPackId)}">캐릭터 팩 상세 열기</a>`
       });
     }
     const recentActivityCards: DecisionCard[] = jobs.slice(0, 4).map((job) => {
       const status = String(job.status ?? "UNKNOWN");
       return {
-        title: `${str(job.type) ?? "job"} ${status.toLowerCase()}`,
-        detail: `${esc(job.progress)}% complete | created ${fmtDate(job.createdAt)}`,
+        title: `${str(job.type) ?? "job"} ${statusLabelKo(status)}`,
+        detail: `${esc(job.progress)}% 완료 | 생성 시각 ${fmtDate(job.createdAt)}`,
         tone: decisionTone(badgeClass(status)),
-        badge: status,
-        html: job.id ? `<a href="/ui/jobs/${encodeURIComponent(String(job.id))}">Open Job</a>` : ""
+        badge: statusLabelKo(status),
+        html: job.id ? `<a href="/ui/jobs/${encodeURIComponent(String(job.id))}">작업 열기</a>` : ""
       };
     });
     const recoveryFacts: DecisionFact[] = [
       {
-        label: "Failure Reason",
+        label: "실패 사유",
         value:
           str(latestFailedJob?.lastError) ??
           (qcIssues[0] ? compact([qcIssues[0].check, qcIssues[0].message], " - ") : null) ??
           recommendAction.detail,
-        hint: "first blocker on the rail"
+        hint: "레일의 첫 차단 요인"
       },
       {
-        label: "Last Known Good",
-        value: finalExists ? "final.mp4 is present" : previewExists ? "preview.mp4 is present" : shotsReady ? "shots.json compiled" : "none",
-        hint: finalExists && uploadManifestExists ? "full package available" : "closest recovery anchor"
+        label: "마지막 정상 지점",
+        value: finalExists ? "final.mp4 존재" : previewExists ? "preview.mp4 존재" : shotsReady ? "shots.json 컴파일 완료" : "없음",
+        hint: finalExists && uploadManifestExists ? "전체 패키지 사용 가능" : "가장 가까운 복구 앵커"
       },
-      { label: "Fallback Applied", value: episodeFallbackSummary || "none", hint: "current fallback chain" },
-      { label: "Retry Path", value: recommendAction.title, hint: `profile ${recommendAction.profile}` },
+      { label: "적용된 폴백", value: episodeFallbackSummary || "없음", hint: "현재 폴백 체인" },
+      { label: "재시도 경로", value: recommendAction.title, hint: `프로필 ${runProfileUiLabel(recommendAction.profile)}` },
       {
-        label: "Alternate Path",
-        value: styleQcMain.failCount > 0 || styleQcMain.warnCount > 0 ? "style preview -> A/B compare" : "profile browser -> shot editor",
-        hint: "operator review path"
+        label: "대체 경로",
+        value: styleQcMain.failCount > 0 || styleQcMain.warnCount > 0 ? "스타일 프리뷰 -> A/B 비교" : "프로필 브라우저 -> 샷 에디터",
+        hint: "운영자 검토 경로"
       },
       {
-        label: "Rollback Point",
-        value: shotsReady ? "shots.json / editor history" : "compile a fresh baseline",
+        label: "롤백 지점",
+        value: shotsReady ? "shots.json / 에디터 히스토리" : "새 기준선 컴파일",
         hint: String(artifacts.outDir ?? localOut.outDir)
       }
     ];
     const episodeDecisionRail: DecisionCard[] = [
       {
         title: recommendAction.title,
-        detail: `${recommendAction.detail} Use ${recommendAction.profile} as the current primary path.`,
+        detail: `${recommendAction.detail} 현재 기본 경로는 ${runProfileUiLabel(recommendAction.profile)}로 유지하세요.`,
         tone: episodeStatusTone,
-        badge: "primary",
-        html: `<a href="#episode-run-control">Run Control</a><a href="/ui/jobs">Job Monitor</a>`
+        badge: "기본 경로",
+        html: `<a href="#episode-run-control">실행 제어</a><a href="/ui/jobs">작업 모니터</a>`
       },
       {
-        title: "Compare before promotion",
-        detail: previewAExists || previewBExists ? "A/B artifacts are already attached, so compare can happen immediately from this detail surface." : "Generate A/B preview compare when style, QC, or fallback signals need operator review.",
+        title: "승격 전 비교",
+        detail: previewAExists || previewBExists ? "A/B 산출물이 이미 연결되어 있어 이 상세 화면에서 바로 비교할 수 있습니다." : "스타일, QC, 폴백 신호에 운영자 검토가 필요하면 A/B 프리뷰 비교를 생성하세요.",
         tone: previewAExists || previewBExists ? "warn" : "muted",
-        badge: previewAExists || previewBExists ? "ready" : "optional",
-        html: `<a href="#episode-compare-review">Compare / Review</a><a href="/ui/episodes/${esc(id)}/ab-compare">A/B Compare</a>`
+        badge: previewAExists || previewBExists ? "준비 완료" : "선택 사항",
+        html: `<a href="#episode-compare-review">비교 / 검토</a><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교</a>`
       },
       {
-        title: "Recovery anchor",
-        detail: finalExists ? "final.mp4 and upload manifest are the strongest rollback point." : previewExists ? "preview.mp4 is the current last-known-good artifact." : "Use shots.json or rerun compile as the first recovery anchor.",
+        title: "복구 앵커",
+        detail: finalExists ? "final.mp4와 upload manifest가 가장 강한 롤백 지점입니다." : previewExists ? "preview.mp4가 현재 마지막 정상 산출물입니다." : "첫 복구 앵커로 shots.json 또는 컴파일 재실행을 사용하세요.",
         tone: finalExists || previewExists ? "ok" : "warn",
-        badge: finalExists ? "final" : previewExists ? "preview" : "rebuild",
-        html: `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">Artifact Index</a><a href="/ui/episodes/${esc(id)}/editor">Shot Editor</a>`
+        badge: finalExists ? "최종" : previewExists ? "프리뷰" : "재구성",
+        html: `<a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">산출물 인덱스</a><a href="/ui/episodes/${esc(id)}/editor">샷 에디터</a>`
       }
     ];
 
     const episodeBody = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
-      eyebrow: "Episode Control Plane",
-      title: "Episode Detail",
-      subtitle: "Operate one episode as an object with explicit state, compare, review, and recovery paths.",
-      statusLabel: episodeStatusLabel,
+      eyebrow: "에피소드 제어면",
+      title: "에피소드 상세",
+      subtitle: "명시적인 상태, 비교, 검토, 복구 경로를 가진 하나의 오브젝트로 에피소드를 운영합니다.",
+      statusLabel: episodeStatusDisplay,
       statusTone: episodeStatusTone,
       flash: flashHtml(request.query),
-      headerContextHtml: `<span class="muted-text">episode <span class="decision-code">${esc(episode.id ?? id)}</span></span><span class="muted-text">topic ${esc(
+      headerContextHtml: `<span class="muted-text">에피소드 <span class="decision-code">${esc(episode.id ?? id)}</span></span><span class="muted-text">주제 ${esc(
         String(episode.topic ?? "")
       )}</span>`,
-      quickLinksHtml: `<a href="/ui/episodes">Back to Episodes</a><a href="${episodeProfilesHref}">Profile Browser</a><a href="/ui/jobs">Job Monitor</a><a href="/ui/episodes/${esc(
+      quickLinksHtml: `<a href="/ui/episodes">에피소드로 돌아가기</a><a href="${episodeProfilesHref}">프로필 브라우저</a><a href="/ui/jobs">작업 모니터</a><a href="/ui/episodes/${esc(
         id
-      )}/ab-compare">A/B Compare</a>`,
+      )}/ab-compare">A/B 비교</a>`,
       summaryCards: episodeSummaryCards,
       metaItems: [
-        { label: "Episode ID", value: String(episode.id ?? id), hint: "object key" },
-        { label: "Channel", value: channelName, hint: "publishing target" },
-        { label: "Style Preset", value: style.stylePresetId, hint: `hookBoost ${style.hookBoost.toFixed(2)}` },
-        { label: "Out Dir", value: String(artifacts.outDir ?? localOut.outDir), hint: "artifact root" },
+        { label: "에피소드 ID", value: String(episode.id ?? id), hint: "오브젝트 키" },
+        { label: "채널", value: channelName, hint: "퍼블리시 대상" },
+        { label: "스타일 프리셋", value: style.stylePresetId, hint: `hookBoost ${style.hookBoost.toFixed(2)}` },
+        { label: "산출물 경로", value: String(artifacts.outDir ?? localOut.outDir), hint: "산출물 루트" },
         {
-          label: "Profiles",
+          label: "프로필",
           value: summarizeValues([opsView.channelProfileId, opsView.mascotProfileId, opsView.studioProfileId], 3),
-          hint: "resolved runtime profiles"
+          hint: "해결된 런타임 프로필"
         },
         {
-          label: "Character Pack",
-          value: characterPackId ? `${characterPackId}${characterPackVersion ? ` v${characterPackVersion}` : ""}` : "none",
-          hint: "linked character object"
+          label: "캐릭터 팩",
+          value: characterPackId ? `${characterPackId}${characterPackVersion ? ` v${characterPackVersion}` : ""}` : "없음",
+          hint: "연결된 캐릭터 오브젝트"
         }
       ],
       blockers: blockerCards,
@@ -3754,93 +4714,93 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       recentActivity: recentActivityCards,
       linkedObjects: linkedObjectCards
     })}${renderDecisionPrioritySection({
-      title: "Decision Rail",
-      intro: "Keep the recommended run path, compare entry, and rollback anchor above the heavy evidence sections.",
-      linksHtml: `<a href="/ui/episodes/${esc(id)}/editor">Shot Editor</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">Artifact Index</a>`,
-      railTitle: "Next operator moves",
-      railIntro: "Use this rail to decide whether to run, compare, or recover before dropping into raw evidence.",
+      title: "판단 레일",
+      intro: "권장 실행 경로, 비교 진입점, 롤백 앵커를 무거운 근거 섹션보다 위에 유지합니다.",
+      linksHtml: `<a href="/ui/episodes/${esc(id)}/editor">샷 에디터</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(id)}">산출물 인덱스</a>`,
+      railTitle: "다음 운영자 액션",
+      railIntro: "원시 근거로 내려가기 전에 실행, 비교, 복구 중 무엇을 할지 이 레일에서 결정하세요.",
       railCards: episodeDecisionRail,
-      railEmpty: "No operator rail is available yet.",
+      railEmpty: "아직 운영자 레일이 없습니다.",
       railTone: episodeStatusTone,
-      snapshotIntro: "Failure reason, last known good state, fallback, and next path stay above the fold.",
+      snapshotIntro: "실패 사유, 마지막 정상 상태, 폴백, 다음 경로를 상단에 유지합니다.",
       snapshotFacts: recoveryFacts,
-      snapshotEmpty: "Recovery data is not available yet.",
+      snapshotEmpty: "복구 데이터가 아직 없습니다.",
       snapshotTone: episodeStatusTone
     })}
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Object Evidence</h2>
-      <p class="section-intro">Decision summary stays above; supporting evidence stays readable here.</p>
+      <h2>오브젝트 근거</h2>
+      <p class="section-intro">판단 요약은 위에 두고, 보조 근거는 여기서 읽기 쉽게 유지합니다.</p>
     </div>
-    <div class="quick-links"><a href="${episodeProfilesHref}">Profile Browser View</a><a href="/ui/episodes/${esc(id)}/editor">Shot Editor Inspector</a></div>
+    <div class="quick-links"><a href="${episodeProfilesHref}">프로필 브라우저 보기</a><a href="/ui/episodes/${esc(id)}/editor">샷 에디터 점검기</a></div>
   </div>
   <p>episodeId: <strong>${esc(episode.id ?? id)}</strong></p>
-  <p>topic: <strong>${esc(episode.topic ?? "")}</strong></p>
-  <p>status: <span class="badge ${badgeClass(String(episode.status ?? ""))}">${esc(episode.status)}</span></p>
-  <p>stylePreset: <strong>${esc(style.stylePresetId)}</strong> / hookBoost: <strong>${esc(style.hookBoost.toFixed(2))}</strong></p>
-  <p>outDir: <code>${esc(artifacts.outDir ?? localOut.outDir)}</code></p>
+  <p>주제: <strong>${esc(episode.topic ?? "")}</strong></p>
+  <p>상태: <span class="badge ${badgeClass(String(episode.status ?? ""))}">${esc(episodeStatusDisplay)}</span></p>
+  <p>스타일 프리셋: <strong>${esc(style.stylePresetId)}</strong> / hookBoost: <strong>${esc(style.hookBoost.toFixed(2))}</strong></p>
+  <p>산출물 경로: <code>${esc(artifacts.outDir ?? localOut.outDir)}</code></p>
   <div class="grid two">
     <div class="card">
-      <h3>Profile & Route Inspector</h3>
-      <p>channel profile: <strong>${esc(opsView.channelProfileId ?? "-")}</strong></p>
-      <p>mascot profile: <strong>${esc(opsView.mascotProfileId ?? "-")}</strong></p>
-      <p>studio profile: <strong>${esc(opsView.studioProfileId ?? "-")}</strong></p>
-      <p>route reasons: <strong>${esc(opsView.routeSummary)}</strong></p>
-      <p>visual objects: <strong>${esc(opsView.visualSummary)}</strong></p>
-      <p>render modes: <strong>${esc(opsView.renderModeSummary)}</strong></p>
-      <p><a href="${episodeProfilesHref}">Open matching profile browser view</a></p>
+      <h3>프로필 및 경로 점검기</h3>
+      <p>채널 프로필: <strong>${esc(opsView.channelProfileId ?? "-")}</strong></p>
+      <p>마스코트 프로필: <strong>${esc(opsView.mascotProfileId ?? "-")}</strong></p>
+      <p>스튜디오 프로필: <strong>${esc(opsView.studioProfileId ?? "-")}</strong></p>
+      <p>경로 사유: <strong>${esc(opsView.routeSummary)}</strong></p>
+      <p>비주얼 오브젝트: <strong>${esc(opsView.visualSummary)}</strong></p>
+      <p>렌더 모드: <strong>${esc(opsView.renderModeSummary)}</strong></p>
+      <p><a href="${episodeProfilesHref}">일치하는 프로필 브라우저 보기</a></p>
     </div>
     <div class="card">
-      <h3>Acceptance / QC Reasons</h3>
-      <p>selected backend: <strong>${esc(opsView.backendSummary)}</strong></p>
-      <p>acceptance status: <strong>${esc(opsView.acceptanceSummary)}</strong></p>
-      <p>repair signals: <strong>${esc(opsView.repairSummary)}</strong></p>
-      <p>qc reasons: <strong>${esc(opsView.qcSummary)}</strong></p>
-      <p>fallback chain: <strong>${esc(episodeFallbackSummary || "-")}</strong></p>
-      <p><a href="/ui/episodes/${esc(id)}/editor">Open Shot Editor Inspector</a></p>
+      <h3>승인 / QC 사유</h3>
+      <p>선택된 백엔드: <strong>${esc(opsView.backendSummary)}</strong></p>
+      <p>승인 상태: <strong>${esc(opsView.acceptanceSummary)}</strong></p>
+      <p>복구 신호: <strong>${esc(opsView.repairSummary)}</strong></p>
+      <p>QC 사유: <strong>${esc(opsView.qcSummary)}</strong></p>
+      <p>폴백 체인: <strong>${esc(episodeFallbackSummary || "-")}</strong></p>
+      <p><a href="/ui/episodes/${esc(id)}/editor">샷 에디터 점검기 열기</a></p>
     </div>
   </div>
   <div class="card">
-    <h3>Episode Artifact Inspector</h3>
-    <p class="notice">Use these raw artifacts when route/backend/acceptance metadata needs source verification.</p>
-    <div class="actions">${opsArtifactLinks || '<span class="notice">No episode-local ops artifacts yet.</span>'}</div>
+    <h3>에피소드 산출물 점검기</h3>
+    <p class="notice">경로/백엔드/승인 메타데이터의 원문 확인이 필요할 때 이 원시 산출물을 사용하세요.</p>
+    <div class="actions">${opsArtifactLinks || '<span class="notice">에피소드 로컬 운영 산출물이 아직 없습니다.</span>'}</div>
   </div>
   <div class="card">
-    <h3>Per-shot Ops Signals</h3>
+    <h3>샷별 운영 신호</h3>
     <table>
-      <thead><tr><th>shot</th><th>type</th><th>route_reason</th><th>backend</th><th>acceptance</th><th>visual objects</th><th>fallback / blockers</th><th>qc / repair</th></tr></thead>
-      <tbody>${opsShotRows || '<tr><td colspan="8"><div class="notice">shots.json/runtime_shots.json does not expose route or sidecar metadata yet.</div></td></tr>'}</tbody>
+      <thead><tr><th>샷</th><th>타입</th><th>route_reason</th><th>백엔드</th><th>승인</th><th>비주얼 오브젝트</th><th>폴백 / 차단 요인</th><th>qc / 복구</th></tr></thead>
+      <tbody>${opsShotRows || '<tr><td colspan="8"><div class="notice">shots.json/runtime_shots.json에 아직 route 또는 sidecar 메타데이터가 없습니다.</div></td></tr>'}</tbody>
     </table>
   </div>
   <div class="grid two">
     <div class="card">
-      <h3>Documents</h3>
-      <p>beats.json: <span class="badge ${artifacts.beatsFileExists ? "ok" : "bad"}">${artifacts.beatsFileExists ? "Exists" : "Missing"}</span></p>
-      <p>shots.json: <span class="badge ${artifacts.shotsFileExists ? "ok" : "bad"}">${artifacts.shotsFileExists ? "Exists" : "Missing"}</span></p>
-      <p>qc_report.json: <span class="badge ${qcExists ? "ok" : "bad"}">${qcExists ? "Exists" : "Missing"}</span></p>
-      <p>STYLE_QC(main): fail=${styleQcMain.failCount} warn=${styleQcMain.warnCount} forced=${esc(styleQcMain.forcedStyle)}</p>
+      <h3>문서</h3>
+      <p>beats.json: <span class="badge ${artifacts.beatsFileExists ? "ok" : "bad"}">${artifacts.beatsFileExists ? "있음" : "없음"}</span></p>
+      <p>shots.json: <span class="badge ${artifacts.shotsFileExists ? "ok" : "bad"}">${artifacts.shotsFileExists ? "있음" : "없음"}</span></p>
+      <p>qc_report.json: <span class="badge ${qcExists ? "ok" : "bad"}">${qcExists ? "있음" : "없음"}</span></p>
+      <p>STYLE_QC(main): 실패=${styleQcMain.failCount} 경고=${styleQcMain.warnCount} 강제=${esc(styleQcMain.forcedStyle)}</p>
     </div>
     <div class="card">
-      <h3>Render Outputs</h3>
-      <p>preview.mp4: <span class="badge ${previewExists ? "ok" : "bad"}">${previewExists ? "Exists" : "Missing"}</span></p>
-      <p>preview_A.mp4: <span class="badge ${previewAExists ? "ok" : "bad"}">${previewAExists ? "Exists" : "Missing"}</span></p>
-      <p>preview_B.mp4: <span class="badge ${previewBExists ? "ok" : "bad"}">${previewBExists ? "Exists" : "Missing"}</span></p>
-      <p>final.mp4: <span class="badge ${finalExists ? "ok" : "bad"}">${finalExists ? "Exists" : "Missing"}</span></p>
-      <p>upload_manifest.json: <span class="badge ${uploadManifestExists ? "ok" : "bad"}">${uploadManifestExists ? "Exists" : "Missing"}</span></p>
+      <h3>렌더 출력</h3>
+      <p>preview.mp4: <span class="badge ${previewExists ? "ok" : "bad"}">${previewExists ? "있음" : "없음"}</span></p>
+      <p>preview_A.mp4: <span class="badge ${previewAExists ? "ok" : "bad"}">${previewAExists ? "있음" : "없음"}</span></p>
+      <p>preview_B.mp4: <span class="badge ${previewBExists ? "ok" : "bad"}">${previewBExists ? "있음" : "없음"}</span></p>
+      <p>final.mp4: <span class="badge ${finalExists ? "ok" : "bad"}">${finalExists ? "있음" : "없음"}</span></p>
+      <p>upload_manifest.json: <span class="badge ${uploadManifestExists ? "ok" : "bad"}">${uploadManifestExists ? "있음" : "없음"}</span></p>
     </div>
   </div>
   <div class="card">
     <div id="episode-run-control"></div>
-    <div class="section-head"><div><h3>Run Control</h3><p class="section-intro">Primary run path and live job rail stay attached to the episode object.</p></div><div class="quick-links"><a href="/ui/jobs">Job Monitor</a><a href="/ui/publish?episodeId=${encodeURIComponent(
+    <div class="section-head"><div><h3>실행 제어</h3><p class="section-intro">기본 실행 경로와 실시간 작업 레일을 에피소드 오브젝트에 붙여 둡니다.</p></div><div class="quick-links"><a href="/ui/jobs">작업 모니터</a><a href="/ui/publish?episodeId=${encodeURIComponent(
       id
-    )}">Publish Surface</a></div></div>
-    <div class="notice"><strong>${esc(recommendAction.title)}</strong><br/>${esc(recommendAction.detail)}<br/>Recommended profile: <strong>${esc(recommendAction.profile)}</strong></div>
+    )}">퍼블리시 화면</a></div></div>
+    <div class="notice"><strong>${esc(recommendAction.title)}</strong><br/>${esc(recommendAction.detail)}<br/>권장 프로필: <strong>${esc(runProfileUiLabel(recommendAction.profile))}</strong></div>
     <form method="post" action="/ui/episodes/${esc(id)}/run-profile" class="grid two">
-      <label>runProfile
+      <label>실행 프로필
         <select name="profile">${runProfileOptions}</select>
       </label>
-      <label>stylePreset
+      <label>스타일 프리셋
         <select name="stylePresetId">${styleOptions}</select>
       </label>
       <label>hookBoost(0~1)
@@ -3849,59 +4809,59 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       </label>
       <input type="hidden" name="returnTo" value="episode"/>
       <div class="actions" style="grid-column:1/-1">
-        <button type="submit" data-primary-action="1" data-primary-label="Run recommended episode profile">Run Profile (Recommended)</button>
-        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Open Job Monitor</a>
-        <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">Open Shot Editor</a>
+        <button type="submit" data-primary-action="1" data-primary-label="권장 에피소드 프로필 실행">실행 프로필 (권장)</button>
+        <a href="/ui/jobs" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">작업 모니터 열기</a>
+        <a href="/ui/episodes/${esc(id)}/editor" class="secondary" style="padding:7px 9px;border-radius:8px;border:1px solid #cad8f2">샷 에디터 열기</a>
       </div>
     </form>
-    <p class="notice">Profile notes: preview = fast preview, full = final render + package, render_only = preview render from current shots.</p>
-    <div id="run-profile-live" data-episode-id="${esc(id)}" class="notice">Loading latest run status...</div>
-    <table><thead><tr><th>Recent Job Type</th><th>Status</th><th>Progress</th><th>Job</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">No job history. Start from Run Profile above.</div></td></tr>'}</tbody></table>
+    <p class="notice">프로필 메모: preview = 빠른 프리뷰, full = 최종 렌더 + 패키지, render_only = 현재 샷 기준 프리뷰 렌더입니다.</p>
+    <div id="run-profile-live" data-episode-id="${esc(id)}" class="notice">최신 실행 상태를 불러오는 중...</div>
+    <table><thead><tr><th>최근 작업 타입</th><th>상태</th><th>진행률</th><th>작업</th></tr></thead><tbody>${runStateRows || '<tr><td colspan="4"><div class="notice">작업 히스토리가 없습니다. 위의 실행 프로필에서 시작하세요.</div></td></tr>'}</tbody></table>
   </div>
   <div class="card">
     <div id="episode-compare-review"></div>
-    <div class="section-head"><div><h3>Compare / Review</h3><p class="section-intro">Explicit compare targets and alternate review paths live inside the detail surface.</p></div><div class="quick-links"><a href="/ui/episodes/${esc(
+    <div class="section-head"><div><h3>비교 / 검토</h3><p class="section-intro">명시적인 비교 대상과 대체 검토 경로를 상세 화면 안에 유지합니다.</p></div><div class="quick-links"><a href="/ui/episodes/${esc(
       id
-    )}/ab-compare">Open A/B Compare</a><a href="${episodeProfilesHref}">Profile Browser Focus</a></div></div>
+    )}/ab-compare">A/B 비교 열기</a><a href="${episodeProfilesHref}">프로필 브라우저 포커스</a></div></div>
     <form method="post" action="/ui/episodes/${esc(id)}/style-preview" class="grid two">
-      <label>stylePreset<select name="stylePresetId">${styleOptions}</select></label>
+      <label>스타일 프리셋<select name="stylePresetId">${styleOptions}</select></label>
       <label>hookBoost(0~1)<input type="range" name="hookBoost" min="0" max="1" step="0.05" value="${esc(style.hookBoost.toFixed(2))}" oninput="this.nextElementSibling.value=this.value"/><output>${esc(style.hookBoost.toFixed(2))}</output></label>
-      <div class="actions" style="grid-column:1/-1"><button type="submit">Run Style Preview (~10s)</button></div>
+      <div class="actions" style="grid-column:1/-1"><button type="submit">스타일 프리뷰 실행 (~10초)</button></div>
     </form>
     <form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="grid two">
-      <label>Variant A Style<select name="styleA">${concreteStyleOptionsA}</select></label>
-      <label>Variant B Style<select name="styleB">${concreteStyleOptionsB}</select></label>
-      <div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Generate A/B Preview Compare</button><a href="/ui/episodes/${esc(id)}/ab-compare">A/B Compare Page</a></div>
+      <label>변형 A 스타일<select name="styleA">${concreteStyleOptionsA}</select></label>
+      <label>변형 B 스타일<select name="styleB">${concreteStyleOptionsB}</select></label>
+      <div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">A/B 프리뷰 비교 생성</button><a href="/ui/episodes/${esc(id)}/ab-compare">A/B 비교 페이지</a></div>
     </form>
-    <p>A STYLE_QC: fail=${styleQcA.failCount} warn=${styleQcA.warnCount} forced=${esc(styleQcA.forcedStyle)} | B STYLE_QC: fail=${styleQcB.failCount} warn=${styleQcB.warnCount} forced=${esc(styleQcB.forcedStyle)}</p>
+    <p>A STYLE_QC: 실패=${styleQcA.failCount} 경고=${styleQcA.warnCount} 강제=${esc(styleQcA.forcedStyle)} | B STYLE_QC: 실패=${styleQcB.failCount} 경고=${styleQcB.warnCount} 강제=${esc(styleQcB.forcedStyle)}</p>
   </div>
   <div class="card">
-    <div class="section-head"><div><h3>Manual Step Rail</h3><p class="section-intro">Manual pipeline steps remain available, but they are explicitly secondary to the recommended run path.</p></div></div>
+    <div class="section-head"><div><h3>수동 단계 레일</h3><p class="section-intro">수동 파이프라인 단계도 유지하되, 권장 실행 경로보다 명시적으로 뒤에 둡니다.</p></div></div>
   <div class="actions">
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">Start One-click Preview Render</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="full"/>${styleHidden}<button type="submit" class="secondary">Run Final + Package</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit" class="secondary">Run COMPILE_SHOTS</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit" class="secondary">Run Preview Render</button></form>
-    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">Run Selected Step</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="preview"/>${styleHidden}<button type="submit">원클릭 프리뷰 렌더 시작</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="GENERATE_BEATS"/><input type="hidden" name="pipelineMode" value="full"/>${styleHidden}<button type="submit" class="secondary">최종 + 패키지 실행</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="COMPILE_SHOTS"/>${styleHidden}<button type="submit" class="secondary">COMPILE_SHOTS 실행</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><input type="hidden" name="jobType" value="RENDER_PREVIEW"/>${styleHidden}<button type="submit" class="secondary">프리뷰 렌더 실행</button></form>
+    <form method="post" action="/ui/episodes/${esc(id)}/enqueue" class="inline"><select name="jobType"><option value="GENERATE_BEATS">GENERATE_BEATS</option><option value="COMPILE_SHOTS">COMPILE_SHOTS</option><option value="RENDER_PREVIEW">RENDER_PREVIEW</option><option value="RENDER_FINAL">RENDER_FINAL</option><option value="PACKAGE_OUTPUTS">PACKAGE_OUTPUTS</option></select>${styleHidden}<button type="submit" class="secondary">선택한 단계 실행</button></form>
   </div>
   </div>
 </section>
 <section class="card">
-  <div class="section-head"><div><h2>Review Artifacts</h2><p class="section-intro">Preview and variant artifacts support the operator decision, not the other way around.</p></div></div>
-  ${previewExists ? `<video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${previewUrl}"></video><p><a href="${previewUrl}">Open preview.mp4</a></p>` : '<div class="error">preview.mp4 is not generated yet. Start Preview render using the buttons above.</div>'}
-  ${(previewAExists || previewBExists) ? `<p>${previewAExists ? `<a href="${previewAUrl}">Open preview_A.mp4</a>` : "preview_A missing"} | ${previewBExists ? `<a href="${previewBUrl}">Open preview_B.mp4</a>` : "preview_B missing"}</p>` : ""}
+  <div class="section-head"><div><h2>검토 산출물</h2><p class="section-intro">프리뷰와 변형 산출물은 운영 판단을 돕는 보조 근거입니다.</p></div></div>
+  ${previewExists ? `<video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${previewUrl}"></video><p><a href="${previewUrl}">preview.mp4 열기</a></p>` : '<div class="error">preview.mp4가 아직 생성되지 않았습니다. 위 버튼으로 프리뷰 렌더를 시작하세요.</div>'}
+  ${(previewAExists || previewBExists) ? `<p>${previewAExists ? `<a href="${previewAUrl}">preview_A.mp4 열기</a>` : "preview_A 없음"} | ${previewBExists ? `<a href="${previewBUrl}">preview_B.mp4 열기</a>` : "preview_B 없음"}</p>` : ""}
 </section>
 <section class="card">
-  <div class="section-head"><div><h2>QC Report</h2><p class="section-intro">Raw debug data can collapse, but the decision summary above remains primary.</p></div></div>
-  ${qcExists ? (qcIssues.length > 0 ? `<table><thead><tr><th>#</th><th>Check</th><th>Severity</th><th>Message</th><th>Details</th></tr></thead><tbody>${qcIssueRows}</tbody></table><details style="margin-top:12px"><summary>Raw qc_report.json</summary><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre></details>` : `<div class="notice">qc_report.json exists and has no failing issues.</div><details style="margin-top:12px"><summary>Raw qc_report.json</summary><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre></details>`) : '<div class="error">qc_report.json is not available yet.</div>'}
+  <div class="section-head"><div><h2>QC 리포트</h2><p class="section-intro">원시 디버그 데이터는 접을 수 있지만, 위의 판단 요약이 항상 우선입니다.</p></div></div>
+  ${qcExists ? (qcIssues.length > 0 ? `<table><thead><tr><th>#</th><th>점검</th><th>심각도</th><th>메시지</th><th>상세</th></tr></thead><tbody>${qcIssueRows}</tbody></table><details style="margin-top:12px"><summary>원시 qc_report.json</summary><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre></details>` : `<div class="notice">qc_report.json이 존재하며 실패 이슈가 없습니다.</div><details style="margin-top:12px"><summary>원시 qc_report.json</summary><pre>${esc(JSON.stringify(qcReport, null, 2))}</pre></details>`) : '<div class="error">qc_report.json이 아직 없습니다.</div>'}
 </section>
 <section class="card">
-  <div class="section-head"><div><h2>Job Rail</h2><p class="section-intro">Recent job history remains attached to the episode object for fast retry and review.</p></div></div>
-  <div aria-live="polite" class="notice">Job status updates in the table below. Use Retry on failures.</div>
-  <table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Attempts</th><th>Backoff</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">No job history. Start with enqueue actions above.</div></td></tr>'}</tbody></table>
+  <div class="section-head"><div><h2>작업 레일</h2><p class="section-intro">빠른 재시도와 검토를 위해 최근 작업 히스토리를 에피소드 오브젝트에 계속 붙여 둡니다.</p></div></div>
+  <div aria-live="polite" class="notice">아래 표에서 작업 상태가 갱신됩니다. 실패 시 재시도를 사용하세요.</div>
+  <table><thead><tr><th>작업</th><th>타입</th><th>상태</th><th>진행률</th><th>시도 횟수</th><th>백오프</th><th>생성 시각</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">작업 히스토리가 없습니다. 위의 큐 등록 액션으로 시작하세요.</div></td></tr>'}</tbody></table>
   </section></div>`;
 
-    return reply.type("text/html; charset=utf-8").send(page(`Episode ${id}`, episodeBody));
+    return reply.type("text/html; charset=utf-8").send(page(`에피소드 ${id}`, episodeBody));
   });
 
   app.get("/ui/episodes/:id/editor", async (request, reply) => {
@@ -4565,154 +5525,154 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const scoreB = (bExists ? 0 : 10_000) + qb.failCount * 100 + qb.warnCount * 10;
     const verdict =
       !compareReady
-        ? "hold for missing artifact"
+        ? "산출물 누락으로 보류"
         : scoreA === scoreB
-          ? "manual review required"
+          ? "수동 검토 필요"
           : scoreA < scoreB
-            ? `promote ${variantAStyle}`
-            : `promote ${variantBStyle}`;
+            ? `${variantAStyle} 승격`
+            : `${variantBStyle} 승격`;
     const verdictTone: UiBadgeTone = !compareReady ? "bad" : scoreA === scoreB ? "warn" : "ok";
     const nextDecision =
       !compareReady
-        ? "rerun the missing variant first"
+        ? "누락된 변형을 먼저 다시 실행하세요"
         : qa.failCount === qb.failCount && qa.warnCount === qb.warnCount
-          ? "watch both previews and decide in episode detail"
+          ? "두 프리뷰를 모두 보고 에피소드 상세에서 결정하세요"
           : scoreA < scoreB
-            ? `carry ${variantAStyle} back to episode detail`
-            : `carry ${variantBStyle} back to episode detail`;
+            ? `${variantAStyle}를 에피소드 상세로 가져가세요`
+            : `${variantBStyle}를 에피소드 상세로 가져가세요`;
 
     const body = `${decisionSurfaceStyles()}<div class="decision-surface">${renderObjectHero({
-      eyebrow: "Variant Review",
-      title: "A/B Preview Compare",
-      subtitle: "The compare target, verdict, and next decision stay visible before raw preview playback.",
+      eyebrow: "변형 검토",
+      title: "A/B 프리뷰 비교",
+      subtitle: "원시 프리뷰 재생 전에 비교 대상, 판정, 다음 결정을 계속 보이게 둡니다.",
       statusLabel: verdict,
       statusTone: verdictTone,
       flash: flashHtml(request.query),
-      headerContextHtml: `<span class="muted-text">episode <span class="decision-code">${esc(id)}</span></span><span class="muted-text">topic ${esc(
+      headerContextHtml: `<span class="muted-text">에피소드 <span class="decision-code">${esc(id)}</span></span><span class="muted-text">주제 ${esc(
         episodeRow?.topic ?? "-"
       )}</span>`,
-      quickLinksHtml: `<a href="/ui/episodes/${esc(id)}">Episode Detail</a><a href="/ui/jobs">Jobs</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
+      quickLinksHtml: `<a href="/ui/episodes/${esc(id)}">에피소드 상세</a><a href="/ui/jobs">작업</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
         jobA
       )}">jobA</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB</a>` : ""}`,
       summaryCards: [
-        { label: "Compare Target", value: `${variantAStyle} vs ${variantBStyle}`, hint: "explicit style variants", tone: "muted" },
-        { label: "Verdict", value: verdict, hint: nextDecision, tone: verdictTone },
-        { label: "QC Delta", value: `${Math.abs(qa.failCount - qb.failCount)} fail / ${Math.abs(qa.warnCount - qb.warnCount)} warn`, hint: "difference at a glance", tone: verdictTone },
-        { label: "Artifact State", value: compareReady ? "both ready" : "partial", hint: "compare is blocked until both previews exist", tone: compareReady ? "ok" : "bad" }
+        { label: "비교 대상", value: `${variantAStyle} vs ${variantBStyle}`, hint: "명시적인 스타일 변형", tone: "muted" },
+        { label: "판정", value: verdict, hint: nextDecision, tone: verdictTone },
+        { label: "QC 차이", value: `${Math.abs(qa.failCount - qb.failCount)} 실패 / ${Math.abs(qa.warnCount - qb.warnCount)} 경고`, hint: "차이를 한눈에 확인", tone: verdictTone },
+        { label: "산출물 상태", value: compareReady ? "둘 다 준비됨" : "부분 준비", hint: "두 프리뷰가 모두 있어야 비교가 가능합니다", tone: compareReady ? "ok" : "bad" }
       ],
       metaItems: [
-        { label: "Episode", value: id, hint: String(episodeRow?.topic ?? "-") },
-        { label: "Variant A", value: variantAStyle, hint: `fail ${qa.failCount} / warn ${qa.warnCount}` },
-        { label: "Variant B", value: variantBStyle, hint: `fail ${qb.failCount} / warn ${qb.warnCount}` },
-        { label: "Episode Status", value: String(episodeRow?.status ?? "-"), hint: "linked object state" }
+        { label: "에피소드", value: id, hint: String(episodeRow?.topic ?? "-") },
+        { label: "변형 A", value: variantAStyle, hint: `실패 ${qa.failCount} / 경고 ${qa.warnCount}` },
+        { label: "변형 B", value: variantBStyle, hint: `실패 ${qb.failCount} / 경고 ${qb.warnCount}` },
+        { label: "에피소드 상태", value: statusLabelKo(String(episodeRow?.status ?? "-")), hint: "연결된 오브젝트 상태" }
       ],
       blockers: !compareReady
-        ? [{ title: "Compare is blocked", detail: "One or both preview artifacts are missing, so approval or rollback would be premature.", tone: "bad", badge: "rerun" }]
+        ? [{ title: "비교가 차단됨", detail: "프리뷰 산출물 하나 이상이 없어 지금 승인하거나 롤백하기에는 이릅니다.", tone: "bad", badge: "재실행" }]
         : [],
       primaryActions: [
         {
-          title: "Carry the verdict back to the episode",
+          title: "판정을 에피소드로 가져가기",
           detail: nextDecision,
           tone: verdictTone,
           badge: verdict,
-          html: `<a href="/ui/episodes/${esc(id)}">Open Episode Detail</a><a href="/ui/episodes/${esc(id)}/ab-compare">Refresh Compare</a>`
+          html: `<a href="/ui/episodes/${esc(id)}">에피소드 상세 열기</a><a href="/ui/episodes/${esc(id)}/ab-compare">비교 새로고침</a>`
         }
       ],
       secondaryActions: [
         {
-          title: "Inspect linked runs",
-          detail: "Review the exact jobs that produced each variant before approving or retrying.",
+          title: "연결된 실행 점검",
+          detail: "승인하거나 재시도하기 전에 각 변형을 만든 정확한 작업을 확인하세요.",
           tone: "muted",
-          html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">Open jobA</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">Open jobB</a>` : ""}`
+          html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">jobA 열기</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB 열기</a>` : ""}`
         }
       ],
       recoveryActions: [
         {
-          title: "Retry / alternate path",
-          detail: compareReady ? "If verdict is still unclear, use style preview or rerun A/B generation with new styles." : "Regenerate the compare set before making a decision.",
+          title: "재시도 / 대체 경로",
+          detail: compareReady ? "판정이 여전히 불명확하면 스타일 프리뷰를 사용하거나 새 스타일로 A/B 생성을 다시 실행하세요." : "결정하기 전에 비교 세트를 다시 생성하세요.",
           tone: compareReady ? "warn" : "bad",
-          badge: compareReady ? "alternate" : "retry",
+          badge: compareReady ? "대체 경로" : "재시도",
           html: `<form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="inline"><input type="hidden" name="styleA" value="${esc(
             variantAStyle
-          )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">Rerun A/B Compare</button></form><a href="/ui/episodes/${esc(
+          )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">A/B 비교 다시 실행</button></form><a href="/ui/episodes/${esc(
             id
-          )}">Episode Detail</a>`
+          )}">에피소드 상세</a>`
         }
       ],
       recentActivity: [
-        { title: "Variant A job", detail: jobA ? `jobA ${jobA}` : "jobA not linked from query string", tone: jobA ? "ok" : "muted", badge: "A" },
-        { title: "Variant B job", detail: jobB ? `jobB ${jobB}` : "jobB not linked from query string", tone: jobB ? "ok" : "muted", badge: "B" }
+        { title: "변형 A 작업", detail: jobA ? `jobA ${jobA}` : "query string에 jobA가 연결되지 않았습니다", tone: jobA ? "ok" : "muted", badge: "A" },
+        { title: "변형 B 작업", detail: jobB ? `jobB ${jobB}` : "query string에 jobB가 연결되지 않았습니다", tone: jobB ? "ok" : "muted", badge: "B" }
       ],
       linkedObjects: [
-        { title: "Episode object", detail: "Decision promotion and rollback both happen from episode detail.", tone: "muted", html: `<a href="/ui/episodes/${esc(id)}">Open Episode Detail</a>` }
+        { title: "에피소드 오브젝트", detail: "승격과 롤백 판단은 모두 에피소드 상세에서 이뤄집니다.", tone: "muted", html: `<a href="/ui/episodes/${esc(id)}">에피소드 상세 열기</a>` }
       ]
     })}${renderDecisionPrioritySection({
-      title: "Decision Rail",
-      intro: "Keep the current verdict, rerun path, and episode promotion target visible before playback.",
-      linksHtml: `<a href="/ui/episodes/${esc(id)}">Episode Detail</a><a href="/ui/episodes/${esc(id)}/ab-compare">Refresh Compare</a>`,
-      railTitle: "Compare actions",
-      railIntro: "Use this rail to promote a winner, rerun the compare, or step sideways into style preview without losing the target context.",
+      title: "판단 레일",
+      intro: "재생 전에 현재 판정, 재실행 경로, 에피소드 승격 대상을 계속 보이게 유지합니다.",
+      linksHtml: `<a href="/ui/episodes/${esc(id)}">에피소드 상세</a><a href="/ui/episodes/${esc(id)}/ab-compare">비교 새로고침</a>`,
+      railTitle: "비교 액션",
+      railIntro: "대상 문맥을 잃지 않고 승자를 승격하거나, 비교를 다시 실행하거나, 스타일 프리뷰로 옆길을 택하세요.",
       railCards: [
         {
-          title: "Current verdict",
+          title: "현재 판정",
           detail: nextDecision,
           tone: verdictTone,
           badge: verdict,
-          html: `<a href="/ui/episodes/${esc(id)}">Carry verdict to Episode Detail</a>`
+          html: `<a href="/ui/episodes/${esc(id)}">판정을 에피소드 상세로 반영</a>`
         },
         {
-          title: "Regenerate compare set",
-          detail: compareReady ? "If the verdict still feels noisy, rerun the same pair or send a new style pair into compare." : "One or both previews are missing, so rerun before approving or rolling back.",
+          title: "비교 세트 재생성",
+          detail: compareReady ? "판정이 여전히 애매하면 같은 조합을 다시 실행하거나 새 스타일 조합을 비교에 넣으세요." : "프리뷰가 하나 이상 없어 승인이나 롤백 전에 다시 실행해야 합니다.",
           tone: compareReady ? "warn" : "bad",
-          badge: compareReady ? "rerun" : "blocked",
+          badge: compareReady ? "재실행" : "차단됨",
           html: `<form method="post" action="/ui/episodes/${esc(id)}/ab-preview" class="inline"><input type="hidden" name="styleA" value="${esc(
             variantAStyle
-          )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">Rerun A/B Compare</button></form>`
+          )}"/><input type="hidden" name="styleB" value="${esc(variantBStyle)}"/><button type="submit">A/B 비교 다시 실행</button></form>`
         },
         {
-          title: "Alternate review path",
-          detail: "Use style preview or linked jobs when the preview pair is too close to call.",
+          title: "대체 검토 경로",
+          detail: "프리뷰 쌍의 차이가 너무 작으면 스타일 프리뷰나 연결된 작업을 사용하세요.",
           tone: "muted",
-          badge: "alternate",
-          html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">Open jobA</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">Open jobB</a>` : ""}<a href="/ui/episodes/${esc(id)}">Episode Detail</a>`
+          badge: "대체 경로",
+          html: `${jobA ? `<a href="/ui/jobs/${encodeURIComponent(jobA)}">jobA 열기</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB 열기</a>` : ""}<a href="/ui/episodes/${esc(id)}">에피소드 상세</a>`
         }
       ],
-      railEmpty: "No compare actions are available.",
+      railEmpty: "사용 가능한 비교 액션이 없습니다.",
       railTone: verdictTone,
-      snapshotIntro: "Failure reason, last known good state, retry path, and rollback point stay visible above playback.",
+      snapshotIntro: "실패 사유, 마지막 정상 상태, 재시도 경로, 롤백 지점을 재생 화면 위에 유지합니다.",
       snapshotFacts: [
         {
-          label: "Failure Reason",
-          value: !compareReady ? "one or both preview artifacts are missing" : "no hard blocker; operator verdict required",
-          hint: "top compare blocker"
+          label: "실패 사유",
+          value: !compareReady ? "프리뷰 산출물 하나 이상이 없습니다" : "강한 차단 요인은 없지만 운영자 판정이 필요합니다",
+          hint: "최상위 비교 차단 요인"
         },
-        { label: "Last Known Good", value: aExists || bExists ? "at least one preview artifact exists" : "none", hint: "best current recovery anchor" },
-        { label: "Fallback Applied", value: `${qa.forcedStyle} / ${qb.forcedStyle}`, hint: "forced styles detected by STYLE_QC" },
-        { label: "Retry Path", value: compareReady ? "rerun A/B or return to episode detail" : "rerun A/B compare generation", hint: nextDecision },
-        { label: "Alternate Path", value: "style preview", hint: "use when compare is noisy" },
-        { label: "Rollback Point", value: "episode detail", hint: "promotion and rollback land here" }
+        { label: "마지막 정상 지점", value: aExists || bExists ? "프리뷰 산출물 하나 이상이 존재합니다" : "없음", hint: "현재 가장 좋은 복구 앵커" },
+        { label: "적용된 폴백", value: `${qa.forcedStyle} / ${qb.forcedStyle}`, hint: "STYLE_QC가 감지한 강제 스타일" },
+        { label: "재시도 경로", value: compareReady ? "A/B 재실행 또는 에피소드 상세로 복귀" : "A/B 비교 생성 재실행", hint: nextDecision },
+        { label: "대체 경로", value: "스타일 프리뷰", hint: "비교 결과가 애매할 때 사용" },
+        { label: "롤백 지점", value: "에피소드 상세", hint: "승격과 롤백은 여기서 반영됩니다" }
       ],
-      snapshotEmpty: "No recovery snapshot available.",
+      snapshotEmpty: "복구 스냅샷이 없습니다.",
       snapshotTone: verdictTone
-    })}<section class="card"><div class="section-head"><div><h2>Variant Playback</h2><p class="section-intro">Watch both targets side by side only after the verdict rail above is clear.</p></div></div><div class="decision-media-grid"><article class="decision-media-card"><div class="section-head"><div><h3>Variant A</h3><p class="muted-text">${esc(
+    })}<section class="card"><div class="section-head"><div><h2>변형 재생</h2><p class="section-intro">위 판단 레일이 정리된 뒤에만 두 대상을 나란히 확인하세요.</p></div></div><div class="decision-media-grid"><article class="decision-media-card"><div class="section-head"><div><h3>변형 A</h3><p class="muted-text">${esc(
       variantAStyle
-    )}</p></div><span class="badge ${aExists ? "ok" : "bad"}">${aExists ? "ready" : "missing"}</span></div>${aExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${aUrl}"></video><div class="quick-links"><a href="${aUrl}">Open preview_A.mp4</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
+    )}</p></div><span class="badge ${aExists ? "ok" : "bad"}">${aExists ? "준비됨" : "없음"}</span></div>${aExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${aUrl}"></video><div class="quick-links"><a href="${aUrl}">preview_A.mp4 열기</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
       jobA
-    )}">jobA</a>` : ""}</div>` : `<div class="error">preview_A.mp4 not found</div>`}<p>STYLE_QC: fail=${qa.failCount}, warn=${qa.warnCount}, forced=${esc(
+    )}">jobA</a>` : ""}</div>` : `<div class="error">preview_A.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qa.failCount}, 경고=${qa.warnCount}, 강제=${esc(
       qa.forcedStyle
-    )}</p></article><article class="decision-media-card"><div class="section-head"><div><h3>Variant B</h3><p class="muted-text">${esc(
+    )}</p></article><article class="decision-media-card"><div class="section-head"><div><h3>변형 B</h3><p class="muted-text">${esc(
       variantBStyle
-    )}</p></div><span class="badge ${bExists ? "ok" : "bad"}">${bExists ? "ready" : "missing"}</span></div>${bExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${bUrl}"></video><div class="quick-links"><a href="${bUrl}">Open preview_B.mp4</a>${jobB ? `<a href="/ui/jobs/${encodeURIComponent(
+    )}</p></div><span class="badge ${bExists ? "ok" : "bad"}">${bExists ? "준비됨" : "없음"}</span></div>${bExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${bUrl}"></video><div class="quick-links"><a href="${bUrl}">preview_B.mp4 열기</a>${jobB ? `<a href="/ui/jobs/${encodeURIComponent(
       jobB
-    )}">jobB</a>` : ""}</div>` : `<div class="error">preview_B.mp4 not found</div>`}<p>STYLE_QC: fail=${qb.failCount}, warn=${qb.warnCount}, forced=${esc(
+    )}">jobB</a>` : ""}</div>` : `<div class="error">preview_B.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qb.failCount}, 경고=${qb.warnCount}, 강제=${esc(
       qb.forcedStyle
-    )}</p></article></div></section><section class="card"><div class="section-head"><div><h2>Diff at a Glance</h2><p class="section-intro">The operator can see the compare target and QC delta in one table before approving or retrying.</p></div></div><div class="table-wrap"><table><thead><tr><th>Metric</th><th>Variant A</th><th>Variant B</th></tr></thead><tbody><tr><td>Style preset</td><td>${esc(
+    )}</p></article></div></section><section class="card"><div class="section-head"><div><h2>차이 한눈에 보기</h2><p class="section-intro">승인하거나 재시도하기 전에 한 표에서 비교 대상과 QC 차이를 확인합니다.</p></div></div><div class="table-wrap"><table><thead><tr><th>지표</th><th>변형 A</th><th>변형 B</th></tr></thead><tbody><tr><td>스타일 프리셋</td><td>${esc(
       variantAStyle
     )}</td><td>${esc(variantBStyle)}</td></tr><tr><td>STYLE_QC fail_count</td><td>${qa.failCount}</td><td>${qb.failCount}</td></tr><tr><td>STYLE_QC warn_count</td><td>${qa.warnCount}</td><td>${qb.warnCount}</td></tr><tr><td>forced_episode_style</td><td>${esc(
       qa.forcedStyle
     )}</td><td>${esc(qb.forcedStyle)}</td></tr></tbody></table></div></section></div>`;
 
-    return reply.type("text/html; charset=utf-8").send(page(`A/B Compare ${id}`, body));
+    return reply.type("text/html; charset=utf-8").send(page(`A/B 비교 ${id}`, body));
   });
 
   app.post("/api/episodes/:id/run-profile", async (request, reply) => {
@@ -4932,42 +5892,43 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 
     const logs = job.logs;
     const logRows = logs
-      .map((log) => `<tr><td>${fmtDate(log.createdAt.toISOString())}</td><td>${esc(log.level ?? "info")}</td><td>${esc(log.message ?? "")}</td><td><pre>${esc(JSON.stringify(log.details ?? null, null, 2))}</pre></td></tr>`)
+      .map((log) => `<tr><td>${fmtDate(log.createdAt.toISOString())}</td><td>${esc(statusLabelKo(String(log.level ?? "info")))}</td><td>${esc(log.message ?? "")}</td><td><pre>${esc(JSON.stringify(log.details ?? null, null, 2))}</pre></td></tr>`)
       .join("");
 
     const episodeId = job.episodeId;
     const canRetry = job.status === "FAILED";
-    const errorStack = job.lastError ? `<details><summary>Toggle lastError stack</summary><pre>${esc(job.lastError)}</pre></details>` : "<p>lastError: (none)</p>";
+    const errorStack = job.lastError ? `<details><summary>lastError 스택 열기/닫기</summary><pre>${esc(job.lastError)}</pre></details>` : "<p>lastError: (없음)</p>";
     const jobStatusLabel = String(job.status ?? "UNKNOWN");
+    const jobStatusDisplay = statusLabelKo(jobStatusLabel);
     const jobStatusTone = decisionTone(badgeClass(jobStatusLabel));
     const lastLog = logs.at(-1) ?? null;
     const recoveryCategory = classifyErrorType(job.lastError ?? "");
     const retryAction = canRetry
-      ? `<form method="post" action="/ui/jobs/${esc(id)}/retry"><button type="submit">Retry (FAILED job)</button></form>`
-      : `<button type="button" class="secondary" disabled>Retry is available only when status is FAILED</button>`;
+      ? `<form method="post" action="/ui/jobs/${esc(id)}/retry"><button type="submit">실패 작업 재시도</button></form>`
+      : `<button type="button" class="secondary" disabled>재시도는 상태가 FAILED일 때만 가능합니다.</button>`;
     const jobHero = renderObjectHero({
-      eyebrow: "Run Control Plane",
-      title: "Job / Run Detail",
-      subtitle: "Treat the run as an object: status, recovery, recent activity, and linked episode stay visible above raw logs.",
-      statusLabel: jobStatusLabel,
+      eyebrow: "실행 제어면",
+      title: "작업 / 실행 상세",
+      subtitle: "실행을 하나의 오브젝트로 다루세요. 상태, 복구, 최근 활동, 연결된 에피소드를 원시 로그 위에 계속 보이게 둡니다.",
+      statusLabel: jobStatusDisplay,
       statusTone: jobStatusTone,
       flash: flashHtml(request.query),
-      headerContextHtml: `<span class="muted-text">job <span class="decision-code">${esc(job.id)}</span></span><span class="muted-text">episode <span class="decision-code">${esc(
+      headerContextHtml: `<span class="muted-text">작업 <span class="decision-code">${esc(job.id)}</span></span><span class="muted-text">에피소드 <span class="decision-code">${esc(
         episodeId
       )}</span></span>`,
-      quickLinksHtml: `<a href="/ui/jobs">Back to Jobs</a><a href="/ui/episodes/${esc(episodeId)}">Episode Detail</a><a href="/ui/hitl">Recovery Queue</a>`,
+      quickLinksHtml: `<a href="/ui/jobs">작업으로 돌아가기</a><a href="/ui/episodes/${esc(episodeId)}">에피소드 상세</a><a href="/ui/hitl">복구 큐</a>`,
       summaryCards: [
-        { label: "Progress", value: `${job.progress}%`, hint: "current progress rail", tone: jobStatusTone },
-        { label: "Attempts", value: `${job.attemptsMade}/${job.maxAttempts}`, hint: `${job.retryBackoffMs}ms backoff`, tone: canRetry ? "bad" : "muted" },
-        { label: "Logs", value: String(logs.length), hint: lastLog ? `latest ${fmtDate(lastLog.createdAt.toISOString())}` : "no log lines", tone: logs.length > 0 ? "ok" : "muted" },
-        { label: "Episode Status", value: String(job.episode?.status ?? "-"), hint: String(job.episode?.topic ?? "-"), tone: decisionTone(badgeClass(String(job.episode?.status ?? ""))) }
+        { label: "진행률", value: `${job.progress}%`, hint: "현재 진행 상태", tone: jobStatusTone },
+        { label: "시도 횟수", value: `${job.attemptsMade}/${job.maxAttempts}`, hint: `${job.retryBackoffMs}ms 백오프`, tone: canRetry ? "bad" : "muted" },
+        { label: "로그", value: String(logs.length), hint: lastLog ? `최신 ${fmtDate(lastLog.createdAt.toISOString())}` : "로그 없음", tone: logs.length > 0 ? "ok" : "muted" },
+        { label: "에피소드 상태", value: statusLabelKo(String(job.episode?.status ?? "-")), hint: String(job.episode?.topic ?? "-"), tone: decisionTone(badgeClass(String(job.episode?.status ?? ""))) }
       ],
       metaItems: [
-        { label: "Job ID", value: job.id, hint: "run object key" },
-        { label: "Episode", value: episodeId, hint: String(job.episode?.topic ?? "-") },
-        { label: "Type", value: job.type, hint: "worker step" },
-        { label: "Retry Backoff", value: `${job.retryBackoffMs}ms`, hint: `${job.attemptsMade}/${job.maxAttempts} attempts` },
-        { label: "Character Pack", value: String(job.episode?.characterPackId ?? "none"), hint: "linked object" }
+        { label: "작업 ID", value: job.id, hint: "실행 오브젝트 키" },
+        { label: "에피소드", value: episodeId, hint: String(job.episode?.topic ?? "-") },
+        { label: "타입", value: job.type, hint: "워커 단계" },
+        { label: "재시도 백오프", value: `${job.retryBackoffMs}ms`, hint: `${job.attemptsMade}/${job.maxAttempts}회 시도` },
+        { label: "캐릭터 팩", value: String(job.episode?.characterPackId ?? "없음"), hint: "연결된 오브젝트" }
       ],
       blockers: job.lastError
         ? [
@@ -4975,72 +5936,72 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
               title: recoveryCategory.label,
               detail: job.lastError,
               tone: "bad",
-              badge: "failed"
+              badge: "실패"
             }
           ]
         : [],
       primaryActions: [
         {
-          title: canRetry ? "Retry failed run" : "Retry unavailable",
-          detail: canRetry ? "Replay the failed job directly from the run detail surface." : "Only FAILED jobs can be retried from here.",
+          title: canRetry ? "실패 실행 재시도" : "재시도 불가",
+          detail: canRetry ? "이 실행 상세 화면에서 실패 작업을 직접 재실행합니다." : "여기서는 FAILED 상태의 작업만 재시도할 수 있습니다.",
           tone: canRetry ? "bad" : "muted",
-          badge: canRetry ? "retry" : "locked",
-          html: `${retryAction}${episodeId ? `<a href="/ui/episodes/${esc(episodeId)}">Open Episode</a>` : ""}`
+          badge: canRetry ? "재시도" : "잠김",
+          html: `${retryAction}${episodeId ? `<a href="/ui/episodes/${esc(episodeId)}">에피소드 열기</a>` : ""}`
         }
       ],
       secondaryActions: [
         {
-          title: "Inspect related objects",
-          detail: "Jump to the owning episode, artifact index, or recovery queue without losing run context.",
+          title: "관련 오브젝트 점검",
+          detail: "실행 문맥을 잃지 않고 소유 에피소드, 산출물 인덱스, 복구 큐로 이동합니다.",
           tone: "muted",
-          html: `<a href="/ui/episodes/${esc(episodeId)}">Episode Detail</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}">Artifacts</a><a href="/ui/hitl">HITL Queue</a>`
+          html: `<a href="/ui/episodes/${esc(episodeId)}">에피소드 상세</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}">산출물</a><a href="/ui/hitl">HITL 큐</a>`
         }
       ],
       recoveryActions: [
         {
-          title: "Recovery path",
-          detail: job.lastError ? recoveryCategory.hint : "No recovery action is required right now.",
+          title: "복구 경로",
+          detail: job.lastError ? recoveryCategory.hint : "지금은 복구 액션이 필요하지 않습니다.",
           tone: job.lastError ? "warn" : "ok",
           badge: recoveryCategory.label,
-          html: job.lastError ? `<a href="/ui/health">Open Health</a><a href="/ui/hitl">Open Recovery Queue</a>` : `<a href="/ui/jobs">Back to Jobs</a>`
+          html: job.lastError ? `<a href="/ui/health">상태 열기</a><a href="/ui/hitl">복구 큐 열기</a>` : `<a href="/ui/jobs">작업으로 돌아가기</a>`
         }
       ],
       recentActivity: logs.slice(-4).reverse().map((log) => ({
-        title: `${log.level ?? "info"} @ ${fmtDate(log.createdAt.toISOString())}`,
-        detail: log.message ?? "(no message)",
+        title: `${statusLabelKo(String(log.level ?? "info"))} @ ${fmtDate(log.createdAt.toISOString())}`,
+        detail: log.message ?? "(메시지 없음)",
         tone: decisionTone(badgeClass(String(log.level ?? ""))),
-        badge: String(log.level ?? "info")
+        badge: statusLabelKo(String(log.level ?? "info"))
       })),
       linkedObjects: [
         {
-          title: "Episode object",
+          title: "에피소드 오브젝트",
           detail: `${episodeId} / ${String(job.episode?.topic ?? "-")}`,
           tone: "muted",
-          html: `<a href="/ui/episodes/${esc(episodeId)}">Open Episode Detail</a>`
+          html: `<a href="/ui/episodes/${esc(episodeId)}">에피소드 상세 열기</a>`
         }
       ]
     });
     const jobDecisionRail: DecisionCard[] = [
       {
-        title: canRetry ? "Retry this run" : "Monitor this run",
-        detail: canRetry ? "Retry directly from the failed run, then confirm the next checkpoint in the evidence below." : "Retry stays locked until the run reaches FAILED. Use the owning episode for alternate actions.",
+        title: canRetry ? "이 실행 재시도" : "이 실행 모니터링",
+        detail: canRetry ? "실패한 실행에서 바로 재시도한 뒤, 아래 근거에서 다음 체크포인트를 확인하세요." : "실행이 FAILED가 될 때까지 재시도는 잠겨 있습니다. 대체 액션은 소유 에피소드에서 진행하세요.",
         tone: canRetry ? "bad" : jobStatusTone,
-        badge: canRetry ? "retry" : "monitor",
-        html: `${retryAction}${episodeId ? `<a href="/ui/episodes/${esc(episodeId)}">Episode Detail</a>` : ""}`
+        badge: canRetry ? "재시도" : "모니터링",
+        html: `${retryAction}${episodeId ? `<a href="/ui/episodes/${esc(episodeId)}">에피소드 상세</a>` : ""}`
       },
       {
-        title: "Owning object",
-        detail: `${episodeId} remains the rollback and alternate-path anchor for this run.`,
+        title: "소유 오브젝트",
+        detail: `${episodeId}는 이 실행의 롤백 및 대체 경로 앵커로 유지됩니다.`,
         tone: "muted",
-        badge: "episode",
-        html: `<a href="/ui/episodes/${esc(episodeId)}">Open Episode Detail</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}">Artifacts</a>`
+        badge: "에피소드",
+        html: `<a href="/ui/episodes/${esc(episodeId)}">에피소드 상세 열기</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}">산출물</a>`
       },
       {
-        title: "Recovery route",
-        detail: job.lastError ? recoveryCategory.hint : "No recovery work is required unless a later checkpoint fails.",
+        title: "복구 경로",
+        detail: job.lastError ? recoveryCategory.hint : "이후 체크포인트가 실패하지 않는 한 복구 작업은 필요하지 않습니다.",
         tone: job.lastError ? "warn" : "ok",
         badge: recoveryCategory.label,
-        html: `<a href="/ui/hitl">Recovery Queue</a><a href="/ui/health">Health</a>`
+        html: `<a href="/ui/hitl">복구 큐</a><a href="/ui/health">상태</a>`
       }
     ];
     const jobDetailBody = buildJobDetailPageBody({
@@ -5048,41 +6009,41 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       jobId: esc(job.id),
       episodeId: esc(episodeId),
       type: esc(job.type),
-      statusBadge: `<span class="badge ${badgeClass(String(job.status ?? ""))}">${esc(job.status)}</span>`,
+      statusBadge: `<span class="badge ${badgeClass(String(job.status ?? ""))}">${esc(jobStatusDisplay)}</span>`,
       progress: esc(job.progress),
-      attempts: `${esc(job.attemptsMade)} / ${esc(job.maxAttempts)} (backoff: ${esc(job.retryBackoffMs)}ms)`,
+      attempts: `${esc(job.attemptsMade)} / ${esc(job.maxAttempts)} (백오프: ${esc(job.retryBackoffMs)}ms)`,
       errorStack,
       retryAction,
       logRows
     }).replace(
-      "<h1>Job Detail</h1>",
-      '<div class="section-head"><div><h2>Run Evidence</h2><p class="section-intro">Raw logs and payload evidence remain attached below the decision surface.</p></div></div>'
+      "<h1>작업 상세</h1>",
+      '<div class="section-head"><div><h2>실행 근거</h2><p class="section-intro">원시 로그와 페이로드 근거는 판단면 바로 아래에 붙여 둡니다.</p></div></div>'
     );
     return reply.type("text/html; charset=utf-8").send(
       page(
-        `Job ${id}`,
+        `작업 ${id}`,
         `${decisionSurfaceStyles()}<div class="decision-surface">${jobHero}${renderDecisionPrioritySection({
-          title: "Decision Rail",
-          intro: "Keep the retry action, owning episode, and recovery route visible before raw run evidence.",
-          linksHtml: `<a href="/ui/jobs">Back to Jobs</a><a href="/ui/episodes/${esc(episodeId)}">Episode Detail</a>`,
-          railTitle: "Run actions",
-          railIntro: "Use the run object for immediate retry, then step into the owning episode when the alternate path needs more context.",
+          title: "판단 레일",
+          intro: "원시 실행 근거보다 먼저 재시도 액션, 소유 에피소드, 복구 경로를 보이게 유지합니다.",
+          linksHtml: `<a href="/ui/jobs">작업으로 돌아가기</a><a href="/ui/episodes/${esc(episodeId)}">에피소드 상세</a>`,
+          railTitle: "실행 액션",
+          railIntro: "즉시 재시도는 실행 오브젝트에서 처리하고, 대체 경로에 더 많은 문맥이 필요하면 소유 에피소드로 이동하세요.",
           railCards: jobDecisionRail,
-          railEmpty: "No run actions are available.",
+          railEmpty: "사용 가능한 실행 액션이 없습니다.",
           railTone: canRetry ? "bad" : jobStatusTone,
-          snapshotIntro: "The failure reason, retry path, and owning object stay above the raw log table.",
+          snapshotIntro: "실패 사유, 재시도 경로, 소유 오브젝트를 원시 로그 표 위에 유지합니다.",
           snapshotFacts: [
-            { label: "Failure Reason", value: job.lastError ?? "none", hint: recoveryCategory.label },
+            { label: "실패 사유", value: job.lastError ?? "없음", hint: recoveryCategory.label },
             {
-              label: "Last Known Good",
-              value: lastLog?.message ?? "no successful checkpoint logged",
-              hint: lastLog ? fmtDate(lastLog.createdAt.toISOString()) : "awaiting logs"
+              label: "마지막 정상 지점",
+              value: lastLog?.message ?? "기록된 성공 체크포인트 없음",
+              hint: lastLog ? fmtDate(lastLog.createdAt.toISOString()) : "로그 대기 중"
             },
-            { label: "Retry Path", value: canRetry ? "retry failed job" : "monitor until terminal", hint: recoveryCategory.hint },
-            { label: "Alternate Path", value: "episode detail -> artifacts -> HITL", hint: "linked object recovery route" },
-            { label: "Rollback Point", value: episodeId, hint: "owning episode object" }
+            { label: "재시도 경로", value: canRetry ? "실패 작업 재시도" : "종료 상태까지 모니터링", hint: recoveryCategory.hint },
+            { label: "대체 경로", value: "에피소드 상세 -> 산출물 -> HITL", hint: "연결된 오브젝트 복구 경로" },
+            { label: "롤백 지점", value: episodeId, hint: "소유 에피소드 오브젝트" }
           ],
-          snapshotEmpty: "No recovery metadata is available.",
+          snapshotEmpty: "복구 메타데이터가 없습니다.",
           snapshotTone: job.lastError ? "warn" : jobStatusTone
         })}${jobDetailBody}</div>`
       )
@@ -5435,11 +6396,17 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
         const rawHref = `/ui/rollouts/artifact?path=${encodeURIComponent(row.artifactPath)}`;
         const smokeHref = row.smokeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}` : "";
         const renderModeHref = row.renderModeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.renderModeArtifactPath)}` : "";
+        const rowRepairParams = new URLSearchParams({ q: row.episodeId, source: row.sourcePath });
+        const rowRouteParams = new URLSearchParams({ q: row.episodeId, source: row.sourcePath });
+        const rowLineageParams = new URLSearchParams({ episodeId: row.episodeId, source: row.sourcePath });
+        const rowRepairHref = `/ui/benchmarks/repair-acceptance?${rowRepairParams.toString()}`;
+        const rowRouteHref = `/ui/benchmarks/route-reasons?${rowRouteParams.toString()}`;
+        const rowLineageHref = `/ui/benchmarks/dataset-lineage?${rowLineageParams.toString()}`;
         const candidateLinks = row.candidateCompareItems
           .map((item) => `<a href="/ui/benchmarks/candidates?path=${encodeURIComponent(item.path)}">${esc(item.label)}</a>`)
           .join("");
         return `<tr>
-          <td><div class="table-note"><strong>${esc(row.benchmarkName)}</strong><span class="muted-text">${esc(row.bundlePath)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${rawHref}">Raw JSON</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.artifactPath)}">Copy path</button></div></div></td>
+          <td><div class="table-note"><strong>${esc(row.benchmarkName)}</strong><span class="muted-text">${esc(row.bundlePath)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Detail</a><a href="${rawHref}">Raw JSON</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}<a href="${rowRepairHref}">Repair</a><a href="${rowRouteHref}">route_reason</a><a href="${rowLineageHref}">Lineage</a>${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.artifactPath)}">Copy path</button></div></div></td>
           <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
           <td>${esc(`${row.warningCount} warn / ${row.errorCount} err`)}</td>
           <td>${esc(row.profileSummary)}</td>
@@ -5458,6 +6425,252 @@ ${bundleRows ? `<section class="card"><div class="section-head"><h2>Bundle Resul
       regressionRows
     });
     return reply.type("text/html; charset=utf-8").send(page("Benchmarks", benchmarksBody));
+  });
+
+  app.get("/ui/benchmarks/repair-acceptance", async (request, reply) => {
+    const statusFilter = (q(request.query, "status") ?? "").toLowerCase();
+    const repairFilter = (q(request.query, "repair") ?? "").toLowerCase();
+    const backendFilter = (q(request.query, "backend") ?? "").toLowerCase();
+    const bundleFilter = (q(request.query, "bundle") ?? "").toLowerCase();
+    const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
+    const rows = collectRepairAcceptanceRows().filter((row) => {
+      if (statusFilter && ![row.acceptanceStatus, row.qcStatus].some((value) => value.toLowerCase().includes(statusFilter))) return false;
+      if (repairFilter && !row.repairSignals.some((value) => value.toLowerCase().includes(repairFilter))) return false;
+      if (backendFilter && ![row.backend, row.renderer, row.providerSummary].some((value) => value.toLowerCase().includes(backendFilter))) return false;
+      if (bundleFilter && ![row.bundle, row.scenario].some((value) => value.toLowerCase().includes(bundleFilter))) return false;
+      if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (
+        queryFilter &&
+        ![
+          row.episodeId,
+          row.shotId,
+          row.qcSummary,
+          row.issueSummary,
+          row.failureSummary,
+          row.judgeSummary,
+          row.repairSummary,
+          row.policySummary,
+          row.selectedCandidateId
+        ].some((value) => value.toLowerCase().includes(queryFilter))
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const summaryCards = [
+      { label: "Rows", value: String(rows.length), tone: "muted" as UiBadgeTone, hint: "sidecar artifacts in scope" },
+      { label: "Accepted", value: String(rows.filter((row) => row.acceptanceTone === "ok").length), tone: "ok" as UiBadgeTone, hint: "accepted / resolved artifacts" },
+      { label: "Rejected", value: String(rows.filter((row) => row.acceptanceTone === "bad").length), tone: "bad" as UiBadgeTone, hint: "rejected or failed artifacts" },
+      { label: "QC Failed", value: String(rows.filter((row) => row.qcTone === "bad").length), tone: "bad" as UiBadgeTone, hint: "qc reasons need operator review" },
+      { label: "Repair Tagged", value: String(rows.filter((row) => row.repairSignals.length > 0).length), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.repairSignals), 1) }
+    ]
+      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
+      .join("");
+    const filters = `
+<form method="get" action="/ui/benchmarks/repair-acceptance">
+  <div class="quick-grid">
+    <div class="field"><label for="repair-status">Acceptance / QC status</label><input id="repair-status" name="status" value="${esc(statusFilter)}" placeholder="accepted, rejected, failed..."/></div>
+    <div class="field"><label for="repair-signal">Repair signal</label><input id="repair-signal" name="repair" value="${esc(repairFilter)}" placeholder="identity_repair, rejection..."/></div>
+    <div class="field"><label for="repair-backend">Backend / renderer</label><input id="repair-backend" name="backend" value="${esc(backendFilter)}" placeholder="wan, hunyuan..."/></div>
+    <div class="field"><label for="repair-bundle">Bundle / scenario</label><input id="repair-bundle" name="bundle" value="${esc(bundleFilter)}" placeholder="economy, convergence..."/></div>
+    <div class="field"><label for="repair-source">Source root</label><input id="repair-source" name="source" value="${esc(sourceFilter)}" placeholder="local worktree..."/></div>
+    <div class="field"><label for="repair-q">Free text</label><input id="repair-q" name="q" value="${esc(queryFilter)}" placeholder="episode id, shot id, failure, qc reason..."/></div>
+  </div>
+  <div class="actions"><button type="submit" data-primary-action="1">Apply filters</button><a href="/ui/benchmarks/repair-acceptance">Reset explorer</a></div>
+</form>`;
+    const tableRows = rows
+      .map((row) => {
+        const compareHref = row.candidateComparePath ? `/ui/benchmarks/candidates?path=${encodeURIComponent(row.candidateComparePath)}&focus=selected` : "";
+        const smokeHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}`;
+        const planHref = row.planArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.planArtifactPath)}` : "";
+        const qcHref = row.qcArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.qcArtifactPath)}` : "";
+        const renderLogHref = row.renderLogPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.renderLogPath)}` : "";
+        const actualJudgeHref = row.actualJudgePath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.actualJudgePath)}` : "";
+        const visualJudgeHref = row.visualJudgePath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.visualJudgePath)}` : "";
+        const finalLabel = row.finalPassed === null ? "unknown" : row.finalPassed ? "passed" : "failed";
+        return `<tr>
+          <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">provider ${esc(row.providerSummary)}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span></div></td>
+          <td><div class="table-note"><span class="badge ${row.acceptanceTone}">${esc(humanizeOpsLabel(row.acceptanceStatus))}</span><span class="muted-text">final ${esc(finalLabel)} / ${esc(row.finalStage ?? "-")}</span><span class="mono">${esc(row.selectedCandidateId)}</span></div></td>
+          <td><div class="table-note"><span class="badge ${row.qcTone}">${esc(humanizeOpsLabel(row.qcStatus))}</span><span class="muted-text">${esc(row.qcSummary)}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">${esc(row.fallbackSummary === "-" ? "no fallback steps" : `fallback ${row.fallbackSummary}`)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.policySummary)}</strong><span class="muted-text">${esc(row.repairSummary)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.judgeSummary || "-")}</strong><span class="muted-text">${esc(row.failureSummary)}</span></div></td>
+          <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
+          <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.artifactRelativePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
+        </tr>`;
+      })
+      .join("");
+    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Some artifacts do not emit an explicit <code>acceptance_status</code> or normalized <code>repair_reasons[]</code>. This explorer derives acceptance from <code>accepted</code>, <code>judge_accepted</code>, and <code>judge_decision</code>, and derives repair signals from presets, rejection reasons, and QC output.</span></div>`;
+    const body = buildRepairAcceptancePageBody({
+      flash: flashHtml(request.query),
+      filters,
+      summaryCards,
+      notes,
+      rows: tableRows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Repair / Acceptance Explorer", body));
+  });
+
+  app.get("/ui/benchmarks/route-reasons", async (request, reply) => {
+    const reasonFilter = (q(request.query, "reason") ?? "").toLowerCase();
+    const acceptanceFilter = (q(request.query, "acceptance") ?? "").toLowerCase();
+    const backendFilter = (q(request.query, "backend") ?? "").toLowerCase();
+    const bundleFilter = (q(request.query, "bundle") ?? "").toLowerCase();
+    const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
+    const rows = collectRouteReasonRows().filter((row) => {
+      if (reasonFilter && !row.routeReason.toLowerCase().includes(reasonFilter)) return false;
+      if (acceptanceFilter && !row.acceptanceStatus.toLowerCase().includes(acceptanceFilter)) return false;
+      if (backendFilter && ![row.backend, row.providerSummary].some((value) => value.toLowerCase().includes(backendFilter))) return false;
+      if (bundleFilter && ![row.bundle, row.scenario].some((value) => value.toLowerCase().includes(bundleFilter))) return false;
+      if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (
+        queryFilter &&
+        ![
+          row.episodeId,
+          row.shotId,
+          row.routeReason,
+          row.qcSummary,
+          row.issueSummary,
+          row.repairSummary,
+          row.fallbackSummary,
+          row.policySummary,
+          row.selectedCandidateId
+        ].some((value) => value.toLowerCase().includes(queryFilter))
+      ) {
+        return false;
+      }
+      return true;
+    });
+    const mismatchedCount = rows.filter((row) => row.renderModeSummary.includes("->")).length;
+    const summaryCards = [
+      { label: "Shots", value: String(rows.length), tone: "muted" as UiBadgeTone, hint: "runtime shots with route metadata" },
+      { label: "Reasons", value: String(new Set(rows.map((row) => row.routeReason)).size), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.routeReason), 1) },
+      { label: "Accepted", value: String(rows.filter((row) => row.acceptanceTone === "ok").length), tone: "ok" as UiBadgeTone, hint: "accepted / resolved routed shots" },
+      { label: "Render Drift", value: String(mismatchedCount), tone: mismatchedCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone), hint: "stored vs recommended render-mode mismatches" },
+      { label: "Repair Tagged", value: String(rows.filter((row) => row.repairSummary !== "-").length), tone: "bad" as UiBadgeTone, hint: "shots with repair or QC baggage" }
+    ]
+      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
+      .join("");
+    const filters = `
+<form method="get" action="/ui/benchmarks/route-reasons">
+  <div class="quick-grid">
+    <div class="field"><label for="route-reason-filter">route_reason</label><input id="route-reason-filter" name="reason" value="${esc(reasonFilter)}" placeholder="character_focused_dialogue..."/></div>
+    <div class="field"><label for="route-acceptance-filter">Acceptance</label><input id="route-acceptance-filter" name="acceptance" value="${esc(acceptanceFilter)}" placeholder="accepted, resolved..."/></div>
+    <div class="field"><label for="route-backend-filter">Backend</label><input id="route-backend-filter" name="backend" value="${esc(backendFilter)}" placeholder="wan, hunyuan..."/></div>
+    <div class="field"><label for="route-bundle-filter">Bundle / scenario</label><input id="route-bundle-filter" name="bundle" value="${esc(bundleFilter)}" placeholder="economy, convergence..."/></div>
+    <div class="field"><label for="route-source-filter">Source root</label><input id="route-source-filter" name="source" value="${esc(sourceFilter)}" placeholder="main repo..."/></div>
+    <div class="field"><label for="route-q-filter">Free text</label><input id="route-q-filter" name="q" value="${esc(queryFilter)}" placeholder="episode id, shot id, blocker, qc reason..."/></div>
+  </div>
+  <div class="actions"><button type="submit" data-primary-action="1">Apply filters</button><a href="/ui/benchmarks/route-reasons">Reset explorer</a></div>
+</form>`;
+    const tableRows = rows
+      .map((row) => {
+        const smokeHref = `/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}`;
+        const runtimeHref = row.runtimePath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.runtimePath)}` : "";
+        const planHref = row.planArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.planArtifactPath)}` : "";
+        const qcHref = row.qcArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.qcArtifactPath)}` : "";
+        const renderLogHref = row.renderLogPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.renderLogPath)}` : "";
+        const actualJudgeHref = row.actualJudgePath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.actualJudgePath)}` : "";
+        const visualJudgeHref = row.visualJudgePath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.visualJudgePath)}` : "";
+        const compareHref = row.candidateComparePath ? `/ui/benchmarks/candidates?path=${encodeURIComponent(row.candidateComparePath)}&focus=selected` : "";
+        const renderModeHref = row.renderModeArtifactPath ? `/ui/rollouts/detail?path=${encodeURIComponent(row.renderModeArtifactPath)}` : "";
+        const finalLabel = row.finalPassed === null ? "unknown" : row.finalPassed ? "passed" : "failed";
+        return `<tr>
+          <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.routeReasonLabel)}</strong><span class="mono">${esc(row.routeReason)}</span><span class="muted-text">candidate ${esc(row.selectedCandidateId)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.renderModeSummary)}</strong><span class="muted-text">${esc(row.providerSummary)}</span><span class="muted-text">${esc(row.policySummary)}</span></div></td>
+          <td><div class="table-note"><span class="badge ${row.acceptanceTone}">${esc(humanizeOpsLabel(row.acceptanceStatus))}</span><span class="muted-text">final ${esc(finalLabel)} / ${esc(row.finalStage ?? "-")}</span></div></td>
+          <td><div class="table-note"><span class="muted-text">${esc(compact([row.qcSummary !== "-" ? row.qcSummary : null, row.repairSummary !== "-" ? row.repairSummary : null], " | ") || "-")}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">${esc(row.fallbackSummary)}</span></div></td>
+          <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${runtimeHref ? `<a href="${runtimeHref}">Runtime Shots</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
+          <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.artifactRelativePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
+        </tr>`;
+      })
+      .join("");
+    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">This explorer depends on <code>shot_grammar.route_reason</code> inside runtime shots. If route reasons are missing, benchmark smoke output needs to persist that field for every shot, not only episode-local previews.</span></div>`;
+    const body = buildRouteReasonPageBody({
+      flash: flashHtml(request.query),
+      filters,
+      summaryCards,
+      notes,
+      rows: tableRows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Route Reason Explorer", body));
+  });
+
+  app.get("/ui/benchmarks/dataset-lineage", async (request, reply) => {
+    const episodeFilter = (q(request.query, "episodeId") ?? "").toLowerCase();
+    const datasetFilter = (q(request.query, "dataset") ?? "").toLowerCase();
+    const packFilter = (q(request.query, "pack") ?? "").toLowerCase();
+    const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
+    const rows = collectDatasetLineageRows().filter((row) => {
+      if (episodeFilter && !row.episodeId.toLowerCase().includes(episodeFilter)) return false;
+      if (datasetFilter && !row.datasetIds.some((value) => value.toLowerCase().includes(datasetFilter))) return false;
+      if (packFilter && !row.packIds.some((value) => value.toLowerCase().includes(packFilter))) return false;
+      if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (
+        queryFilter &&
+        ![row.episodeId, row.bibleRef, row.datasetIds.join(" "), row.packIds.join(" "), row.routeReasons.join(" "), row.schemaGaps.join(" ")]
+          .some((value) => value.toLowerCase().includes(queryFilter))
+      ) {
+        return false;
+      }
+      return true;
+    });
+    const summaryCards = [
+      { label: "Bundles", value: String(rows.length), tone: "muted" as UiBadgeTone, hint: "smoke bundles with runtime lineage" },
+      { label: "Datasets", value: String(new Set(rows.flatMap((row) => row.datasetIds)).size), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.datasetIds), 1) },
+      { label: "Character Packs", value: String(new Set(rows.flatMap((row) => row.packIds)).size), tone: "ok" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.packIds), 1) },
+      { label: "Bible Refs", value: String(new Set(rows.map((row) => row.bibleRef).filter((value) => value !== "-")).size), tone: "muted" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.bibleRef), 1) },
+      { label: "Schema Gaps", value: String(rows.filter((row) => row.schemaGaps.length > 0).length), tone: "bad" as UiBadgeTone, hint: "rows missing lossless dataset versioning" }
+    ]
+      .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
+      .join("");
+    const filters = `
+<form method="get" action="/ui/benchmarks/dataset-lineage">
+  <div class="quick-grid">
+    <div class="field"><label for="lineage-episode-filter">episodeId</label><input id="lineage-episode-filter" name="episodeId" value="${esc(episodeFilter)}" placeholder="ep_video_i2v_smoke..."/></div>
+    <div class="field"><label for="lineage-dataset-filter">dataset_id</label><input id="lineage-dataset-filter" name="dataset" value="${esc(datasetFilter)}" placeholder="transit_ridership..."/></div>
+    <div class="field"><label for="lineage-pack-filter">character pack</label><input id="lineage-pack-filter" name="pack" value="${esc(packFilter)}" placeholder="smoke-generated-rig..."/></div>
+    <div class="field"><label for="lineage-source-filter">Source root</label><input id="lineage-source-filter" name="source" value="${esc(sourceFilter)}" placeholder="main repo..."/></div>
+    <div class="field"><label for="lineage-q-filter">Free text</label><input id="lineage-q-filter" name="q" value="${esc(queryFilter)}" placeholder="bible ref, route_reason, schema gap..."/></div>
+  </div>
+  <div class="actions"><button type="submit" data-primary-action="1">Apply filters</button><a href="/ui/benchmarks/dataset-lineage">Reset viewer</a></div>
+</form>`;
+    const tableRows = rows
+      .map((row) => {
+        const artifactLinks = [
+          `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.smokeArtifactPath)}">Smoke</a>`,
+          row.runtimeShotsPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.runtimeShotsPath)}">Runtime Shots</a>` : "",
+          row.renderLogPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.renderLogPath)}">Render Log</a>` : "",
+          row.qcReportPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.qcReportPath)}">QC</a>` : "",
+          row.sidecarPlanPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.sidecarPlanPath)}">Plan</a>` : "",
+          row.renderModeArtifactPath ? `<a href="/ui/rollouts/detail?path=${encodeURIComponent(row.renderModeArtifactPath)}">Render Modes</a>` : ""
+        ]
+          .filter((item) => item.length > 0)
+          .join("");
+        return `<tr>
+          <td><div class="table-note"><strong>${esc(row.bundle)}</strong><span class="muted-text">${esc(row.scenario)}</span><span class="mono">${esc(row.artifactRelativePath)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.episodeId)}</strong><span class="muted-text">bible ${esc(row.bibleRef)}</span><span class="muted-text">beats ${esc(String(row.beatCount))} / route reasons ${esc(summarizeValues(row.routeReasons, 2))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(summarizeValues(row.datasetIds, 3))}</strong><span class="muted-text">packs ${esc(summarizeValues(row.packIds, 3))}</span></div></td>
+          <td><div class="inline-actions">${artifactLinks}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div><div class="muted-text">${esc(compact([row.inputShotsPath, row.runtimeShotsPath], " -> ") || "-")}</div></td>
+          <td><div class="table-note"><strong>${esc(summarizeValues(row.manifestPaths, 2))}</strong><span class="muted-text">${esc(summarizeValues(row.selectedImagePaths, 2))}</span></div></td>
+          <td>${esc(summarizeValues(row.schemaGaps, 3))}</td>
+          <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
+        </tr>`;
+      })
+      .join("");
+    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Current artifacts expose <code>dataset_id</code>, <code>pack_id</code>, <code>bible_ref</code>, and sidecar reference manifest paths. They do not consistently expose <code>dataset_version_id</code>, source URIs, or manifest versions, so this viewer cannot prove lossless dataset revisions yet.</span></div>`;
+    const body = buildDatasetLineagePageBody({
+      flash: flashHtml(request.query),
+      filters,
+      summaryCards,
+      notes,
+      rows: tableRows
+    });
+    return reply.type("text/html; charset=utf-8").send(page("Dataset Lineage Viewer", body));
   });
 
   app.get("/ui/benchmarks/candidates", async (request, reply) => {
