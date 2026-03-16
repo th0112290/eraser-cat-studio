@@ -156,7 +156,7 @@ export function buildStudioBody(input: StudioBodyInput): string {
     .studio-pill{background:#f5f8fe}
     .studio-counter{background:#ebf3ff;border-color:#c8d9fb;color:#1257c7}
     .studio-meta-chip{background:#f7f9fc;color:#395170}
-    .studio-link{color:#142033;text-decoration:none}
+    .studio-link{appearance:none;cursor:pointer;color:#142033;text-decoration:none}
     .studio-link:hover{text-decoration:none;box-shadow:0 8px 20px rgba(18,87,199,.08);border-color:#b8cde9}
     .studio-status{margin-top:14px;padding:14px 16px;border-radius:16px;border:1px solid #d9e5fb;background:linear-gradient(180deg,#f7faff,#edf4ff)}
     .studio-status-label{display:block;margin:0 0 8px;color:#5b6b82;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
@@ -448,12 +448,27 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       <p id="studio-selection-meta" class="studio-monitor-note">최근 오브젝트 활동에서 팩이나 에피소드를 고르면 object summary, next safe action, linked routes, evidence가 여기에 고정됩니다.</p>
       <div id="studio-selection-fields" class="studio-selection-grid"><div class="studio-selection-empty">아직 고정된 오브젝트가 없습니다.</div></div>
       <div id="studio-selection-links" class="studio-links" style="margin-top:12px"></div>
+      <div class="studio-selection-grid" style="margin-top:12px">
+        <section class="studio-selection-block">
+          <span>Creation Handoff</span>
+          <p id="studio-nav-current" class="studio-selection-copy">현재 object deep link가 아직 없습니다.</p>
+          <div id="studio-nav-actions" class="studio-selection-links"></div>
+        </section>
+        <section class="studio-selection-block">
+          <span>Pinned Reopen</span>
+          <div id="studio-nav-pins" class="studio-selection-links"></div>
+        </section>
+        <section class="studio-selection-block">
+          <span>Recent Reopen</span>
+          <div id="studio-nav-recents" class="studio-selection-links"></div>
+        </section>
+      </div>
     </section>
     <section class="studio-ops-card" id="studio-dispatch">
       <p class="studio-ops-kicker">디스패치 레일</p>
       <h2 style="margin:0">팩을 바인딩하고 에피소드를 전진</h2>
       <p class="studio-monitor-note">위 오브젝트 요약에서 다음 surface를 확인한 뒤, 이 레일에서는 fast flow binding만 수행하세요. 승인, 비교, 롤백 판단은 Generator/Characters에 남깁니다.</p>
-      <div class="studio-links"><a href="/ui/character-generator" class="studio-link">Generator로 가기</a><a href="/ui/characters" class="studio-link">Characters로 가기</a></div>
+      <div class="studio-links"><a href="/ui/character-generator" class="studio-link" id="studio-dispatch-generator">Generator로 가기</a><a href="/ui/characters" class="studio-link" id="studio-dispatch-characters">Characters로 가기</a></div>
       <div class="studio-binding-grid">
         <label class="studio-binding"><span>에피소드 주제</span><input id="studio-topic" placeholder="예: 캐릭터 소개 영상"/></label>
         <label class="studio-binding"><span>episodeId</span><input id="studio-episode-id" placeholder="cmm..."/></label>
@@ -553,10 +568,34 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   const selectionMeta = q("studio-selection-meta");
   const selectionFields = q("studio-selection-fields");
   const selectionLinks = q("studio-selection-links");
+  const navCurrent = q("studio-nav-current");
+  const navActions = q("studio-nav-actions");
+  const navPins = q("studio-nav-pins");
+  const navRecents = q("studio-nav-recents");
+  const dispatchGeneratorLink = q("studio-dispatch-generator");
+  const dispatchCharactersLink = q("studio-dispatch-characters");
   const compareHref = ${JSON.stringify(seed.compareHref)};
   const activePackId = ${JSON.stringify(seed.activePackId)};
+  const params = new URLSearchParams(window.location.search);
+  const returnTo = params.get("returnTo") || "";
+  const initialPackId = params.get("packId") || "";
+  const initialEpisodeId = params.get("episodeId") || "";
+  let selectedAssetId = params.get("assetId") || "";
+  let selectionObject =
+    params.get("currentObject") ||
+    (selectedAssetId
+      ? "asset:" + selectedAssetId
+      : initialPackId
+        ? "pack:" + initialPackId
+        : initialEpisodeId
+          ? "episode:" + initialEpisodeId
+          : activePackId
+            ? "pack:" + activePackId
+            : "");
+  const focusTargetId = params.get("focus") || "studio-selection";
   let refreshTimer = null;
 
+  const creationNs = "ecs.ui.creation.nav.v1";
   const safe = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\\"", "&quot;").replaceAll("'", "&#39;");
   const renderStateRow = (colspan, tone, title, detail) => "<tr><td colspan='" + colspan + "'><div class='studio-state studio-state-" + tone + "'><strong>" + safe(title) + "</strong><span>" + safe(detail) + "</span></div></td></tr>";
   const readText = (v, fallback = "-") => {
@@ -570,6 +609,187 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       current = current[key];
     }
     return current;
+  };
+  const parseJson = (value, fallback) => {
+    try {
+      const parsed = JSON.parse(String(value || ""));
+      return parsed == null ? fallback : parsed;
+    } catch {
+      return fallback;
+    }
+  };
+  const readList = (kind) => {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    const parsed = parseJson(window.localStorage.getItem(creationNs + ".recent." + kind), []);
+    return Array.isArray(parsed) ? parsed : [];
+  };
+  const writeList = (kind, items) => {
+    try {
+      window.localStorage.setItem(creationNs + ".recent." + kind, JSON.stringify(items.slice(0, 6)));
+    } catch {}
+  };
+  const readPin = (kind) => {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const parsed = parseJson(window.localStorage.getItem(creationNs + ".pin." + kind), null);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  };
+  const writePin = (kind, item) => {
+    try {
+      window.localStorage.setItem(creationNs + ".pin." + kind, JSON.stringify(item));
+    } catch {}
+  };
+  const pushRecent = (kind, item) => {
+    if (!item || !item.id) return;
+    const next = [item].concat(readList(kind).filter((entry) => entry && entry.id !== item.id));
+    writeList(kind, next);
+  };
+  const buildHref = (pathname, entries) => {
+    const url = new URL(pathname, window.location.origin);
+    Object.entries(entries || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    });
+    return url.pathname + url.search;
+  };
+  const currentPackId = () => (selectedPack instanceof HTMLInputElement ? selectedPack.value.trim() : "");
+  const currentEpisodeId = () => (episodeInput instanceof HTMLInputElement ? episodeInput.value.trim() : "");
+  const currentStudioObject = () =>
+    selectionObject ||
+    (selectedAssetId
+      ? "asset:" + selectedAssetId
+      : currentPackId()
+        ? "pack:" + currentPackId()
+        : currentEpisodeId()
+          ? "episode:" + currentEpisodeId()
+          : "");
+  const buildStudioHref = (extra = {}) =>
+    buildHref("/ui/studio", {
+      assetId: selectedAssetId || undefined,
+      packId: currentPackId() || undefined,
+      episodeId: currentEpisodeId() || undefined,
+      returnTo: returnTo || undefined,
+      currentObject: currentStudioObject() || undefined,
+      focus: "studio-selection",
+      ...extra
+    });
+  const buildAssetHref = (assetId, extra = {}) =>
+    buildHref("/ui/assets", {
+      assetId,
+      returnTo: buildStudioHref({ assetId, currentObject: "asset:" + assetId }),
+      currentObject: "asset:" + assetId,
+      focus: "asset-selected-detail",
+      ...extra
+    });
+  const buildGeneratorHref = (extra = {}) =>
+    buildHref("/ui/character-generator", {
+      referenceAssetId: selectedAssetId || undefined,
+      assetId: selectedAssetId || undefined,
+      returnTo: buildStudioHref(),
+      currentObject: currentStudioObject() || undefined,
+      focus: "cg-stage-context",
+      ...extra
+    });
+  const buildCharactersHref = (packId, extra = {}) =>
+    buildHref("/ui/characters", {
+      characterPackId: packId || undefined,
+      returnTo: buildStudioHref(packId ? { packId, currentObject: "pack:" + packId } : {}),
+      currentObject: packId ? "pack:" + packId : currentStudioObject() || undefined,
+      focus: "pack-review-current",
+      ...extra
+    });
+  const buildCompareSurfaceHref = (packId) =>
+    packId && activePackId && packId !== activePackId
+      ? buildHref("/ui/character-generator/compare", {
+          leftPackId: packId,
+          rightPackId: activePackId,
+          returnTo: buildStudioHref({ packId, currentObject: "pack:" + packId }),
+          currentObject: "pack:" + packId,
+          focus: "pack-compare-hero"
+        })
+      : compareHref;
+  const renderNavLinks = (root, items, empty) => {
+    if (!(root instanceof HTMLElement)) return;
+    const valid = Array.isArray(items) ? items.filter((entry) => entry && entry.href && entry.label) : [];
+    root.innerHTML = valid.length
+      ? valid.map((entry) => "<a href=\\"" + safe(entry.href) + "\\" class=\\"studio-link\\">" + safe(entry.label) + "</a>").join("")
+      : "<span class=\\"studio-monitor-note\\">" + safe(empty) + "</span>";
+  };
+  const syncStudioUrl = () => {
+    const nextHref = buildStudioHref();
+    if (window.location.pathname + window.location.search !== nextHref) {
+      window.history.replaceState(null, "", nextHref);
+    }
+  };
+  const pinCurrentSelection = () => {
+    if (selectionObject.startsWith("asset:") && selectedAssetId) {
+      writePin("asset", { id: selectedAssetId, label: "Asset " + selectedAssetId, href: buildAssetHref(selectedAssetId) });
+      return;
+    }
+    const packId = currentPackId();
+    if (selectionObject.startsWith("pack:") && packId) {
+      writePin("pack", { id: packId, label: "Pack " + packId, href: buildCharactersHref(packId) });
+    }
+  };
+  const renderCreationNav = () => {
+    const packId = currentPackId();
+    const currentLabel =
+      selectionObject.startsWith("asset:") && selectedAssetId
+        ? "Asset " + selectedAssetId
+        : selectionObject.startsWith("pack:") && packId
+          ? "Character Pack " + packId
+          : selectionObject.startsWith("episode:") && currentEpisodeId()
+            ? "Episode " + currentEpisodeId()
+            : currentStudioObject() || "현재 creation object가 없습니다.";
+    if (navCurrent instanceof HTMLElement) navCurrent.textContent = currentLabel;
+    if (dispatchGeneratorLink instanceof HTMLAnchorElement) dispatchGeneratorLink.href = buildGeneratorHref();
+    if (dispatchCharactersLink instanceof HTMLAnchorElement) dispatchCharactersLink.href = buildCharactersHref(packId);
+    if (navActions instanceof HTMLElement) {
+      const actions = [];
+      if (selectedAssetId) actions.push({ href: buildAssetHref(selectedAssetId), label: "Asset detail" });
+      if (packId) actions.push({ href: buildCharactersHref(packId), label: "Characters" });
+      actions.push({ href: buildGeneratorHref(), label: "Generator" });
+      if (packId && buildCompareSurfaceHref(packId)) actions.push({ href: buildCompareSurfaceHref(packId), label: "Compare" });
+      if (returnTo) actions.push({ href: returnTo, label: "Return" });
+      navActions.innerHTML =
+        actions.map((entry) => "<a href=\\"" + safe(entry.href) + "\\" class=\\"studio-link\\">" + safe(entry.label) + "</a>").join("") +
+        '<button type="button" id="studio-copy-link" class="studio-link">Copy Deep Link</button>' +
+        ((selectionObject.startsWith("asset:") && selectedAssetId) || (selectionObject.startsWith("pack:") && packId)
+          ? '<button type="button" id="studio-pin-current" class="studio-link">Pin Current</button>'
+          : "");
+      document.getElementById("studio-copy-link")?.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+        } catch {}
+      });
+      document.getElementById("studio-pin-current")?.addEventListener("click", () => {
+        pinCurrentSelection();
+        renderCreationNav();
+      });
+    }
+    renderNavLinks(navPins, [readPin("asset"), readPin("pack"), readPin("run")].filter(Boolean), "Pinned reopen이 아직 없습니다.");
+    renderNavLinks(
+      navRecents,
+      readList("assets").slice(0, 2).concat(readList("packs").slice(0, 2)).concat(readList("runs").slice(0, 2)),
+      "최근 creation reopen 링크가 아직 없습니다."
+    );
+  };
+  const rememberSelection = (kind, id) => {
+    if (!id) return;
+    if (kind === "asset") {
+      pushRecent("assets", { id, label: "Asset " + id, href: buildAssetHref(id) });
+      selectedAssetId = id;
+      selectionObject = "asset:" + id;
+    }
+    if (kind === "pack") {
+      pushRecent("packs", { id, label: "Pack " + id, href: buildCharactersHref(id) });
+      selectionObject = "pack:" + id;
+    }
+    if (kind === "episode") {
+      selectionObject = "episode:" + id;
+    }
+    syncStudioUrl();
+    renderCreationNav();
   };
   const setStatus = (text) => { if (statusBox instanceof HTMLElement) statusBox.textContent = text; };
   const setCounter = (id, count) => {
@@ -589,7 +809,12 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     if (!(tbodyEl instanceof HTMLElement)) return;
     tbodyEl.querySelectorAll("tr").forEach((row) => {
       if (!(row instanceof HTMLElement)) return;
-      const rowValue = kind === "pack" ? row.dataset.packId || "" : row.dataset.episodeId || "";
+      const rowValue =
+        kind === "asset"
+          ? row.dataset.assetId || ""
+          : kind === "pack"
+            ? row.dataset.packId || ""
+            : row.dataset.episodeId || "";
       row.dataset.selected = value && rowValue === value ? "true" : "false";
     });
   };
@@ -636,6 +861,46 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       selectionLinks.innerHTML = linkedRoutes ? "<span class=\\"studio-cluster-label\\">Linked Routes</span>" + linkedRoutes : "";
     }
   };
+  const loadAssetInspector = async (assetId) => {
+    if (!assetId) return;
+    renderSelection("Asset loading...", "Studio inspector가 asset object를 읽는 중입니다.", [], null, [], []);
+    try {
+      const res = await fetch("/api/assets/" + encodeURIComponent(assetId));
+      if (!res.ok) throw new Error("Asset detail lookup failed: " + res.status);
+      const json = await res.json();
+      const asset = json?.data;
+      if (!asset) throw new Error("Asset detail payload is empty.");
+      const ready = String(asset.status || "").toUpperCase() === "READY";
+      renderSelection(
+        "Asset " + readText(asset.id),
+        "Studio는 dispatch hub로만 동작합니다. 깊은 QC와 asset evidence 확인은 Assets에서 이어집니다.",
+        [
+          { label: "Type", value: readText(asset.assetType || asset.type) },
+          { label: "Status", value: readText(asset.status) },
+          { label: "Channel", value: readText(asset.channelId) },
+          { label: "Mime", value: readText(asset.mime) },
+          { label: "Size", value: readText(asset.sizeBytes, "-") },
+          { label: "Created", value: readText(asset.createdAt) }
+        ],
+        {
+          title: ready ? "Character Generator로 handoff" : "Assets surface에서 readiness 확인",
+          detail: ready
+            ? "reference asset가 준비되었습니다. Generator에서 run object를 열고 compare/approve flow로 이동합니다."
+            : "asset이 READY가 아니면 Studio에서는 dispatch만 유지하고, Assets에서 상태와 evidence를 먼저 확인합니다."
+        },
+        [
+          { label: "Assets detail", href: buildAssetHref(assetId) },
+          { label: "Character Generator", href: buildGeneratorHref({ referenceAssetId: assetId, assetId, currentObject: "asset:" + assetId }) },
+          { label: "Studio dispatch", href: buildStudioHref({ assetId, currentObject: "asset:" + assetId }) }
+        ],
+        [{ label: "API JSON", href: "/api/assets/" + encodeURIComponent(assetId) }]
+      );
+      markSelectedRows(assetsBody, "asset", assetId);
+      rememberSelection("asset", assetId);
+    } catch (error) {
+      renderSelection("Asset lookup failed", String(error), [], null, [{ label: "Assets", href: "/ui/assets" }], []);
+    }
+  };
   const summarizePackJson = (packJson) => {
     const selectedByView = readPath(packJson, ["selectedByView"]);
     const selectedViews = selectedByView && typeof selectedByView === "object" ? Object.keys(selectedByView).filter((key) => selectedByView[key]) : [];
@@ -678,17 +943,18 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
             : "아직 승인 전 팩이므로 compare, pick, regenerate/recreate, approve는 Character Generator에서 마무리하세요."
         },
         [
-          { label: "팩 리뷰", href: "/ui/characters?characterPackId=" + encodeURIComponent(packId) },
-          { label: "생성 허브", href: "/ui/character-generator" },
+          { label: "팩 리뷰", href: buildCharactersHref(packId) },
+          { label: "생성 허브", href: buildGeneratorHref({ currentObject: "pack:" + packId }) },
           latestEpisode ? { label: "최신 에피소드", href: "/ui/episodes/" + encodeURIComponent(readText(latestEpisode.id)) } : null,
           summary.mascotProfile && summary.mascotProfile !== "(기록 없음)" ? { label: "프로필", href: "/ui/profiles?q=" + encodeURIComponent(summary.mascotProfile) } : null,
-          compareHref ? { label: "비교", href: compareHref } : null
+          buildCompareSurfaceHref(packId) ? { label: "비교", href: buildCompareSurfaceHref(packId) } : null
         ].filter(Boolean),
         [
           { label: "pack.json", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/pack.json" },
           { label: "QC 리포트", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/qc_report.json" }
         ]
       );
+      rememberSelection("pack", packId);
     } catch (error) {
       renderSelection("팩 조회 실패", String(error), [], null, [{ label: "캐릭터 열기", href: "/ui/characters" }], []);
     }
@@ -737,10 +1003,11 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           { label: "샷 에디터", href: "/ui/episodes/" + encodeURIComponent(episodeId) + "/editor" },
           { label: "프로필", href: "/ui/profiles" },
           { label: "퍼블리시", href: "/ui/publish?episodeId=" + encodeURIComponent(episodeId) },
-          episode.characterPackId ? { label: "팩 리뷰", href: "/ui/characters?characterPackId=" + encodeURIComponent(readText(episode.characterPackId)) } : null
+          episode.characterPackId ? { label: "팩 리뷰", href: buildCharactersHref(readText(episode.characterPackId)) } : null
         ].filter(Boolean),
         []
       );
+      rememberSelection("episode", episodeId);
     } catch (error) {
       renderSelection("에피소드 조회 실패", String(error), [], null, [{ label: "에피소드 열기", href: "/ui/episodes" }], []);
     }
@@ -759,7 +1026,24 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
         assetsBody.innerHTML = renderStateRow(4, "empty", "에셋이 아직 없습니다", "레퍼런스, 변형 뷰, 배경, 차트 소스를 업로드해 에셋 파이프라인을 시작하세요.");
         return;
       }
-      assetsBody.innerHTML = list.map((asset) => "<tr><td><a href=\\"/ui/assets?assetId=" + encodeURIComponent(String(asset.id || "")) + "\\">" + safe(asset.id) + "</a></td><td>" + safe(asset.assetType) + "</td><td>" + safe(asset.status) + "</td><td>" + safe(asset.createdAt) + "</td></tr>").join("");
+      assetsBody.innerHTML = list
+        .map((asset) => {
+          const assetId = String(asset.id || "");
+          return "<tr data-asset-id=\\"" + safe(assetId) + "\\"><td><a href=\\"" + safe(buildStudioHref({ assetId, currentObject: "asset:" + assetId })) + "\\">" + safe(asset.id) + "</a></td><td>" + safe(asset.assetType) + "</td><td>" + safe(asset.status) + "</td><td>" + safe(asset.createdAt) + "</td></tr>";
+        })
+        .join("");
+      assetsBody.querySelectorAll("tr[data-asset-id]").forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        row.style.cursor = "pointer";
+        row.addEventListener("click", () => {
+          const assetId = row.dataset.assetId || "";
+          markSelectedRows(assetsBody, "asset", assetId);
+          updateSelectionSummary();
+          void loadAssetInspector(assetId);
+          setStatus("에셋 선택: " + (assetId || "알 수 없는 에셋"));
+        });
+      });
+      markSelectedRows(assetsBody, "asset", selectedAssetId);
       applyFilter(q("studio-filter-assets"), assetsBody);
     } catch (e) {
       setCounter("studio-assets-count", 0);
@@ -783,7 +1067,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       packsBody.innerHTML = list.map((pack) => {
         const packId = String(pack.id || "");
         const linkedEpisodeId = readText(readPath(pack, ["latestEpisode", "id"]) || pack.episodeId, "-");
-        return "<tr data-pack-id=\\"" + safe(packId) + "\\" data-pack-status=\\"" + safe(pack.status) + "\\" data-pack-version=\\"" + safe(pack.version) + "\\" data-pack-episode-id=\\"" + safe(linkedEpisodeId) + "\\"><td><a href=\\"/ui/characters?characterPackId=" + encodeURIComponent(packId) + "\\">" + safe(packId) + "</a></td><td>" + safe(pack.version) + "</td><td>" + safe(pack.status) + "</td><td>" + safe(linkedEpisodeId) + "</td></tr>";
+        return "<tr data-pack-id=\\"" + safe(packId) + "\\" data-pack-status=\\"" + safe(pack.status) + "\\" data-pack-version=\\"" + safe(pack.version) + "\\" data-pack-episode-id=\\"" + safe(linkedEpisodeId) + "\\"><td><a href=\\"" + safe(buildStudioHref({ packId, currentObject: "pack:" + packId })) + "\\">" + safe(packId) + "</a></td><td>" + safe(pack.version) + "</td><td>" + safe(pack.status) + "</td><td>" + safe(linkedEpisodeId) + "</td></tr>";
       }).join("");
       packsBody.querySelectorAll("tr[data-pack-id]").forEach((row) => {
         if (!(row instanceof HTMLElement)) return;
@@ -820,7 +1104,26 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
         episodesBody.innerHTML = renderStateRow(4, "empty", "에피소드가 아직 없습니다", "디스패치 카드에서 에피소드를 생성해 타임라인 흐름을 시작하세요.");
         return;
       }
-      episodesBody.innerHTML = list.map((episode) => "<tr data-episode-id=\\"" + safe(episode.id) + "\\" data-episode-topic=\\"" + safe(episode.topic || "") + "\\"><td><a href=\\"/ui/episodes/" + encodeURIComponent(String(episode.id || "")) + "\\">" + safe(episode.id) + "</a></td><td>" + safe(episode.topic || "-") + "</td><td>" + safe(episode.status) + "</td><td>" + safe(episode.latestJobType || "-") + "</td></tr>").join("");
+      episodesBody.innerHTML = list
+        .map(
+          (episode) =>
+            "<tr data-episode-id=\\"" +
+            safe(episode.id) +
+            "\\" data-episode-topic=\\"" +
+            safe(episode.topic || "") +
+            "\\"><td><a href=\\"" +
+            safe(buildStudioHref({ episodeId: String(episode.id || ""), currentObject: "episode:" + String(episode.id || "") })) +
+            "\\">" +
+            safe(episode.id) +
+            "</a></td><td>" +
+            safe(episode.topic || "-") +
+            "</td><td>" +
+            safe(episode.status) +
+            "</td><td>" +
+            safe(episode.latestJobType || "-") +
+            "</td></tr>"
+        )
+        .join("");
       episodesBody.querySelectorAll("tr[data-episode-id]").forEach((row) => {
         if (!(row instanceof HTMLElement)) return;
         row.style.cursor = "pointer";
@@ -895,10 +1198,14 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   selectedPack?.addEventListener("input", () => {
     markSelectedRows(packsBody, "pack", selectedPack instanceof HTMLInputElement ? selectedPack.value.trim() : "");
     updateSelectionSummary();
+    syncStudioUrl();
+    renderCreationNav();
   });
   episodeInput?.addEventListener("input", () => {
     markSelectedRows(episodesBody, "episode", episodeInput instanceof HTMLInputElement ? episodeInput.value.trim() : "");
     updateSelectionSummary();
+    syncStudioUrl();
+    renderCreationNav();
   });
   topicInput?.addEventListener("input", updateSelectionSummary);
 
@@ -917,7 +1224,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       output.textContent = JSON.stringify(json, null, 2);
       if (res.ok && json?.data?.assetId) {
         setStatus("에셋 업로드 완료. 에셋 상세를 여는 중...");
-        window.location.href = "/ui/assets?assetId=" + encodeURIComponent(json.data.assetId);
+        window.location.href = buildAssetHref(String(json.data.assetId));
       }
     } catch (error) {
       output.textContent = String(error);
@@ -1006,7 +1313,18 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   });
 
   updateSelectionSummary();
-  if (activePackId) {
+  if (selectedPack instanceof HTMLInputElement && initialPackId) selectedPack.value = initialPackId;
+  if (episodeInput instanceof HTMLInputElement && initialEpisodeId) episodeInput.value = initialEpisodeId;
+  renderCreationNav();
+  if (selectedAssetId) {
+    void loadAssetInspector(selectedAssetId);
+  } else if (initialPackId) {
+    markSelectedRows(packsBody, "pack", initialPackId);
+    void loadPackInspector(initialPackId);
+  } else if (initialEpisodeId) {
+    markSelectedRows(episodesBody, "episode", initialEpisodeId);
+    void loadEpisodeInspector(initialEpisodeId);
+  } else if (activePackId) {
     if (selectedPack instanceof HTMLInputElement && !selectedPack.value.trim()) selectedPack.value = activePackId;
     markSelectedRows(packsBody, "pack", activePackId);
     void loadPackInspector(activePackId);
@@ -1016,6 +1334,12 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   void loadEpisodes();
   void loadJobs();
   startAutoRefresh();
+  if (focusTargetId && !window.location.hash) {
+    const focusTarget = document.getElementById(focusTargetId);
+    if (focusTarget instanceof HTMLElement) {
+      setTimeout(() => focusTarget.scrollIntoView({ block: "start", behavior: "smooth" }), 120);
+    }
+  }
 })();
 </script>`;
 }

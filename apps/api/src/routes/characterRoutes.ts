@@ -1062,6 +1062,78 @@ function escHtml(value: unknown): string {
     .replaceAll("'", "&#39;");
 }
 
+type CreationNavState = {
+  returnTo?: string;
+  currentObject?: string;
+  focus?: string;
+  assetId?: string;
+  referenceAssetId?: string;
+  jobId?: string;
+  characterPackId?: string;
+  packId?: string;
+  episodeId?: string;
+};
+
+function readCreationNavState(root: JsonRecord): CreationNavState {
+  return {
+    returnTo: optionalString(root, "returnTo"),
+    currentObject: optionalString(root, "currentObject"),
+    focus: optionalString(root, "focus"),
+    assetId: optionalString(root, "assetId"),
+    referenceAssetId: optionalString(root, "referenceAssetId"),
+    jobId: optionalString(root, "jobId"),
+    characterPackId: optionalString(root, "characterPackId"),
+    packId: optionalString(root, "packId"),
+    episodeId: optionalString(root, "episodeId")
+  };
+}
+
+function buildUiHref(pathname: string, params: Record<string, string | number | boolean | undefined | null>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    const text = String(value).trim();
+    if (text.length === 0) {
+      continue;
+    }
+    search.set(key, text);
+  }
+  const query = search.toString();
+  return query.length > 0 ? `${pathname}?${query}` : pathname;
+}
+
+function hrefWithCreationNav(
+  pathname: string,
+  params: Record<string, string | number | boolean | undefined | null>,
+  nav: CreationNavState
+): string {
+  return buildUiHref(pathname, {
+    ...params,
+    ...(nav.returnTo ? { returnTo: nav.returnTo } : {}),
+    ...(nav.currentObject ? { currentObject: nav.currentObject } : {}),
+    ...(nav.focus ? { focus: nav.focus } : {})
+  });
+}
+
+function renderCreationNavHiddenFields(nav: CreationNavState): string {
+  return [
+    ["returnTo", nav.returnTo],
+    ["currentObject", nav.currentObject],
+    ["focus", nav.focus],
+    ["assetId", nav.assetId],
+    ["referenceAssetId", nav.referenceAssetId]
+  ]
+    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    .map(([name, value]) => `<input type="hidden" name="${escHtml(name)}" value="${escHtml(value)}"/>`)
+    .join("");
+}
+
+function requestUiHref(request: { raw?: { url?: string } }): string {
+  return typeof request.raw?.url === "string" && request.raw.url.trim().length > 0 ? request.raw.url : "/";
+}
+
 function uiBadge(status: string): string {
   const normalized = status.toUpperCase();
   if (["READY", "SUCCEEDED", "APPROVED", "PREVIEW_READY", "COMPLETED"].includes(normalized)) {
@@ -2294,7 +2366,7 @@ function renderWorkflowSampleArtifactsFallback(): string {
     ? toArtifactUrlFromAbsolutePath(tunedCompareReportPath)
     : null;
 
-  return `<section class="card"><h2>Local Workflow Samples</h2><div class="notice">DB가 없어도 여기서 직접 생성된 ComfyUI workflow JSON을 열 수 있습니다. <strong>workflow_gui.json</strong>을 다운로드해서 ComfyUI 캔버스에 드래그하면 노드 그래프가 보입니다.</div>${
+  return `<section class="card"><h2>Local Workflow Samples</h2><div class="notice">DB揶쎛 ??곷선????由??筌욊낯????밴쉐??ComfyUI workflow JSON????????됰뮸??덈뼄. <strong>workflow_gui.json</strong>????쇱뒲嚥≪뮆諭??곴퐣 ComfyUI 筌?뗀苡??쇰퓠 ??뺤삋域밸챸釉?쭖??紐껊굡 域밸챶??袁? 癰귣똻???덈뼄.</div>${
     compareReportUrl
       ? `<p><a href="${compareReportUrl}">Open pose-guided compare report</a></p>`
       : ""
@@ -5842,9 +5914,16 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       updatedAt: formatStudioDateTime(activeChannelBible?.updatedAt),
       editorHref: "/ui/channel-bible"
     };
+    const studioReturnTo = requestUiHref(request);
     const compareHref =
       approvedPacks.length >= 2
-        ? `/ui/character-generator/compare?leftPackId=${encodeURIComponent(approvedPacks[0].id)}&rightPackId=${encodeURIComponent(approvedPacks[1].id)}`
+        ? buildUiHref("/ui/character-generator/compare", {
+            leftPackId: approvedPacks[0].id,
+            rightPackId: approvedPacks[1].id,
+            returnTo: studioReturnTo,
+            currentObject: `pack:${approvedPacks[0].id}`,
+            focus: "pack-compare-hero"
+          })
         : "";
     const packState = {
       activePackId: activePack?.id ?? "",
@@ -5856,8 +5935,14 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       archivedCount,
       pendingCount,
       compareHref,
-      charactersHref: "/ui/characters",
-      generatorHref: "/ui/character-generator"
+      charactersHref: buildUiHref("/ui/characters", {
+        returnTo: studioReturnTo,
+        focus: "pack-review-current"
+      }),
+      generatorHref: buildUiHref("/ui/character-generator", {
+        returnTo: studioReturnTo,
+        focus: "cg-stage-context"
+      })
     };
     return reply
       .type("text/html; charset=utf-8")
@@ -5866,6 +5951,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
   app.get("/ui/character-generator", async (request, reply) => {
     const query = isRecord(request.query) ? request.query : {};
+    const creationNav = readCreationNavState(query);
+    const currentPageReturnTo = requestUiHref(request);
     const message = optionalString(query, "message");
     const error = optionalString(query, "error");
     const selectedJobId = optionalString(query, "jobId");
@@ -6110,7 +6197,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       : "";
     const selectedAutoRerouteDeltaSection =
       selectedAutoReroute?.viewDeltaByView && Object.keys(selectedAutoReroute.viewDeltaByView).length > 0
-        ? `<div class="asset-table-wrap" style="margin-top:10px"><table><thead><tr><th>View</th><th>Before</th><th>After</th><th>Score Δ</th><th>Consistency Δ</th><th>Warnings Δ</th><th>Rejections Δ</th></tr></thead><tbody>${(["front", "threeQuarter", "profile"] as const)
+        ? `<div class="asset-table-wrap" style="margin-top:10px"><table><thead><tr><th>View</th><th>Before</th><th>After</th><th>Score ?</th><th>Consistency ?</th><th>Warnings ?</th><th>Rejections ?</th></tr></thead><tbody>${(["front", "threeQuarter", "profile"] as const)
             .map((view) => {
               const delta = selectedAutoReroute.viewDeltaByView?.[view];
               return delta
@@ -6590,13 +6677,53 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       : selectedManifest?.characterPackId
         ? "Pack handoff"
         : "Candidate compare";
+    const selectedReferenceAssetId = creationNav.referenceAssetId ?? creationNav.assetId;
+    const generatorSelfNav: CreationNavState = {
+      returnTo: creationNav.returnTo,
+      currentObject: selectedJob ? `run:${selectedJob.id}` : creationNav.currentObject,
+      focus: "cg-active-job",
+      assetId: creationNav.assetId,
+      referenceAssetId: selectedReferenceAssetId,
+      jobId: selectedJob?.id ?? creationNav.jobId
+    };
+    const hiddenGeneratorSelfNavFields = renderCreationNavHiddenFields(generatorSelfNav);
+    const selectedCharactersHref = selectedManifest?.characterPackId
+      ? hrefWithCreationNav(
+          "/ui/characters",
+          { characterPackId: selectedManifest.characterPackId },
+          {
+            returnTo: currentPageReturnTo,
+            currentObject: `pack:${selectedManifest.characterPackId}`,
+            focus: "pack-review-current"
+          }
+        )
+      : null;
+    const selectedPackGeneratorNavFields = renderCreationNavHiddenFields({
+      ...generatorSelfNav,
+      currentObject: selectedManifest?.characterPackId
+        ? `pack:${selectedManifest.characterPackId}`
+        : generatorSelfNav.currentObject
+    });
+    const studioFastFlowHref = hrefWithCreationNav(
+      "/ui/studio",
+      { ...(selectedReferenceAssetId ? { assetId: selectedReferenceAssetId } : {}) },
+      {
+        returnTo: currentPageReturnTo,
+        currentObject: selectedManifest?.characterPackId
+          ? `pack:${selectedManifest.characterPackId}`
+          : selectedJob
+            ? `run:${selectedJob.id}`
+            : creationNav.currentObject,
+        focus: "studio-selection"
+      }
+    );
     const selectedPrimaryActionControl =
       selectedJob && selectedPrimaryAction?.action === "regenerate-view" && selectedPrimaryAction.view
         ? `<div class="cg-inline-links"><a href="${escHtml(selectedPrimaryActionSurfaceHref)}">${escHtml(
             selectedPrimaryActionSurfaceLabel
           )}</a></div><div class="actions"><form method="post" action="/ui/character-generator/regenerate-view" class="inline"><input type="hidden" name="generateJobId" value="${escHtml(
             selectedJob.id
-          )}"/><input type="hidden" name="viewToGenerate" value="${escHtml(
+          )}"/>${hiddenGeneratorSelfNavFields}<input type="hidden" name="viewToGenerate" value="${escHtml(
             selectedPrimaryAction.view
           )}"/><input type="hidden" name="candidateCount" value="${escHtml(
             selectedPrimaryAction.candidateCount ?? 4
@@ -6614,7 +6741,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
               selectedPrimaryActionSurfaceLabel
             )}</a></div><div class="actions"><form method="post" action="/ui/character-generator/recreate" class="inline"><input type="hidden" name="generateJobId" value="${escHtml(
               selectedJob.id
-            )}"/><input type="hidden" name="candidateCount" value="${escHtml(
+            )}"/>${hiddenGeneratorSelfNavFields}<input type="hidden" name="candidateCount" value="${escHtml(
               selectedPrimaryAction.candidateCount ?? 6
             )}"/><input type="hidden" name="seed" value="${escHtml(
               selectedPrimaryAction.seed ?? DEFAULT_GENERATION_SEED
@@ -6640,13 +6767,13 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       { href: "#regenerate-view", label: "Candidate regenerate" },
       { href: "#recreate-pack", label: "Pack recreate" },
       { href: "#compare-approved-packs", label: "Approved compare" },
-      { href: "/ui/studio", label: "Studio" }
+      { href: studioFastFlowHref, label: "Studio" }
     ];
     if (selectedManifest?.characterPackId) {
       selectedLinkedRoutes.push(
         { href: "#pack-preview-handoff", label: "Pack handoff" },
         {
-          href: `/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}`,
+          href: selectedCharactersHref ?? `/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}`,
           label: "Characters"
         }
       );
@@ -6681,7 +6808,9 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       ? `${selectedReferenceSection}${selectedWorkflowRuntimeSection}${selectedWorkflowArtifactsSection}${selectedWorkflowStageSection}`
       : `<div class="notice">Workflow route evidence is not available yet.</div>`;
     const selectedSection = selectedJob
-      ? `<section class="card" id="cg-active-job"><h2>Generation Run object</h2><p>Stage 04에서 열린 Generation Run object입니다. 상태와 위험을 먼저 읽고, next safe action과 linked routes를 고정한 뒤 Compare와 Approve/Rollback 레인으로 넘기세요.</p><div class="cg-context-grid">${renderGeneratorObjectCard(
+      ? `<section class="card" id="cg-active-job"><div id="cg-active-job-meta" hidden data-current-run-id="${escHtml(
+          selectedJob.id
+        )}" data-current-pack-id="${escHtml(selectedManifest?.characterPackId ?? "")}"></div><h2>Generation Run object</h2><p>Stage 04?癒?퐣 ????Generation Run object??낅빍?? ?怨밴묶?? ?袁る퓮???믪눘? ??꾪? next safe action??linked routes???⑥쥙?????Compare?? Approve/Rollback ??됱뵥??곗쨮 ??띾┛?紐꾩뒄.</p><div class="cg-context-grid">${renderGeneratorObjectCard(
           "Generation Run",
           `${selectedJob.status} / ${selectedJob.progress}%`,
           `jobId=${selectedJob.id} / episode=${
@@ -6731,7 +6860,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           selectedPrimaryActionTitle
         )}</strong></p><p>${escHtml(selectedPrimaryActionScope)}</p><p>${escHtml(selectedPrimaryActionDetail)}</p><p>reasons: ${escHtml(
           selectedPrimaryActionReasonSummary
-        )}</p>${selectedPrimaryActionControl}</article><article class="cg-context-card"><h3>Linked routes</h3><p><strong>Follow the object, not the page.</strong></p><p>Studio는 빠른 라우팅만 맡고, compare/approve/rollback은 아래 전용 surface에서 닫습니다.</p><div class="cg-link-list">${selectedLinkedRoutes
+        )}</p>${selectedPrimaryActionControl}</article><article class="cg-context-card"><h3>Linked routes</h3><p><strong>Follow the object, not the page.</strong></p><p>Studio????쥓????깆뒭??낆춸 筌띯넄?? compare/approve/rollback?? ?袁⑥삋 ?袁⑹뒠 surface?癒?퐣 ??щ뮸??덈뼄.</p><div class="cg-link-list">${selectedLinkedRoutes
           .map((link) => `<a href="${escHtml(link.href)}">${escHtml(link.label)}</a>`)
           .join("")}</div></article><article class="cg-context-card"><h3>Artifact handoff</h3><p><strong>${escHtml(
           selectedManifest?.characterPackId ?? "Generation Run only"
@@ -6756,7 +6885,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     const recommendedActionsSection =
       selectedJob && selectedManifest
-        ? `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><p>이 레인은 compare 이후에만 읽는 안전한 다음 수순이다. Candidate set과 Character Pack object 중 무엇을 움직일지 먼저 드러내고, 깊은 preview/QC/lineage 판단은 Characters surface로 넘깁니다.</p>${
+        ? `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><p>????됱뵥?? compare ??꾩뜎?癒?춸 ??덈뮉 ??됱읈????쇱벉 ??뤿떄???? Candidate set??Character Pack object 餓??얜똻毓????筌욊낯?わ쭪? ?믪눘? ??뺤쑎??욱? 繹먮봿? preview/QC/lineage ?癒?뼊?? Characters surface嚥???랁돥??덈뼄.</p>${
             selectedDecisionOutcome || selectedSelectionRisk || selectedAutoReroute || selectedFinalQualityFirewall
               ? `<div class="notice">decision: outcome=${escHtml(
                   selectedDecisionOutcome?.status ?? "unknown"
@@ -6803,7 +6932,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                         action.action === "regenerate-view" && action.view
                           ? `<form method="post" action="/ui/character-generator/regenerate-view" class="inline"><input type="hidden" name="generateJobId" value="${escHtml(
                               selectedJob.id
-                            )}"/><input type="hidden" name="viewToGenerate" value="${escHtml(
+                            )}"/>${hiddenGeneratorSelfNavFields}<input type="hidden" name="viewToGenerate" value="${escHtml(
                               action.view
                             )}"/><input type="hidden" name="candidateCount" value="${escHtml(
                               action.candidateCount ?? 4
@@ -6819,7 +6948,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                           : action.action === "recreate"
                             ? `<form method="post" action="/ui/character-generator/recreate" class="inline"><input type="hidden" name="generateJobId" value="${escHtml(
                                 selectedJob.id
-                              )}"/><input type="hidden" name="candidateCount" value="${escHtml(
+                              )}"/>${hiddenGeneratorSelfNavFields}<input type="hidden" name="candidateCount" value="${escHtml(
                                 action.candidateCount ?? 6
                               )}"/><input type="hidden" name="seed" value="${escHtml(
                                 action.seed ?? DEFAULT_GENERATION_SEED
@@ -6848,15 +6977,15 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         : `<section class="card" id="recommended-actions"><h2>Next Safe Actions</h2><div class="notice">Select a generation run to see targeted candidate-regenerate, pack-recreate, or compare actions.</div></section>`;
 
     const regenerateSection = selectedJob
-      ? `<section class="card" id="regenerate-view"><h2>Candidate Set / regenerate one view</h2><p>한 뷰의 candidate set만 다시 생성해 Compare lane으로 되돌릴 때 사용합니다. Pack 전체를 다시 닫아야 한다면 recreate를 사용하세요.</p><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="regenerate-view"><h2>Candidate Set / regenerate one view</h2><p>???됯퀣??candidate set筌???쇰뻻 ??밴쉐??Compare lane??곗쨮 ??롫즼?????????몃빍?? Pack ?袁⑷퍥????쇰뻻 ??щ툡????뺣뼄筌?recreate???????뤾쉭??</p><form method="post" action="/ui/character-generator/regenerate-view" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
-        )}"/><label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Same seed 유지</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 강화</label><div class="actions" style="grid-column:1/-1"><button type="submit">Candidate set 다시 생성</button></div></form></section>`
+        )}"/>${hiddenGeneratorSelfNavFields}<label>View<select name="viewToGenerate"><option value="front">front</option><option value="threeQuarter">threeQuarter</option><option value="profile">profile</option></select></label><label>Candidate Count<input name="candidateCount" value="4"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Same seed ?醫?</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 揶쏅벤??/label><div class="actions" style="grid-column:1/-1"><button type="submit">Candidate set ??쇰뻻 ??밴쉐</button></div></form></section>`
       : "";
 
     const recreateSection = selectedJob
-      ? `<section class="card" id="recreate-pack"><h2>Character Pack / recreate from current run</h2><p>현재 Generation Run의 policy와 reference 문법을 유지한 채 Character Pack object를 처음부터 다시 올립니다. compare와 approval을 새 기준으로 다시 닫고 싶을 때 사용합니다.</p><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
+      ? `<section class="card" id="recreate-pack"><h2>Character Pack / recreate from current run</h2><p>?袁⑹삺 Generation Run??policy?? reference ?얜챶苡???醫???筌?Character Pack object??筌ｌ꼷?ч겫?????쇰뻻 ?????덈뼄. compare?? approval????疫꿸퀣???곗쨮 ??쇰뻻 ??ろ???좎뱽 ???????몃빍??</p><form method="post" action="/ui/character-generator/recreate" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
           selectedJob.id
-        )}"/><label>Candidate Count<input name="candidateCount" value="6"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true"/> Same seed 유지</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 강화</label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Character Pack 재생성</button></div></form></section>`
+        )}"/>${hiddenGeneratorSelfNavFields}<label>Candidate Count<input name="candidateCount" value="6"/></label><label>Seed<input name="seed" value="${DEFAULT_GENERATION_SEED}"/></label><label><input type="checkbox" name="regenerateSameSeed" value="true"/> Same seed ?醫?</label><label><input type="checkbox" name="boostNegativePrompt" value="true"/> Negative prompt 揶쏅벤??/label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Character Pack ??源??/button></div></form></section>`
       : "";
 
     const candidateOptions = (view: CharacterGenerationView): string => {
@@ -6878,19 +7007,19 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         ? (() => {
             const pickBlocked =
               selectedFinalQualityFirewall?.level === "block" || selectedDecisionOutcome?.status === "blocked";
-            return `<section class="card" id="pick-candidates"><h2>Candidate Set / HITL compare</h2><p>세 뷰의 candidate set을 비교한 뒤 Character Pack build에 들어갈 조합을 명시적으로 선택합니다. 여기서 Compare를 닫고 나면 approval lane으로 이동합니다.</p>${
+            return `<section class="card" id="pick-candidates"><h2>Candidate Set / HITL compare</h2><p>???됯퀣??candidate set????쑨?????Character Pack build????쇰선揶?鈺곌퀬鍮??筌뤿굞??怨몄몵嚥??醫뤾문??몃빍?? ??由??Compare????ろ???롢늺 approval lane??곗쨮 ??猷??몃빍??</p>${
               pickBlocked
                 ? `<div class="notice">Direct pick is blocked because the selected pack still fails the final gate. Use regenerate/recreate first, or replace blocked views.</div>`
                 : ""
             }<form method="post" action="/ui/character-generator/pick" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
             selectedJob.id
-          )}"/><label>Front Candidate<select name="frontCandidateId">${candidateOptions("front")}</select></label><label>ThreeQuarter Candidate<select name="threeQuarterCandidateId">${candidateOptions(
+          )}"/>${hiddenGeneratorSelfNavFields}<label>Front Candidate<select name="frontCandidateId">${candidateOptions("front")}</select></label><label>ThreeQuarter Candidate<select name="threeQuarterCandidateId">${candidateOptions(
             "threeQuarter"
           )}</select></label><label>Profile Candidate<select name="profileCandidateId">${candidateOptions(
             "profile"
           )}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit"${
             pickBlocked ? " disabled" : ""
-          }>선택 적용 + Character Pack build</button></div></form>${candidateCardsForView(
+          }>?醫뤾문 ?怨몄뒠 + Character Pack build</button></div></form>${candidateCardsForView(
             "front"
           )}${candidateCardsForView("threeQuarter")}${candidateCardsForView("profile")}</section>`;
           })()
@@ -6902,7 +7031,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             const artifacts = getCharacterArtifacts(selectedManifest.characterPackId);
             const previewExists = fs.existsSync(artifacts.previewPath);
             const qcExists = fs.existsSync(artifacts.qcReportPath);
-            return `<section class="card" id="pack-preview-handoff"><h2>Character Pack object / handoff</h2><p>compare에서 닫은 Character Pack object를 review와 active-baseline approval로 넘기는 handoff surface입니다. 더 깊은 preview/QC/lineage/jobs inspection은 Characters에서 닫습니다.</p><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
+            return `<section class="card" id="pack-preview-handoff"><h2>Character Pack object / handoff</h2><p>compare?癒?퐣 ??? Character Pack object??review?? active-baseline approval嚥???띾┛??handoff surface??낅빍?? ??繹먮봿? preview/QC/lineage/jobs inspection?? Characters?癒?퐣 ??щ뮸??덈뼄.</p><p>characterPackId: <a href="/ui/characters?characterPackId=${encodeURIComponent(
               selectedManifest.characterPackId
             )}">${escHtml(selectedManifest.characterPackId)}</a></p><p><a href="/artifacts/characters/${encodeURIComponent(
               selectedManifest.characterPackId
@@ -6928,31 +7057,31 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                 : ""
             }<div class="quick-links"><a href="/ui/characters?characterPackId=${encodeURIComponent(
               selectedManifest.characterPackId
-            )}">Characters review</a><a href="#compare-approved-packs">Approved compare</a><a href="/ui/studio">Studio fast flow</a></div><form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
+            )}">Characters review</a><a href="#compare-approved-packs">Approved compare</a><a href="${escHtml(studioFastFlowHref)}">Studio fast flow</a></div><form method="post" action="/ui/character-generator/set-active" class="inline"><input type="hidden" name="characterPackId" value="${escHtml(
               selectedManifest.characterPackId
-            )}"/><button type="submit" class="secondary">이 팩을 active baseline으로 승인</button></form></section>`;
+            )}"/>${selectedPackGeneratorNavFields}<button type="submit" class="secondary">????뱀뱽 active baseline??곗쨮 ?諭??/button></form></section>`;
           })()
         : "";
 
     const rollbackSection =
       approvedPacks.length > 0
-        ? `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><p>현재 active baseline을 이전 approved Character Pack으로 되돌립니다. compare와 review를 끝낸 뒤, 현재 active pack보다 안전한 이전 기준이 분명할 때만 사용하세요.</p><form method="post" action="/ui/character-generator/rollback-active" class="grid two"><label>Target Pack<select name="targetCharacterPackId">${approvedPacks
+        ? `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><p>?袁⑹삺 active baseline????곸읈 approved Character Pack??곗쨮 ??롫즼?깆럥??? compare?? review????멸땋 ?? ?袁⑹삺 active pack癰귣?????됱읈????곸읈 疫꿸퀣????브쑬梨?????춸 ?????뤾쉭??</p><form method="post" action="/ui/character-generator/rollback-active" class="grid two">${selectedPackGeneratorNavFields}<label>Target Pack<select name="targetCharacterPackId">${approvedPacks
             .map(
               (pack) =>
                 `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)}, ${escHtml(pack.status)})</option>`
             )
-            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Active baseline 롤백</button></div></form></section>`
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Active baseline 嚥▲끇媛?/button></div></form></section>`
         : `<section class="card" id="rollback-active-pack"><h2>Character Pack / rollback active baseline</h2><div class="notice">No approved packs available.</div></section>`;
 
     const compareSection =
       approvedPacks.length >= 2
-        ? `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><p>승인된 Character Pack baseline끼리 preview/QC/lineage/jobs 관계를 읽는 dedicated compare surface를 엽니다.</p><form method="get" action="/ui/character-generator/compare" class="grid two"><label>Left Pack<select name="leftPackId">${approvedPacks
+        ? `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><p>?諭???Character Pack baseline??겸봺 preview/QC/lineage/jobs ?온?④쑬? ??덈뮉 dedicated compare surface????덈빍??</p><form method="get" action="/ui/character-generator/compare" class="grid two"><input type="hidden" name="returnTo" value="${escHtml(currentPageReturnTo)}"/><input type="hidden" name="currentObject" value="${escHtml(selectedManifest?.characterPackId ? `pack:${selectedManifest.characterPackId}` : generatorSelfNav.currentObject ?? "")}"/><input type="hidden" name="focus" value="pack-compare-hero"/><label>Left Pack<select name="leftPackId">${approvedPacks
             .map((pack) => `<option value="${escHtml(pack.id)}">${escHtml(pack.id)} (v${escHtml(pack.version)})</option>`)
             .join("")}</select></label><label>Right Pack<select name="rightPackId">${approvedPacks
             .map((pack, index) => `<option value="${escHtml(pack.id)}"${index === 1 ? " selected" : ""}>${escHtml(
               pack.id
             )} (v${escHtml(pack.version)})</option>`)
-            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Approved Pack A/B compare 열기</button></div></form></section>`
+            .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Approved Pack A/B compare ??용┛</button></div></form></section>`
         : `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><div class="notice">At least two approved packs are required.</div></section>`;
 
     const rows = recentJobs
@@ -7013,6 +7142,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
   app.post("/ui/character-generator/create", async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
 
     try {
       const generation = parseCharacterGenerationInput(body);
@@ -7023,20 +7153,40 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          created.reusedExisting
-            ? `Reused active generation job: ${created.generateJobId} (episode ${created.episodeId})`
-            : `${GENERATE_CHARACTER_ASSETS_JOB_NAME} queued successfully (episode ${created.episodeId})`
-        )}`
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: created.generateJobId,
+            message: created.reusedExisting
+              ? `Reused active generation job: ${created.generateJobId} (episode ${created.episodeId})`
+              : `${GENERATE_CHARACTER_ASSETS_JOB_NAME} queued successfully (episode ${created.episodeId})`
+          },
+          {
+            ...creationNav,
+            currentObject: `run:${created.generateJobId}`,
+            focus: "cg-active-job",
+            referenceAssetId: generation.referenceAssetId ?? creationNav.referenceAssetId
+          }
+        )
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message },
+          {
+            ...creationNav,
+            focus: creationNav.focus ?? "cg-stage-context"
+          }
+        )
+      );
     }
   });
 
   app.post("/ui/character-generator/pick", async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
     try {
       const generateJobId = optionalString(body, "generateJobId");
       if (!generateJobId) {
@@ -7058,18 +7208,37 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          "Candidate set selection applied. Character Pack build has been queued."
-        )}`
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: created.generateJobId,
+            message: "Candidate set selection applied. Character Pack build has been queued."
+          },
+          {
+            ...creationNav,
+            currentObject: `run:${created.generateJobId}`,
+            focus: "cg-active-job"
+          }
+        )
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
-      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(creationNav.jobId ? { jobId: creationNav.jobId } : {}) },
+          {
+            ...creationNav,
+            focus: creationNav.focus ?? "pick-candidates"
+          }
+        )
+      );
     }
   });
 
   app.post("/ui/character-generator/regenerate-view", async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
     try {
       const generateJobId = optionalString(body, "generateJobId");
       if (!generateJobId) {
@@ -7091,18 +7260,37 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          `Candidate set regenerate queued: ${created.view} (${regenerateSameSeed ? "same seed" : "new seed"})`
-        )}`
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: created.generateJobId,
+            message: `Candidate set regenerate queued: ${created.view} (${regenerateSameSeed ? "same seed" : "new seed"})`
+          },
+          {
+            ...creationNav,
+            currentObject: `run:${created.generateJobId}`,
+            focus: "cg-active-job"
+          }
+        )
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
-      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(creationNav.jobId ? { jobId: creationNav.jobId } : {}) },
+          {
+            ...creationNav,
+            focus: creationNav.focus ?? "regenerate-view"
+          }
+        )
+      );
     }
   });
 
   app.post("/ui/character-generator/recreate", async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
     try {
       const generateJobId = optionalString(body, "generateJobId");
       if (!generateJobId) {
@@ -7122,18 +7310,37 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?jobId=${encodeURIComponent(created.generateJobId)}&message=${encodeURIComponent(
-          `Character Pack recreate queued from current run (${regenerateSameSeed ? "same seed" : "new seed"}, seed=${created.seed})`
-        )}`
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: created.generateJobId,
+            message: `Character Pack recreate queued from current run (${regenerateSameSeed ? "same seed" : "new seed"}, seed=${created.seed})`
+          },
+          {
+            ...creationNav,
+            currentObject: `run:${created.generateJobId}`,
+            focus: "cg-active-job"
+          }
+        )
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
-      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(creationNav.jobId ? { jobId: creationNav.jobId } : {}) },
+          {
+            ...creationNav,
+            focus: creationNav.focus ?? "recreate-pack"
+          }
+        )
+      );
     }
   });
 
   app.post("/ui/character-generator/set-active", async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
     try {
       const characterPackId = optionalString(body, "characterPackId");
       if (!characterPackId) {
@@ -7171,16 +7378,34 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`Character Pack ${characterPackId} approved as the active baseline.`)}`
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { message: `Character Pack ${characterPackId} approved as the active baseline.` },
+          {
+            ...creationNav,
+            currentObject: `pack:${characterPackId}`,
+            focus: "pack-preview-handoff"
+          }
+        )
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
-      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(creationNav.jobId ? { jobId: creationNav.jobId } : {}) },
+          {
+            ...creationNav,
+            focus: creationNav.focus ?? "pack-preview-handoff"
+          }
+        )
+      );
     }
   });
 
   app.post("/ui/character-generator/rollback-active", async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
     try {
       const targetCharacterPackId = optionalString(body, "targetCharacterPackId");
       if (!targetCharacterPackId) {
@@ -7217,16 +7442,35 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/character-generator?message=${encodeURIComponent(`Character Pack rollback complete. Active baseline -> ${targetCharacterPackId}`)}`
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { message: `Character Pack rollback complete. Active baseline -> ${targetCharacterPackId}` },
+          {
+            ...creationNav,
+            currentObject: `pack:${targetCharacterPackId}`,
+            focus: "rollback-active-pack"
+          }
+        )
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
-      return reply.redirect(`/ui/character-generator?error=${encodeURIComponent(message)}`);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(creationNav.jobId ? { jobId: creationNav.jobId } : {}) },
+          {
+            ...creationNav,
+            focus: creationNav.focus ?? "rollback-active-pack"
+          }
+        )
+      );
     }
   });
 
   app.get("/ui/character-generator/compare", async (request, reply) => {
     const query = isRecord(request.query) ? request.query : {};
+    const creationNav = readCreationNavState(query);
+    const currentPageReturnTo = requestUiHref(request);
     const leftPackId = optionalString(query, "leftPackId");
     const rightPackId = optionalString(query, "rightPackId");
     if (!leftPackId || !rightPackId) {
@@ -7278,6 +7522,33 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const rightQcExists = fs.existsSync(rightArtifacts.qcReportPath);
     const leftLineage = readCharacterPackLineage(leftPack.id);
     const rightLineage = readCharacterPackLineage(rightPack.id);
+    const compareGeneratorHref = hrefWithCreationNav(
+      "/ui/character-generator",
+      { ...(creationNav.referenceAssetId ? { referenceAssetId: creationNav.referenceAssetId } : {}) },
+      {
+        returnTo: currentPageReturnTo,
+        currentObject: `pack:${leftPack.id}`,
+        focus: "cg-stage-context"
+      }
+    );
+    const leftReviewHref = hrefWithCreationNav(
+      "/ui/characters",
+      { characterPackId: leftPack.id },
+      {
+        returnTo: currentPageReturnTo,
+        currentObject: `pack:${leftPack.id}`,
+        focus: "pack-review-current"
+      }
+    );
+    const rightReviewHref = hrefWithCreationNav(
+      "/ui/characters",
+      { characterPackId: rightPack.id },
+      {
+        returnTo: currentPageReturnTo,
+        currentObject: `pack:${rightPack.id}`,
+        focus: "pack-review-current"
+      }
+    );
     const compareStyle = `<style>
       .pack-compare-shell{display:grid;gap:14px}
       .pack-compare-hero,.pack-compare-panel,.pack-compare-next{position:relative;overflow:hidden;border:1px solid #d6e0ef;border-radius:18px;background:linear-gradient(180deg,#fff,#f8fbff);box-shadow:0 16px 40px rgba(15,23,42,.06)}
@@ -7294,7 +7565,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .pack-compare-stat span{display:block;margin-bottom:6px;color:#5b6b82;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
       .pack-compare-stat strong{display:block;font-size:14px;line-height:1.45}
       .pack-compare-links,.pack-compare-next-links{display:flex;gap:8px;flex-wrap:wrap}
-      .pack-compare-link{display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700;text-decoration:none}
+      .pack-compare-link{appearance:none;cursor:pointer;display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700;text-decoration:none}
       .pack-compare-link:hover{text-decoration:none;box-shadow:0 8px 20px rgba(18,87,199,.08)}
       .pack-compare-jobs{margin:12px 0 0;padding-left:18px;display:grid;gap:6px}
       .pack-compare-player{margin-top:14px}
@@ -7311,25 +7582,25 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       const latestEpisode = pack.episodes[0];
       const latestJobs = latestEpisode?.jobs ?? [];
       const latestJobSummary =
-        latestJobs.length > 0 ? latestJobs.map((job) => `${job.type} / ${job.status} / ${job.progress}%`).join(" | ") : "연결된 jobs 없음";
+        latestJobs.length > 0 ? latestJobs.map((job) => `${job.type} / ${job.status} / ${job.progress}%`).join(" | ") : "?怨뚭퍙??jobs ??곸벉";
       return `<section class="pack-compare-panel"><h2>${escHtml(side)}: ${escHtml(
         pack.id
-      )}</h2><p>preview -> QC -> lineage -> jobs를 따라 어느 팩을 다음 review / approval surface로 넘길지 판단하세요.</p><div class="pack-compare-stats"><div class="pack-compare-stat"><span>버전 / 상태</span><strong>v${escHtml(
+      )}</h2><p>preview -> QC -> lineage -> jobs???怨뺤뵬 ??????뱀뱽 ??쇱벉 review / approval surface嚥???띾쭔筌왖 ?癒?뼊??뤾쉭??</p><div class="pack-compare-stats"><div class="pack-compare-stat"><span>甕곌쑴??/ ?怨밴묶</span><strong>v${escHtml(
         pack.version
       )} / <span class="badge ${uiBadge(pack.status)}">${escHtml(pack.status)}</span></strong></div><div class="pack-compare-stat"><span>Preview / QC</span><strong>preview=${escHtml(
         previewExists ? "exists" : "missing"
       )} / qc=${escHtml(qcExists ? "exists" : "missing")}</strong></div><div class="pack-compare-stat"><span>Lineage Gate</span><strong>${escHtml(
         lineage?.acceptanceStatus ?? "unknown"
       )} / repair=${escHtml(lineage ? String(lineage.repairOpenCount) : "-")}</strong></div><div class="pack-compare-stat"><span>Latest Episode</span><strong>${escHtml(
-        latestEpisode ? `${latestEpisode.id} / ${latestEpisode.topic ?? "-"}` : "연결 없음"
+        latestEpisode ? `${latestEpisode.id} / ${latestEpisode.topic ?? "-"}` : "?怨뚭퍙 ??곸벉"
       )}</strong></div></div>${
         previewExists
           ? `<div class="pack-compare-player"><video controls preload="metadata"><source src="/artifacts/characters/${encodeURIComponent(
               pack.id
             )}/preview.mp4" type="video/mp4"/></video></div>`
           : `<div class="error">preview.mp4 missing</div>`
-      }<div class="pack-compare-links"><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
-        pack.id
+      }<div class="pack-compare-links"><a class="pack-compare-link" href="${escHtml(
+        side === "A" ? leftReviewHref : rightReviewHref
       )}">Pack Review</a><a class="pack-compare-link" href="/artifacts/characters/${encodeURIComponent(
         pack.id
       )}/pack.json">pack.json</a><a class="pack-compare-link" href="/artifacts/characters/${encodeURIComponent(
@@ -7354,21 +7625,20 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       }</section>`;
     };
 
-    const html = `${compareStyle}<div class="pack-compare-shell"><section class="pack-compare-hero"><p class="eyebrow">Pack Compare Surface</p><h1>캐릭터 팩 비교</h1><p>이 surface는 winner를 정하는 비교면이다. preview를 나란히 보고, QC 산출물을 확인하고, lineage와 jobs를 읽은 뒤, 승인/rollback은 <a href="/ui/character-generator">Character Generator</a>에서, 깊은 수동 검수는 <a href="/ui/characters">Characters</a>에서 닫으세요.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="/ui/character-generator">Character Generator</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
+    const compareNavScript = `<script>(function(){const ns="ecs.ui.creation.nav.v1";const parse=(value,fallback)=>{try{const parsed=JSON.parse(String(value||""));return parsed==null?fallback:parsed;}catch{return fallback;}};const readList=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return [];}const parsed=parse(window.localStorage.getItem(ns+".recent."+kind),[]);return Array.isArray(parsed)?parsed:[];};const writeList=(kind,items)=>{try{window.localStorage.setItem(ns+".recent."+kind,JSON.stringify(items.slice(0,6)));}catch{}};const pushRecent=(kind,item)=>{if(!item||!item.id){return;}const next=[item].concat(readList(kind).filter((entry)=>entry&&entry.id!==item.id));writeList(kind,next);};pushRecent("packs",{id:${JSON.stringify(
       leftPack.id
-    )}">A 리뷰</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
+    )},label:${JSON.stringify(`Pack ${leftPack.id}`)},href:${JSON.stringify(leftReviewHref)}});pushRecent("packs",{id:${JSON.stringify(
       rightPack.id
-    )}">B 리뷰</a></div><div class="pack-compare-flow"><div class="pack-compare-step"><strong>01 Preview</strong><span>두 팩의 preview와 상태를 나란히 비교합니다.</span></div><div class="pack-compare-step"><strong>02 QC</strong><span>qc_report.json 존재 여부와 pack 상태를 함께 봅니다.</span></div><div class="pack-compare-step"><strong>03 Lineage</strong><span>acceptance status와 repair task를 확인해 provenance risk를 읽습니다.</span></div><div class="pack-compare-step"><strong>04 Jobs</strong><span>latest episode/jobs를 따라 어떤 review surface로 넘길지 결정합니다.</span></div></div></section><section class="pack-compare-next"><h2>다음 액션</h2><p>비교에서 승자를 정한 뒤에는 Generator에서 approval/rollback을 닫고, 더 깊은 QC/lineage/jobs inspection이 필요하면 각 팩의 Characters review로 이동하세요.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="/ui/character-generator">승인 / 롤백 열기</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
-      leftPack.id
-    )}">A pack review</a><a class="pack-compare-link" href="/ui/characters?characterPackId=${encodeURIComponent(
-      rightPack.id
-    )}">B pack review</a></div></section><div class="pack-compare-grid">${panel(
+    )},label:${JSON.stringify(`Pack ${rightPack.id}`)},href:${JSON.stringify(rightReviewHref)}});document.getElementById("pack-compare-copy")?.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(window.location.href);}catch{}});})();</script>`;
+    const html = `${compareStyle}<div class="pack-compare-shell"><section class="pack-compare-hero" id="pack-compare-hero"><p class="eyebrow">Pack Compare Surface</p><h1>筌?Ŧ???????쑨??/h1><p>??surface??winner???類λ릭????쑨?놂쭖?곸뵠?? preview???????癰귣떯?? QC ?怨쀭뀱?얠눘???類ㅼ뵥??랁? lineage?? jobs????? ?? ?諭??rollback?? <a href="${escHtml(compareGeneratorHref)}">Character Generator</a>?癒?퐣, 繹먮봿? ??롫짗 野꺜??롫뮉 <a href="${escHtml(leftReviewHref)}">Characters</a>?癒?퐣 ??ъ몵?紐꾩뒄.</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="${escHtml(compareGeneratorHref)}">Character Generator</a><a class="pack-compare-link" href="${escHtml(leftReviewHref)}">A pack review</a><a class="pack-compare-link" href="${escHtml(rightReviewHref)}">B pack review</a>${
+      creationNav.returnTo ? `<a class="pack-compare-link" href="${escHtml(creationNav.returnTo)}">Return</a>` : ""
+    }<button type="button" class="pack-compare-link" id="pack-compare-copy">Copy deep link</button></div><div class="pack-compare-flow"><div class="pack-compare-step"><strong>01 Preview</strong><span>????뱀벥 preview?? ?怨밴묶?????????쑨???몃빍??</span></div><div class="pack-compare-step"><strong>02 QC</strong><span>qc_report.json 鈺곕똻??????? pack ?怨밴묶????ｍ뜞 ?딅굝???</span></div><div class="pack-compare-step"><strong>03 Lineage</strong><span>acceptance status?? repair task???類ㅼ뵥??provenance risk????뚮뮸??덈뼄.</span></div><div class="pack-compare-step"><strong>04 Jobs</strong><span>latest episode/jobs???怨뺤뵬 ??堉?review surface嚥???띾쭔筌왖 野껉퀣???몃빍??</span></div></div></section><section class="pack-compare-next"><h2>??쇱벉 ??る?/h2><p>??쑨??癒?퐣 ?諭?꾤몴??類λ립 ??쇰퓠??Generator?癒?퐣 approval/rollback????ろ? ??繹먮봿? QC/lineage/jobs inspection???袁⑹뒄??롢늺 揶???뱀벥 Characters review嚥???猷??뤾쉭??</p><div class="pack-compare-next-links"><a class="pack-compare-link" href="${escHtml(compareGeneratorHref)}">?諭??/ 嚥▲끇媛???용┛</a><a class="pack-compare-link" href="${escHtml(leftReviewHref)}">A pack review</a><a class="pack-compare-link" href="${escHtml(rightReviewHref)}">B pack review</a></div></section><div class="pack-compare-grid">${panel(
       "A",
       leftPack,
       leftPreviewExists,
       leftQcExists,
       leftLineage
-    )}${panel("B", rightPack, rightPreviewExists, rightQcExists, rightLineage)}</div></div>`;
+    )}${panel("B", rightPack, rightPreviewExists, rightQcExists, rightLineage)}</div></div>${compareNavScript}`;
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329 \uBE44\uAD50", html));
   });
 
@@ -7389,6 +7659,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
   app.get("/ui/characters", async (request, reply) => {
     const query = isRecord(request.query) ? request.query : {};
+    const creationNav = readCreationNavState(query);
+    const currentPageReturnTo = requestUiHref(request);
     const selectedPackId = optionalString(query, "characterPackId");
     const message = optionalString(query, "message");
     const error = optionalString(query, "error");
@@ -7478,7 +7750,17 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .map((pack) => {
         const episode = pack.episodes[0];
         const artifacts = getCharacterArtifacts(pack.id);
-        return `<tr><td><a href="/ui/characters?characterPackId=${encodeURIComponent(pack.id)}">${escHtml(
+        return `<tr><td><a href="${escHtml(
+          hrefWithCreationNav(
+            "/ui/characters",
+            { characterPackId: pack.id },
+            {
+              returnTo: creationNav.returnTo,
+              currentObject: `pack:${pack.id}`,
+              focus: "pack-review-current"
+            }
+          )
+        )}">${escHtml(
           pack.id
         )}</a></td><td>${escHtml(pack.version)}</td><td><span class="badge ${uiBadge(pack.status)}">${escHtml(
           pack.status
@@ -7521,9 +7803,13 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         : null;
     const compareHref =
       selectedPack && activePack && activePack.id !== selectedPack.id
-        ? `/ui/character-generator/compare?leftPackId=${encodeURIComponent(selectedPack.id)}&rightPackId=${encodeURIComponent(
-            activePack.id
-          )}`
+        ? buildUiHref("/ui/character-generator/compare", {
+            leftPackId: selectedPack.id,
+            rightPackId: activePack.id,
+            returnTo: currentPageReturnTo,
+            currentObject: `pack:${selectedPack.id}`,
+            focus: "pack-compare-hero"
+          })
         : null;
     const selectedLineageSection = selectedPack
       ? buildCharacterPackLineageSection({
@@ -7534,6 +7820,62 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         })
       : "";
     const selectedLatestJob = selectedPack?.episodes[0]?.jobs[0] ?? null;
+    const charactersStudioHref = hrefWithCreationNav(
+      "/ui/studio",
+      { ...(creationNav.assetId ? { assetId: creationNav.assetId } : {}) },
+      {
+        returnTo: currentPageReturnTo,
+        currentObject: selectedPack ? `pack:${selectedPack.id}` : creationNav.currentObject,
+        focus: "studio-selection"
+      }
+    );
+    const charactersGeneratorHref = hrefWithCreationNav(
+      "/ui/character-generator",
+      { ...(creationNav.referenceAssetId ? { referenceAssetId: creationNav.referenceAssetId } : {}) },
+      {
+        returnTo: currentPageReturnTo,
+        currentObject: selectedPack ? `pack:${selectedPack.id}` : creationNav.currentObject,
+        focus: "cg-stage-context"
+      }
+    );
+    const selectedPackSelfHref = selectedPack
+      ? hrefWithCreationNav(
+          "/ui/characters",
+          { characterPackId: selectedPack.id },
+          {
+            returnTo: creationNav.returnTo,
+            currentObject: `pack:${selectedPack.id}`,
+            focus: "pack-review-current"
+          }
+        )
+      : null;
+    const charactersCreateNavFields = renderCreationNavHiddenFields({
+      returnTo: currentPageReturnTo,
+      currentObject: selectedPack ? `pack:${selectedPack.id}` : creationNav.currentObject,
+      focus: "pack-review-current",
+      assetId: creationNav.assetId,
+      referenceAssetId: creationNav.referenceAssetId
+    });
+    const charactersNavSection = `<section class="pack-review-rail" id="pack-review-creation-nav" data-current-pack-id="${escHtml(
+      selectedPack?.id ?? ""
+    )}"><p class="eyebrow">Creation Handoff</p><h2>Return / current pack / reopen</h2><p>Characters는 pack detail surface입니다. compare, lineage, generator approval lane, studio dispatch hub로 다시 들어갈 때 현재 pack deep link를 먼저 고정합니다.</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(
+      charactersStudioHref
+    )}">Studio</a><a class="pack-review-link" href="${escHtml(
+      charactersGeneratorHref
+    )}">Character Generator</a>${
+      compareHref ? `<a class="pack-review-link" href="${escHtml(compareHref)}">Compare</a>` : ""
+    }${
+      selectedPack ? '<a class="pack-review-link" href="#pack-review-lineage">Lineage</a>' : ""
+    }${
+      creationNav.returnTo ? `<a class="pack-review-link" href="${escHtml(creationNav.returnTo)}">Return</a>` : ""
+    }<button type="button" class="pack-review-link" id="pack-review-copy-link">Copy deep link</button>${
+      selectedPack ? '<button type="button" class="pack-review-link" id="pack-review-pin-pack">Pin current pack</button>' : ""
+    }</div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>Current Object</strong><span id="pack-review-current-object">${escHtml(
+      selectedPack ? `Pack ${selectedPack.id}` : creationNav.currentObject ?? "none"
+    )}</span></article><article class="pack-review-flow-item"><strong>Pinned Reopen</strong><span id="pack-review-nav-pins">Pinned reopen links will appear here.</span></article><article class="pack-review-flow-item"><strong>Recent Reopen</strong><span id="pack-review-nav-recents">Recent reopen links will appear here.</span></article><article class="pack-review-flow-item"><strong>Focus</strong><span>Use compare, lineage, and review anchors before leaving this surface.</span></article></div></section>`;
+    const charactersNavScript = `<script>(function(){const ns="ecs.ui.creation.nav.v1";const parse=(value,fallback)=>{try{const parsed=JSON.parse(String(value||""));return parsed==null?fallback:parsed;}catch{return fallback;}};const readList=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return [];}const parsed=parse(window.localStorage.getItem(ns+".recent."+kind),[]);return Array.isArray(parsed)?parsed:[];};const writeList=(kind,items)=>{try{window.localStorage.setItem(ns+".recent."+kind,JSON.stringify(items.slice(0,6)));}catch{}};const readPin=(kind)=>{if(typeof window==="undefined"||!window.localStorage){return null;}const parsed=parse(window.localStorage.getItem(ns+".pin."+kind),null);return parsed&&typeof parsed==="object"?parsed:null;};const writePin=(kind,item)=>{try{window.localStorage.setItem(ns+".pin."+kind,JSON.stringify(item));}catch{}};const pushRecent=(kind,item)=>{if(!item||!item.id){return;}const next=[item].concat(readList(kind).filter((entry)=>entry&&entry.id!==item.id));writeList(kind,next);};const esc=(value)=>String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");const render=(id,items,empty)=>{const root=document.getElementById(id);if(!(root instanceof HTMLElement)){return;}const valid=Array.isArray(items)?items.filter((entry)=>entry&&entry.href&&entry.label):[];root.innerHTML=valid.length?valid.map((entry)=>'<a class="pack-review-link" href="'+esc(entry.href)+'">'+esc(entry.label)+'</a>').join(""):esc(empty);};const currentPackId=${JSON.stringify(
+      selectedPack?.id ?? ""
+    )};const currentPackHref=${JSON.stringify(selectedPackSelfHref ?? "")};if(currentPackId&&currentPackHref){pushRecent("packs",{id:currentPackId,label:"Pack "+currentPackId,href:currentPackHref});}document.getElementById("pack-review-copy-link")?.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(window.location.href);}catch{}});document.getElementById("pack-review-pin-pack")?.addEventListener("click",()=>{if(!currentPackId||!currentPackHref){return;}writePin("pack",{id:currentPackId,label:"Pack "+currentPackId,href:currentPackHref});render("pack-review-nav-pins",[readPin("pack"),readPin("run"),readPin("asset")].filter(Boolean),"Pinned reopen links will appear here.");});render("pack-review-nav-pins",[readPin("pack"),readPin("run"),readPin("asset")].filter(Boolean),"Pinned reopen links will appear here.");render("pack-review-nav-recents",readList("packs").slice(0,4).concat(readList("runs").slice(0,2)),"Recent reopen links will appear here.");})();</script>`;
     const reviewStyle = `<style>
       .pack-review-shell{display:grid;gap:14px}
       .pack-review-hero,.pack-review-panel,.pack-review-rail{position:relative;overflow:hidden;border:1px solid #d6e0ef;border-radius:18px;background:linear-gradient(180deg,#fff,#f8fbff);box-shadow:0 16px 40px rgba(15,23,42,.06)}
@@ -7543,7 +7885,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .pack-review-hero p,.pack-review-panel p,.pack-review-rail p{color:#5b6b82;line-height:1.55}
       .pack-review-grid{display:grid;gap:14px;grid-template-columns:minmax(0,1.18fr) minmax(320px,.82fr)}
       .pack-review-actions{display:flex;gap:8px;flex-wrap:wrap}
-      .pack-review-link{display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700;text-decoration:none}
+      .pack-review-link{appearance:none;cursor:pointer;display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700;text-decoration:none}
       .pack-review-link:hover{text-decoration:none;box-shadow:0 8px 20px rgba(18,87,199,.08)}
       .pack-review-summary{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px}
       .pack-review-card{padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
@@ -7556,19 +7898,21 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .pack-review-manual summary{cursor:pointer;font-weight:700}
       @media (max-width:1080px){.pack-review-grid,.pack-review-summary,.pack-review-flow{grid-template-columns:1fr}}
     </style>`;
-    const manualCreateSection = `<details class="pack-review-panel pack-review-manual"><summary>수동 팩 생성 (예외 경로)</summary><p>이 surface의 주 역할은 생성 허브가 아니라 pack review / inspection이다. 새 런과 compare / approval / rollback은 <a href="/ui/character-generator">Character Generator</a>가 기본 경로이며, 이 폼은 예외적인 수동 생성에만 사용하세요.</p><form method="post" action="/ui/characters/create" class="grid"><div class="grid two"><label>Front Asset<select name="front" required>${
+    const manualCreateSection = `<details class="pack-review-panel pack-review-manual"><summary>??롫짗 ????밴쉐 (??됱뇚 野껋럥以?</summary><p>??surface??雅???釉?? ??밴쉐 ??덊닏揶쎛 ?袁⑤빍??pack review / inspection???? ???怨뚮궢 compare / approval / rollback?? <a href="${escHtml(
+      charactersGeneratorHref
+    )}">Character Generator</a>揶쎛 疫꿸퀡??野껋럥以??흭, ????? ??됱뇚?怨몄뵥 ??롫짗 ??밴쉐?癒?춸 ?????뤾쉭??</p><form method="post" action="/ui/characters/create" class="grid">${charactersCreateNavFields}<div class="grid two"><label>Front Asset<select name="front" required>${
       assetOptions || '<option value="">No READY assets available</option>'
     }</select></label><label>ThreeQuarter Asset<select name="threeQuarter" required>${
       assetOptions || '<option value="">No READY assets available</option>'
     }</select></label><label>Profile Asset<select name="profile" required>${
       assetOptions || '<option value="">No READY assets available</option>'
     }</select></label><label>Topic (optional)<input name="topic" placeholder="character preview"/></label></div><button type="submit">Create character pack + enqueue preview</button></form></details>`;
-    const roleSplitRail = `<section class="pack-review-rail"><p class="eyebrow">Role Split</p><h2>이 surface가 맡는 일</h2><p>빠른 흐름은 <a href="/ui/studio">Studio</a>, 새 런과 approval / rollback은 <a href="/ui/character-generator">Character Generator</a>, 이 페이지는 preview, QC, lineage, jobs를 함께 읽는 깊은 수동 팩 review를 담당합니다.</p><div class="pack-review-actions"><a class="pack-review-link" href="/ui/studio">Studio</a><a class="pack-review-link" href="/ui/character-generator">Character Generator</a>${
+    const roleSplitRail = `<section class="pack-review-rail"><p class="eyebrow">Role Split</p><h2>??surface揶쎛 筌띲볥뮉 ??/h2><p>??쥓???癒?カ?? <a href="${escHtml(charactersStudioHref)}">Studio</a>, ???怨뚮궢 approval / rollback?? <a href="${escHtml(charactersGeneratorHref)}">Character Generator</a>, ????륁뵠筌왖??preview, QC, lineage, jobs????ｍ뜞 ??덈뮉 繹먮봿? ??롫짗 ??review???????몃빍??</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(charactersStudioHref)}">Studio</a><a class="pack-review-link" href="${escHtml(charactersGeneratorHref)}">Character Generator</a>${
       compareHref ? `<a class="pack-review-link" href="${escHtml(compareHref)}">Active Pack Compare</a>` : ""
-    }</div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>01 Preview</strong><span>visual check를 먼저 닫습니다.</span></article><article class="pack-review-flow-item"><strong>02 QC</strong><span>qc_report.json과 이슈 severity를 읽습니다.</span></article><article class="pack-review-flow-item"><strong>03 Lineage</strong><span>source, manifest, repair provenance를 추적합니다.</span></article><article class="pack-review-flow-item"><strong>04 Jobs</strong><span>이 팩을 만든 episode/jobs history를 확인합니다.</span></article></div></section>`;
+    }</div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>01 Preview</strong><span>visual check???믪눘? ??щ뮸??덈뼄.</span></article><article class="pack-review-flow-item"><strong>02 QC</strong><span>qc_report.json????곷뭼 severity????뚮뮸??덈뼄.</span></article><article class="pack-review-flow-item"><strong>03 Lineage</strong><span>source, manifest, repair provenance???곕뗄???몃빍??</span></article><article class="pack-review-flow-item"><strong>04 Jobs</strong><span>????뱀뱽 筌띾슢諭?episode/jobs history???類ㅼ뵥??몃빍??</span></article></div></section>`;
 
     const selectedSection = selectedPack
-      ? `<section class="pack-review-panel"><p class="eyebrow">Pack Review Surface</p><h2>선택된 팩 리뷰</h2><p>이 surface는 pack을 만드는 곳이 아니라 pack을 읽는 곳이다. preview, QC, lineage, jobs를 한 흐름에서 검토한 뒤 compare 또는 approval / rollback surface로 넘기세요.</p><div class="pack-review-actions"><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
+      ? `<section class="pack-review-panel" id="pack-review-current"><p class="eyebrow">Pack Review Surface</p><h2>?醫뤾문?????귐됰윮</h2><p>??surface??pack??筌띾슢諭???⑤끃???袁⑤빍??pack????덈뮉 ?⑤끃??? preview, QC, lineage, jobs?????癒?カ?癒?퐣 野꺜?醫뤿립 ??compare ?癒?뮉 approval / rollback surface嚥???띾┛?紐꾩뒄.</p><div class="pack-review-actions"><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
           selectedPack.id
         )}/pack.json">pack.json</a><a class="pack-review-link" href="/artifacts/characters/${encodeURIComponent(
           selectedPack.id
@@ -7576,19 +7920,21 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           selectedPack.id
         )}/qc_report.json">qc_report.json</a>${
           compareHref ? `<a class="pack-review-link" href="${escHtml(compareHref)}">active pack compare</a>` : ""
-        }<a class="pack-review-link" href="/ui/character-generator">approval / rollback</a></div><div class="pack-review-summary"><article class="pack-review-card"><span>Pack</span><strong>${escHtml(
+        }${
+          selectedPackSelfHref ? `<a class="pack-review-link" href="${escHtml(selectedPackSelfHref)}">review reopen</a>` : ""
+        }<a class="pack-review-link" href="${escHtml(charactersGeneratorHref)}">approval / rollback</a></div><div class="pack-review-summary"><article class="pack-review-card"><span>Pack</span><strong>${escHtml(
           selectedPack.id
         )}</strong><p>v${escHtml(selectedPack.version)} / <span class="badge ${uiBadge(selectedPack.status)}">${escHtml(
           selectedPack.status
         )}</span></p></article><article class="pack-review-card"><span>Latest Episode</span><strong>${escHtml(
-          selectedPack.episodes[0] ? `${selectedPack.episodes[0].id} / ${selectedPack.episodes[0].topic ?? "-"}` : "연결 없음"
+          selectedPack.episodes[0] ? `${selectedPack.episodes[0].id} / ${selectedPack.episodes[0].topic ?? "-"}` : "?怨뚭퍙 ??곸벉"
         )}</strong><p>active compare: ${escHtml(compareHref ? "available" : "none")}</p></article><article class="pack-review-card"><span>Preview / QC</span><strong>preview=${escHtml(
           selectedPreviewExists ? "exists" : "missing"
         )} / qc=${escHtml(selectedQcExists ? "exists" : "missing")}</strong><p>issues=${escHtml(String(selectedQcIssues.length))}</p></article><article class="pack-review-card"><span>Lineage / Jobs</span><strong>${escHtml(
           selectedGeneratedLineage?.acceptanceStatus ?? "unknown"
         )} / jobs=${escHtml(String(selectedPack.episodes[0]?.jobs.length ?? 0))}</strong><p>repair=${escHtml(
           selectedGeneratedLineage ? String(selectedGeneratedLineage.repairOpenCount) : "-"
-        )}</p></article></div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>Preview</strong><span>영상과 pack.json 링크를 통해 visual handoff를 먼저 점검합니다.</span></article><article class="pack-review-flow-item"><strong>QC</strong><span>문제 severity와 details를 읽어 compare 전에 위험을 분리합니다.</span></article><article class="pack-review-flow-item"><strong>Lineage</strong><span>manifest, proposal, repair provenance로 생성 맥락을 복구합니다.</span></article><article class="pack-review-flow-item"><strong>Jobs</strong><span>어떤 episode/jobs가 이 팩을 만들었는지 뒤로 따라갑니다.</span></article></div>${
+        )}</p></article></div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>Preview</strong><span>?怨멸맒??pack.json 筌띻낱寃뺟몴????퉸 visual handoff???믪눘? ?癒???몃빍??</span></article><article class="pack-review-flow-item"><strong>QC</strong><span>?얜챷??severity?? details????뚮선 compare ?袁⑸퓠 ?袁る퓮???브쑬???몃빍??</span></article><article class="pack-review-flow-item"><strong>Lineage</strong><span>manifest, proposal, repair provenance嚥???밴쉐 筌띘살뵭??癰귣벀???몃빍??</span></article><article class="pack-review-flow-item"><strong>Jobs</strong><span>??堉?episode/jobs揶쎛 ????뱀뱽 筌띾슢諭??덈뮉筌왖 ??살쨮 ?怨뺤뵬揶쏅쵎???</span></article></div>${
           selectedPreviewExists && selectedPreviewUrl
             ? `<section class="card"><h3>Preview Player</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
                 selectedPreviewUrl
@@ -7604,27 +7950,28 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   JSON.stringify(selectedQcReport, null, 2)
                 )}</pre></section>`
             : `<section class="card"><h3>QC Report</h3><div class="error">qc_report.json is not generated yet.</div></section>`
-        }${selectedLineageSection}<section class="card"><h3>Jobs Behind This Pack</h3><p>preview, QC, lineage 판단을 만든 실행 이력을 여기서 바로 읽습니다.</p><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
+        }<div id="pack-review-lineage">${selectedLineageSection}</div><section class="card"><h3>Jobs Behind This Pack</h3><p>preview, QC, lineage ?癒?뼊??筌띾슢諭???쎈뻬 ???????由??獄쏅뗀以???뚮뮸??덈뼄.</p><table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Created At</th></tr></thead><tbody>${
           selectedJobs || '<tr><td colspan="5">No jobs</td></tr>'
         }</tbody></table></section><details><summary>View pack.json</summary><pre>${escHtml(
           JSON.stringify(selectedPack.json, null, 2)
         )}</pre></details></section>`
-      : `<section class="pack-review-panel"><p class="eyebrow">Pack Review Surface</p><h2>선택된 팩 없음</h2><p>최근 팩 목록에서 항목을 고르면 preview, QC, lineage, jobs inspection surface가 열립니다.</p></section>`;
+      : `<section class="pack-review-panel" id="pack-review-current"><p class="eyebrow">Pack Review Surface</p><h2>?醫뤾문??????곸벉</h2><p>筌ㅼ뮄????筌뤴뫖以?癒?퐣 ??????⑥쥓?ㅿ쭖?preview, QC, lineage, jobs inspection surface揶쎛 ?????덈뼄.</p></section>`;
 
-    const html = `${reviewStyle}<div class="pack-review-shell"><section class="pack-review-hero"><p class="eyebrow">Deep Manual Review</p><h1>캐릭터 팩 리뷰</h1><p>빠른 흐름은 <a href="/ui/studio">Studio</a>, 새 런과 compare / approval / rollback은 <a href="/ui/character-generator">Character Generator</a>, 이 페이지는 preview / QC / lineage / jobs를 한 곳에서 읽는 pack inspection surface다.</p><div class="pack-review-actions"><a class="pack-review-link" href="/ui/studio">Studio</a><a class="pack-review-link" href="/ui/character-generator">Character Generator</a>${
-      selectedPack ? `<a class="pack-review-link" href="/ui/characters?characterPackId=${encodeURIComponent(selectedPack.id)}">현재 팩 고정</a>` : ""
+    const html = `${reviewStyle}<div class="pack-review-shell"><section class="pack-review-hero"><p class="eyebrow">Deep Manual Review</p><h1>筌?Ŧ??????귐됰윮</h1><p>??쥓???癒?カ?? <a href="${escHtml(charactersStudioHref)}">Studio</a>, ???怨뚮궢 compare / approval / rollback?? <a href="${escHtml(charactersGeneratorHref)}">Character Generator</a>, ????륁뵠筌왖??preview / QC / lineage / jobs?????⑤끃肉????덈뮉 pack inspection surface??</p><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(charactersStudioHref)}">Studio</a><a class="pack-review-link" href="${escHtml(charactersGeneratorHref)}">Character Generator</a>${
+      selectedPack ? `<a class="pack-review-link" href="${escHtml(selectedPackSelfHref ?? "")}">?袁⑹삺 ???⑥쥙??/a>` : ""
     }${
       selectedLatestJob ? `<a class="pack-review-link" href="/ui/jobs/${encodeURIComponent(selectedLatestJob.id)}">Latest Job</a>` : ""
-    }</div><div class="pack-review-summary"><article class="pack-review-card"><span>최근 팩</span><strong>${escHtml(String(packs.length))}</strong><p>review queue</p></article><article class="pack-review-card"><span>Ready Assets</span><strong>${escHtml(String(readyAssets.length))}</strong><p>manual create exception path</p></article><article class="pack-review-card"><span>선택된 팩</span><strong>${escHtml(selectedPack?.id ?? "없음")}</strong><p>${escHtml(selectedPack ? String(selectedPack.status) : "choose one from the list")}</p></article><article class="pack-review-card"><span>Active Compare</span><strong>${escHtml(compareHref ? "available" : "none")}</strong><p>approval surface = Character Generator</p></article></div>${
+    }</div><div class="pack-review-summary"><article class="pack-review-card"><span>筌ㅼ뮄????/span><strong>${escHtml(String(packs.length))}</strong><p>review queue</p></article><article class="pack-review-card"><span>Ready Assets</span><strong>${escHtml(String(readyAssets.length))}</strong><p>manual create exception path</p></article><article class="pack-review-card"><span>?醫뤾문????/span><strong>${escHtml(selectedPack?.id ?? "??곸벉")}</strong><p>${escHtml(selectedPack ? String(selectedPack.status) : "choose one from the list")}</p></article><article class="pack-review-card"><span>Active Compare</span><strong>${escHtml(compareHref ? "available" : "none")}</strong><p>approval surface = Character Generator</p></article></div>${
       message ? `<div class="notice">${escHtml(message)}</div>` : ""
-    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}</section>${selectedSection}<div class="pack-review-grid"><section class="pack-review-stage"><section class="pack-review-panel"><h2>최근 캐릭터 팩</h2><p>이 목록은 review queue다. 팩을 고르면 위 inspection surface가 preview -> QC -> lineage -> jobs 순서로 열립니다.</p><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created At</th></tr></thead><tbody>${
+    }${error ? `<div class="error">${escHtml(error)}</div>` : ""}</section>${selectedSection}<div class="pack-review-grid"><section class="pack-review-stage"><section class="pack-review-panel"><h2>筌ㅼ뮄??筌?Ŧ?????/h2><p>??筌뤴뫖以?? review queue?? ??뱀뱽 ?⑥쥓?ㅿ쭖???inspection surface揶쎛 preview -> QC -> lineage -> jobs ??뽮퐣嚥??????덈뼄.</p><table><thead><tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th><th>Preview</th><th>Created At</th></tr></thead><tbody>${
       packRows || '<tr><td colspan="6">No character packs</td></tr>'
-    }</tbody></table></section></section><aside class="pack-review-stage">${roleSplitRail}${manualCreateSection}</aside></div></div>`;
+    }</tbody></table></section></section><aside class="pack-review-stage">${charactersNavSection}${roleSplitRail}${manualCreateSection}</aside></div></div>${charactersNavScript}`;
     return reply.type("text/html; charset=utf-8").send(uiPage("\uCE90\uB9AD\uD130 \uD329", html));
   });
 
   app.post("/ui/characters/create", async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
 
     try {
       const assetIds = parseAssetIdsFromBody(body);
@@ -7640,9 +7987,18 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       });
 
       return reply.redirect(
-        `/ui/characters?characterPackId=${encodeURIComponent(created.characterPackId)}&message=${encodeURIComponent(
-          `Character pack created: ${created.characterPackId} / ${BUILD_CHARACTER_PACK_JOB_NAME} queued`
-        )}`
+        hrefWithCreationNav(
+          "/ui/characters",
+          {
+            characterPackId: created.characterPackId,
+            message: `Character pack created: ${created.characterPackId} / ${BUILD_CHARACTER_PACK_JOB_NAME} queued`
+          },
+          {
+            ...creationNav,
+            currentObject: `pack:${created.characterPackId}`,
+            focus: "pack-review-current"
+          }
+        )
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -7655,7 +8011,16 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         app.log.error(error);
       }
 
-      return reply.redirect(`/ui/characters?error=${encodeURIComponent(message)}`);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/characters",
+          { error: message },
+          {
+            ...creationNav,
+            focus: creationNav.focus ?? "pack-review-current"
+          }
+        )
+      );
     }
   });
 }
