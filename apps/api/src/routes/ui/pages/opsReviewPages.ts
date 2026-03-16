@@ -114,6 +114,7 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
     .ops-review-panel{display:grid;gap:10px}
     .ops-review-panel-head{display:grid;gap:4px}
     .ops-review-panel-head h2,.ops-review-panel-head h3{margin:0}
+    .ops-review-jump-banner{display:grid;gap:10px;padding:12px;border:1px solid #d9e5ef;border-radius:16px;background:linear-gradient(180deg,#fcfefe,#f4f9fd)}
     .ops-review-card-list{display:grid;gap:8px}
     .ops-review-card{display:grid;gap:6px;padding:11px;border-radius:14px;border:1px solid #d9e5ef;background:#fff}
     .ops-review-card.tone-ok{border-color:#cbe6d7;background:#f3fbf7}
@@ -136,6 +137,8 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
     .ops-review-drawer summary::-webkit-details-marker{display:none}
     .ops-review-drawer[open] summary{border-bottom:1px solid #e1ebf4}
     .ops-review-drawer-body{display:grid;gap:10px;padding:12px}
+    .ops-review-jump-target:target{scroll-margin-top:14px;box-shadow:inset 0 0 0 2px #0f766e33}
+    .ops-review-table-row.is-focused,.ops-review-table-row:target{background:#eef7ff}
     .ops-review-shell .mono{word-break:break-all}
     @media (max-width:960px){.ops-review-strip{grid-template-columns:1fr}}
   </style>
@@ -159,28 +162,28 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
       </div>
     </div>
     <div class="ops-review-rail">
-      <div class="ops-review-panel">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-decision">
         <div class="ops-review-panel-head">
           <h2>${input.railTitle ?? "Decision rail"}</h2>
           <p class="section-intro">${input.railIntro ?? "Keep compare-before-promote and recovery actions above the table scan."}</p>
         </div>
         ${renderExplorerRailCards(input.railCards ?? [])}
       </div>
-      <div class="ops-review-panel">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-recovery">
         <div class="ops-review-panel-head">
           <h3>${input.recoveryTitle ?? "Recovery rail"}</h3>
           <p class="section-intro">${input.recoveryIntro ?? "Keep recovery order, rollback anchors, and linked objects visible while scanning the queue."}</p>
         </div>
         ${renderExplorerRailCards(input.recoveryCards ?? [])}
       </div>
-      <div class="ops-review-panel">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-snapshot">
         <div class="ops-review-panel-head">
           <h3>${input.factsTitle ?? "Recovery snapshot"}</h3>
           <p class="section-intro">${input.factsIntro ?? "Keep scope, blockers, and rollback anchors visible while scanning the queue."}</p>
         </div>
         ${renderExplorerFacts(input.facts ?? [])}
       </div>
-      <div class="ops-review-panel">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-evidence">
         <div class="ops-review-panel-head">
           <h3>${input.evidenceTitle ?? "Artifact evidence drawer"}</h3>
           <p class="section-intro">${input.evidenceIntro ?? "Keep artifact-backed evidence close, but push raw payload reading behind a drawer."}</p>
@@ -195,7 +198,30 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
 <section class="card">
   <div class="section-head"><div><h2>${input.tableTitle}</h2><span class="muted-text">${input.tableSubtitle}</span></div><input type="search" data-table-filter="${input.tableId}" aria-label="${input.tableTitle}" placeholder="${input.filterPlaceholder}"/></div>
   <div class="table-wrap"><table id="${input.tableId}"><thead><tr>${input.headers}</tr></thead><tbody>${input.rows || renderTableEmptyRow(input.emptyColspan, input.emptyText)}</tbody></table></div>
-</section>`;
+</section>
+<script>
+(() => {
+  const hash = window.location.hash ? window.location.hash.slice(1) : "";
+  if (!hash) return;
+  const target = document.getElementById(hash);
+  if (!(target instanceof HTMLElement)) return;
+  if (target instanceof HTMLDetailsElement) {
+    target.open = true;
+  }
+  const parentDetails = target.closest("details");
+  if (parentDetails instanceof HTMLDetailsElement) {
+    parentDetails.open = true;
+  }
+  target.querySelectorAll("details").forEach((node) => {
+    if (node instanceof HTMLDetailsElement) {
+      node.open = true;
+    }
+  });
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ block: "start", behavior: "auto" });
+  });
+})();
+</script>`;
 }
 
 type RepairAcceptancePageBodyInput = {
