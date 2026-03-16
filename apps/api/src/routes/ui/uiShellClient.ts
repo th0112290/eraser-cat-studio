@@ -320,6 +320,121 @@ export const UI_SHELL_CLIENT = `
     node.classList.add("severity-" + nextTone);
     node.dataset.severity = nextTone;
   };
+  const badgeSelector = ".badge,.status-badge,.shell-chip,.shell-status,[class*='asset-mini-badge'],.notice,.success-state,.warning-state,.error,.error-state,.empty-state,.panel,.notice-panel,.recovery-panel";
+  const grammarSelector = "section,article,aside,.card,.ops-review-panel,.ops-review-card,.ops-rail-card,.notice,.success-state,.warning-state,.error,.error-state,.empty-state,.panel,.notice-panel,.recovery-panel";
+  const surfaceKeywords = {
+    evidence: ["raw json", "json preview", "원시 json", "원시 로그", "raw log", "logs", "stack", "trace", "payload", "artifact index", "원시 산출물", "산출물 인덱스", "원시 폴더"],
+    recovery: ["recovery", "복구", "retry", "재시도", "rollback", "롤백", "rerender", "repair", "수리", "fallback", "hitl"],
+    decision: ["decision", "판단", "의사결정", "compare", "비교", "approval", "승인", "verdict", "candidate", "variant", "review"],
+    preflight: ["preflight", "사전점검", "validation", "검증", "입력", "run profile"],
+    metadata: ["metadata", "snapshot", "요약", "summary", "important metadata", "key fields", "control snapshot", "현재 상태", "route snapshot", "acceptance snapshot", "lineage snapshot"]
+  };
+  const matchAny = (text, keywords) => keywords.some((keyword) => text.includes(keyword));
+  const collectMatches = (root, selector) => {
+    if (!(root instanceof HTMLElement)) return [];
+    const matches = [];
+    if (root.matches(selector)) matches.push(root);
+    root.querySelectorAll(selector).forEach((node) => {
+      if (node instanceof HTMLElement) matches.push(node);
+    });
+    return matches;
+  };
+  const inferToneFromText = (value) => {
+    const text = cleanText(value).toLowerCase();
+    if (!text) return "muted";
+    if (/(failed|failure|error|fatal|critical|cancelled|취소|실패|오류|치명|차단|blocked)/.test(text)) return "bad";
+    if (/(warn|warning|degraded|hold|retry|rollback|missing|보류|주의|경고|누락|검토)/.test(text)) return "warn";
+    if (/(running|queued|progress|processing|info|pending|실행 중|대기|진행|스캔)/.test(text)) return "info";
+    if (/(ok|success|healthy|ready|complete|active|normal|정상|성공|준비|완료|사용 가능)/.test(text)) return "ok";
+    return "muted";
+  };
+  const resolveNodeTone = (node) => {
+    if (!(node instanceof HTMLElement)) return "muted";
+    const className = String(node.className || "").toLowerCase();
+    if (className.includes("severity-bad") || className.includes(" bad") || className.startsWith("bad ") || className.includes("error")) return "bad";
+    if (className.includes("severity-warn") || className.includes(" warn") || className.startsWith("warn ") || className.includes("warning")) return "warn";
+    if (className.includes("severity-ok") || className.includes(" ok") || className.startsWith("ok ") || className.includes("success")) return "ok";
+    if (className.includes("severity-info") || className.includes(" info") || className.startsWith("info ")) return "info";
+    if (className.includes("severity-muted") || className.includes(" muted") || className.startsWith("muted ")) return "muted";
+    const direct = String(node.dataset.severity || "").toLowerCase();
+    if (severityKeys.includes(direct)) return direct;
+    return inferToneFromText(
+      [node.getAttribute("aria-label"), node.getAttribute("title"), node.getAttribute("data-primary-label"), node.textContent].join(" ")
+    );
+  };
+  const normalizeSeverityNodes = (root) => {
+    const scope = root instanceof HTMLElement ? root : document.body;
+    collectMatches(scope, badgeSelector).forEach((node) => {
+      const tone = resolveNodeTone(node);
+      if (node.matches(".badge,.status-badge,.shell-chip,.shell-status,[class*='asset-mini-badge']")) setSeverity(node, tone);
+      else node.dataset.surfaceTone = tone;
+    });
+  };
+  const setSurfaceRole = (node, role, kicker, priority = "primary") => {
+    if (!(node instanceof HTMLElement)) return;
+    node.classList.add("surface-panel");
+    node.dataset.surfaceRole = role;
+    node.dataset.surfaceKicker = kicker;
+    node.dataset.surfacePriority = priority;
+    if (role === "table") node.classList.add("table-shell");
+    if (role === "metadata") node.classList.add("metadata-block");
+    if (role === "preflight") node.classList.add("preflight-box");
+    if (role === "decision") node.classList.add("decision-rail");
+    if (role === "recovery") node.classList.add("recovery-rail");
+    if (role === "evidence") node.classList.add("evidence-secondary");
+  };
+  const classifySurface = (node) => {
+    if (!(node instanceof HTMLElement)) return;
+    if (node.id === "shortcut-help" || node.classList.contains("shortcut-card")) return;
+    const heading = cleanText(node.querySelector("h1,h2,h3,h4,h5,h6")?.textContent || "");
+    const tableIds = Array.from(node.querySelectorAll("table[id]"))
+      .map((table) => (table instanceof HTMLElement ? table.id : ""))
+      .join(" ");
+    const descriptor = cleanText([node.id, node.className, heading, tableIds].join(" ")).toLowerCase();
+    const text = cleanText(node.textContent || "").slice(0, 1800).toLowerCase();
+    const summary = (descriptor + " " + text).trim();
+    const hasTable = !!node.querySelector("table");
+    const hasCode = !!node.querySelector("pre,code,.mono");
+    const hasForm = !!node.querySelector("form");
+    const hasSummaryGrid = !!node.querySelector(".summary-grid,.ops-kpi-grid,.metadata-grid,dl");
+    const railCard = node.classList.contains("ops-review-panel") || node.classList.contains("ops-review-card") || node.classList.contains("ops-rail-card");
+    if (matchAny(summary, surfaceKeywords.evidence) || ((hasCode || /(^|\\s)(log|json|artifact|payload|trace)(\\s|$)/.test(descriptor)) && !hasForm)) {
+      setSurfaceRole(node, "evidence", "2차 근거", "secondary");
+      return;
+    }
+    if (railCard && matchAny(summary, surfaceKeywords.recovery)) {
+      setSurfaceRole(node, "recovery", "복구 레일");
+      return;
+    }
+    if (railCard && matchAny(summary, surfaceKeywords.decision)) {
+      setSurfaceRole(node, "decision", "판단 레일");
+      return;
+    }
+    if (hasForm && matchAny(summary, surfaceKeywords.preflight)) {
+      setSurfaceRole(node, "preflight", "사전점검");
+      return;
+    }
+    if (hasTable) {
+      setSurfaceRole(node, "table", "테이블 셸");
+      return;
+    }
+    if (hasSummaryGrid || matchAny(summary, surfaceKeywords.metadata)) {
+      setSurfaceRole(node, "metadata", "메타데이터");
+    }
+  };
+  const normalizeShellLayouts = (root) => {
+    const scope = root instanceof HTMLElement ? root : document.body;
+    collectMatches(scope, ".ops-review-strip").forEach((node) => node.classList.add("detail-shell"));
+    collectMatches(scope, ".ops-rail-grid").forEach((node) => node.classList.add("compare-shell"));
+    collectMatches(scope, ".summary-grid,.ops-kpi-grid").forEach((node) => node.classList.add("metadata-grid"));
+  };
+  const applyShellGrammar = (root) => {
+    const scope = root instanceof HTMLElement ? root : document.body;
+    normalizeShellLayouts(scope);
+    collectMatches(scope, grammarSelector).forEach(classifySurface);
+    normalizeSeverityNodes(scope);
+    document.body.dataset.shellGrammarReady = "1";
+  };
   const markSearchActivity = (node, active) => {
     if (!(node instanceof HTMLElement)) return;
     const flag = active ? "1" : "0";
@@ -544,6 +659,7 @@ export const UI_SHELL_CLIENT = `
     setSeverity(shellRecoveryState, recoveryTone);
     syncPrimaryAction();
     syncNavCollapse();
+    normalizeSeverityNodes(document.body);
   };
   if (shellNavToggle instanceof HTMLButtonElement) {
     shellNavToggle.addEventListener("click", () => {
@@ -793,14 +909,28 @@ export const UI_SHELL_CLIENT = `
   translateSubtree(document.body);
   const translatedTitle = translateValue(document.title);
   if (translatedTitle !== document.title) document.title = translatedTitle;
+  applyShellGrammar(document.body);
   syncShellState();
   const observer = new MutationObserver((mutations) => {
+    const dirtyRoots = [];
     mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => translateSubtree(node));
+      mutation.addedNodes.forEach((node) => {
+        translateSubtree(node);
+        if (node instanceof HTMLElement) dirtyRoots.push(node);
+        else if (node.parentElement instanceof HTMLElement) dirtyRoots.push(node.parentElement);
+      });
+      if (mutation.type === "attributes" && mutation.target instanceof HTMLElement) dirtyRoots.push(mutation.target);
     });
+    dirtyRoots.forEach((node) => applyShellGrammar(node));
     syncPrimaryAction();
+    syncShellState();
   });
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "aria-disabled", "data-primary-action"] });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["disabled", "aria-disabled", "data-primary-action"]
+  });
   window.addEventListener("keydown", (event) => {
     const target = event.target;
     const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
