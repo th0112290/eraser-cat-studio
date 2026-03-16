@@ -3010,10 +3010,13 @@ function decisionSurfaceStyles(): string {
 .decision-title h1{margin:0}
 .decision-statusline{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .decision-statusline .muted-text{font-size:13px}
+.decision-reading-order{display:grid;gap:4px;padding:11px 12px;border:1px dashed #c7d7e6;border-radius:14px;background:#f8fbff}
+.decision-reading-order strong{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#365063}
 .decision-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.9fr);gap:12px}
 .decision-column{display:grid;gap:10px}
 .decision-panel{display:grid;gap:8px;padding:12px;border-radius:16px;border:1px solid #d6e4ea;background:#ffffffd9}
 .decision-panel h2,.decision-panel h3{margin:0}
+.decision-panel-heading{display:grid;gap:4px}
 .decision-panel p{margin:0;color:#405663;line-height:1.5}
 .decision-panel.tone-ok{border-color:#cbe6d7;background:linear-gradient(180deg,#effcf7,#ffffff)}
 .decision-panel.tone-warn{border-color:#ecd9ad;background:linear-gradient(180deg,#fff8ea,#fffdf7)}
@@ -3037,6 +3040,25 @@ function decisionSurfaceStyles(): string {
 .decision-empty{padding:12px;border:1px dashed #cbd6e2;border-radius:12px;background:#f8fbff;color:#536475}
 	.decision-media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
 	.decision-media-card{display:grid;gap:8px;padding:12px;border:1px solid #d8e4ed;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#ffffff)}
+	.decision-compare-shell{display:grid;gap:12px}
+	.decision-compare-axis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+	.decision-compare-card{display:grid;gap:10px;padding:12px;border:1px solid #d8e5ee;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#ffffff)}
+	.decision-compare-card[data-compare-side="left"]{border-color:#c7d9eb}
+	.decision-compare-card[data-compare-side="right"]{border-color:#cbe6d7}
+	.decision-compare-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+	.decision-compare-axis-label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#557083}
+	.decision-compare-card h3{margin:2px 0 0}
+	.decision-action-rail{display:flex;flex-wrap:wrap;gap:8px}
+	.decision-action-rail a,.decision-action-rail button,.decision-action-rail .secondary,.decision-actions a,.decision-actions button{display:inline-flex;align-items:center;justify-content:center;min-height:34px}
+	.decision-diff-row{display:flex;flex-wrap:wrap;gap:8px}
+	.decision-diff-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid #c8d8e5;background:#fff;color:#173040;font-size:12px;font-weight:800}
+	.decision-diff-chip.tone-ok{border-color:#cbe6d7;background:#f3fbf7;color:#17603a}
+	.decision-diff-chip.tone-warn{border-color:#ecd9ad;background:#fffaf0;color:#8a5a00}
+	.decision-diff-chip.tone-bad{border-color:#efc4c4;background:#fff6f6;color:#9f1d1d}
+	.decision-diff-chip.tone-muted{border-color:#c8d8e5;background:#fff;color:#173040}
+	.decision-help-callout{display:grid;gap:4px;padding:10px 12px;border:1px solid #d8e5ee;border-radius:14px;background:#f8fbff}
+	.decision-help-callout strong{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#365063}
+	.decision-video-frame{width:100%;max-width:560px;background:#000;border-radius:10px}
 	.decision-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
 	.decision-priority-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px}
 	.decision-pill-row{display:flex;flex-wrap:wrap;gap:8px}
@@ -3048,6 +3070,7 @@ function decisionSurfaceStyles(): string {
 	.decision-drawer{border:1px solid #d8e5ee;border-radius:14px;background:#fff}
 	.decision-drawer>summary{cursor:pointer;list-style:none;padding:11px 12px;font-weight:800;color:#12344d}
 	.decision-drawer>summary::-webkit-details-marker{display:none}
+	.decision-drawer>summary:focus-visible,.decision-actions a:focus-visible,.decision-actions button:focus-visible,.decision-action-rail a:focus-visible,.decision-action-rail button:focus-visible,.quick-links a:focus-visible{outline:2px solid #0f766e;outline-offset:2px}
 	.decision-drawer[open]>summary{border-bottom:1px solid #e2ebf4}
 	.decision-drawer-body{display:grid;gap:10px;padding:12px}
 	.decision-copy{font-size:13px;line-height:1.5;color:#415565}
@@ -3056,7 +3079,8 @@ function decisionSurfaceStyles(): string {
 	.decision-hero .summary-grid .summary-card{background:#ffffffcc}
 	.decision-code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:12px;word-break:break-all}
 	@media (max-width:900px){.decision-layout,.decision-priority-grid{grid-template-columns:1fr}.decision-hero{padding:14px}}
-	@media (max-width:640px){.decision-surface{gap:10px}.decision-hero{padding:12px}.decision-panel,.decision-media-card{padding:10px}.decision-meta-grid,.decision-compare-grid{grid-template-columns:1fr}.decision-item-title{font-size:14px}}
+	@media (max-width:780px){.decision-compare-axis{grid-template-columns:1fr}}
+	@media (max-width:640px){.decision-surface{gap:10px}.decision-hero{padding:12px}.decision-panel,.decision-media-card,.decision-compare-card{padding:10px}.decision-meta-grid,.decision-compare-grid{grid-template-columns:1fr}.decision-item-title{font-size:14px}}
 </style>`;
 }
 
@@ -3106,8 +3130,16 @@ function renderDecisionCards(items: DecisionCard[], emptyMessage: string): strin
     .join("")}</div>`;
 }
 
-function renderDecisionPanel(title: string, intro: string, body: string, tone: UiBadgeTone = "muted"): string {
-  return `<section class="decision-panel tone-${decisionTone(tone)}"><div class="stack"><h2>${esc(title)}</h2><p>${esc(
+function renderDecisionPanel(
+  title: string,
+  intro: string,
+  body: string,
+  tone: UiBadgeTone = "muted",
+  headingLevel: "h2" | "h3" = "h2"
+): string {
+  return `<section class="decision-panel tone-${decisionTone(tone)}" role="region" aria-label="${esc(title)}"><div class="decision-panel-heading"><${headingLevel}>${esc(
+    title
+  )}</${headingLevel}><p>${esc(
     intro
   )}</p></div>${body}</section>`;
 }
@@ -3126,14 +3158,18 @@ function renderDecisionDualSection(input: {
   rightBody: string;
   rightTone?: UiBadgeTone;
 }): string {
-  return `<section class="card decision-jump-target"${input.sectionId ? ` id="${esc(input.sectionId)}"` : ""}><div class="section-head"><div><h2>${esc(input.title)}</h2><p class="section-intro">${esc(
+  const titleId = input.sectionId ? `${input.sectionId}-title` : "";
+  return `<section class="card decision-jump-target"${input.sectionId ? ` id="${esc(input.sectionId)}"` : ""}${
+    titleId ? ` aria-labelledby="${esc(titleId)}"` : ` aria-label="${esc(input.title)}"`
+  }><div class="section-head"><div><h2${titleId ? ` id="${esc(titleId)}"` : ""}>${esc(input.title)}</h2><p class="section-intro">${esc(
     input.intro
   )}</p></div>${input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""}</div><div class="decision-priority-grid">${renderDecisionPanel(
     input.leftTitle,
     input.leftIntro,
     input.leftBody,
-    input.leftTone ?? "muted"
-  )}${renderDecisionPanel(input.rightTitle, input.rightIntro, input.rightBody, input.rightTone ?? "muted")}</div></section>`;
+    input.leftTone ?? "muted",
+    "h3"
+  )}${renderDecisionPanel(input.rightTitle, input.rightIntro, input.rightBody, input.rightTone ?? "muted", "h3")}</div></section>`;
 }
 
 function renderDecisionPrioritySection(input: {
@@ -3152,6 +3188,7 @@ function renderDecisionPrioritySection(input: {
   snapshotEmpty: string;
   snapshotTone?: UiBadgeTone;
 }): string {
+  const drawerId = input.sectionId ? `${input.sectionId}-drawer` : "";
   return renderDecisionDualSection({
     sectionId: input.sectionId,
     title: input.title,
@@ -3217,6 +3254,7 @@ function renderArtifactEvidenceSection(input: {
   drawerTone?: UiBadgeTone;
   drawerOpen?: boolean;
 }): string {
+  const drawerId = input.sectionId ? `${input.sectionId}-drawer` : "";
   return renderDecisionDualSection({
     sectionId: input.sectionId,
     title: input.title,
@@ -3228,7 +3266,9 @@ function renderArtifactEvidenceSection(input: {
     leftTone: input.summaryTone ?? "muted",
     rightTitle: input.drawerTitle,
     rightIntro: input.drawerIntro,
-    rightBody: `<details class="decision-drawer"${input.drawerOpen ? " open" : ""}><summary>${esc(
+    rightBody: `<details class="decision-drawer"${drawerId ? ` id="${esc(drawerId)}"` : ""} aria-label="${esc(
+      input.drawerTitle
+    )}"${input.drawerOpen ? " open" : ""}><summary>${esc(
       input.drawerSummary
     )}</summary><div class="decision-drawer-body">${input.drawerBodyHtml}</div></details>`,
     rightTone: input.drawerTone ?? "muted"
@@ -3245,7 +3285,7 @@ function renderDecisionJumpBanner(input: {
   if (input.facts.length === 0 && !input.linksHtml) {
     return "";
   }
-  return `<div class="decision-jump-banner tone-${decisionTone(input.tone ?? "muted")}"><div class="section-head"><div><strong>${esc(
+  return `<div class="decision-jump-banner tone-${decisionTone(input.tone ?? "muted")}" role="note" aria-label="Deep-link handoff"><div class="section-head"><div><strong>${esc(
     input.title
   )}</strong><p class="decision-jump-copy">${esc(input.intro)}</p></div>${input.linksHtml ? `<div class="quick-links">${input.linksHtml}</div>` : ""}</div>${renderDecisionMetaGrid(
     input.facts,
@@ -3298,8 +3338,18 @@ function renderDecisionJumpScript(): string {
       node.open = true;
     }
   });
+  const focusTarget =
+    target instanceof HTMLDetailsElement
+      ? target.querySelector("summary")
+      : target.querySelector("summary, h1, h2, h3, a, button, input, select, textarea, [tabindex]") || target;
+  if (focusTarget instanceof HTMLElement && !focusTarget.hasAttribute("tabindex") && !["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "SUMMARY"].includes(focusTarget.tagName)) {
+    focusTarget.tabIndex = -1;
+  }
   requestAnimationFrame(() => {
     target.scrollIntoView({ block: "start", behavior: "auto" });
+    if (focusTarget instanceof HTMLElement) {
+      focusTarget.focus({ preventScroll: true });
+    }
   });
 })();
 </script>`;
@@ -3356,7 +3406,7 @@ function renderObjectHero(input: ObjectHeroInput): string {
     input.quickLinksHtml ? `<div class="quick-links">${input.quickLinksHtml}</div>` : ""
   }</div>${input.flash ?? ""}${
     (input.summaryCards ?? []).length > 0 ? `<div class="summary-grid">${renderDecisionSummaryCards(input.summaryCards ?? [])}</div>` : ""
-  }<div class="decision-layout"><div class="decision-column">${leftPanels}</div><div class="decision-column">${rightPanels}</div></div></section>`;
+  }<div class="decision-reading-order" role="note" aria-label="Reading order"><strong>Reading order</strong><span class="muted-text">Start with the object summary and action panels, then move through decision rail, recovery rail, evidence drawer, and only then the compare or raw detail sections.</span></div><div class="decision-layout"><div class="decision-column">${leftPanels}</div><div class="decision-column">${rightPanels}</div></div></section>`;
 }
 
 function serializeScriptData(value: unknown): string {
@@ -6083,12 +6133,14 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 .editor-topbar h1{margin:0 0 4px}
 .editor-topbar p{margin:0;color:#425466;font-size:13px}
 .editor-top-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.editor-layout{display:grid;grid-template-columns:270px minmax(0,1fr) 280px;gap:12px;align-items:start}
+.editor-reading-order{display:grid;gap:4px;padding:10px 12px;border:1px dashed #c7d7e6;border-radius:14px;background:#f8fbff}
+.editor-reading-order strong{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#365063}
+.editor-layout{display:grid;grid-template-columns:minmax(220px,.92fr) minmax(0,1.2fr) minmax(240px,.95fr);gap:12px;align-items:start}
 .editor-shell.editor-left-collapsed .editor-layout{grid-template-columns:minmax(0,1fr) 280px}
 .editor-shell.editor-left-collapsed .editor-left{display:none}
 .editor-left,.editor-center,.editor-right,.editor-bottom{border:1px solid #dbe6f1;border-radius:12px;background:#fff}
-.editor-left,.editor-right,.editor-bottom{padding:11px}
-.editor-center{padding:11px;display:grid;gap:10px}
+.editor-left,.editor-right,.editor-bottom{padding:12px;display:grid;gap:10px;align-content:start}
+.editor-center{padding:12px;display:grid;gap:12px;min-width:0}
 .editor-left h2,.editor-center h2,.editor-right h2,.editor-bottom h2{margin:0 0 8px;font-size:15px}
 .editor-right h3{margin:12px 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#4b647a}
 .editor-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}
@@ -6100,7 +6152,7 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 .editor-tab-panel.active{display:block}
 .editor-tab-panel ul{margin:0;padding-left:18px;display:grid;gap:6px}
 .editor-stage{position:relative;min-height:220px;border:1px solid #d8e3ef;border-radius:10px;background:linear-gradient(180deg,#f9fcff,#f2f8ff);padding:10px}
-.editor-stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.editor-stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .editor-object{display:grid;gap:2px;justify-items:start;padding:8px;border-radius:10px;border:1px solid #c8d8ea;background:#fff;color:#12344d;font-size:12px;cursor:pointer}
 .editor-object small{font-size:11px;color:#4b647a}
 .editor-object.active{outline:2px solid #0f766e;background:#e8f8f5}
@@ -6121,7 +6173,9 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 .editor-bottom p{margin:0;font-size:12px;color:#4b647a}
 .editor-strip{display:flex;gap:8px;flex-wrap:wrap}
 .editor-chip{display:inline-flex;align-items:center;padding:5px 8px;border:1px solid #c7d9eb;border-radius:999px;background:#f8fbff;font-size:12px}
-@media (max-width:1100px){.editor-layout{grid-template-columns:1fr}.editor-shell.editor-left-collapsed .editor-layout{grid-template-columns:1fr}}
+@media (max-width:1280px){.editor-layout{grid-template-columns:minmax(210px,.85fr) minmax(0,1fr) minmax(220px,.9fr)}}
+@media (max-width:1100px){.editor-layout{grid-template-columns:1fr}.editor-shell.editor-left-collapsed .editor-layout{grid-template-columns:1fr}.editor-center{order:-1}}
+@media (max-width:640px){.editor-shell,.editor-left,.editor-center,.editor-right,.editor-bottom{padding:10px}.editor-top-actions{gap:6px}.editor-stage-grid{grid-template-columns:1fr}}
 </style>
 <div class="editor-topbar">
   <div>
@@ -6138,9 +6192,10 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
 </div>
 <div class="notice">Shortcut: <strong>r</strong> runs the primary action. Snapshot before rerender, then compare in the episode detail or A/B surface before promote.</div>
 ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)}</div>` : ""}
+<div class="editor-reading-order" role="note" aria-label="Workbench reading order"><strong>Reading order</strong><span class="muted-text">Use the decision and recovery rails first, then the center stage, then the inspector, and keep snapshots as the rollback anchor at the bottom.</span></div>
 <div class="editor-layout">
-  <aside class="editor-left">
-    <h2>Workbench Assets</h2>
+  <aside class="editor-left" aria-labelledby="editor-assets-title">
+    <h2 id="editor-assets-title">Workbench Assets</h2>
     <div class="editor-tabs" role="tablist" aria-label="Library tabs">
       <button id="editor-tab-btn-templates" type="button" role="tab" aria-selected="true" aria-controls="editor-tab-panel-templates" tabindex="0" class="secondary active" data-editor-tab-btn="templates">Templates</button>
       <button id="editor-tab-btn-elements" type="button" role="tab" aria-selected="false" aria-controls="editor-tab-panel-elements" tabindex="-1" class="secondary" data-editor-tab-btn="elements">Elements</button>
@@ -6151,8 +6206,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div id="editor-tab-panel-elements" role="tabpanel" aria-labelledby="editor-tab-btn-elements" class="editor-tab-panel" data-editor-tab="elements" hidden><ul><li data-editor-search-item>Shape: rounded rect</li><li data-editor-search-item>Arrow line</li><li data-editor-search-item>Subtitle block</li><li data-editor-search-item>Brand-safe icon</li></ul></div>
     <div id="editor-tab-panel-uploads" role="tabpanel" aria-labelledby="editor-tab-btn-uploads" class="editor-tab-panel" data-editor-tab="uploads" hidden><ul><li data-editor-search-item>voiceover_wave.png</li><li data-editor-search-item>chart_overlay.svg</li><li data-editor-search-item>product_cutout.webp</li></ul></div>
   </aside>
-  <section class="editor-center decision-jump-target" id="editor-stage">
-    <h2>Workbench Stage</h2>
+  <section class="editor-center decision-jump-target" id="editor-stage" aria-labelledby="editor-stage-title">
+    <h2 id="editor-stage-title">Workbench Stage</h2>
     <div class="editor-stage">
       <div id="editor-context-toolbar" class="editor-context-toolbar" hidden>
         <span id="editor-context-label" class="editor-context-label">No selection</span>
@@ -6173,8 +6228,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       </table>
     </div>
   </section>
-  <aside class="editor-right decision-jump-target" id="editor-inspector">
-    <h2>Ops Inspector</h2>
+  <aside class="editor-right decision-jump-target" id="editor-inspector" aria-labelledby="editor-inspector-title">
+    <h2 id="editor-inspector-title">Ops Inspector</h2>
     <p id="editor-inspector-target" class="muted-text">Select an object on the canvas or in the timeline table.</p>
     <h3>Shot Ops Metadata</h3>
     <div class="field"><label>Shot type</label><div id="editor-meta-shot-type" class="editor-readout empty">-</div></div>
@@ -6188,9 +6243,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div class="quick-links"><a href="${editorProfilesHref}">Open matching profile browser view</a><a href="${editorBenchmarksHref}">Benchmarks</a></div>
   </aside>
 </div>
-<section class="editor-bottom" id="editor-snapshots">
+<section class="editor-bottom" id="editor-snapshots" aria-labelledby="editor-snapshots-title">
   <div>
-    <h2>Rollback snapshots</h2>
+    <h2 id="editor-snapshots-title">Rollback snapshots</h2>
     <p>Recent snapshots stay linked for quick rollback and compare-before-promote review.</p>
   </div>
   <div class="editor-strip">${snapshotItems}</div>
@@ -6959,19 +7014,27 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      drawerBodyHtml: compareEvidenceDrawerBody,
 	      drawerTone: "muted",
 	      drawerOpen: ["evidence", "artifact", "raw"].includes(compareFocusValue) || decisionToken(decisionState.view) === "evidence"
-	    })}<section class="card decision-jump-target" id="episode-ab-compare-shell"><div class="section-head"><div><h2>Compare Shell</h2><p class="section-intro">위 decision and recovery rails가 정리된 뒤에만 두 대상을 같은 문법으로 나란히 확인하세요.</p></div><div class="quick-links"><a href="${compareReturnHref}">${compareReturnLabel}</a><a href="${compareEpisodeHref}">Episode Detail</a></div></div><div class="decision-media-grid"><article class="decision-media-card"><div class="section-head"><div><h3>변형 A</h3><p class="muted-text">${esc(
-	      variantAStyle
-	    )}</p></div><span class="badge ${aExists ? "ok" : "bad"}">${aExists ? "준비됨" : "없음"}</span></div>${aExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${aUrl}"></video><div class="quick-links"><a href="${aUrl}">preview_A.mp4 열기</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
+	    })}<section class="card decision-jump-target" id="episode-ab-compare-shell" aria-labelledby="episode-ab-compare-shell-title"><div class="section-head"><div><h2 id="episode-ab-compare-shell-title">Compare Shell</h2><p class="section-intro">위 decision and recovery rails가 정리된 뒤에만 두 대상을 같은 문법으로 나란히 확인하세요.</p></div><div class="quick-links"><a href="${compareReturnHref}">${compareReturnLabel}</a><a href="${compareEpisodeHref}">Episode Detail</a></div></div><div class="decision-help-callout" role="note" aria-label="Compare reading order"><strong>Compare reading order</strong><span class="muted-text">1. 판정과 diff chip을 확인하고 2. 좌/우 프리뷰 축을 비교한 뒤 3. action rail로 detail, job, rerun handoff를 여세요.</span></div><div class="decision-diff-row" aria-label="A/B compare deltas"><span class="decision-diff-chip tone-${Math.abs(qa.failCount - qb.failCount) > 0 ? "warn" : "ok"}">Fail delta ${Math.abs(
+	      qa.failCount - qb.failCount
+	    )}</span><span class="decision-diff-chip tone-${Math.abs(qa.warnCount - qb.warnCount) > 0 ? "warn" : "ok"}">Warn delta ${Math.abs(
+	      qa.warnCount - qb.warnCount
+	    )}</span><span class="decision-diff-chip tone-${compareReady ? "ok" : "bad"}">${compareReady ? "Both previews ready" : "One or more previews missing"}</span><span class="decision-diff-chip tone-${verdictTone}">Promotion target ${esc(
+	      promotionTarget
+	    )}</span></div><div class="decision-compare-shell"><div class="decision-action-rail" aria-label="Compare shell actions"><a href="${compareEpisodeHref}">Episode Detail</a><a href="${compareWorkbenchHref}">Ops Workbench</a><a href="#episode-ab-promotion-matrix">Promotion Matrix</a>${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
 	      jobA
-	    )}">jobA</a>` : ""}</div>` : `<div class="error">preview_A.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qa.failCount}, 경고=${qa.warnCount}, 강제=${esc(
+	    )}">jobA</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(jobB)}">jobB</a>` : ""}</div><div class="decision-compare-axis"><article class="decision-compare-card" data-compare-side="left"><div class="decision-compare-card-head"><div><span class="decision-compare-axis-label">Left axis</span><h3>변형 A</h3><p class="muted-text">${esc(
+	      variantAStyle
+	    )}</p></div><span class="badge ${aExists ? "ok" : "bad"}">${aExists ? "준비됨" : "없음"}</span></div>${aExists ? `<video controls preload="metadata" class="decision-video-frame" src="${aUrl}" aria-label="Variant A preview"></video>` : `<div class="error">preview_A.mp4를 찾을 수 없습니다</div>`}<div class="decision-meta-grid"><div class="decision-meta-card"><span class="label">STYLE_QC fail</span><div class="value">${qa.failCount}</div><div class="hint">variant A blocker count</div></div><div class="decision-meta-card"><span class="label">STYLE_QC warn</span><div class="value">${qa.warnCount}</div><div class="hint">variant A warning count</div></div><div class="decision-meta-card"><span class="label">Forced style</span><div class="value">${esc(
 	      qa.forcedStyle
-	    )}</p></article><article class="decision-media-card"><div class="section-head"><div><h3>변형 B</h3><p class="muted-text">${esc(
+	    )}</div><div class="hint">forced by STYLE_QC</div></div></div><div class="decision-action-rail" aria-label="Variant A actions">${aExists ? `<a href="${aUrl}">Open preview_A.mp4</a>` : ""}${jobA ? `<a href="/ui/jobs/${encodeURIComponent(
+	      jobA
+	    )}">Open jobA</a>` : ""}<a href="${compareEpisodeHref}">Episode detail</a></div></article><article class="decision-compare-card" data-compare-side="right"><div class="decision-compare-card-head"><div><span class="decision-compare-axis-label">Right axis</span><h3>변형 B</h3><p class="muted-text">${esc(
 	      variantBStyle
-	    )}</p></div><span class="badge ${bExists ? "ok" : "bad"}">${bExists ? "준비됨" : "없음"}</span></div>${bExists ? `<video controls preload="metadata" style="width:100%;max-width:560px;background:#000;border-radius:8px" src="${bUrl}"></video><div class="quick-links"><a href="${bUrl}">preview_B.mp4 열기</a>${jobB ? `<a href="/ui/jobs/${encodeURIComponent(
-	      jobB
-	    )}">jobB</a>` : ""}</div>` : `<div class="error">preview_B.mp4를 찾을 수 없습니다</div>`}<p>STYLE_QC: 실패=${qb.failCount}, 경고=${qb.warnCount}, 강제=${esc(
+	    )}</p></div><span class="badge ${bExists ? "ok" : "bad"}">${bExists ? "준비됨" : "없음"}</span></div>${bExists ? `<video controls preload="metadata" class="decision-video-frame" src="${bUrl}" aria-label="Variant B preview"></video>` : `<div class="error">preview_B.mp4를 찾을 수 없습니다</div>`}<div class="decision-meta-grid"><div class="decision-meta-card"><span class="label">STYLE_QC fail</span><div class="value">${qb.failCount}</div><div class="hint">variant B blocker count</div></div><div class="decision-meta-card"><span class="label">STYLE_QC warn</span><div class="value">${qb.warnCount}</div><div class="hint">variant B warning count</div></div><div class="decision-meta-card"><span class="label">Forced style</span><div class="value">${esc(
 	      qb.forcedStyle
-	    )}</p></article></div></section><section class="card decision-jump-target" id="episode-ab-promotion-matrix"><div class="section-head"><div><h2>Promotion Matrix</h2><p class="section-intro">승인하거나 재시도하기 전에 한 표에서 compare delta와 QC 차이를 확인합니다.</p></div></div><div class="table-wrap"><table><thead><tr><th>지표</th><th>변형 A</th><th>변형 B</th></tr></thead><tbody><tr><td>스타일 프리셋</td><td>${esc(
+	    )}</div><div class="hint">forced by STYLE_QC</div></div></div><div class="decision-action-rail" aria-label="Variant B actions">${bExists ? `<a href="${bUrl}">Open preview_B.mp4</a>` : ""}${jobB ? `<a href="/ui/jobs/${encodeURIComponent(
+	      jobB
+	    )}">Open jobB</a>` : ""}<a href="${compareEpisodeHref}">Episode detail</a></div></article></div></div></section><section class="card decision-jump-target" id="episode-ab-promotion-matrix"><div class="section-head"><div><h2>Promotion Matrix</h2><p class="section-intro">승인하거나 재시도하기 전에 한 표에서 compare delta와 QC 차이를 확인합니다.</p></div></div><div class="table-wrap"><table><thead><tr><th>지표</th><th>변형 A</th><th>변형 B</th></tr></thead><tbody><tr><td>스타일 프리셋</td><td>${esc(
 	      variantAStyle
 	    )}</td><td>${esc(variantBStyle)}</td></tr><tr><td>STYLE_QC fail_count</td><td>${qa.failCount}</td><td>${qb.failCount}</td></tr><tr><td>STYLE_QC warn_count</td><td>${qa.warnCount}</td><td>${qb.warnCount}</td></tr><tr><td>forced_episode_style</td><td>${esc(
 	      qa.forcedStyle
@@ -10070,21 +10133,59 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      drawerTone: "muted",
 	      drawerOpen: ["evidence", "artifact", "raw"].includes(candidateFocusValue) || decisionToken(decisionState.view) === "evidence"
 	    })}
-<section class="card dashboard-shell decision-jump-target" id="candidate-compare-shell">
+<section class="card dashboard-shell decision-jump-target" id="candidate-compare-shell" aria-labelledby="candidate-compare-shell-title">
 	  <div class="section-head">
 	    <div>
-	      <h2>Compare Shell</h2>
+	      <h2 id="candidate-compare-shell-title">Compare Shell</h2>
 	      <p class="section-intro">Prompt candidate scoring vs actual sidecar output scoring for one shot. Compare-before-promote logic stays above the matrix.</p>
 	    </div>
 	    <div class="quick-links"><a href="${candidateReturnHref}">${candidateReturnLabel}</a><a href="${candidateRolloutsHref}">Open Rollouts</a></div>
 	  </div>
   ${focusBanner}
-  <p>episodeId: <strong>${esc(episodeId)}</strong> | shotId: <strong>${esc(shotId)}</strong></p>
-  <p>renderer: <strong>${esc(renderer)}</strong> | backend: <strong>${esc(backend)}</strong></p>
-  <p>preset stack: <strong>${esc(requestSummary || "-")}</strong></p>
-  <p>reference view: <strong>${esc(effectiveSelectedView ?? "-")}</strong> ${selectedImagePath ? `| <span class="mono">${esc(selectedImagePath)}</span>` : ""}</p>
-  <div class="summary-grid">${summaryCards}</div>
-  <div class="quick-links" style="margin-top:10px">${topLinks}</div>
+  <div class="decision-help-callout" role="note" aria-label="Candidate compare reading order"><strong>Compare reading order</strong><span class="muted-text">Start with prompt winner vs actual winner, then the score matrix, then per-candidate cards, and only then the prompt preview or lower-level artifact payloads.</span></div>
+  <div class="decision-diff-row" aria-label="Candidate compare summary">
+    <span class="decision-diff-chip tone-${comparisonTone}">Gate ${esc(comparisonVerdict)}</span>
+    <span class="decision-diff-chip tone-${comparisonAligned ? "ok" : "warn"}">Prompt ${esc(humanizeOpsLabel(promptWinner))} vs Actual ${esc(humanizeOpsLabel(actualWinner))}</span>
+    <span class="decision-diff-chip tone-${focusSelected ? "warn" : "muted"}">${focusSelected ? `Focused ${visibleCandidateRows.length}/${candidateRows.length}` : `${candidateRows.length} candidates in matrix`}</span>
+    <span class="decision-diff-chip tone-${selectedImagePath ? "ok" : "muted"}">Reference ${esc(effectiveSelectedView ?? "-")}</span>
+  </div>
+  <div class="decision-compare-shell">
+    <div class="decision-action-rail" aria-label="Candidate compare actions"><a href="${candidateReturnHref}">${candidateReturnLabel}</a><a href="${candidateRolloutsHref}">Rollouts</a>${candidateEpisodeHref ? `<a href="${candidateEpisodeHref}">Episode Detail</a>` : ""}<a href="#candidate-score-matrix">Score Matrix</a>${topLinks}</div>
+    <div class="decision-compare-axis">
+      <article class="decision-compare-card" data-compare-side="left">
+        <div class="decision-compare-card-head">
+          <div>
+            <span class="decision-compare-axis-label">Left axis</span>
+            <h3>Prompt side</h3>
+            <p class="muted-text">${esc(humanizeOpsLabel(promptWinner))}</p>
+          </div>
+          <span class="badge ${comparisonAligned ? "ok" : "warn"}">${esc(humanizeOpsLabel(promptWinner))}</span>
+        </div>
+        <div class="decision-meta-grid">
+          <div class="decision-meta-card"><span class="label">Episode / Shot</span><div class="value">${esc(episodeId)}</div><div class="hint">${esc(shotId)}</div></div>
+          <div class="decision-meta-card"><span class="label">Reference view</span><div class="value">${esc(effectiveSelectedView ?? "-")}</div><div class="hint">${selectedImagePath ? esc(path.basename(selectedImagePath)) : "reference bundle"}</div></div>
+          <div class="decision-meta-card"><span class="label">Preset stack</span><div class="value">${esc(requestSummary || "-")}</div><div class="hint">prompt-side request context</div></div>
+        </div>
+        <div class="decision-action-rail" aria-label="Prompt-side actions">${topLinks || `<a href="${candidateRolloutsHref}">Open Rollouts</a>`}</div>
+      </article>
+      <article class="decision-compare-card" data-compare-side="right">
+        <div class="decision-compare-card-head">
+          <div>
+            <span class="decision-compare-axis-label">Right axis</span>
+            <h3>Actual side</h3>
+            <p class="muted-text">${esc(humanizeOpsLabel(actualWinner))}</p>
+          </div>
+          <span class="badge ${comparisonTone}">${esc(comparisonVerdict)}</span>
+        </div>
+        <div class="decision-meta-grid">
+          <div class="decision-meta-card"><span class="label">Renderer / Backend</span><div class="value">${esc(renderer)}</div><div class="hint">${esc(backend)}</div></div>
+          <div class="decision-meta-card"><span class="label">Promotion target</span><div class="value">${esc(promotionTarget)}</div><div class="hint">${topCandidate?.candidateId ? esc(topCandidate.candidateId) : "no top candidate"}</div></div>
+          <div class="decision-meta-card"><span class="label">Visible candidates</span><div class="value">${esc(String(visibleCandidateRows.length))}</div><div class="hint">${focusSelected ? `filtered from ${candidateRows.length}` : "full compare set"}</div></div>
+        </div>
+        <div class="decision-action-rail" aria-label="Actual-side actions"><a href="#candidate-score-matrix">Open score matrix</a>${candidateEpisodeHref ? `<a href="${candidateEpisodeHref}">Episode Detail</a>` : ""}<a href="${candidateRolloutsHref}">Rollouts</a></div>
+      </article>
+    </div>
+  </div>
 </section>
 <section class="card decision-jump-target" id="candidate-score-matrix">
   <div class="section-head"><h2>Candidate Score Matrix</h2><span class="muted-text">Compare prompt selection score against actual rendered output score before deciding on promotion.</span></div>

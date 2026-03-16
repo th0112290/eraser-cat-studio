@@ -96,7 +96,7 @@ function renderExplorerEvidenceDrawer(drawer?: ExplorerEvidenceDrawer): string {
     return '<div class="ops-review-empty">No artifact evidence drawer is available for this explorer yet.</div>';
   }
 
-  return `<details class="ops-review-drawer"${drawer.open ? " open" : ""}>
+  return `<details class="ops-review-drawer" aria-label="Artifact evidence drawer"${drawer.open ? " open" : ""}>
     <summary>${drawer.summary}</summary>
     <div class="ops-review-drawer-body">${drawer.bodyHtml}</div>
   </details>`;
@@ -104,11 +104,13 @@ function renderExplorerEvidenceDrawer(drawer?: ExplorerEvidenceDrawer): string {
 
 function buildExplorerPageBody(input: ExplorerPageInput): string {
   return `
-<section class="card dashboard-shell">
+<section class="card dashboard-shell" aria-labelledby="${input.tableId}-page-title">
   <style>
     .ops-review-shell{display:grid;gap:12px}
     .ops-review-strip{display:grid;gap:12px;grid-template-columns:minmax(260px,1.2fr) minmax(280px,.95fr);align-items:start}
     .ops-review-rail{display:grid;gap:10px}
+    .ops-review-reading-order{display:grid;gap:4px;padding:11px 12px;border:1px dashed #c7d7e6;border-radius:14px;background:#f8fbff}
+    .ops-review-reading-order strong{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#365063}
     .ops-review-note,.ops-review-panel{padding:12px;border:1px solid #d9e5ef;border-radius:16px;background:linear-gradient(180deg,#fcfefe,#f4f9fd)}
     .ops-review-note strong{display:block;margin-bottom:4px}
     .ops-review-panel{display:grid;gap:10px}
@@ -135,57 +137,63 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
     .ops-review-drawer{border:1px solid #d8e5ee;border-radius:14px;background:#fff}
     .ops-review-drawer summary{cursor:pointer;list-style:none;padding:11px 12px;font-weight:800;color:#12344d}
     .ops-review-drawer summary::-webkit-details-marker{display:none}
+    .ops-review-drawer summary:focus-visible,.ops-review-card-actions a:focus-visible,.quick-links a:focus-visible,.ops-chip-grid a:focus-visible{outline:2px solid #0f766e;outline-offset:2px}
     .ops-review-drawer[open] summary{border-bottom:1px solid #e1ebf4}
     .ops-review-drawer-body{display:grid;gap:10px;padding:12px}
     .ops-review-jump-target:target{scroll-margin-top:14px;box-shadow:inset 0 0 0 2px #0f766e33}
     .ops-review-table-row.is-focused,.ops-review-table-row:target{background:#eef7ff}
     .ops-review-shell .mono{word-break:break-all}
     @media (max-width:960px){.ops-review-strip{grid-template-columns:1fr}}
+    @media (max-width:640px){.ops-review-note,.ops-review-panel,.ops-filter-card{padding:10px}.ops-review-card-actions,.quick-links{gap:6px}}
   </style>
   <div class="section-head">
     <div>
-      <h1>${input.title}</h1>
+      <h1 id="${input.tableId}-page-title">${input.title}</h1>
       <p class="section-intro">${input.subtitle}</p>
     </div>
     <div class="quick-links">${input.linksHtml ?? '<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/rollouts">Rollouts</a><a href="/ui/artifacts">Artifacts</a>'}</div>
   </div>
   ${input.flash}
   <div class="summary-grid">${input.summaryCards}</div>
+  <div class="ops-review-reading-order" id="${input.tableId}-reading-order" role="note" aria-label="Reading order">
+    <strong>Reading order</strong>
+    <span class="muted-text">Start with filters and the decision rail, then recovery and snapshot, then the artifact evidence drawer, and only then scan the table or deeper detail links.</span>
+  </div>
   <div class="ops-review-strip">
     <div class="ops-review-shell">
-      <div class="ops-review-panel">
+      <div class="ops-review-panel" role="region" aria-labelledby="${input.tableId}-filters-title">
         <div class="ops-review-panel-head">
-          <h2>Explorer filters</h2>
+          <h2 id="${input.tableId}-filters-title">Explorer filters</h2>
           <p class="section-intro">Narrow the queue first, then inspect detail surfaces only for the rows that still need a decision.</p>
         </div>
         <div class="ops-filter-card">${input.filters}</div>
       </div>
     </div>
     <div class="ops-review-rail">
-      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-decision">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-decision" role="region" aria-labelledby="${input.tableId}-decision-title">
         <div class="ops-review-panel-head">
-          <h2>${input.railTitle ?? "Decision rail"}</h2>
+          <h2 id="${input.tableId}-decision-title">${input.railTitle ?? "Decision rail"}</h2>
           <p class="section-intro">${input.railIntro ?? "Keep compare-before-promote and recovery actions above the table scan."}</p>
         </div>
         ${renderExplorerRailCards(input.railCards ?? [])}
       </div>
-      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-recovery">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-recovery" role="region" aria-labelledby="${input.tableId}-recovery-title">
         <div class="ops-review-panel-head">
-          <h3>${input.recoveryTitle ?? "Recovery rail"}</h3>
+          <h3 id="${input.tableId}-recovery-title">${input.recoveryTitle ?? "Recovery rail"}</h3>
           <p class="section-intro">${input.recoveryIntro ?? "Keep recovery order, rollback anchors, and linked objects visible while scanning the queue."}</p>
         </div>
         ${renderExplorerRailCards(input.recoveryCards ?? [])}
       </div>
-      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-snapshot">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-snapshot" role="region" aria-labelledby="${input.tableId}-snapshot-title">
         <div class="ops-review-panel-head">
-          <h3>${input.factsTitle ?? "Recovery snapshot"}</h3>
+          <h3 id="${input.tableId}-snapshot-title">${input.factsTitle ?? "Recovery snapshot"}</h3>
           <p class="section-intro">${input.factsIntro ?? "Keep scope, blockers, and rollback anchors visible while scanning the queue."}</p>
         </div>
         ${renderExplorerFacts(input.facts ?? [])}
       </div>
-      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-evidence">
+      <div class="ops-review-panel ops-review-jump-target" id="${input.tableId}-evidence" role="region" aria-labelledby="${input.tableId}-evidence-title">
         <div class="ops-review-panel-head">
-          <h3>${input.evidenceTitle ?? "Artifact evidence drawer"}</h3>
+          <h3 id="${input.tableId}-evidence-title">${input.evidenceTitle ?? "Artifact evidence drawer"}</h3>
           <p class="section-intro">${input.evidenceIntro ?? "Keep artifact-backed evidence close, but push raw payload reading behind a drawer."}</p>
         </div>
         ${input.evidenceCards && input.evidenceCards.length > 0 ? renderExplorerRailCards(input.evidenceCards) : ""}
@@ -195,8 +203,8 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
     </div>
   </div>
 </section>
-<section class="card">
-  <div class="section-head"><div><h2>${input.tableTitle}</h2><span class="muted-text">${input.tableSubtitle}</span></div><input type="search" data-table-filter="${input.tableId}" aria-label="${input.tableTitle}" placeholder="${input.filterPlaceholder}"/></div>
+<section class="card" aria-labelledby="${input.tableId}-table-title">
+  <div class="section-head"><div><h2 id="${input.tableId}-table-title">${input.tableTitle}</h2><span class="muted-text">${input.tableSubtitle}</span></div><input type="search" data-table-filter="${input.tableId}" aria-label="${input.tableTitle}" aria-describedby="${input.tableId}-reading-order" placeholder="${input.filterPlaceholder}"/></div>
   <div class="table-wrap"><table id="${input.tableId}"><thead><tr>${input.headers}</tr></thead><tbody>${input.rows || renderTableEmptyRow(input.emptyColspan, input.emptyText)}</tbody></table></div>
 </section>
 <script>
@@ -217,8 +225,18 @@ function buildExplorerPageBody(input: ExplorerPageInput): string {
       node.open = true;
     }
   });
+  const focusTarget =
+    target instanceof HTMLDetailsElement
+      ? target.querySelector("summary")
+      : target.querySelector("summary, h1, h2, h3, a, button, input, select, textarea, [tabindex]") || target;
+  if (focusTarget instanceof HTMLElement && !focusTarget.hasAttribute("tabindex") && !["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "SUMMARY"].includes(focusTarget.tagName)) {
+    focusTarget.tabIndex = -1;
+  }
   requestAnimationFrame(() => {
     target.scrollIntoView({ block: "start", behavior: "auto" });
+    if (focusTarget instanceof HTMLElement) {
+      focusTarget.focus({ preventScroll: true });
+    }
   });
 })();
 </script>`;
