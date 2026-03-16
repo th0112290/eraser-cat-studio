@@ -470,7 +470,7 @@ ${renderRailSection({
       })
     },
     {
-      title: "HITL Rerender",
+      title: "HITL rerender 요청",
       intro: "복구 대상 shot id를 명시하고 dryRun으로 경로를 먼저 검증할 수 있습니다.",
       tone: "warn",
       bodyHtml: `<form method="post" action="/ui/hitl/rerender" class="ops-form-shell"><div class="field"><label for="hitl-episode-id">episodeId</label><input id="hitl-episode-id" name="episodeId" value="${input.episodeIdValue}" required/></div><div class="field"><label for="hitl-shot-ids">failedShotIds <span class="hint" data-tooltip="${t.failedShotHelp}">?</span></label><input id="hitl-shot-ids" name="failedShotIds" value="${input.failedShotIdsValue}" placeholder="shot_1,shot_2" required/><small>${t.failedShotHint}</small></div><label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun (실행 전 검증)</label><div class="actions"><button type="submit" data-primary-action="1" data-primary-label="HITL rerender 실행">${t.runAction}</button></div></form>`
@@ -492,7 +492,7 @@ ${renderRailSection({
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>Failed Jobs</h2>
+      <h2>${t.failedJobs}</h2>
       <p class="section-intro">row action rhythm을 실패 object -> owning episode -> recover 순서로 통일합니다.</p>
     </div>
   </div>
@@ -561,7 +561,7 @@ ${renderRailSection({
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>out/ index</h2>
+      <h2>원시 산출물 인덱스</h2>
       <p class="section-intro">이 표는 2차 evidence입니다. linked outputs와 recovery anchor를 본 뒤에만 raw index를 확인합니다.</p>
     </div>
     <input type="search" data-table-filter="artifact-index-table" aria-label="산출물 인덱스 필터" placeholder="${t.indexFilterPlaceholder}"/>
