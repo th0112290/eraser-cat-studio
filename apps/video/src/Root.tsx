@@ -10,6 +10,8 @@ import { DepthAndShadowShowcaseComposition } from "./compositions/DepthAndShadow
 import { ExtremeDemoComposition } from "./compositions/ExtremeDemo";
 import { MotionFxShowcaseComposition } from "./compositions/MotionFxShowcase";
 import { Mvp1Composition } from "./compositions/Mvp1";
+import { RendererAdapterChartSmokeComposition } from "./compositions/RendererAdapterChartSmoke";
+import { RendererAdapterDiagramSmokeComposition } from "./compositions/RendererAdapterDiagramSmoke";
 import { SidecarStillVideoComposition, type SidecarStillVideoProps } from "./compositions/SidecarStillVideoComposition";
 import { ShotEpisodeComposition, type ShotEpisodeRenderProps } from "./compositions/ShotEpisodeComposition";
 import { SituationSceneDemoComposition } from "./compositions/SituationSceneDemo";
@@ -308,6 +310,24 @@ export const RemotionRoot = () => {
         id="ANIMATION-QUALITY-SHOWCASE"
         component={AnimationQualityShowcaseComposition}
         durationInFrames={720}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
+
+      <Composition
+        id="RENDERER-ADAPTER-CHART-SMOKE"
+        component={RendererAdapterChartSmokeComposition}
+        durationInFrames={180}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
+
+      <Composition
+        id="RENDERER-ADAPTER-DIAGRAM-SMOKE"
+        component={RendererAdapterDiagramSmokeComposition}
+        durationInFrames={180}
         fps={30}
         width={1920}
         height={1080}

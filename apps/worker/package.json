@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "dev": "dotenv -e ../../.env -- tsx src/dev.ts",
-    "dev:asset": "dotenv -e ../../.env -o -- tsx src/assetWorker.ts",
+    "dev": "node ../../scripts/runWorkerDirect.mjs",
+    "dev:asset": "node ../../scripts/runWorkerDirect.mjs --asset",
     "enqueue:test": "dotenv -e ../../.env -o -- tsx src/enqueueTest.ts",
     "enqueue:render:test": "dotenv -e ../../.env -o -- tsx src/enqueueRenderTest.ts",
     "smoke:video-broll": "dotenv -e ../../.env -- tsx src/smokeVideoBrollRender.ts",

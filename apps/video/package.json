@@ -16,6 +16,8 @@
     "render:character-life": "remotion render src/index.ts CHARACTER-LIFE-DEMO ../../out/character-life-demo.mp4 --overwrite",
     "render:talk-demo": "remotion render src/index.ts TALK-DEMO ../../out/talk-demo.mp4 --overwrite",
     "render:showcase": "remotion render src/index.ts ANIMATION-QUALITY-SHOWCASE ../../out/animation-quality-showcase.mp4 --overwrite",
+    "render:renderer-chart-smoke": "remotion render src/index.ts RENDERER-ADAPTER-CHART-SMOKE ../../out/renderer-adapter-chart-smoke.mp4 --overwrite",
+    "render:renderer-diagram-smoke": "remotion render src/index.ts RENDERER-ADAPTER-DIAGRAM-SMOKE ../../out/renderer-adapter-diagram-smoke.mp4 --overwrite",
     "render:depth-shadow": "remotion render src/index.ts DEPTH-SHADOW-SHOWCASE ../../out/depth-shadow-showcase.mp4 --overwrite",
     "benchmark:motion-presets": "pnpm exec tsx src/qc/motionPresetBenchmark.ts",
     "render:preview": "pnpm exec tsx src/qc/renderPreview.ts",

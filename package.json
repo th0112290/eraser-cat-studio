@@ -57,6 +57,10 @@
     "db:generate": "pnpm -C packages/db generate",
 
     "api:dev": "pnpm -C apps/api dev",
-    "worker:dev": "pnpm -C apps/worker dev"
+    "worker:dev": "pnpm -C apps/worker dev",
+    "api:up": "powershell -ExecutionPolicy Bypass -File scripts/startApi.ps1",
+    "api:down": "powershell -ExecutionPolicy Bypass -File scripts/startApi.ps1 -Stop",
+    "worker:up": "powershell -ExecutionPolicy Bypass -File scripts/startWorker.ps1",
+    "worker:down": "powershell -ExecutionPolicy Bypass -File scripts/startWorker.ps1 -Stop"
   }
 }

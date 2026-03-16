@@ -5,20 +5,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$queueName = if ($env:WORKER_EPISODE_QUEUE_NAME -and $env:WORKER_EPISODE_QUEUE_NAME.Trim().Length -gt 0) {
-  $env:WORKER_EPISODE_QUEUE_NAME.Trim()
-} else {
-  "episode-jobs-hunyuan-sidecar"
-}
-$queueLabel = if ($queueName -eq "episode-jobs-hunyuan-sidecar") {
-  "hunyuan"
-} else {
-  ($queueName -replace "[^A-Za-z0-9._-]", "-")
-}
-$stdoutPath = Join-Path $repoRoot "out\dev_logs\worker-sidecar-$queueLabel.stdout.log"
-$stderrPath = Join-Path $repoRoot "out\dev_logs\worker-sidecar-$queueLabel.stderr.log"
-$pidPath = Join-Path $repoRoot "out\dev_logs\worker-sidecar-$queueLabel.pid"
-$workerCommandLine = "cmd /c scripts\runSidecarHunyuanWorker.cmd"
+$stdoutPath = Join-Path $repoRoot "out\dev_logs\worker-main.stdout.log"
+$stderrPath = Join-Path $repoRoot "out\dev_logs\worker-main.stderr.log"
+$pidPath = Join-Path $repoRoot "out\dev_logs\worker-main.pid"
+$workerCommandLine = "node scripts/runWorkerDirect.mjs"
+$repoRootPattern = [regex]::Escape($repoRoot)
+$workerTargetPattern = "src\\dev\.ts|runWorkerDirect\.mjs"
 
 function Get-TrackedWorkerProcess {
   if (!(Test-Path $pidPath)) {
@@ -38,7 +30,7 @@ function Get-TrackedWorkerProcess {
     return $null
   }
 
-  if ($proc.CommandLine -notmatch [regex]::Escape("runSidecarHunyuanWorker.cmd")) {
+  if ($proc.CommandLine -notmatch $repoRootPattern) {
     Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
     return $null
   }
@@ -46,13 +38,26 @@ function Get-TrackedWorkerProcess {
   return $proc
 }
 
-function Get-WorkerProcessesForQueue {
-  $escapedCommand = [regex]::Escape("runSidecarHunyuanWorker.cmd")
-  return Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object {
+function Get-WorkerProcesses {
+  $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+  $matched = @(
+    $all | Where-Object {
       $_.CommandLine -and
-      $_.CommandLine -match $escapedCommand
+      $_.CommandLine -match $repoRootPattern -and
+      $_.CommandLine -match $workerTargetPattern
     }
+  )
+
+  $parentIds = $matched | ForEach-Object { $_.ParentProcessId } | Where-Object { $_ -gt 0 } | Select-Object -Unique
+  $parentCandidates = @(
+    $all | Where-Object {
+      $_.ProcessId -in $parentIds -and
+      $_.CommandLine -and
+      ($_.CommandLine -match "tsx\\dist\\cli\.mjs.+src\\dev\.ts" -or $_.CommandLine -match "pnpm\.cjs.+run dev")
+    }
+  )
+
+  return @($matched + $parentCandidates) | Sort-Object ProcessId -Unique
 }
 
 function Stop-TrackedWorkerProcess {
@@ -81,7 +86,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path $stdoutPath) | Out-Null
 
 $tracked = Get-TrackedWorkerProcess
 if ($Stop) {
-  $matched = @(Get-WorkerProcessesForQueue)
+  $matched = @(Get-WorkerProcesses)
   if ($matched.Count -gt 0) {
     foreach ($proc in $matched) {
       try {
@@ -94,7 +99,6 @@ if ($Stop) {
       ok = $true
       stopped = $true
       stopped_count = $matched.Count
-      queue = $queueName
       pid_file = $pidPath
       stdout = $stdoutPath
       stderr = $stderrPath
@@ -105,7 +109,6 @@ if ($Stop) {
   [ordered]@{
     ok = $true
     stopped = $false
-    queue = $queueName
     pid_file = $pidPath
     stdout = $stdoutPath
     stderr = $stderrPath
@@ -117,7 +120,6 @@ if ($tracked -and (Test-WorkerReady)) {
   [ordered]@{
     ok = $true
     started = $false
-    queue = $queueName
     pid = $tracked.ProcessId
     pid_file = $pidPath
     stdout = $stdoutPath
@@ -129,9 +131,19 @@ if ($tracked) {
   Stop-TrackedWorkerProcess -TrackedProcess $tracked
 }
 
+$matched = @(Get-WorkerProcesses)
+if ($matched.Count -gt 0) {
+  foreach ($proc in $matched) {
+    try {
+      Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+    } catch {
+    }
+  }
+}
+
 Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
 
-$cmdArgs = "/c set WORKER_EPISODE_QUEUE_NAME=$queueName && scripts\runSidecarHunyuanWorker.cmd"
+$cmdArgs = "/c $workerCommandLine"
 
 $proc = Start-Process `
   -FilePath "cmd.exe" `
@@ -154,7 +166,6 @@ try {
       [ordered]@{
         ok = $true
         started = $true
-        queue = $queueName
         pid = $proc.Id
         pid_file = $pidPath
         stdout = $stdoutPath

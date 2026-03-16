@@ -2,10 +2,13 @@
 
 function expectedMarker(path) {
   if (path === "/ui/assets") return "asset-upload-form";
-  if (path === "/ui/studio") return "Studio";
-  if (path === "/ui/character-generator") return "character-generator";
-  if (path === "/ui/rollouts") return "Rollouts";
+  if (path === "/ui/studio") return "studio-asset-upload-form";
+  if (path === "/ui/character-generator") return "cg-recent-jobs";
+  if (path === "/ui/rollouts") return "rollouts-table";
   if (path === "/ui/benchmarks") return "Benchmarks";
+  if (path === "/ui/benchmarks/repair-acceptance") return "repair-acceptance-table";
+  if (path === "/ui/benchmarks/route-reasons") return "route-reason-table";
+  if (path === "/ui/benchmarks/dataset-lineage") return "dataset-lineage-table";
   if (path === "/ui/profiles") return "Profile Browser";
   return "";
 }
@@ -38,6 +41,9 @@ async function main() {
   const mode = (process.env.SMOKE_DB_MODE ?? "down").toLowerCase();
   await check("/ui/rollouts", 200, expectedMarker("/ui/rollouts"));
   await check("/ui/benchmarks", 200, expectedMarker("/ui/benchmarks"));
+  await check("/ui/benchmarks/repair-acceptance", 200, expectedMarker("/ui/benchmarks/repair-acceptance"));
+  await check("/ui/benchmarks/route-reasons", 200, expectedMarker("/ui/benchmarks/route-reasons"));
+  await check("/ui/benchmarks/dataset-lineage", 200, expectedMarker("/ui/benchmarks/dataset-lineage"));
   await check("/ui/profiles", 200, expectedMarker("/ui/profiles"));
 
   if (mode === "down") {

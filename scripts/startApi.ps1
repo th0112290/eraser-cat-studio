@@ -5,22 +5,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$queueName = if ($env:WORKER_EPISODE_QUEUE_NAME -and $env:WORKER_EPISODE_QUEUE_NAME.Trim().Length -gt 0) {
-  $env:WORKER_EPISODE_QUEUE_NAME.Trim()
-} else {
-  "episode-jobs-hunyuan-sidecar"
-}
-$queueLabel = if ($queueName -eq "episode-jobs-hunyuan-sidecar") {
-  "hunyuan"
-} else {
-  ($queueName -replace "[^A-Za-z0-9._-]", "-")
-}
-$stdoutPath = Join-Path $repoRoot "out\dev_logs\worker-sidecar-$queueLabel.stdout.log"
-$stderrPath = Join-Path $repoRoot "out\dev_logs\worker-sidecar-$queueLabel.stderr.log"
-$pidPath = Join-Path $repoRoot "out\dev_logs\worker-sidecar-$queueLabel.pid"
-$workerCommandLine = "cmd /c scripts\runSidecarHunyuanWorker.cmd"
+$stdoutPath = Join-Path $repoRoot "out\dev_logs\api-main.stdout.log"
+$stderrPath = Join-Path $repoRoot "out\dev_logs\api-main.stderr.log"
+$pidPath = Join-Path $repoRoot "out\dev_logs\api-main.pid"
+$repoRootPattern = [regex]::Escape($repoRoot)
+$apiTargetPattern = "apps\\api|src\\index\.ts"
+$apiUrl = "http://127.0.0.1:3000/health"
 
-function Get-TrackedWorkerProcess {
+function Get-TrackedApiProcess {
   if (!(Test-Path $pidPath)) {
     return $null
   }
@@ -38,7 +30,7 @@ function Get-TrackedWorkerProcess {
     return $null
   }
 
-  if ($proc.CommandLine -notmatch [regex]::Escape("runSidecarHunyuanWorker.cmd")) {
+  if ($proc.CommandLine -notmatch $repoRootPattern) {
     Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
     return $null
   }
@@ -46,42 +38,29 @@ function Get-TrackedWorkerProcess {
   return $proc
 }
 
-function Get-WorkerProcessesForQueue {
-  $escapedCommand = [regex]::Escape("runSidecarHunyuanWorker.cmd")
+function Get-ApiProcesses {
   return Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
       $_.CommandLine -and
-      $_.CommandLine -match $escapedCommand
+      $_.CommandLine -match $repoRootPattern -and
+      $_.CommandLine -match $apiTargetPattern
     }
 }
 
-function Stop-TrackedWorkerProcess {
-  param(
-    [Parameter(Mandatory = $true)]
-    $TrackedProcess
-  )
-
+function Test-ApiReady {
   try {
-    Stop-Process -Id $TrackedProcess.ProcessId -Force -ErrorAction SilentlyContinue
-  } finally {
-    Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
-  }
-}
-
-function Test-WorkerReady {
-  if (!(Test-Path $stdoutPath)) {
+    $response = Invoke-WebRequest -Uri $apiUrl -UseBasicParsing -TimeoutSec 5
+    return $response.StatusCode -eq 200
+  } catch {
     return $false
   }
-
-  $content = Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue
-  return $content -match "\[worker\] running\."
 }
 
 New-Item -ItemType Directory -Force -Path (Split-Path $stdoutPath) | Out-Null
 
-$tracked = Get-TrackedWorkerProcess
+$tracked = Get-TrackedApiProcess
 if ($Stop) {
-  $matched = @(Get-WorkerProcessesForQueue)
+  $matched = @(Get-ApiProcesses)
   if ($matched.Count -gt 0) {
     foreach ($proc in $matched) {
       try {
@@ -94,7 +73,6 @@ if ($Stop) {
       ok = $true
       stopped = $true
       stopped_count = $matched.Count
-      queue = $queueName
       pid_file = $pidPath
       stdout = $stdoutPath
       stderr = $stderrPath
@@ -105,7 +83,6 @@ if ($Stop) {
   [ordered]@{
     ok = $true
     stopped = $false
-    queue = $queueName
     pid_file = $pidPath
     stdout = $stdoutPath
     stderr = $stderrPath
@@ -113,11 +90,10 @@ if ($Stop) {
   exit 0
 }
 
-if ($tracked -and (Test-WorkerReady)) {
+if ($tracked -and (Test-ApiReady)) {
   [ordered]@{
     ok = $true
     started = $false
-    queue = $queueName
     pid = $tracked.ProcessId
     pid_file = $pidPath
     stdout = $stdoutPath
@@ -125,13 +101,21 @@ if ($tracked -and (Test-WorkerReady)) {
   } | ConvertTo-Json -Depth 4
   exit 0
 }
-if ($tracked) {
-  Stop-TrackedWorkerProcess -TrackedProcess $tracked
+
+$matched = @(Get-ApiProcesses)
+if ($matched.Count -gt 0) {
+  foreach ($proc in $matched) {
+    try {
+      Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+    } catch {
+    }
+  }
+  Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
 }
 
 Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
 
-$cmdArgs = "/c set WORKER_EPISODE_QUEUE_NAME=$queueName && scripts\runSidecarHunyuanWorker.cmd"
+$cmdArgs = "/c pnpm -C apps/api run dev"
 
 $proc = Start-Process `
   -FilePath "cmd.exe" `
@@ -148,13 +132,12 @@ try {
   for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 2
     if ($proc.HasExited) {
-      throw "worker exited before readiness check completed."
+      throw "api exited before readiness check completed."
     }
-    if (Test-WorkerReady) {
+    if (Test-ApiReady) {
       [ordered]@{
         ok = $true
         started = $true
-        queue = $queueName
         pid = $proc.Id
         pid_file = $pidPath
         stdout = $stdoutPath
@@ -163,7 +146,7 @@ try {
       exit 0
     }
   }
-  throw "worker did not become ready within 60 seconds."
+  throw "api did not become ready within 60 seconds."
 } catch {
   try {
     if ($proc -and -not $proc.HasExited) {

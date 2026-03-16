@@ -112,51 +112,51 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">Operator Queue</span>
+      <span class="eyebrow">운영 큐</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Scan newest jobs first, inspect failures quickly, and move from job to episode, artifacts, or publish without a presentation-heavy detour.</p>
+      <p class="section-intro">최신 작업부터 훑고 실패를 빠르게 확인한 뒤, 중간 설명 화면 없이 바로 에피소드, 산출물, 퍼블리시 흐름으로 이어갑니다.</p>
     </div>
-    <div class="quick-links"><a href="/ui">Dashboard</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">Publish</a></div>
+    <div class="quick-links"><a href="/ui">대시보드</a><a href="/ui/hitl">HITL</a><a href="/ui/publish">퍼블리시</a></div>
   </div>
   ${input.flash}
   <div class="ops-kpi-grid">
-    ${renderMetricCard("Scope", "<strong>Latest 100 jobs</strong>", "Newest first so retries and fresh failures stay near the top.")}
-    ${renderMetricCard("Primary move", "<strong>Inspect the job</strong>", "Open the job row when you need retry, logs, and detailed failure context.")}
-    ${renderMetricCard("Object handoff", "<strong>Open the episode</strong>", "Use the linked episode to continue render, artifact, or publish follow-through.")}
+    ${renderMetricCard("범위", "<strong>최근 100개 작업</strong>", "최신순으로 배치해 재시도와 신규 실패가 상단에 남게 합니다.")}
+    ${renderMetricCard("기본 액션", "<strong>작업 상세 확인</strong>", "재시도, 로그, 자세한 실패 맥락이 필요하면 작업 행을 여세요.")}
+    ${renderMetricCard("오브젝트 인계", "<strong>에피소드 열기</strong>", "연결된 에피소드에서 렌더, 산출물, 퍼블리시 후속 조치를 이어갑니다.")}
   </div>
 </section>
 
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Filters + Recovery Paths</h2>
-      <p class="section-intro">Keep search, row rhythm, and recovery visible before the table so operators can scan and act in one pass.</p>
+      <h2>필터 + 복구 경로</h2>
+      <p class="section-intro">운영자가 한 번에 읽고 움직일 수 있도록 검색, 행 액션 리듬, 복구 경로를 표보다 먼저 둡니다.</p>
     </div>
   </div>
   <div class="ops-filter-grid">
     ${renderSearchCluster({
       id: "jobs-filter",
       targetId: "jobs-table",
-      label: "Filter jobs",
+      label: "작업 필터",
       placeholder: t.filterPlaceholder,
-      hint: "Search by job id, episode link text, type, or status. Press / to focus."
+      hint: "작업 id, 에피소드 링크 텍스트, 타입, 상태로 검색합니다. / 키를 누르면 포커스가 이동합니다."
     })}
     <div class="form-card">
-      <h3>Row Action Rhythm</h3>
+      <h3>행 액션 리듬</h3>
       <ul class="ops-actions-list">
-        <li><span>Inspect job</span><span class="muted-text">Use the job id link for logs, retry, and lastError context.</span></li>
-        <li><span>Open episode</span><span class="muted-text">Use the episode link to continue with render, artifacts, or publish.</span></li>
-        <li><span>Triage failed shots</span><span class="muted-text">Move into HITL when a failed job needs rerender with operator input.</span></li>
+        <li><span>작업 확인</span><span class="muted-text">작업 id 링크에서 로그, 재시도, lastError 맥락을 확인합니다.</span></li>
+        <li><span>에피소드 열기</span><span class="muted-text">에피소드 링크에서 렌더, 산출물, 퍼블리시 흐름을 계속 이어갑니다.</span></li>
+        <li><span>실패 샷 트리아지</span><span class="muted-text">운영자 입력 기반 재렌더가 필요하면 HITL로 이동합니다.</span></li>
       </ul>
     </div>
     <div class="form-card">
-      <h3>Recovery Visible</h3>
+      <h3>복구 가시화</h3>
       <ul class="ops-actions-list">
-        <li><span>Queue looks stuck</span><span class="muted-text">Check Health before retrying multiple jobs.</span></li>
-        <li><span>Artifact missing</span><span class="muted-text">Open the related episode, then inspect Artifacts for the object.</span></li>
-        <li><span>Publish blocked</span><span class="muted-text">Verify latest job state and object outputs before opening Publish.</span></li>
+        <li><span>큐가 멈춘 것 같음</span><span class="muted-text">여러 작업을 재시도하기 전에 상태 화면을 먼저 확인하세요.</span></li>
+        <li><span>산출물 누락</span><span class="muted-text">관련 에피소드를 열고 해당 오브젝트의 산출물을 확인하세요.</span></li>
+        <li><span>퍼블리시 차단</span><span class="muted-text">퍼블리시 전에 최신 작업 상태와 오브젝트 출력을 검증하세요.</span></li>
       </ul>
-      <div class="quick-links"><a href="/ui/health">Health</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/episodes">Episodes</a></div>
+      <div class="quick-links"><a href="/ui/health">상태</a><a href="/ui/artifacts">산출물</a><a href="/ui/episodes">에피소드</a></div>
     </div>
   </div>
 </section>
@@ -164,12 +164,12 @@ ${renderOpsStyle()}
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>Job Queue</h2>
-      <p class="section-intro">The table is the product here. Links in the first two columns are the main inspect and follow-up actions.</p>
+      <h2>작업 큐</h2>
+      <p class="section-intro">이 화면의 핵심은 표입니다. 첫 두 열의 링크가 기본 점검 및 후속 조치 경로입니다.</p>
     </div>
     <span class="badge muted">${t.latestBadge}</span>
   </div>
-  <div class="table-wrap"><table id="jobs-table"><thead><tr><th>Job / Inspect</th><th>Episode / Continue</th><th>Type</th><th>Status</th><th>Progress</th><th>Created</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="jobs-table"><thead><tr><th>작업 / 점검</th><th>에피소드 / 이어서 진행</th><th>타입</th><th>상태</th><th>진행률</th><th>생성 시각</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(6, t.noJobs)
   }</tbody></table></div>
 </section>
@@ -177,18 +177,18 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="ops-note-grid">
     <div class="ops-callout warn">
-      <h3>Failed Jobs</h3>
-      <p>Open the job first for logs and retry. Use HITL when the failure needs rerender with specific failed shot ids.</p>
-      <div class="quick-links"><a href="/ui/hitl">Open HITL</a></div>
+      <h3>실패 작업</h3>
+      <p>먼저 작업을 열어 로그와 재시도 가능 여부를 확인하세요. 특정 failed shot id로 재렌더해야 하면 HITL을 사용합니다.</p>
+      <div class="quick-links"><a href="/ui/hitl">HITL 열기</a></div>
     </div>
     <div class="ops-callout ok">
-      <h3>Ready To Ship</h3>
-      <p>If the latest object is complete and artifacts exist, continue into Publish without leaving the operator loop.</p>
-      <div class="quick-links"><a href="/ui/publish">Open Publish</a><a href="/ui/artifacts">Artifacts</a></div>
+      <h3>출하 준비 완료</h3>
+      <p>최신 오브젝트가 완료됐고 산출물이 존재하면 운영 흐름을 벗어나지 않고 바로 퍼블리시로 이동하세요.</p>
+      <div class="quick-links"><a href="/ui/publish">퍼블리시 열기</a><a href="/ui/artifacts">산출물</a></div>
     </div>
     <div class="ops-callout">
-      <h3>Keyboard Path</h3>
-      <p>Use <span class="kbd">/</span> for search, open the row you need, and keep retries or downstream handoffs object-centered.</p>
+      <h3>키보드 경로</h3>
+      <p><span class="kbd">/</span> 키로 검색하고 필요한 행을 연 뒤, 재시도와 다운스트림 인계를 오브젝트 중심으로 유지하세요.</p>
     </div>
   </div>
 </section>`;
@@ -201,49 +201,49 @@ export function buildPublishPageBody(input: PublishPageBodyInput): string {
   const episodeHref = hasEpisodeId ? `/ui/episodes/${encodeURIComponent(episodeId)}` : "/ui/episodes";
   const artifactsHref = hasEpisodeId ? `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}` : "/ui/artifacts";
   const folderHref = hasEpisodeId ? `/artifacts/${encodeURIComponent(episodeId)}/` : "/artifacts/";
-  const episodeLabel = hasEpisodeId ? `<strong class="mono">${episodeId}</strong>` : "<strong>Enter an episode id</strong>";
+  const episodeLabel = hasEpisodeId ? `<strong class="mono">${episodeId}</strong>` : "<strong>episode id를 입력하세요</strong>";
 
   return `
 ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">Ship Handoff</span>
+      <span class="eyebrow">출하 인계</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Confirm object context first, then submit publish. The preflight checklist stays ahead of the form so the handoff is readable and deliberate.</p>
+      <p class="section-intro">먼저 오브젝트 컨텍스트를 확인한 뒤 퍼블리시를 제출하세요. 프리플라이트 체크리스트를 폼보다 앞에 두어 인계가 명확하고 의도적으로 이뤄지게 합니다.</p>
     </div>
-    <div class="quick-links"><a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a><a href="/ui/artifacts">Artifacts</a></div>
+    <div class="quick-links"><a href="/ui/jobs">작업</a><a href="/ui/episodes">에피소드</a><a href="/ui/artifacts">산출물</a></div>
   </div>
   ${input.flash}
   <div class="ops-kpi-grid">
-    ${renderMetricCard("Current object", episodeLabel, "Use the same episode id from episode detail, job detail, or artifacts quick links.")}
-    ${renderMetricCard("Recommended state", "<strong>COMPLETED / PREVIEW_READY</strong>", t.statusHint)}
-    ${renderMetricCard("Primary check", "<strong>Artifacts before submit</strong>", "Verify the episode outputs and latest jobs before requesting publish.")}
+    ${renderMetricCard("현재 오브젝트", episodeLabel, "에피소드 상세, 작업 상세, 산출물 빠른 링크에서 본 동일한 episode id를 사용하세요.")}
+    ${renderMetricCard("권장 상태", "<strong>COMPLETED / PREVIEW_READY</strong>", t.statusHint)}
+    ${renderMetricCard("기본 점검", "<strong>제출 전 산출물 확인</strong>", "퍼블리시 요청 전에 에피소드 출력과 최신 작업을 검증하세요.")}
   </div>
 </section>
 
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Preflight Context</h2>
-      <p class="section-intro">These are the checks to complete before the submit button matters.</p>
+      <h2>프리플라이트 컨텍스트</h2>
+      <p class="section-intro">제출 버튼을 누르기 전에 먼저 끝내야 하는 확인 항목들입니다.</p>
     </div>
   </div>
   <div class="ops-note-grid">
     <div class="ops-callout ${hasEpisodeId ? "ok" : "warn"}">
-      <h3>Episode Reference</h3>
-      <p>${hasEpisodeId ? `Working episode: ${episodeLabel}. Open the object detail if you need to verify status, latest job, or downstream links.` : "Start from an episode id so publish stays tied to one clear object."}</p>
-      <div class="quick-links"><a href="${episodeHref}">${hasEpisodeId ? "Open Episode Detail" : "Open Episodes"}</a></div>
+      <h3>에피소드 참조</h3>
+      <p>${hasEpisodeId ? `작업 대상 에피소드: ${episodeLabel}. 상태, 최신 작업, 다운스트림 링크를 확인해야 하면 오브젝트 상세를 여세요.` : "퍼블리시가 하나의 명확한 오브젝트에 묶이도록 episode id에서 시작하세요."}</p>
+      <div class="quick-links"><a href="${episodeHref}">${hasEpisodeId ? "에피소드 상세 열기" : "에피소드 열기"}</a></div>
     </div>
     <div class="ops-callout ${hasEpisodeId ? "ok" : ""}">
-      <h3>Artifacts Check</h3>
-      <p>Confirm preview/final outputs, qc report, and upload manifest before publish. This keeps the handoff grounded in actual object outputs.</p>
-      <div class="quick-links"><a href="${artifactsHref}">Artifacts Quick Links</a><a href="${folderHref}">Raw Artifact Folder</a></div>
+      <h3>산출물 확인</h3>
+      <p>퍼블리시 전에 프리뷰/최종 출력, qc report, upload manifest를 확인하세요. 그래야 실제 오브젝트 출력에 근거한 인계가 됩니다.</p>
+      <div class="quick-links"><a href="${artifactsHref}">산출물 빠른 링크</a><a href="${folderHref}">원시 산출물 폴더</a></div>
     </div>
     <div class="ops-callout">
-      <h3>Failure Recovery</h3>
-      <p>If publish fails, walk backward: latest job detail, episode status, artifact presence, then service health.</p>
-      <div class="quick-links"><a href="/ui/jobs">Jobs</a><a href="/ui/health">Health</a></div>
+      <h3>실패 복구</h3>
+      <p>퍼블리시가 실패하면 최신 작업 상세, 에피소드 상태, 산출물 존재 여부, 서비스 상태 순으로 거슬러 올라가세요.</p>
+      <div class="quick-links"><a href="/ui/jobs">작업</a><a href="/ui/health">상태</a></div>
     </div>
   </div>
 </section>
@@ -251,29 +251,29 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Publish Request</h2>
-      <p class="section-intro">Once preflight is clear, this form becomes the final handoff step.</p>
+      <h2>퍼블리시 요청</h2>
+      <p class="section-intro">프리플라이트가 끝났다면 이 폼이 최종 인계 단계가 됩니다.</p>
     </div>
   </div>
   <form method="post" action="/ui/publish" class="form-card">
     <div class="field">
       <label for="publish-episode-id">episodeId <span class="hint" data-tooltip="${t.episodeHelp}">?</span></label>
       <input id="publish-episode-id" name="episodeId" value="${input.episodeId}" placeholder="clx..." required/>
-      <small>Copy this from episode detail, job detail, or the artifacts quick-link flow.</small>
+      <small>에피소드 상세, 작업 상세, 산출물 빠른 링크 흐름에서 복사해 사용하세요.</small>
     </div>
-    <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="Run publish handoff">${t.runAction}</button></div>
+    <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="퍼블리시 인계 실행">${t.runAction}</button></div>
   </form>
 </section>
 
 <section class="card">
   <div class="ops-note-grid">
     <div class="ops-callout warn">
-      <h3>Not Ready Yet</h3>
-      <p>If status or artifacts are still moving, stop here and finish the object in Episodes or Jobs first.</p>
+      <h3>아직 준비되지 않음</h3>
+      <p>상태나 산출물이 아직 바뀌는 중이면 여기서 멈추고, 먼저 에피소드나 작업 화면에서 오브젝트를 마무리하세요.</p>
     </div>
     <div class="ops-callout ok">
-      <h3>Ready To Submit</h3>
-      <p>When object status, outputs, and latest jobs all line up, publish becomes a clean final step instead of another debugging surface.</p>
+      <h3>제출 준비 완료</h3>
+      <p>오브젝트 상태, 출력, 최신 작업이 모두 맞아떨어질 때 퍼블리시는 디버깅 화면이 아니라 깔끔한 최종 단계가 됩니다.</p>
     </div>
   </div>
 </section>`;
@@ -285,45 +285,45 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">Job Object</span>
-      <h1>Job Detail</h1>
-      <p class="section-intro">Inspect one job, keep retry visible, and move directly into the related episode, artifacts, or publish path.</p>
+      <span class="eyebrow">작업 오브젝트</span>
+      <h1>작업 상세</h1>
+      <p class="section-intro">하나의 작업을 점검하고, 재시도 경로를 유지한 채, 관련 에피소드, 산출물, 퍼블리시 경로로 바로 이동합니다.</p>
     </div>
-    <div class="quick-links"><a href="/ui/jobs">Back to Jobs</a><a href="/ui/episodes/${input.episodeId}">Episode</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(input.episodeId)}">Artifacts</a></div>
+    <div class="quick-links"><a href="/ui/jobs">작업 목록으로</a><a href="/ui/episodes/${input.episodeId}">에피소드</a><a href="/ui/artifacts?episodeId=${encodeURIComponent(input.episodeId)}">산출물</a></div>
   </div>
   ${input.flash}
   <div class="ops-detail-grid">
-    ${renderMetricCard("Job", `<strong class="mono">${input.jobId}</strong>`, "Primary inspect object for logs, retry, and failure details.")}
-    ${renderMetricCard("Episode", `<a href="/ui/episodes/${input.episodeId}">${input.episodeId}</a>`, "Continue downstream from the related episode when you need broader context.")}
-    ${renderMetricCard("Type", `<strong>${input.type}</strong>`, "Use this to understand which part of the pipeline needs recovery.")}
-    ${renderMetricCard("Status", input.statusBadge, "Status should tell you whether to inspect, retry, or hand off.")}
-    ${renderMetricCard("Progress", `<strong>${input.progress}%</strong>`, "Quick scan value before opening logs.")}
-    ${renderMetricCard("Attempts", `<strong>${input.attempts}</strong>`, "Shows retry pressure and backoff settings for this object.")}
+    ${renderMetricCard("작업", `<strong class="mono">${input.jobId}</strong>`, "로그, 재시도, 실패 상세를 확인하는 기본 점검 오브젝트입니다.")}
+    ${renderMetricCard("에피소드", `<a href="/ui/episodes/${input.episodeId}">${input.episodeId}</a>`, "더 넓은 맥락이 필요하면 관련 에피소드에서 다운스트림 흐름을 이어갑니다.")}
+    ${renderMetricCard("타입", `<strong>${input.type}</strong>`, "파이프라인의 어느 구간에 복구가 필요한지 판단할 때 사용합니다.")}
+    ${renderMetricCard("상태", input.statusBadge, "상태를 보고 점검, 재시도, 인계 중 무엇을 할지 결정합니다.")}
+    ${renderMetricCard("진행률", `<strong>${input.progress}%</strong>`, "로그를 열기 전에 빠르게 보는 값입니다.")}
+    ${renderMetricCard("시도 횟수", `<strong>${input.attempts}</strong>`, "이 오브젝트의 재시도 압력과 backoff 설정을 보여줍니다.")}
   </div>
 </section>
 
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Next Actions</h2>
-      <p class="section-intro">Keep recovery and downstream follow-up side by side so the operator does not have to reconstruct the flow.</p>
+      <h2>다음 액션</h2>
+      <p class="section-intro">운영자가 흐름을 다시 조립하지 않아도 되도록 복구와 다운스트림 후속 조치를 나란히 보여줍니다.</p>
     </div>
   </div>
   <div class="ops-note-grid">
     <div class="ops-lane">
-      <h3>Retry / Inspect</h3>
-      <p>Retry is anchored here because this page already has the logs and failure state for the job object.</p>
+      <h3>재시도 / 점검</h3>
+      <p>이 페이지에 이미 로그와 실패 상태가 모여 있으므로 재시도는 여기서 진행하는 것이 가장 자연스럽습니다.</p>
       <div class="actions">${input.retryAction}</div>
     </div>
     <div class="ops-lane">
-      <h3>Related Objects</h3>
-      <p>Move out of the job only when you need the episode-wide, artifact-wide, or publish-wide view.</p>
-      <div class="quick-links"><a href="/ui/episodes/${input.episodeId}">Episode Detail</a><a href="/artifacts/${input.episodeId}/">Artifact Folder</a><a href="/ui/publish?episodeId=${encodeURIComponent(input.episodeId)}">Publish Handoff</a></div>
+      <h3>관련 오브젝트</h3>
+      <p>에피소드 전체, 산출물 전체, 퍼블리시 전체 맥락이 필요할 때만 작업 화면을 벗어나세요.</p>
+      <div class="quick-links"><a href="/ui/episodes/${input.episodeId}">에피소드 상세</a><a href="/artifacts/${input.episodeId}/">산출물 폴더</a><a href="/ui/publish?episodeId=${encodeURIComponent(input.episodeId)}">퍼블리시 인계</a></div>
     </div>
     <div class="ops-callout warn">
-      <h3>Recovery Order</h3>
-      <p>Read lastError, inspect logs, retry if appropriate, then escalate to HITL or Health if the failure is not job-local.</p>
-      <div class="quick-links"><a href="/ui/hitl">HITL</a><a href="/ui/health">Health</a></div>
+      <h3>복구 순서</h3>
+      <p>lastError를 읽고, 로그를 확인하고, 적절하면 재시도하세요. 실패가 작업 국소 문제가 아니면 HITL 또는 상태 화면으로 올립니다.</p>
+      <div class="quick-links"><a href="/ui/hitl">HITL</a><a href="/ui/health">상태</a></div>
     </div>
   </div>
 </section>
@@ -331,8 +331,8 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Failure Context</h2>
-      <p class="section-intro">Keep the most relevant recovery evidence above the log table.</p>
+      <h2>실패 컨텍스트</h2>
+      <p class="section-intro">가장 중요한 복구 근거를 로그 표보다 위에 둡니다.</p>
     </div>
   </div>
   ${input.errorStack}
@@ -341,13 +341,13 @@ ${renderOpsStyle()}
 <section class="card ops-table-shell">
   <div class="ops-table-meta">
     <div>
-      <h2>Job Logs</h2>
-      <p class="section-intro">Use search to isolate the message sequence that matters before retrying or handing off.</p>
+      <h2>작업 로그</h2>
+      <p class="section-intro">재시도나 인계 전에 중요한 메시지 흐름만 검색으로 먼저 좁혀 보세요.</p>
     </div>
-    <input type="search" data-table-filter="job-log-table" placeholder="Search logs"/>
+    <input type="search" data-table-filter="job-log-table" placeholder="로그 검색"/>
   </div>
-  <div class="table-wrap"><table id="job-log-table"><thead><tr><th>Created</th><th>Level</th><th>Message</th><th>Details</th></tr></thead><tbody>${
-    input.logRows || renderTableEmptyRow(4, "No logs found.")
+  <div class="table-wrap"><table id="job-log-table"><thead><tr><th>생성 시각</th><th>레벨</th><th>메시지</th><th>상세</th></tr></thead><tbody>${
+    input.logRows || renderTableEmptyRow(4, "로그가 없습니다.")
   }</tbody></table></div>
 </section>`;
 }
@@ -359,50 +359,50 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">Failure Triage</span>
+      <span class="eyebrow">실패 트리아지</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Treat failed jobs as objects to inspect, rerender, and hand off. Keep triage, rerender inputs, and publish follow-through in one surface.</p>
+      <p class="section-intro">실패 작업을 점검, 재렌더, 인계해야 하는 오브젝트로 다루세요. 트리아지, 재렌더 입력, 퍼블리시 후속 조치를 한 화면에서 유지합니다.</p>
     </div>
-    <div class="quick-links"><a href="/ui/jobs">Jobs</a><a href="/ui/publish">Publish</a><a href="/ui/artifacts">Artifacts</a></div>
+    <div class="quick-links"><a href="/ui/jobs">작업</a><a href="/ui/publish">퍼블리시</a><a href="/ui/artifacts">산출물</a></div>
   </div>
   ${input.flash}
   <div class="ops-kpi-grid">
-    ${renderMetricCard("Primary move", "<strong>Inspect failed job</strong>", "Open the job row first for logs and detailed failure context.")}
-    ${renderMetricCard("Operator input", "<strong>episodeId + failedShotIds</strong>", "Rerender stays explicit so the recovery path remains deliberate.")}
-    ${renderMetricCard("Downstream handoff", "<strong>Artifacts then publish</strong>", "After rerender succeeds, verify outputs before moving into publish.")}
+    ${renderMetricCard("기본 액션", "<strong>실패 작업 확인</strong>", "먼저 작업 행을 열어 로그와 자세한 실패 맥락을 확인합니다.")}
+    ${renderMetricCard("운영자 입력", "<strong>episodeId + failedShotIds</strong>", "재렌더 입력을 명시적으로 유지해 복구 경로가 흐려지지 않게 합니다.")}
+    ${renderMetricCard("다운스트림 인계", "<strong>산출물 후 퍼블리시</strong>", "재렌더가 성공하면 퍼블리시 전에 출력을 먼저 검증하세요.")}
   </div>
 </section>
 
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Triage Inputs</h2>
-      <p class="section-intro">Search failures, decide which object needs rerender, then submit a focused HITL action.</p>
+      <h2>트리아지 입력</h2>
+      <p class="section-intro">실패를 검색하고 어떤 오브젝트에 재렌더가 필요한지 결정한 뒤, 집중된 HITL 액션을 제출하세요.</p>
     </div>
   </div>
   <div class="ops-filter-grid">
     ${renderSearchCluster({
       id: "hitl-filter",
       targetId: "hitl-failed-table",
-      label: "Filter failed jobs",
+      label: "실패 작업 필터",
       placeholder: t.filterPlaceholder,
-      hint: "Search by job, episode, topic, type, or error text."
+      hint: "작업, 에피소드, 주제, 타입, 오류 텍스트로 검색합니다."
     })}
     <form method="post" action="/ui/hitl/rerender" class="form-card">
-      <h3>Rerender Request</h3>
+      <h3>재렌더 요청</h3>
       <div class="field"><label for="hitl-episode-id">episodeId</label><input id="hitl-episode-id" name="episodeId" value="${input.episodeIdValue}" required/></div>
       <div class="field"><label for="hitl-shot-ids">failedShotIds <span class="hint" data-tooltip="${t.failedShotHelp}">?</span></label><input id="hitl-shot-ids" name="failedShotIds" value="${input.failedShotIdsValue}" placeholder="shot_1,shot_2" required/><small>${t.failedShotHint}</small></div>
-      <label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun</label>
-      <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="Run HITL rerender">${t.runAction}</button></div>
+      <label class="muted-text"><input type="checkbox" name="dryRun" value="true"/> dryRun (실행 안 함)</label>
+      <div class="actions"><button type="submit" data-primary-action="1" data-primary-label="HITL 재렌더 실행">${t.runAction}</button></div>
     </form>
     <div class="form-card">
-      <h3>After Rerender</h3>
+      <h3>재렌더 후</h3>
       <ul class="ops-actions-list">
-        <li><span>Inspect new job</span><span class="muted-text">Open the replacement job for logs and progress.</span></li>
-        <li><span>Verify artifacts</span><span class="muted-text">Check that the episode outputs are present and current.</span></li>
-        <li><span>Hand off to publish</span><span class="muted-text">Only after the rerender result is visible at the object level.</span></li>
+        <li><span>새 작업 확인</span><span class="muted-text">대체 작업을 열어 로그와 진행 상태를 확인합니다.</span></li>
+        <li><span>산출물 검증</span><span class="muted-text">에피소드 출력이 실제로 존재하고 최신인지 확인합니다.</span></li>
+        <li><span>퍼블리시로 인계</span><span class="muted-text">재렌더 결과가 오브젝트 수준에서 확인된 뒤에만 진행합니다.</span></li>
       </ul>
-      <div class="quick-links"><a href="/ui/artifacts">Artifacts</a><a href="/ui/publish">Publish</a></div>
+      <div class="quick-links"><a href="/ui/artifacts">산출물</a><a href="/ui/publish">퍼블리시</a></div>
     </div>
   </div>
 </section>
@@ -411,10 +411,10 @@ ${renderOpsStyle()}
   <div class="ops-table-meta">
     <div>
       <h2>${t.failedJobs}</h2>
-      <p class="section-intro">Use the first columns as inspect and episode handoff actions. Error text stays visible so triage remains scan-first.</p>
+      <p class="section-intro">첫 열들을 점검과 에피소드 인계 액션으로 사용하세요. 오류 텍스트를 계속 보이게 해 트리아지가 스캔 중심으로 유지되게 합니다.</p>
     </div>
   </div>
-  <div class="table-wrap"><table id="hitl-failed-table"><thead><tr><th>Failed Job</th><th>Episode</th><th>Topic</th><th>Type</th><th>Created</th><th>Failure / Recovery</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="hitl-failed-table"><thead><tr><th>실패 작업</th><th>에피소드</th><th>주제</th><th>타입</th><th>생성 시각</th><th>실패 / 복구</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(6, t.noFailedJobs)
   }</tbody></table></div>
 </section>
@@ -422,13 +422,13 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="ops-note-grid">
     <div class="ops-callout warn">
-      <h3>Stuck Failure Loop</h3>
-      <p>If rerender keeps failing, stop retrying blindly. Inspect the latest job and confirm whether the issue is data, queue, or storage.</p>
-      <div class="quick-links"><a href="/ui/jobs">Jobs</a><a href="/ui/health">Health</a></div>
+      <h3>실패 루프 정체</h3>
+      <p>재렌더가 계속 실패하면 무작정 재시도하지 마세요. 최신 작업을 확인하고 문제가 데이터, 큐, 저장소 중 어디에 있는지 판별해야 합니다.</p>
+      <div class="quick-links"><a href="/ui/jobs">작업</a><a href="/ui/health">상태</a></div>
     </div>
     <div class="ops-callout ok">
-      <h3>Publish Handoff</h3>
-      <p>Once the object is healthy again, carry the same episode id into artifacts and publish without changing context.</p>
+      <h3>퍼블리시 인계</h3>
+      <p>오브젝트가 다시 정상화되면 동일한 episode id로 산출물과 퍼블리시까지 같은 맥락을 유지하세요.</p>
     </div>
   </div>
 </section>`;
@@ -442,44 +442,44 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">Object Outputs</span>
+      <span class="eyebrow">오브젝트 출력</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Artifacts should read as object-linked outputs first and a general storage index second.</p>
+      <p class="section-intro">산출물은 일반 저장소 인덱스보다 먼저 오브젝트에 연결된 출력으로 읽혀야 합니다.</p>
     </div>
-    <div class="quick-links"><a href="/artifacts/">${t.openArtifacts}</a><a href="/ui/episodes">${t.openEpisodes}</a><a href="/ui/jobs">Jobs</a></div>
+    <div class="quick-links"><a href="/artifacts/">${t.openArtifacts}</a><a href="/ui/episodes">${t.openEpisodes}</a><a href="/ui/jobs">작업</a></div>
   </div>
   ${input.flash}
   <div class="ops-kpi-grid">
-    ${renderMetricCard("Primary lookup", "<strong>episodeId</strong>", "Stay anchored to one object when you inspect generated files.")}
-    ${renderMetricCard("Expected outputs", "<strong>beats, shots, media, QC</strong>", "Use the episode quick links before falling back to the raw index.")}
-    ${renderMetricCard("Recovery", "<strong>trace back to jobs</strong>", "Missing files usually mean the object failed earlier in the pipeline.")}
+    ${renderMetricCard("기본 조회 키", "<strong>episodeId</strong>", "생성 파일을 볼 때 하나의 오브젝트에 계속 앵커를 유지하세요.")}
+    ${renderMetricCard("기대 출력", "<strong>beats, shots, media, QC</strong>", "원시 인덱스로 내려가기 전에 먼저 에피소드 빠른 링크를 사용하세요.")}
+    ${renderMetricCard("복구", "<strong>작업으로 역추적</strong>", "파일 누락은 보통 파이프라인 앞단에서 오브젝트가 실패했다는 뜻입니다.")}
   </div>
 </section>
 
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Object-Linked Access</h2>
-      <p class="section-intro">Start with an episode id when you want artifact inspection to match the same object you saw in Episodes or Jobs.</p>
+      <h2>오브젝트 연결 접근</h2>
+      <p class="section-intro">에피소드나 작업에서 보던 동일한 오브젝트로 산출물 점검을 이어가려면 episode id에서 시작하세요.</p>
     </div>
   </div>
   <div class="ops-filter-grid">
     <form method="get" action="/ui/artifacts" class="form-card">
-      <h3>Episode Quick Links</h3>
+      <h3>에피소드 빠른 링크</h3>
       <div class="field"><label for="artifact-episode-id">episodeId</label><input id="artifact-episode-id" name="episodeId" value="${input.episodeId}"/><small>${t.episodeHelp}</small></div>
-      <div class="actions"><button type="submit" class="secondary" data-primary-action="1" data-primary-label="Load episode artifact quick links">${t.quickLinkAction}</button></div>
+      <div class="actions"><button type="submit" class="secondary" data-primary-action="1" data-primary-label="에피소드 산출물 빠른 링크 불러오기">${t.quickLinkAction}</button></div>
     </form>
     <div class="ops-resource-card">
-      <h3>Episode Outputs</h3>
-      <p>${hasEpisodeLinks ? "Use these object-level outputs first. They are the clearest path from an episode into its generated files." : "Enter an episode id to surface quick links for the object rather than scanning the full storage index."}</p>
-      <div class="ops-resource-list">${hasEpisodeLinks ? input.episodeLinks : '<div class="notice">No episode quick links loaded yet.</div>'}</div>
+      <h3>에피소드 출력</h3>
+      <p>${hasEpisodeLinks ? "이 오브젝트 수준 출력부터 먼저 보세요. 에피소드에서 생성 파일로 들어가는 가장 명확한 경로입니다." : "전체 저장소 인덱스를 훑는 대신, episode id를 입력해 오브젝트용 빠른 링크를 띄우세요."}</p>
+      <div class="ops-resource-list">${hasEpisodeLinks ? input.episodeLinks : '<div class="notice">아직 에피소드 빠른 링크를 불러오지 않았습니다.</div>'}</div>
     </div>
     <div class="form-card">
-      <h3>Recovery Path</h3>
+      <h3>복구 경로</h3>
       <ul class="ops-actions-list">
-        <li><span>Missing shots.json</span><span class="muted-text">Check the latest compile or beats jobs for the same episode.</span></li>
-        <li><span>Missing preview/final</span><span class="muted-text">Return to the related render job or rerender path.</span></li>
-        <li><span>Missing upload manifest</span><span class="muted-text">Verify the publish-oriented steps completed before expecting handoff artifacts.</span></li>
+        <li><span>shots.json 누락</span><span class="muted-text">같은 에피소드의 최근 compile 또는 beats 작업을 확인하세요.</span></li>
+        <li><span>preview/final 누락</span><span class="muted-text">관련 렌더 작업 또는 재렌더 경로로 돌아가세요.</span></li>
+        <li><span>upload manifest 누락</span><span class="muted-text">인계 산출물을 기대하기 전에 퍼블리시 지향 단계가 끝났는지 확인하세요.</span></li>
       </ul>
     </div>
   </div>
@@ -489,11 +489,11 @@ ${renderOpsStyle()}
   <div class="ops-table-meta">
     <div>
       <h2>${t.indexTitle}</h2>
-      <p class="section-intro">Use the storage index when you need the broader out/ view, but keep the episode quick links as the primary operator path.</p>
+      <p class="section-intro">더 넓은 out/ 뷰가 필요할 때만 저장소 인덱스를 보되, 기본 운영 경로는 에피소드 빠른 링크로 유지하세요.</p>
     </div>
-    <input type="search" data-table-filter="artifact-index-table" aria-label="Filter artifact index" placeholder="${t.indexFilterPlaceholder}"/>
+    <input type="search" data-table-filter="artifact-index-table" aria-label="산출물 인덱스 필터" placeholder="${t.indexFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="artifact-index-table"><thead><tr><th>Type</th><th>Name</th><th>Open</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="artifact-index-table"><thead><tr><th>타입</th><th>이름</th><th>열기</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(3, t.noArtifacts)
   }</tbody></table></div>
 </section>
@@ -501,14 +501,14 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="ops-note-grid">
     <div class="ops-callout warn">
-      <h3>Artifact Missing</h3>
-      <p>Do not treat the storage index as the source of truth by itself. Trace the object back to its latest jobs and episode state first.</p>
-      <div class="quick-links"><a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a></div>
+      <h3>산출물 누락</h3>
+      <p>저장소 인덱스만 단독으로 진실의 원천으로 취급하지 마세요. 먼저 오브젝트를 최신 작업과 에피소드 상태로 역추적해야 합니다.</p>
+      <div class="quick-links"><a href="/ui/jobs">작업</a><a href="/ui/episodes">에피소드</a></div>
     </div>
     <div class="ops-callout ok">
-      <h3>Ready For Publish</h3>
-      <p>Once the object-level outputs line up, move into publish with the same episode id to keep the handoff tight.</p>
-      <div class="quick-links"><a href="/ui/publish">Publish</a></div>
+      <h3>퍼블리시 준비 완료</h3>
+      <p>오브젝트 수준 출력이 맞춰졌다면 같은 episode id로 퍼블리시까지 이어가 인계를 단단하게 유지하세요.</p>
+      <div class="quick-links"><a href="/ui/publish">퍼블리시</a></div>
     </div>
   </div>
 </section>`;
@@ -521,11 +521,11 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">Verdict Board</span>
+      <span class="eyebrow">판정 보드</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Scan comparison signals, understand verdicts immediately, and jump straight into the detailed artifact when something needs operator attention.</p>
+      <p class="section-intro">비교 신호를 훑고 판정을 즉시 이해한 뒤, 운영자 확인이 필요한 항목은 상세 산출물로 바로 들어가세요.</p>
     </div>
-    <div class="quick-links"><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/health">${t.openHealth}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+    <div class="quick-links"><a href="/ui/benchmarks">벤치마크</a><a href="/ui/health">${t.openHealth}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
   </div>
   ${input.flash}
   <div class="summary-grid">${input.summaryCards}</div>
@@ -534,32 +534,32 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Filter + Triage Guide</h2>
-      <p class="section-intro">Keep compare, verdict, and issue triage readable before you enter the raw artifacts.</p>
+      <h2>필터 + 트리아지 가이드</h2>
+      <p class="section-intro">원시 산출물로 들어가기 전에 비교, 판정, 이슈 트리아지가 먼저 읽히게 유지하세요.</p>
     </div>
   </div>
   <div class="ops-filter-grid">
     ${renderSearchCluster({
       id: "rollouts-filter",
       targetId: "rollouts-table",
-      label: "Filter rollout signals",
+      label: "롤아웃 신호 필터",
       placeholder: t.filterPlaceholder,
-      hint: "Search by signal kind, status, verdict, reason, or source."
+      hint: "신호 종류, 상태, 판정, 사유, 소스로 검색합니다."
     })}
     <div class="form-card">
-      <h3>Read Order</h3>
+      <h3>읽는 순서</h3>
       <ul class="ops-actions-list">
-        <li><span>Status</span><span class="muted-text">Ready means usable. Blocked and below-min need immediate inspection.</span></li>
-        <li><span>Verdict</span><span class="muted-text">Use this as the quick operator summary before opening detail.</span></li>
-        <li><span>Reason</span><span class="muted-text">This should explain why the signal is here, not just restate the status.</span></li>
+        <li><span>상태</span><span class="muted-text">ready는 사용 가능, blocked와 below-min은 즉시 점검 대상입니다.</span></li>
+        <li><span>판정</span><span class="muted-text">상세를 열기 전에 빠른 운영 요약으로 사용하세요.</span></li>
+        <li><span>사유</span><span class="muted-text">단순히 상태를 반복하지 말고 왜 이 신호가 뜨는지 설명해야 합니다.</span></li>
       </ul>
     </div>
     <div class="form-card">
-      <h3>Follow-up Rhythm</h3>
+      <h3>후속 액션 리듬</h3>
       <ul class="ops-actions-list">
-        <li><span>Detail</span><span class="muted-text">Open the interpreted view first.</span></li>
-        <li><span>Raw JSON</span><span class="muted-text">Use when you need exact source fields or copyable data.</span></li>
-        <li><span>Copy path</span><span class="muted-text">Hand the artifact off without losing traceability.</span></li>
+        <li><span>상세</span><span class="muted-text">먼저 해석된 뷰를 여세요.</span></li>
+        <li><span>원시 JSON</span><span class="muted-text">정확한 소스 필드나 복사 가능한 데이터가 필요할 때 사용합니다.</span></li>
+        <li><span>경로 복사</span><span class="muted-text">추적성을 잃지 않고 산출물을 인계합니다.</span></li>
       </ul>
     </div>
   </div>
@@ -569,10 +569,10 @@ ${renderOpsStyle()}
   <div class="ops-table-meta">
     <div>
       <h2>${t.tableTitle}</h2>
-      <p class="section-intro">Each row should read as signal, verdict, issue, and follow-up without requiring a second explanatory panel.</p>
+      <p class="section-intro">각 행이 별도 설명 패널 없이도 신호, 판정, 이슈, 후속 액션을 한 번에 읽히게 해야 합니다.</p>
     </div>
   </div>
-  <div class="table-wrap"><table id="rollouts-table"><thead><tr><th>Signal / Actions</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th><th>Generated</th><th>Source</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="rollouts-table"><thead><tr><th>신호 / 액션</th><th>상태</th><th>점수</th><th>판정</th><th>사유</th><th>생성 시각</th><th>소스</th></tr></thead><tbody>${
     input.rows || renderTableEmptyRow(7, t.noSignals)
   }</tbody></table></div>
 </section>
@@ -595,11 +595,11 @@ ${renderOpsStyle()}
 <section class="card dashboard-shell ops-shell">
   <div class="ops-titlebar">
     <div class="ops-titleblock">
-      <span class="eyebrow">Compare Board</span>
+      <span class="eyebrow">비교 보드</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Keep scenario comparisons, regression verdicts, and issue triage readable immediately so operators can decide what needs deeper inspection.</p>
+      <p class="section-intro">시나리오 비교, 회귀 판정, 이슈 트리아지가 즉시 읽히게 유지해 운영자가 무엇을 더 깊게 봐야 하는지 빠르게 결정할 수 있게 합니다.</p>
     </div>
-    <div class="quick-links"><a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+  <div class="quick-links"><a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
   </div>
   ${input.flash}
   <div class="summary-grid">${input.summaryCards}</div>
@@ -608,25 +608,25 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="section-head">
     <div>
-      <h2>Triage Guide + Sources</h2>
-      <p class="section-intro">Read the tables as compare surfaces first. Source roots stay visible so you know how trustworthy and fresh the data is.</p>
+      <h2>트리아지 가이드 + 소스</h2>
+      <p class="section-intro">표를 먼저 비교 화면으로 읽으세요. 소스 루트를 계속 보여 줘야 데이터의 신뢰도와 최신성을 판단할 수 있습니다.</p>
     </div>
   </div>
   <div class="ops-filter-grid">
     <div class="form-card">
-      <h3>Backend Matrix</h3>
+      <h3>백엔드 매트릭스</h3>
       <ul class="ops-actions-list">
-        <li><span>Status</span><span class="muted-text">Use this to decide whether the scenario output is usable at all.</span></li>
-        <li><span>Latency + rates</span><span class="muted-text">Read performance and acceptance together before comparing notes.</span></li>
-        <li><span>Artifact links</span><span class="muted-text">Open Detail first, then Smoke or Plan if you need context.</span></li>
+        <li><span>상태</span><span class="muted-text">시나리오 출력이 애초에 사용 가능한지 먼저 판단합니다.</span></li>
+        <li><span>지연 시간 + 비율</span><span class="muted-text">메모를 보기 전에 성능과 허용률을 함께 읽으세요.</span></li>
+        <li><span>산출물 링크</span><span class="muted-text">먼저 상세를 열고, 맥락이 더 필요하면 Smoke나 Plan 산출물로 이동합니다.</span></li>
       </ul>
     </div>
     <div class="form-card">
-      <h3>Regression Reports</h3>
+      <h3>회귀 리포트</h3>
       <ul class="ops-actions-list">
-        <li><span>Warnings / Errors</span><span class="muted-text">This is the first operator triage field for regressions.</span></li>
-        <li><span>Render drift</span><span class="muted-text">Mismatch counts tell you where the object diverged from expected render mode.</span></li>
-        <li><span>Issue summary</span><span class="muted-text">Use this before opening detail to decide severity.</span></li>
+        <li><span>경고 / 오류</span><span class="muted-text">회귀에서 가장 먼저 보는 운영 트리아지 필드입니다.</span></li>
+        <li><span>렌더 드리프트</span><span class="muted-text">불일치 개수로 오브젝트가 기대 렌더 모드에서 얼마나 벗어났는지 파악합니다.</span></li>
+        <li><span>이슈 요약</span><span class="muted-text">상세를 열기 전에 심각도를 판단할 때 사용합니다.</span></li>
       </ul>
     </div>
   </div>
@@ -637,11 +637,11 @@ ${renderOpsStyle()}
   <div class="ops-table-meta">
     <div>
       <h2>${t.backendTitle}</h2>
-      <p class="section-intro">Backend scenario verdicts should be readable from status, latency, acceptance, and notes in one row.</p>
+      <p class="section-intro">백엔드 시나리오 판정은 한 행 안에서 상태, 지연 시간, 허용률, 메모가 함께 읽혀야 합니다.</p>
     </div>
-    <input type="search" data-table-filter="benchmark-backend-table" aria-label="Filter backend benchmark matrix" placeholder="${t.backendFilterPlaceholder}"/>
+    <input type="search" data-table-filter="benchmark-backend-table" aria-label="백엔드 벤치마크 매트릭스 필터" placeholder="${t.backendFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="benchmark-backend-table"><thead><tr><th>Scenario / Actions</th><th>Status</th><th>Latency</th><th>Acceptance</th><th>Failure Rate</th><th>Notes</th><th>Source</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="benchmark-backend-table"><thead><tr><th>시나리오 / 액션</th><th>상태</th><th>지연 시간</th><th>허용률</th><th>실패율</th><th>메모</th><th>소스</th></tr></thead><tbody>${
     input.backendRows || renderTableEmptyRow(7, t.noBackendRows)
   }</tbody></table></div>
 </section>
@@ -650,11 +650,11 @@ ${renderOpsStyle()}
   <div class="ops-table-meta">
     <div>
       <h2>${t.regressionTitle}</h2>
-      <p class="section-intro">Regression rows should tell you immediately whether the bundle is blocked, warning-only, or ready for deeper compare work.</p>
+      <p class="section-intro">회귀 행은 번들이 차단인지, 경고 수준인지, 더 깊은 비교 검토 준비가 됐는지 즉시 알려줘야 합니다.</p>
     </div>
-    <input type="search" data-table-filter="benchmark-regression-table" aria-label="Filter episode regression reports" placeholder="${t.regressionFilterPlaceholder}"/>
+    <input type="search" data-table-filter="benchmark-regression-table" aria-label="에피소드 회귀 리포트 필터" placeholder="${t.regressionFilterPlaceholder}"/>
   </div>
-  <div class="table-wrap"><table id="benchmark-regression-table"><thead><tr><th>Bundle / Actions</th><th>Status</th><th>Warnings / Errors</th><th>Profiles</th><th>Render Drift</th><th>Issues</th><th>Source</th></tr></thead><tbody>${
+  <div class="table-wrap"><table id="benchmark-regression-table"><thead><tr><th>번들 / 액션</th><th>상태</th><th>경고 / 오류</th><th>프로필</th><th>렌더 드리프트</th><th>이슈</th><th>소스</th></tr></thead><tbody>${
     input.regressionRows || renderTableEmptyRow(7, t.noRegressionRows)
   }</tbody></table></div>
 </section>
@@ -662,13 +662,13 @@ ${renderOpsStyle()}
 <section class="card">
   <div class="ops-note-grid">
     <div class="ops-callout warn">
-      <h3>Blocked Regression</h3>
-      <p>Start with the regression row, then open detail and candidate compare artifacts before deciding whether the problem is rendering, QC, or configuration drift.</p>
+      <h3>차단된 회귀</h3>
+      <p>회귀 행에서 시작하고, 상세와 후보 비교 산출물을 연 뒤, 문제가 렌더링인지 QC인지 설정 드리프트인지 판단하세요.</p>
     </div>
     <div class="ops-callout ok">
-      <h3>Compare Follow-up</h3>
-      <p>Use Rollouts when the benchmark signal needs a broader verdict board instead of object-specific investigation.</p>
-      <div class="quick-links"><a href="/ui/rollouts">Open Rollouts</a></div>
+      <h3>비교 후속 조치</h3>
+      <p>벤치마크 신호에 오브젝트 단위 점검보다 더 넓은 판정 보드가 필요하면 롤아웃 화면을 사용하세요.</p>
+      <div class="quick-links"><a href="/ui/rollouts">롤아웃 열기</a></div>
     </div>
   </div>
 </section>`;

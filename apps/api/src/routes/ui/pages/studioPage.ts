@@ -87,9 +87,9 @@ function renderStudioFeedCard(input: StudioFeedCardInput): string {
     input.kicker
   )}</div><h2>${esc(input.title)}</h2><p class="studio-monitor-note">${esc(input.note)}</p></div><div class="studio-actions"><span id="${esc(
     input.counterId
-  )}" class="studio-counter">Waiting</span><button type="button" id="${esc(
+  )}" class="studio-counter">대기 중</span><button type="button" id="${esc(
     input.refreshId
-  )}" class="secondary">Refresh</button></div></div><div class="studio-table-tools"><input id="${esc(
+  )}" class="secondary">새로고침</button></div></div><div class="studio-table-tools"><input id="${esc(
     input.filterId
   )}" type="search" autocomplete="off" aria-label="${esc(input.filterLabel)}" placeholder="${esc(
     input.filterPlaceholder
@@ -109,31 +109,31 @@ export function buildStudioBody(input: StudioBodyInput): string {
   };
   const activePackSummary = input.packState.activePackId
     ? `${input.packState.activePackId} / v${input.packState.activePackVersion || "-"}`
-    : "No active pack";
+    : "활성 팩 없음";
   const latestPackSummary = input.packState.latestPackId
     ? `${input.packState.latestPackId} @ ${input.packState.latestPackCreatedAt}`
-    : "No recent pack activity";
+    : "최근 팩 활동 없음";
   const packDriftHeadline =
     input.packState.latestPackId &&
     input.packState.activePackId &&
     input.packState.latestPackId !== input.packState.activePackId
-      ? "Latest pack is newer than the active pack."
-      : "Active pack matches the latest reviewed output.";
+      ? "최신 팩이 현재 활성 팩보다 더 새롭습니다."
+      : "활성 팩이 최신 검토 출력과 일치합니다.";
   const reviewPressureHeadline =
     input.packState.pendingCount > 0
-      ? `${input.packState.pendingCount} pack decision(s) are still waiting.`
-      : "No pending pack approvals are blocking dispatch.";
+      ? `${input.packState.pendingCount}개의 팩 결정이 아직 대기 중입니다.`
+      : "디스패치를 막는 미결 팩 승인이 없습니다.";
   const guardrailHeadline =
     input.channelProfile.forbiddenTermsSummary !== "(none)" || input.channelProfile.negativeTermsSummary !== "(none)"
-      ? "Prompt guardrails are active on this channel."
-      : "Prompt guardrails are currently light.";
+      ? "이 채널에는 프롬프트 가드레일이 활성화되어 있습니다."
+      : "현재 프롬프트 가드레일이 비교적 가볍습니다.";
   const workbenchLinks = [
-    renderStudioWorkbenchLink("Assets", "Review intake, QC, and previews.", "/ui/assets"),
-    renderStudioWorkbenchLink("Character Generator", "Run staged generation with compare and approval.", input.packState.generatorHref),
-    renderStudioWorkbenchLink("Characters", "Review packs, compare versions, and rollback safely.", input.packState.charactersHref),
-    renderStudioWorkbenchLink("Episodes", "Open editor and episode detail workbenches.", "/ui/episodes"),
-    renderStudioWorkbenchLink("Jobs", "Watch queue execution and recover failures.", "/ui/jobs"),
-    renderStudioWorkbenchLink("Profiles", "Inspect prompt rules and channel policy.", "/ui/profiles")
+    renderStudioWorkbenchLink("에셋", "입력, QC, 프리뷰를 검토합니다.", "/ui/assets"),
+    renderStudioWorkbenchLink("캐릭터 생성기", "비교와 승인을 포함한 단계형 생성을 실행합니다.", input.packState.generatorHref),
+    renderStudioWorkbenchLink("캐릭터", "팩을 검토하고 버전을 비교하며 안전하게 롤백합니다.", input.packState.charactersHref),
+    renderStudioWorkbenchLink("에피소드", "에디터와 에피소드 상세 워크벤치를 엽니다.", "/ui/episodes"),
+    renderStudioWorkbenchLink("작업", "큐 실행을 보고 실패를 복구합니다.", "/ui/jobs"),
+    renderStudioWorkbenchLink("프로필", "프롬프트 규칙과 채널 정책을 점검합니다.", "/ui/profiles")
   ].join("");
   return `<style>
     .studio-shell{display:grid;gap:14px;padding:18px;border:1px solid #d6e0ef;background:linear-gradient(180deg,#fbfdff,#f3f7fd);box-shadow:0 18px 46px rgba(15,23,42,.08)}
@@ -255,45 +255,45 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
 <section class="card studio-shell">
   <div class="studio-hero">
     <section class="studio-hero-card">
-      <p class="studio-eyebrow">Orchestration Hub</p>
+      <p class="studio-eyebrow">오케스트레이션 허브</p>
       <div class="studio-title-row">
         <div>
-          <h1>Studio</h1>
-          <p class="studio-hint">Review current state, recent object activity, and risk before stepping into the workbench that owns the next decision. Studio should point you forward, not dump every control onto one screen.</p>
+          <h1>스튜디오</h1>
+          <p class="studio-hint">다음 결정을 담당하는 워크벤치로 들어가기 전에 현재 상태, 최근 오브젝트 활동, 위험 신호를 먼저 확인하세요. 스튜디오는 모든 제어를 한 화면에 쏟아붓는 곳이 아니라, 다음 단계로 정확히 밀어주는 허브여야 합니다.</p>
         </div>
       </div>
       <div class="studio-pill-row">
-        <span class="studio-pill">Current state summary</span>
-        <span class="studio-pill">Recent object activity</span>
-        <span class="studio-pill">Risk signals</span>
-        <span class="studio-pill">Dedicated workbench handoff</span>
+        <span class="studio-pill">현재 상태 요약</span>
+        <span class="studio-pill">최근 오브젝트 활동</span>
+        <span class="studio-pill">위험 신호</span>
+        <span class="studio-pill">전용 워크벤치 인계</span>
       </div>
       <div class="studio-status">
-        <span class="studio-status-label">Operator status</span>
-        <div id="studio-status" role="status" aria-live="polite" aria-atomic="true">Ready: review state, choose the next action, then hand work off to the right workbench.</div>
+        <span class="studio-status-label">운영자 상태</span>
+        <div id="studio-status" role="status" aria-live="polite" aria-atomic="true">준비됨: 상태를 검토하고 다음 액션을 고른 뒤, 적절한 워크벤치로 일을 넘기세요.</div>
       </div>
       <div class="studio-workbench-grid">${workbenchLinks}</div>
     </section>
     <section class="studio-runtime-card">
       <div>
-        <p class="studio-eyebrow" style="color:#be6727">Top 3 Next Actions</p>
-        <h2 style="margin:0">Move the pipeline with fewer simultaneous decisions</h2>
-        <p class="studio-copy">Each action below narrows the operator to one decision surface instead of keeping every input visible at once.</p>
+        <p class="studio-eyebrow" style="color:#be6727">상위 3개 다음 액션</p>
+        <h2 style="margin:0">동시 결정을 줄이며 파이프라인을 전진시키기</h2>
+        <p class="studio-copy">아래 액션들은 모든 입력을 한꺼번에 보이는 상태로 두는 대신, 운영자를 하나의 판단면으로 좁혀 줍니다.</p>
       </div>
       <div class="studio-plan-list">
-        ${renderStudioNextAction("1", "Review", "Inspect fresh intake in Assets", "Use the review workbench to confirm QC, preview outputs, and whether a source is ready to anchor downstream work.", [
-          { label: "Open Assets", href: "/ui/assets" },
-          { label: "Open Studio Intake", href: "#studio-intake" }
+        ${renderStudioNextAction("1", "검토", "에셋에서 새 입력 점검", "검토 워크벤치를 사용해 QC, 프리뷰 출력, 그리고 소스가 다운스트림 작업의 기준점이 될 준비가 되었는지 확인합니다.", [
+          { label: "에셋 열기", href: "/ui/assets" },
+          { label: "스튜디오 입력 열기", href: "#studio-intake" }
         ])}
-        ${renderStudioNextAction("2", "Stage", "Generate or compare the next pack", "Step into Character Generator for the staged run flow, or Characters when you need compare, approval, or rollback context.", [
-          { label: "Open Character Generator", href: input.packState.generatorHref },
-          { label: "Open Characters", href: input.packState.charactersHref },
-          ...(input.packState.compareHref ? [{ label: "Open Compare", href: input.packState.compareHref }] : [])
+        ${renderStudioNextAction("2", "스테이지", "다음 팩 생성 또는 비교", "단계형 런 흐름이 필요하면 캐릭터 생성기로, 비교·승인·롤백 맥락이 필요하면 캐릭터 화면으로 이동합니다.", [
+          { label: "캐릭터 생성기 열기", href: input.packState.generatorHref },
+          { label: "캐릭터 열기", href: input.packState.charactersHref },
+          ...(input.packState.compareHref ? [{ label: "비교 열기", href: input.packState.compareHref }] : [])
         ])}
-        ${renderStudioNextAction("3", "Dispatch", "Bind the selected pack and move an episode", "Use the dispatch rail when you are ready to create, preview, edit, or publish without reopening the old all-in-one dashboard.", [
-          { label: "Open Dispatch Rail", href: "#studio-dispatch" },
-          { label: "Open Episodes", href: "/ui/episodes" },
-          { label: "Open Jobs", href: "/ui/jobs" }
+        ${renderStudioNextAction("3", "디스패치", "선택한 팩을 묶고 에피소드를 전진", "예전 올인원 대시보드를 다시 열지 않고 생성, 프리뷰, 편집, 퍼블리시로 이어가려면 디스패치 레일을 사용하세요.", [
+          { label: "디스패치 레일 열기", href: "#studio-dispatch" },
+          { label: "에피소드 열기", href: "/ui/episodes" },
+          { label: "작업 열기", href: "/ui/jobs" }
         ])}
       </div>
     </section>
@@ -304,194 +304,194 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     <section class="studio-section">
       <div class="studio-head">
         <div class="studio-head-copy">
-          <div class="studio-kicker">Current State Summary</div>
-          <h2>Read the operating state first</h2>
-          <p class="studio-monitor-note">Selection, active pack, and channel policy stay visible here before you dispatch or open the next workbench.</p>
+          <div class="studio-kicker">현재 상태 요약</div>
+          <h2>운영 상태를 먼저 읽기</h2>
+          <p class="studio-monitor-note">디스패치하거나 다음 워크벤치를 열기 전에 선택 상태, 활성 팩, 채널 정책을 여기서 계속 확인할 수 있습니다.</p>
         </div>
       </div>
       <div class="studio-signal-grid">
         <section class="studio-signal">
-          <span class="studio-signal-label">Selected Pack</span>
-          <strong id="studio-signal-pack" class="studio-signal-value">No pack selected</strong>
-          <span class="studio-signal-note">Choose a pack from recent object activity to bind dispatch safely.</span>
+          <span class="studio-signal-label">선택된 팩</span>
+          <strong id="studio-signal-pack" class="studio-signal-value">선택된 팩 없음</strong>
+          <span class="studio-signal-note">최근 오브젝트 활동에서 팩을 골라 안전하게 디스패치에 바인딩하세요.</span>
         </section>
         <section class="studio-signal">
-          <span class="studio-signal-label">Episode Target</span>
-          <strong id="studio-signal-episode" class="studio-signal-value">No episode selected</strong>
-          <span id="studio-signal-topic" class="studio-signal-note">Topic not set.</span>
+          <span class="studio-signal-label">에피소드 대상</span>
+          <strong id="studio-signal-episode" class="studio-signal-value">선택된 에피소드 없음</strong>
+          <span id="studio-signal-topic" class="studio-signal-note">주제가 아직 설정되지 않았습니다.</span>
         </section>
         <section class="studio-signal">
-          <span class="studio-signal-label">Operating Model</span>
-          <strong class="studio-signal-value">Review -> Stage -> Dispatch</strong>
-          <span class="studio-signal-note">Use the workbench that matches the decision you are making now.</span>
+          <span class="studio-signal-label">운영 모델</span>
+          <strong class="studio-signal-value">검토 -> 스테이지 -> 디스패치</strong>
+          <span class="studio-signal-note">지금 내리는 판단에 맞는 워크벤치를 사용하세요.</span>
         </section>
       </div>
       <div class="studio-overview-grid">
-        <article class="studio-overview-card"><span>Channel</span><strong>${esc(input.channelProfile.channelName)}</strong><p>${esc(input.channelProfile.channelId || "(default)")} / ${esc(input.channelProfile.language)}</p></article>
-        <article class="studio-overview-card"><span>Active Pack</span><strong>${esc(activePackSummary)}</strong><p>${esc(input.packState.activePackStatus || "No pack status recorded")}</p></article>
-        <article class="studio-overview-card"><span>Latest Pack Activity</span><strong>${esc(latestPackSummary)}</strong><p>Approved ${esc(String(input.packState.approvedCount))} / Archived ${esc(String(input.packState.archivedCount))}</p></article>
-        <article class="studio-overview-card"><span>Profile Updated</span><strong>${esc(input.channelProfile.updatedAt)}</strong><p>${esc(input.channelProfile.tone)} / ${esc(input.channelProfile.pacing)}</p></article>
+        <article class="studio-overview-card"><span>채널</span><strong>${esc(input.channelProfile.channelName)}</strong><p>${esc(input.channelProfile.channelId || "(기본값)")} / ${esc(input.channelProfile.language)}</p></article>
+        <article class="studio-overview-card"><span>활성 팩</span><strong>${esc(activePackSummary)}</strong><p>${esc(input.packState.activePackStatus || "기록된 팩 상태 없음")}</p></article>
+        <article class="studio-overview-card"><span>최신 팩 활동</span><strong>${esc(latestPackSummary)}</strong><p>승인 ${esc(String(input.packState.approvedCount))} / 보관 ${esc(String(input.packState.archivedCount))}</p></article>
+        <article class="studio-overview-card"><span>프로필 갱신 시각</span><strong>${esc(input.channelProfile.updatedAt)}</strong><p>${esc(input.channelProfile.tone)} / ${esc(input.channelProfile.pacing)}</p></article>
       </div>
     </section>
     <section class="studio-section">
       <div class="studio-head">
         <div class="studio-head-copy">
-          <div class="studio-kicker">Risk Signals</div>
-          <h2>Scan the friction before you act</h2>
-          <p class="studio-monitor-note">These signals keep compare, review, and recovery concerns visible without forcing every control open.</p>
+          <div class="studio-kicker">위험 신호</div>
+          <h2>움직이기 전에 마찰을 훑기</h2>
+          <p class="studio-monitor-note">이 신호들은 모든 제어를 열어두지 않아도 비교, 검토, 복구 이슈를 계속 보이게 유지합니다.</p>
         </div>
       </div>
       <div class="studio-risk-grid">
         <article class="studio-risk-card">
-          <span class="studio-risk-level ${input.packState.latestPackId && input.packState.activePackId && input.packState.latestPackId !== input.packState.activePackId ? "attn" : "good"}">Pack Drift</span>
+          <span class="studio-risk-level ${input.packState.latestPackId && input.packState.activePackId && input.packState.latestPackId !== input.packState.activePackId ? "attn" : "good"}">팩 드리프트</span>
           <strong>${esc(packDriftHeadline)}</strong>
-          <p>Active pack: ${esc(activePackSummary)}. Latest activity: ${esc(latestPackSummary)}.</p>
+          <p>활성 팩: ${esc(activePackSummary)}. 최신 활동: ${esc(latestPackSummary)}.</p>
         </article>
         <article class="studio-risk-card">
-          <span class="studio-risk-level ${input.packState.pendingCount > 0 ? "watch" : "good"}">Review Pressure</span>
+          <span class="studio-risk-level ${input.packState.pendingCount > 0 ? "watch" : "good"}">검토 압력</span>
           <strong>${esc(reviewPressureHeadline)}</strong>
-          <p>Pack counts: approved ${esc(String(input.packState.approvedCount))} / archived ${esc(String(input.packState.archivedCount))} / pending ${esc(String(input.packState.pendingCount))}.</p>
+          <p>팩 수: 승인 ${esc(String(input.packState.approvedCount))} / 보관 ${esc(String(input.packState.archivedCount))} / 대기 ${esc(String(input.packState.pendingCount))}.</p>
         </article>
         <article class="studio-risk-card">
-          <span class="studio-risk-level ${guardrailHeadline.includes("active") ? "attn" : "good"}">Guardrails</span>
+          <span class="studio-risk-level ${guardrailHeadline.includes("활성") ? "attn" : "good"}">가드레일</span>
           <strong>${esc(guardrailHeadline)}</strong>
-          <p>Forbidden terms: ${esc(input.channelProfile.forbiddenTermsSummary)}. Negative terms: ${esc(input.channelProfile.negativeTermsSummary)}.</p>
+          <p>금지어: ${esc(input.channelProfile.forbiddenTermsSummary)}. 네거티브 용어: ${esc(input.channelProfile.negativeTermsSummary)}.</p>
         </article>
       </div>
     </section>
     <section class="studio-section">
       <div class="studio-head">
         <div class="studio-head-copy">
-          <div class="studio-kicker">Recent Object Activity</div>
-          <h2>Review the live feeds</h2>
-          <p class="studio-monitor-note">Use these compact feeds to choose the object that needs attention, then continue in the matching workbench or the dispatch rail.</p>
+          <div class="studio-kicker">최근 오브젝트 활동</div>
+          <h2>라이브 피드 검토</h2>
+          <p class="studio-monitor-note">이 압축된 피드를 사용해 지금 관심이 필요한 오브젝트를 고른 뒤, 맞는 워크벤치나 디스패치 레일에서 계속 진행하세요.</p>
         </div>
-        <div class="studio-links"><a href="#studio-live-controls" class="studio-link">Open live controls</a></div>
+        <div class="studio-links"><a href="#studio-live-controls" class="studio-link">라이브 제어 열기</a></div>
       </div>
       <div class="studio-activity-grid">
         ${renderStudioFeedCard({
-          kicker: "Assets",
-          title: "Recent Assets",
-          note: "Jump into asset review when QC or preview verification is the next decision.",
+          kicker: "에셋",
+          title: "최근 에셋",
+          note: "다음 판단이 QC 또는 프리뷰 검증이라면 에셋 검토로 바로 이동하세요.",
           counterId: "studio-assets-count",
           refreshId: "studio-refresh-assets",
           filterId: "studio-filter-assets",
-          filterLabel: "Filter recent assets",
-          filterPlaceholder: "Search assets (id/type/status)",
-          filterNote: "Current page filter",
+          filterLabel: "최근 에셋 필터",
+          filterPlaceholder: "에셋 검색 (id/타입/상태)",
+          filterNote: "현재 페이지 필터",
           tableId: "studio-assets-table",
-          tableHead: "<tr><th>ID</th><th>Type</th><th>Status</th><th>Created</th></tr>",
+          tableHead: "<tr><th>ID</th><th>타입</th><th>상태</th><th>생성 시각</th></tr>",
           loadingColspan: 4,
-          loadingTitle: "Loading assets",
-          loadingDetail: "Fetching the latest asset intake records."
+          loadingTitle: "에셋 불러오는 중",
+          loadingDetail: "최신 에셋 입력 레코드를 가져오는 중입니다."
         })}
         ${renderStudioFeedCard({
-          kicker: "Packs",
-          title: "Generated Character Packs",
-          note: "Click a row to bind it into the dispatch rail or open pack review.",
+          kicker: "팩",
+          title: "생성된 캐릭터 팩",
+          note: "행을 클릭해 디스패치 레일에 바인딩하거나 팩 검토를 엽니다.",
           counterId: "studio-packs-count",
           refreshId: "studio-refresh-packs",
           filterId: "studio-filter-packs",
-          filterLabel: "Filter generated character packs",
-          filterPlaceholder: "Search packs (id/status/episode)",
-          filterNote: "Row click selects pack",
+          filterLabel: "생성된 캐릭터 팩 필터",
+          filterPlaceholder: "팩 검색 (id/상태/에피소드)",
+          filterNote: "행 클릭으로 팩 선택",
           tableId: "studio-packs-table",
-          tableHead: "<tr><th>ID</th><th>Version</th><th>Status</th><th>Episode</th></tr>",
+          tableHead: "<tr><th>ID</th><th>버전</th><th>상태</th><th>에피소드</th></tr>",
           loadingColspan: 4,
-          loadingTitle: "Loading character packs",
-          loadingDetail: "Pulling the latest generation outputs."
+          loadingTitle: "캐릭터 팩 불러오는 중",
+          loadingDetail: "최신 생성 출력을 가져오는 중입니다."
         })}
         ${renderStudioFeedCard({
-          kicker: "Episodes",
-          title: "Recent Episodes",
-          note: "Click a row to preload episode id and topic into the dispatch rail.",
+          kicker: "에피소드",
+          title: "최근 에피소드",
+          note: "행을 클릭하면 디스패치 레일에 episode id와 주제를 미리 채웁니다.",
           counterId: "studio-episodes-count",
           refreshId: "studio-refresh-episodes",
           filterId: "studio-filter-episodes",
-          filterLabel: "Filter recent episodes",
-          filterPlaceholder: "Search episodes (id/topic/status)",
-          filterNote: "Row click selects episode",
+          filterLabel: "최근 에피소드 필터",
+          filterPlaceholder: "에피소드 검색 (id/주제/상태)",
+          filterNote: "행 클릭으로 에피소드 선택",
           tableId: "studio-episodes-table",
-          tableHead: "<tr><th>ID</th><th>Topic</th><th>Status</th><th>Latest Job</th></tr>",
+          tableHead: "<tr><th>ID</th><th>주제</th><th>상태</th><th>최신 작업</th></tr>",
           loadingColspan: 4,
-          loadingTitle: "Loading episodes",
-          loadingDetail: "Syncing the latest episode queue state."
+          loadingTitle: "에피소드 불러오는 중",
+          loadingDetail: "최신 에피소드 큐 상태를 동기화하는 중입니다."
         })}
         ${renderStudioFeedCard({
-          kicker: "Jobs",
-          title: "Recent Jobs",
-          note: "Watch preview, render, and publish execution without leaving the hub.",
+          kicker: "작업",
+          title: "최근 작업",
+          note: "허브를 벗어나지 않고 프리뷰, 렌더, 퍼블리시 실행을 확인합니다.",
           counterId: "studio-jobs-count",
           refreshId: "studio-refresh-jobs",
           filterId: "studio-filter-jobs",
-          filterLabel: "Filter recent jobs",
-          filterPlaceholder: "Search jobs (id/type/status/episode)",
-          filterNote: "Newest rows only",
+          filterLabel: "최근 작업 필터",
+          filterPlaceholder: "작업 검색 (id/타입/상태/에피소드)",
+          filterNote: "최신 행만 표시",
           tableId: "studio-jobs-table",
-          tableHead: "<tr><th>Job</th><th>Type</th><th>Status</th><th>Progress</th><th>Episode</th></tr>",
+          tableHead: "<tr><th>작업</th><th>타입</th><th>상태</th><th>진행률</th><th>에피소드</th></tr>",
           loadingColspan: 5,
-          loadingTitle: "Loading jobs",
-          loadingDetail: "Waiting for the latest queue telemetry."
+          loadingTitle: "작업 불러오는 중",
+          loadingDetail: "최신 큐 텔레메트리를 기다리는 중입니다."
         })}
       </div>
     </section>
   </div>
   <aside class="studio-ops-rail">
     <section class="studio-ops-card" id="studio-dispatch">
-      <p class="studio-ops-kicker">Dispatch Rail</p>
-      <h2 style="margin:0">Bind a pack and move the episode</h2>
-      <p class="studio-monitor-note">This is the only active input surface kept in Studio. Everything noisier stays behind a dedicated workbench or collapsed detail.</p>
+      <p class="studio-ops-kicker">디스패치 레일</p>
+      <h2 style="margin:0">팩을 바인딩하고 에피소드를 전진</h2>
+      <p class="studio-monitor-note">스튜디오에 남겨둔 유일한 활성 입력면입니다. 더 시끄러운 제어는 전용 워크벤치나 접힌 상세 뒤로 보냅니다.</p>
       <div class="studio-binding-grid">
-        <label class="studio-binding"><span>Episode Topic</span><input id="studio-topic" placeholder="e.g. character intro video"/></label>
-        <label class="studio-binding"><span>Episode Id</span><input id="studio-episode-id" placeholder="cmm..."/></label>
-        <label class="studio-binding"><span>Selected Character Pack</span><input id="studio-selected-pack" placeholder="select from activity feed" readonly/></label>
+        <label class="studio-binding"><span>에피소드 주제</span><input id="studio-topic" placeholder="예: 캐릭터 소개 영상"/></label>
+        <label class="studio-binding"><span>episodeId</span><input id="studio-episode-id" placeholder="cmm..."/></label>
+        <label class="studio-binding"><span>선택된 캐릭터 팩</span><input id="studio-selected-pack" placeholder="활동 피드에서 선택" readonly/></label>
       </div>
       <div style="display:grid;gap:12px;margin-top:16px">
         <div class="studio-action-cluster">
-          <span class="studio-cluster-label">Pipeline</span>
-          <button type="button" id="studio-oneclick" data-primary-action="1" data-primary-label="Start one-click preview flow">Start one-click (create + preview)</button>
-          <button type="button" id="studio-create-episode" class="secondary">Create episode only</button>
+          <span class="studio-cluster-label">파이프라인</span>
+          <button type="button" id="studio-oneclick" data-primary-action="1" data-primary-label="원클릭 프리뷰 흐름 시작">원클릭 시작 (생성 + 프리뷰)</button>
+          <button type="button" id="studio-create-episode" class="secondary">에피소드만 생성</button>
         </div>
         <div class="studio-action-cluster">
-          <span class="studio-cluster-label">Episode Ops</span>
-          <button type="button" id="studio-open-editor" class="secondary">Open editor</button>
-          <button type="button" id="studio-enqueue-preview" class="secondary">Enqueue preview render</button>
-          <button type="button" id="studio-open-publish" class="secondary">Open publish handoff</button>
+          <span class="studio-cluster-label">에피소드 작업</span>
+          <button type="button" id="studio-open-editor" class="secondary">에디터 열기</button>
+          <button type="button" id="studio-enqueue-preview" class="secondary">프리뷰 렌더 큐 등록</button>
+          <button type="button" id="studio-open-publish" class="secondary">퍼블리시 인계 열기</button>
         </div>
       </div>
     </section>
     <section class="studio-ops-card">
-      <p class="studio-ops-kicker">Current Selection</p>
-      <h2 id="studio-selection-title" style="margin:0">No Selection</h2>
-      <p id="studio-selection-meta" class="studio-monitor-note">Select a pack or episode from recent object activity to inspect route-ready metadata.</p>
-      <div id="studio-selection-fields" class="studio-meta"><div class="studio-selection-empty">No pack or episode is selected yet.</div></div>
+      <p class="studio-ops-kicker">현재 선택</p>
+      <h2 id="studio-selection-title" style="margin:0">선택 없음</h2>
+      <p id="studio-selection-meta" class="studio-monitor-note">최근 오브젝트 활동에서 팩이나 에피소드를 선택해 라우팅 준비 메타데이터를 점검하세요.</p>
+      <div id="studio-selection-fields" class="studio-meta"><div class="studio-selection-empty">아직 선택된 팩이나 에피소드가 없습니다.</div></div>
       <div id="studio-selection-links" class="studio-links" style="margin-top:12px"></div>
     </section>
     <details class="studio-ops-card studio-ops-details" id="studio-intake">
-      <summary class="studio-ops-summary"><span>Quick intake</span><span class="studio-guide-note">Collapsed by default</span></summary>
+      <summary class="studio-ops-summary"><span>빠른 입력</span><span class="studio-guide-note">기본 접힘 상태</span></summary>
       <div class="studio-ops-body">
-        <p class="studio-monitor-note" style="margin-top:0">Use this only for a fast handoff into the Assets review workbench.</p>
+        <p class="studio-monitor-note" style="margin-top:0">에셋 검토 워크벤치로 빠르게 넘길 때만 사용하세요.</p>
         <form id="studio-asset-upload-form" enctype="multipart/form-data" class="grid">
           <div class="grid two">
-            <label>Asset Type<select name="assetType"><option value="character_reference">character_reference (reference)</option><option value="character_view">character_view (view variant)</option><option value="background">background (environment)</option><option value="chart_source">chart_source (chart)</option></select></label>
-            <label>File<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label>
+            <label>에셋 타입<select name="assetType"><option value="character_reference">character_reference (레퍼런스)</option><option value="character_view">character_view (뷰 변형)</option><option value="background">background (배경)</option><option value="chart_source">chart_source (차트)</option></select></label>
+            <label>파일<input type="file" name="file" accept="image/png,image/jpeg,image/webp" required/></label>
           </div>
           <div class="studio-actions">
-            <button id="studio-asset-upload-submit" type="submit">Upload</button>
-            <a href="/ui/assets" class="studio-link">Open Assets</a>
+            <button id="studio-asset-upload-submit" type="submit">업로드</button>
+            <a href="/ui/assets" class="studio-link">에셋 열기</a>
           </div>
         </form>
-        <p class="studio-field-note">A successful upload opens the matching asset inspection view automatically.</p>
-        <pre id="studio-asset-upload-result" class="studio-output" role="status" aria-live="polite" aria-atomic="true">Waiting</pre>
+        <p class="studio-field-note">업로드에 성공하면 해당 에셋 점검 화면이 자동으로 열립니다.</p>
+        <pre id="studio-asset-upload-result" class="studio-output" role="status" aria-live="polite" aria-atomic="true">대기 중</pre>
       </div>
     </details>
     <details class="studio-ops-card studio-ops-details" id="studio-live-controls">
-      <summary class="studio-ops-summary"><span>Live feed controls</span><span class="studio-guide-note">Auto refresh and manual sync</span></summary>
+      <summary class="studio-ops-summary"><span>라이브 피드 제어</span><span class="studio-guide-note">자동 새로고침 및 수동 동기화</span></summary>
       <div class="studio-ops-body">
-        <p class="studio-monitor-note" style="margin-top:0">Keep the monitor rail warm while you review activity. Manual refresh stays available when you need a clean sync point.</p>
+        <p class="studio-monitor-note" style="margin-top:0">활동을 검토하는 동안 모니터 레일을 계속 최신 상태로 유지하세요. 깨끗한 동기화 지점이 필요하면 수동 새로고침을 사용하면 됩니다.</p>
         <div class="studio-runtime-controls">
-          <label class="studio-toggle"><span>Auto refresh</span><input id="studio-auto-refresh" type="checkbox" checked/></label>
-          <label>Interval
+          <label class="studio-toggle"><span>자동 새로고침</span><input id="studio-auto-refresh" type="checkbox" checked/></label>
+          <label>간격
             <select id="studio-refresh-interval">
               <option value="3000">3s</option>
               <option value="5000" selected>5s</option>
@@ -500,32 +500,32 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           </label>
         </div>
         <div class="studio-actions">
-          <button type="button" id="studio-refresh-all" class="secondary">Refresh all feeds</button>
+          <button type="button" id="studio-refresh-all" class="secondary">모든 피드 새로고침</button>
         </div>
         <div class="studio-links">
-          <a href="/ui/jobs" class="studio-link">Jobs</a>
-          <a href="/ui/episodes" class="studio-link">Episodes</a>
-          <a href="/ui/rollouts" class="studio-link">Rollouts</a>
+          <a href="/ui/jobs" class="studio-link">작업</a>
+          <a href="/ui/episodes" class="studio-link">에피소드</a>
+          <a href="/ui/rollouts" class="studio-link">롤아웃</a>
         </div>
       </div>
     </details>
     <section class="studio-ops-card">
-      <p class="studio-ops-kicker">Channel Profile</p>
+      <p class="studio-ops-kicker">채널 프로필</p>
       <h2 style="margin:0">${esc(input.channelProfile.channelName)}</h2>
-      <p class="studio-monitor-note">Verify the active channel profile before queueing generation or episode preview work.</p>
+      <p class="studio-monitor-note">생성이나 에피소드 프리뷰 작업을 큐에 넣기 전에 활성 채널 프로필을 검증하세요.</p>
       <div class="studio-meta">
-        ${renderMetaRow("Source", input.channelProfile.source)}
-        ${renderMetaRow("Channel", `${input.channelProfile.channelId || "(default)"} / ${input.channelProfile.language}`)}
-        ${renderMetaRow("Tone & Pacing", `${input.channelProfile.tone} / ${input.channelProfile.pacing}`)}
-        ${renderMetaRow("Style Presets", String(input.channelProfile.stylePresetCount))}
-        ${renderMetaRow("Forbidden Terms", input.channelProfile.forbiddenTermsSummary)}
-        ${renderMetaRow("Negative Terms", input.channelProfile.negativeTermsSummary)}
-        ${renderMetaRow("Updated", input.channelProfile.updatedAt)}
+        ${renderMetaRow("소스", input.channelProfile.source)}
+        ${renderMetaRow("채널", `${input.channelProfile.channelId || "(기본값)"} / ${input.channelProfile.language}`)}
+        ${renderMetaRow("톤 & 페이싱", `${input.channelProfile.tone} / ${input.channelProfile.pacing}`)}
+        ${renderMetaRow("스타일 프리셋 수", String(input.channelProfile.stylePresetCount))}
+        ${renderMetaRow("금지어", input.channelProfile.forbiddenTermsSummary)}
+        ${renderMetaRow("네거티브 용어", input.channelProfile.negativeTermsSummary)}
+        ${renderMetaRow("업데이트 시각", input.channelProfile.updatedAt)}
       </div>
       <div class="studio-links" style="margin-top:12px">
-        <a href="${esc(input.channelProfile.editorHref)}" class="studio-link">Open ChannelBible</a>
-        <a href="/ui/profiles" class="studio-link">Open Profiles</a>
-        <a href="/ui/rollouts" class="studio-link">Open Rollouts</a>
+        <a href="${esc(input.channelProfile.editorHref)}" class="studio-link">채널 바이블 열기</a>
+        <a href="/ui/profiles" class="studio-link">프로필 열기</a>
+        <a href="/ui/rollouts" class="studio-link">롤아웃 열기</a>
       </div>
     </section>
   </aside>
@@ -566,16 +566,16 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
   const setStatus = (text) => { if (statusBox instanceof HTMLElement) statusBox.textContent = text; };
   const setCounter = (id, count) => {
     const el = q(id);
-    if (el instanceof HTMLElement) el.textContent = String(count) + " loaded";
+    if (el instanceof HTMLElement) el.textContent = String(count) + "개 로드됨";
   };
   const setSignal = (id, value, fallback) => {
     const el = q(id);
     if (el instanceof HTMLElement) el.textContent = value && value.trim() ? value.trim() : fallback;
   };
   const updateSelectionSummary = () => {
-    setSignal("studio-signal-pack", selectedPack instanceof HTMLInputElement ? selectedPack.value : "", "No pack selected");
-    setSignal("studio-signal-episode", episodeInput instanceof HTMLInputElement ? episodeInput.value : "", "No episode selected");
-    setSignal("studio-signal-topic", topicInput instanceof HTMLInputElement ? topicInput.value : "", "Topic not set.");
+    setSignal("studio-signal-pack", selectedPack instanceof HTMLInputElement ? selectedPack.value : "", "선택된 팩 없음");
+    setSignal("studio-signal-episode", episodeInput instanceof HTMLInputElement ? episodeInput.value : "", "선택된 에피소드 없음");
+    setSignal("studio-signal-topic", topicInput instanceof HTMLInputElement ? topicInput.value : "", "주제가 아직 설정되지 않았습니다.");
   };
   const markSelectedRows = (tbodyEl, kind, value) => {
     if (!(tbodyEl instanceof HTMLElement)) return;
@@ -609,7 +609,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     if (selectionMeta instanceof HTMLElement) selectionMeta.textContent = metaText;
     if (selectionFields instanceof HTMLElement) {
       if (!fields.length) {
-        selectionFields.innerHTML = "<div class=\\"studio-selection-empty\\">No details were recorded for this selection.</div>";
+        selectionFields.innerHTML = "<div class=\\"studio-selection-empty\\">이 선택에 대해 기록된 상세 정보가 없습니다.</div>";
       } else {
         selectionFields.innerHTML = fields.map((field) => "<div class=\\"studio-meta-row\\"><span>" + safe(field.label) + "</span><strong>" + safe(field.value) + "</strong></div>").join("");
       }
@@ -622,116 +622,116 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     const selectedByView = readPath(packJson, ["selectedByView"]);
     const selectedViews = selectedByView && typeof selectedByView === "object" ? Object.keys(selectedByView).filter((key) => selectedByView[key]) : [];
     return {
-      mascotProfile: readText(readPath(packJson, ["mascot", "profile"]) || readPath(packJson, ["profile"]) || readPath(packJson, ["profileAssetId"]), "(not recorded)"),
-      lineage: readText(readPath(packJson, ["sourceImageRef"]) || readPath(packJson, ["hash"]) || readPath(packJson, ["schemaId"]), "(not recorded)"),
-      selectedViews: selectedViews.length ? selectedViews.join(", ") : "(not recorded)"
+      mascotProfile: readText(readPath(packJson, ["mascot", "profile"]) || readPath(packJson, ["profile"]) || readPath(packJson, ["profileAssetId"]), "(기록 없음)"),
+      lineage: readText(readPath(packJson, ["sourceImageRef"]) || readPath(packJson, ["hash"]) || readPath(packJson, ["schemaId"]), "(기록 없음)"),
+      selectedViews: selectedViews.length ? selectedViews.join(", ") : "(기록 없음)"
     };
   };
   const loadPackInspector = async (packId) => {
     if (!packId) return;
-    renderSelection("Loading Pack...", "Reading pack metadata from the API...", [], []);
+    renderSelection("팩 불러오는 중...", "API에서 팩 메타데이터를 읽는 중입니다...", [], []);
     try {
       const res = await fetch("/api/character-packs/" + encodeURIComponent(packId));
-      if (!res.ok) throw new Error("Pack detail failed: " + res.status);
+      if (!res.ok) throw new Error("팩 상세 조회 실패: " + res.status);
       const json = await res.json();
       const pack = json?.data;
-      if (!pack) throw new Error("Pack detail missing data");
+      if (!pack) throw new Error("팩 상세 응답에 데이터가 없습니다.");
       const summary = summarizePackJson(pack.json);
       const latestEpisode = Array.isArray(pack.episodes) && pack.episodes.length > 0 ? pack.episodes[0] : null;
-      const rollbackState = String(pack.status || "").toUpperCase() === "APPROVED" ? "active" : "rollback candidate";
+      const rollbackState = String(pack.status || "").toUpperCase() === "APPROVED" ? "활성" : "롤백 후보";
       renderSelection(
-        "Pack " + readText(pack.id),
-        "Channel and pack metadata for compare, rollback, and mascot profile checks.",
+        "팩 " + readText(pack.id),
+        "비교, 롤백, 마스코트 프로필 점검에 필요한 채널 및 팩 메타데이터입니다.",
         [
-          { label: "channel", value: readText(pack.channelId) },
-          { label: "version", value: "v" + readText(pack.version) },
-          { label: "status", value: readText(pack.status) },
-          { label: "mascot profile", value: summary.mascotProfile },
-          { label: "selected views", value: summary.selectedViews },
-          { label: "lineage", value: summary.lineage },
-          { label: "latest episode", value: latestEpisode ? readText(latestEpisode.id) + " / " + readText(latestEpisode.topic) : "-" },
-          { label: "rollback state", value: rollbackState }
+          { label: "채널", value: readText(pack.channelId) },
+          { label: "버전", value: "v" + readText(pack.version) },
+          { label: "상태", value: readText(pack.status) },
+          { label: "마스코트 프로필", value: summary.mascotProfile },
+          { label: "선택된 뷰", value: summary.selectedViews },
+          { label: "계보", value: summary.lineage },
+          { label: "최신 에피소드", value: latestEpisode ? readText(latestEpisode.id) + " / " + readText(latestEpisode.topic) : "-" },
+          { label: "롤백 상태", value: rollbackState }
         ],
         [
-          { label: "Pack Detail", href: "/ui/characters?characterPackId=" + encodeURIComponent(packId) },
-          summary.mascotProfile && summary.mascotProfile !== "(not recorded)" ? { label: "Profiles", href: "/ui/profiles?q=" + encodeURIComponent(summary.mascotProfile) } : null,
-          { label: "QC Report", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/qc_report.json" },
-          ${seed.compareHref ? `{ label: "Compare", href: ${JSON.stringify(seed.compareHref)} }` : "null"}
+          { label: "팩 상세", href: "/ui/characters?characterPackId=" + encodeURIComponent(packId) },
+          summary.mascotProfile && summary.mascotProfile !== "(기록 없음)" ? { label: "프로필", href: "/ui/profiles?q=" + encodeURIComponent(summary.mascotProfile) } : null,
+          { label: "QC 리포트", href: "/artifacts/characters/" + encodeURIComponent(packId) + "/qc_report.json" },
+          ${seed.compareHref ? `{ label: "비교", href: ${JSON.stringify(seed.compareHref)} }` : "null"}
         ].filter(Boolean)
       );
     } catch (error) {
-      renderSelection("Pack Lookup Failed", String(error), [], [{ label: "Open Characters", href: "/ui/characters" }]);
+      renderSelection("팩 조회 실패", String(error), [], [{ label: "캐릭터 열기", href: "/ui/characters" }]);
     }
   };
   const loadEpisodeInspector = async (episodeId) => {
     if (!episodeId) return;
-    renderSelection("Loading Episode...", "Reading episode metadata from the API...", [], []);
+    renderSelection("에피소드 불러오는 중...", "API에서 에피소드 메타데이터를 읽는 중입니다...", [], []);
     try {
       const res = await fetch("/api/episodes/" + encodeURIComponent(episodeId));
-      if (!res.ok) throw new Error("Episode detail failed: " + res.status);
+      if (!res.ok) throw new Error("에피소드 상세 조회 실패: " + res.status);
       const json = await res.json();
       const data = json?.data;
       const episode = data?.episode;
-      if (!episode) throw new Error("Episode detail missing data");
+      if (!episode) throw new Error("에피소드 상세 응답에 데이터가 없습니다.");
       const style = readPath(episode, ["datasetVersionSnapshot", "style"]) || {};
       const latestJob = Array.isArray(data.jobs) && data.jobs.length > 0 ? data.jobs[0] : null;
       renderSelection(
-        "Episode " + readText(episode.id),
-        "Latest run context, style profile, and artifact readiness for the selected episode.",
+        "에피소드 " + readText(episode.id),
+        "선택한 에피소드의 최신 실행 맥락, 스타일 프로필, 산출물 준비 상태입니다.",
         [
-          { label: "channel", value: readText(readPath(episode, ["channel", "name"]) || readPath(episode, ["channelId"])) },
-          { label: "topic", value: readText(episode.topic) },
-          { label: "status", value: readText(episode.status) },
-          { label: "character pack", value: readText(episode.characterPackId, "(none)") },
-          { label: "style preset", value: readText(readPath(style, ["stylePresetId"]), "(auto)") },
-          { label: "hook boost", value: readText(readPath(style, ["hookBoost"]), "-") },
-          { label: "latest job", value: latestJob ? readText(latestJob.type) + " / " + readText(latestJob.status) : "(none)" },
-          { label: "artifacts", value: "preview=" + (data?.artifacts?.previewExists ? "yes" : "no") + " / final=" + (data?.artifacts?.finalExists ? "yes" : "no") }
+          { label: "채널", value: readText(readPath(episode, ["channel", "name"]) || readPath(episode, ["channelId"])) },
+          { label: "주제", value: readText(episode.topic) },
+          { label: "상태", value: readText(episode.status) },
+          { label: "캐릭터 팩", value: readText(episode.characterPackId, "(없음)") },
+          { label: "스타일 프리셋", value: readText(readPath(style, ["stylePresetId"]), "(자동)") },
+          { label: "후킹 부스트", value: readText(readPath(style, ["hookBoost"]), "-") },
+          { label: "최신 작업", value: latestJob ? readText(latestJob.type) + " / " + readText(latestJob.status) : "(없음)" },
+          { label: "산출물", value: "프리뷰=" + (data?.artifacts?.previewExists ? "예" : "아니오") + " / 최종=" + (data?.artifacts?.finalExists ? "예" : "아니오") }
         ],
         [
-          { label: "Episode Detail", href: "/ui/episodes/" + encodeURIComponent(episodeId) },
-          { label: "Shot Editor", href: "/ui/episodes/" + encodeURIComponent(episodeId) + "/editor" },
-          { label: "Profiles", href: "/ui/profiles" },
-          { label: "Publish", href: "/ui/publish?episodeId=" + encodeURIComponent(episodeId) }
+          { label: "에피소드 상세", href: "/ui/episodes/" + encodeURIComponent(episodeId) },
+          { label: "샷 에디터", href: "/ui/episodes/" + encodeURIComponent(episodeId) + "/editor" },
+          { label: "프로필", href: "/ui/profiles" },
+          { label: "퍼블리시", href: "/ui/publish?episodeId=" + encodeURIComponent(episodeId) }
         ]
       );
     } catch (error) {
-      renderSelection("Episode Lookup Failed", String(error), [], [{ label: "Open Episodes", href: "/ui/episodes" }]);
+      renderSelection("에피소드 조회 실패", String(error), [], [{ label: "에피소드 열기", href: "/ui/episodes" }]);
     }
   };
 
   const loadAssets = async () => {
     if (!(assetsBody instanceof HTMLElement)) return;
-    assetsBody.innerHTML = renderStateRow(4, "loading", "Loading assets", "Fetching the latest asset intake records.");
+    assetsBody.innerHTML = renderStateRow(4, "loading", "에셋 불러오는 중", "최신 에셋 입력 레코드를 가져오는 중입니다.");
     try {
       const res = await fetch("/api/assets?limit=30");
-      if (!res.ok) throw new Error("Asset list failed: " + res.status);
+      if (!res.ok) throw new Error("에셋 목록 조회 실패: " + res.status);
       const json = await res.json();
       const list = Array.isArray(json?.data) ? json.data : [];
       setCounter("studio-assets-count", list.length);
       if (!list.length) {
-        assetsBody.innerHTML = renderStateRow(4, "empty", "No assets yet", "Upload a reference, variant, background, or chart source to start the asset pipeline.");
+        assetsBody.innerHTML = renderStateRow(4, "empty", "에셋이 아직 없습니다", "레퍼런스, 변형 뷰, 배경, 차트 소스를 업로드해 에셋 파이프라인을 시작하세요.");
         return;
       }
       assetsBody.innerHTML = list.map((asset) => "<tr><td><a href=\\"/ui/assets?assetId=" + encodeURIComponent(String(asset.id || "")) + "\\">" + safe(asset.id) + "</a></td><td>" + safe(asset.assetType) + "</td><td>" + safe(asset.status) + "</td><td>" + safe(asset.createdAt) + "</td></tr>").join("");
       applyFilter(q("studio-filter-assets"), assetsBody);
     } catch (e) {
       setCounter("studio-assets-count", 0);
-      assetsBody.innerHTML = renderStateRow(4, "error", "Asset feed unavailable", String(e));
+      assetsBody.innerHTML = renderStateRow(4, "error", "에셋 피드를 사용할 수 없음", String(e));
     }
   };
 
   const loadPacks = async () => {
     if (!(packsBody instanceof HTMLElement)) return;
-    packsBody.innerHTML = renderStateRow(4, "loading", "Loading character packs", "Pulling the latest generation outputs.");
+    packsBody.innerHTML = renderStateRow(4, "loading", "캐릭터 팩 불러오는 중", "최신 생성 출력을 가져오는 중입니다.");
     try {
       const res = await fetch("/api/character-packs?limit=30");
-      if (!res.ok) throw new Error("Character packs failed: " + res.status);
+      if (!res.ok) throw new Error("캐릭터 팩 조회 실패: " + res.status);
       const json = await res.json();
       const list = Array.isArray(json?.data) ? json.data : [];
       setCounter("studio-packs-count", list.length);
       if (!list.length) {
-        packsBody.innerHTML = renderStateRow(4, "empty", "No character packs yet", "Open Character Generator when you are ready to stage the next pack.");
+        packsBody.innerHTML = renderStateRow(4, "empty", "캐릭터 팩이 아직 없습니다", "다음 팩을 스테이징할 준비가 되면 캐릭터 생성기를 여세요.");
         return;
       }
       packsBody.innerHTML = list.map((pack) => {
@@ -750,28 +750,28 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           markSelectedRows(packsBody, "pack", packId);
           updateSelectionSummary();
           void loadPackInspector(packId);
-          setStatus("Character pack selected: " + (packId || "unknown pack"));
+          setStatus("캐릭터 팩 선택: " + (packId || "알 수 없는 팩"));
         });
       });
       markSelectedRows(packsBody, "pack", selectedPack instanceof HTMLInputElement ? selectedPack.value.trim() : "");
       applyFilter(q("studio-filter-packs"), packsBody);
     } catch (e) {
       setCounter("studio-packs-count", 0);
-      packsBody.innerHTML = renderStateRow(4, "error", "Character pack feed unavailable", String(e));
+      packsBody.innerHTML = renderStateRow(4, "error", "캐릭터 팩 피드를 사용할 수 없음", String(e));
     }
   };
 
   const loadEpisodes = async () => {
     if (!(episodesBody instanceof HTMLElement)) return;
-    episodesBody.innerHTML = renderStateRow(4, "loading", "Loading episodes", "Syncing the latest episode queue state.");
+    episodesBody.innerHTML = renderStateRow(4, "loading", "에피소드 불러오는 중", "최신 에피소드 큐 상태를 동기화하는 중입니다.");
     try {
       const res = await fetch("/api/episodes?limit=30");
-      if (!res.ok) throw new Error("Episodes failed: " + res.status);
+      if (!res.ok) throw new Error("에피소드 조회 실패: " + res.status);
       const json = await res.json();
       const list = Array.isArray(json?.data) ? json.data : [];
       setCounter("studio-episodes-count", list.length);
       if (!list.length) {
-        episodesBody.innerHTML = renderStateRow(4, "empty", "No episodes yet", "Create an episode from the dispatch card to begin the timeline flow.");
+        episodesBody.innerHTML = renderStateRow(4, "empty", "에피소드가 아직 없습니다", "디스패치 카드에서 에피소드를 생성해 타임라인 흐름을 시작하세요.");
         return;
       }
       episodesBody.innerHTML = list.map((episode) => "<tr data-episode-id=\\"" + safe(episode.id) + "\\" data-episode-topic=\\"" + safe(episode.topic || "") + "\\"><td><a href=\\"/ui/episodes/" + encodeURIComponent(String(episode.id || "")) + "\\">" + safe(episode.id) + "</a></td><td>" + safe(episode.topic || "-") + "</td><td>" + safe(episode.status) + "</td><td>" + safe(episode.latestJobType || "-") + "</td></tr>").join("");
@@ -786,28 +786,28 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           markSelectedRows(episodesBody, "episode", episodeId);
           updateSelectionSummary();
           void loadEpisodeInspector(episodeId);
-          setStatus("Episode selected: " + (episodeId || "unknown episode"));
+          setStatus("에피소드 선택: " + (episodeId || "알 수 없는 에피소드"));
         });
       });
       markSelectedRows(episodesBody, "episode", episodeInput instanceof HTMLInputElement ? episodeInput.value.trim() : "");
       applyFilter(q("studio-filter-episodes"), episodesBody);
     } catch (e) {
       setCounter("studio-episodes-count", 0);
-      episodesBody.innerHTML = renderStateRow(4, "error", "Episode feed unavailable", String(e));
+      episodesBody.innerHTML = renderStateRow(4, "error", "에피소드 피드를 사용할 수 없음", String(e));
     }
   };
 
   const loadJobs = async () => {
     if (!(jobsBody instanceof HTMLElement)) return;
-    jobsBody.innerHTML = renderStateRow(5, "loading", "Loading jobs", "Waiting for the latest queue telemetry.");
+    jobsBody.innerHTML = renderStateRow(5, "loading", "작업 불러오는 중", "최신 큐 텔레메트리를 기다리는 중입니다.");
     try {
       const res = await fetch("/api/jobs?limit=30");
-      if (!res.ok) throw new Error("Jobs failed: " + res.status);
+      if (!res.ok) throw new Error("작업 조회 실패: " + res.status);
       const json = await res.json();
       const list = Array.isArray(json?.data) ? json.data : [];
       setCounter("studio-jobs-count", list.length);
       if (!list.length) {
-        jobsBody.innerHTML = renderStateRow(5, "empty", "No jobs yet", "Start a preview, render, or publish step to populate the job rail.");
+        jobsBody.innerHTML = renderStateRow(5, "empty", "작업이 아직 없습니다", "프리뷰, 렌더, 퍼블리시 단계를 시작해 작업 레일을 채우세요.");
         return;
       }
       jobsBody.innerHTML = list.map((job) => {
@@ -817,14 +817,14 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
       applyFilter(q("studio-filter-jobs"), jobsBody);
     } catch (e) {
       setCounter("studio-jobs-count", 0);
-      jobsBody.innerHTML = renderStateRow(5, "error", "Job feed unavailable", String(e));
+      jobsBody.innerHTML = renderStateRow(5, "error", "작업 피드를 사용할 수 없음", String(e));
     }
   };
 
   const refreshAll = async () => {
-    setStatus("Syncing assets, character packs, episodes, and jobs...");
+    setStatus("에셋, 캐릭터 팩, 에피소드, 작업을 동기화하는 중...");
     await Promise.allSettled([loadAssets(), loadPacks(), loadEpisodes(), loadJobs()]);
-    setStatus("Feeds synced. Review activity and choose the next workbench.");
+    setStatus("피드 동기화 완료. 활동을 검토하고 다음 워크벤치를 선택하세요.");
   };
 
   const startAutoRefresh = () => {
@@ -863,19 +863,19 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
     const submit = q("studio-asset-upload-submit");
     if (!(form instanceof HTMLFormElement) || !(output instanceof HTMLElement) || !(submit instanceof HTMLButtonElement)) return;
     submit.disabled = true;
-    output.textContent = "Uploading...";
+    output.textContent = "업로드 중...";
     try {
       const fd = new FormData(form);
       const res = await fetch("/api/assets/upload", { method: "POST", body: fd });
       const json = await res.json();
       output.textContent = JSON.stringify(json, null, 2);
       if (res.ok && json?.data?.assetId) {
-        setStatus("Asset uploaded. Opening asset detail...");
+        setStatus("에셋 업로드 완료. 에셋 상세를 여는 중...");
         window.location.href = "/ui/assets?assetId=" + encodeURIComponent(json.data.assetId);
       }
     } catch (error) {
       output.textContent = String(error);
-      setStatus("Asset upload failed: " + String(error));
+      setStatus("에셋 업로드 실패: " + String(error));
     } finally {
       submit.disabled = false;
     }
@@ -883,7 +883,7 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
 
   q("studio-create-episode")?.addEventListener("click", async () => {
     try {
-      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "Studio Dispatch Episode";
+      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "스튜디오 디스패치 에피소드";
       const res = await fetch("/api/episodes", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -893,22 +893,22 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           characterPackId: selectedPack instanceof HTMLInputElement ? selectedPack.value.trim() || undefined : undefined
         })
       });
-      if (!res.ok) throw new Error(await readError(res, "Episode create failed"));
+      if (!res.ok) throw new Error(await readError(res, "에피소드 생성 실패"));
       const json = await res.json();
       const episodeId = String(json?.data?.episode?.id || "");
       if (episodeInput instanceof HTMLInputElement && episodeId) episodeInput.value = episodeId;
       updateSelectionSummary();
-      setStatus("Episode created: " + (episodeId || "(no id)"));
+      setStatus("에피소드 생성됨: " + (episodeId || "(id 없음)"));
       if (episodeId) void loadEpisodeInspector(episodeId);
       void loadEpisodes();
     } catch (error) {
-      setStatus("Episode create failed: " + String(error));
+      setStatus("에피소드 생성 실패: " + String(error));
     }
   });
 
   q("studio-oneclick")?.addEventListener("click", async () => {
     try {
-      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "Studio Preview Episode";
+      const topic = topicInput instanceof HTMLInputElement && topicInput.value.trim() ? topicInput.value.trim() : "스튜디오 프리뷰 에피소드";
       const createRes = await fetch("/api/episodes", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -919,38 +919,38 @@ ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}${input
           pipeline: { stopAfterPreview: true, autoRenderFinal: false }
         })
       });
-      if (!createRes.ok) throw new Error(await readError(createRes, "Episode create failed"));
+      if (!createRes.ok) throw new Error(await readError(createRes, "에피소드 생성 실패"));
       const createJson = await createRes.json();
       const jobId = String(createJson?.data?.job?.id || "");
       if (jobId) window.location.href = "/ui/jobs/" + encodeURIComponent(jobId);
       else window.location.href = "/ui/episodes";
     } catch (error) {
-      setStatus("One-click start failed: " + String(error));
+      setStatus("원클릭 시작 실패: " + String(error));
     }
   });
 
   q("studio-open-editor")?.addEventListener("click", () => {
     const episodeId = episodeInput instanceof HTMLInputElement ? episodeInput.value.trim() : "";
-    if (!episodeId) return setStatus("Enter episodeId first.");
+    if (!episodeId) return setStatus("먼저 episodeId를 입력하세요.");
     window.location.href = "/ui/episodes/" + encodeURIComponent(episodeId) + "/editor";
   });
 
   q("studio-enqueue-preview")?.addEventListener("click", async () => {
     try {
       const episodeId = episodeInput instanceof HTMLInputElement ? episodeInput.value.trim() : "";
-      if (!episodeId) throw new Error("Enter episodeId first.");
+      if (!episodeId) throw new Error("먼저 episodeId를 입력하세요.");
       const res = await fetch("/api/episodes/" + encodeURIComponent(episodeId) + "/enqueue", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jobType: "RENDER_PREVIEW" })
       });
-      if (!res.ok) throw new Error(await readError(res, "Preview enqueue failed"));
+      if (!res.ok) throw new Error(await readError(res, "프리뷰 큐 등록 실패"));
       const json = await res.json();
       const jobId = String(json?.data?.job?.id || "");
       if (jobId) window.location.href = "/ui/jobs/" + encodeURIComponent(jobId);
-      else setStatus("Preview render enqueued.");
+      else setStatus("프리뷰 렌더가 큐에 등록되었습니다.");
     } catch (error) {
-      setStatus("Preview enqueue failed: " + String(error));
+      setStatus("프리뷰 큐 등록 실패: " + String(error));
     }
   });
 
