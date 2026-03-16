@@ -46,21 +46,23 @@ export function renderUiPage(title: string, body: string): string {
 </head>
 <body data-page-title="${esc(title)}" data-shell-nav='${esc(JSON.stringify(UI_SHELL_FLAT_NAV))}'>
   <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
-  <header class="shell-header">
+  <header class="shell-header top-shell">
     <div class="shell-inner">
       <div class="shell-top">
-        <div class="shell-brand">
+        <div class="shell-brand shell-brand-block">
           <div class="shell-brand-mark"><strong>EC</strong><span>Eraser Cat 컨트롤 플레인</span></div>
-          <h1>오브젝트 중심 운영 콘솔</h1>
-          <p>대시보드, 목록, 상세, 워크벤치, 비교 화면을 하나의 공통 셸로 묶었습니다. 목록은 진입점이고, 실제 결정은 상세, 비교, 복구 패널에서 이뤄집니다.</p>
-        </div>
-        <div class="shell-meta">
-          <div class="shell-chip-row">
-            <span class="shell-chip">관찰 / 생성 / 검토 / 시스템</span>
-            <span class="shell-chip" id="shell-current-object">현재 오브젝트 없음</span>
-            <span class="shell-chip" id="shell-current-state">정상</span>
+          <div class="shell-brand-copy">
+            <h1>오브젝트 중심 운영 콘솔</h1>
+            <p>대시보드, 목록, 상세, 워크벤치, 비교 화면을 하나의 공통 셸로 묶었습니다. 목록은 진입점이고, 실제 결정은 상세, 비교, 복구 패널에서 이뤄집니다.</p>
           </div>
-          <div class="shell-status-row">
+        </div>
+        <div class="shell-meta shell-meta-panel" aria-label="현재 컨트롤 상태">
+          <div class="shell-chip-row shell-context-row">
+            <span class="shell-chip shell-chip-static">관찰 / 생성 / 검토 / 시스템</span>
+            <span class="shell-chip shell-chip-object" id="shell-current-object">현재 오브젝트 없음</span>
+            <span class="shell-chip shell-chip-state" id="shell-current-state" data-severity="muted">정상</span>
+          </div>
+          <div class="shell-status-row shell-status-lane">
             <span class="shell-status"><strong>상태</strong><span>상태 우선 라우팅</span></span>
             <span class="shell-status"><strong>비교</strong><span>비교 검토를 기본 경로로 유지</span></span>
             <span class="shell-status"><strong>복구</strong><span>복구 경로를 항상 노출</span></span>
@@ -77,34 +79,42 @@ export function renderUiPage(title: string, body: string): string {
     </div>
   </header>
   <main id="main-content">
-    <section class="page-intro" aria-label="페이지 소개">
-      <div class="hero-grid">
-        <div class="page-intro-head">
-          <div class="stack">
-            <span class="muted-text shell-page-kicker" id="shell-page-group">관찰</span>
-            <h2 id="shell-page-title">${esc(title)}</h2>
-            <p class="section-intro shell-page-copy" id="shell-page-summary">오브젝트 중심 제어면에서 빠른 라우팅, 상세 작업, 비교 검토, 복구 대응을 진행합니다.</p>
-          </div>
-          <div class="quick-links">
-            <span class="shell-chip"><strong>경로</strong><span id="shell-page-path">/ui</span></span>
-            <span class="shell-chip"><strong>오브젝트</strong><span id="shell-page-object">현재 오브젝트 없음</span></span>
+    <section class="page-intro page-header object-header-shell" aria-label="페이지 소개">
+      <div class="hero-grid page-header-grid">
+        <div class="page-intro-head page-header-main">
+          <div class="stack page-title-stack">
+            <span class="muted-text shell-page-kicker header-kicker" id="shell-page-group">관찰</span>
+            <div class="object-header">
+              <div class="object-header-main">
+                <h2 id="shell-page-title" class="page-title">${esc(title)}</h2>
+                <p class="section-intro shell-page-copy object-header-copy" id="shell-page-summary">오브젝트 중심 제어면에서 빠른 라우팅, 상세 작업, 비교 검토, 복구 대응을 진행합니다.</p>
+              </div>
+              <div class="quick-links object-header-meta">
+                <span class="shell-chip shell-chip-path"><strong>경로</strong><span id="shell-page-path">/ui</span></span>
+                <span class="shell-chip shell-chip-object"><strong>오브젝트</strong><span id="shell-page-object">현재 오브젝트 없음</span></span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="status-panel" aria-label="페이지 상태">
-          <div class="status-row"><span class="label">필터 상태</span><strong id="shell-filter-state">URL 상태 대기</strong></div>
-          <div class="status-row"><span class="label">알림 상태</span><strong id="shell-alert-state">정상</strong></div>
-          <div class="status-row"><span class="label">복구</span><strong id="shell-recovery-state">작업 / 상태 / 비교</strong></div>
+        <div class="status-panel metadata-block page-status-panel" aria-label="페이지 상태">
+          <div class="status-row metadata-row"><span class="label">필터 상태</span><strong id="shell-filter-state">URL 상태 대기</strong></div>
+          <div class="status-row metadata-row"><span class="label">알림 상태</span><strong id="shell-alert-state">정상</strong></div>
+          <div class="status-row metadata-row"><span class="label">복구</span><strong id="shell-recovery-state">작업 / 상태 / 비교</strong></div>
         </div>
       </div>
     </section>
-    <section class="sticky-action-bar" aria-label="고정 액션 바">
-      <span class="muted-text">액션 계층</span>
-      <button id="shell-primary-action" type="button"><span class="kbd">R</span><span id="shell-primary-label">기본 액션 실행</span></button>
-      <button id="shell-filter-action" type="button" class="secondary"><span class="kbd">/</span><span>필터 포커스</span></button>
-      <button id="shell-copy-link" type="button" class="secondary">링크 복사</button>
-      <div class="quick-links">
-        <span class="shell-chip" id="shell-filter-chip">URL 상태 대기</span>
-        <span class="shell-chip" id="shell-alert-chip">정상</span>
+    <section class="sticky-action-bar shell-action-bar" aria-label="고정 액션 바">
+      <div class="shell-action-head">
+        <span class="muted-text">액션 계층</span>
+        <div class="quick-links shell-action-state">
+          <span class="shell-chip shell-chip-filter" id="shell-filter-chip" data-severity="muted">URL 상태 대기</span>
+          <span class="shell-chip shell-chip-state" id="shell-alert-chip" data-severity="muted">정상</span>
+        </div>
+      </div>
+      <div class="shell-action-buttons">
+        <button id="shell-primary-action" type="button"><span class="kbd">R</span><span id="shell-primary-label">기본 액션 실행</span></button>
+        <button id="shell-filter-action" type="button" class="secondary"><span class="kbd">/</span><span>필터 포커스</span></button>
+        <button id="shell-copy-link" type="button" class="secondary">링크 복사</button>
       </div>
     </section>
     ${body}

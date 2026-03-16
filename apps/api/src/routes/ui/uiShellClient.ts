@@ -312,6 +312,23 @@ export const UI_SHELL_CLIENT = `
     if (node.textContent === text) return;
     node.textContent = text;
   };
+  const severityKeys = ["ok", "warn", "bad", "muted", "info"];
+  const setSeverity = (node, tone = "muted") => {
+    if (!(node instanceof HTMLElement)) return;
+    const nextTone = severityKeys.includes(tone) ? tone : "muted";
+    severityKeys.forEach((key) => node.classList.remove("severity-" + key));
+    node.classList.add("severity-" + nextTone);
+    node.dataset.severity = nextTone;
+  };
+  const markSearchActivity = (node, active) => {
+    if (!(node instanceof HTMLElement)) return;
+    const flag = active ? "1" : "0";
+    node.dataset.filterActive = flag;
+    [".search-cluster", ".table-tools", ".toolbar", ".asset-table-tools", ".studio-table-tools"].forEach((selector) => {
+      const container = node.closest(selector);
+      if (container instanceof HTMLElement) container.dataset.searchActive = flag;
+    });
+  };
   const speak = (text) => {
     if (!(live instanceof HTMLElement)) return;
     if (liveTimer !== null) window.clearTimeout(liveTimer);
@@ -326,6 +343,7 @@ export const UI_SHELL_CLIENT = `
     const titleNode = document.createElement("div");
     const messageNode = document.createElement("div");
     node.className = "toast " + tone;
+    node.dataset.severity = tone;
     titleNode.className = "title";
     titleNode.textContent = title;
     messageNode.textContent = message;
@@ -452,10 +470,11 @@ export const UI_SHELL_CLIENT = `
     const active = filterBindings
       .map((binding) => ({ key: binding.key, value: cleanText(binding.node.value) }))
       .filter((binding) => binding.value.length > 0);
-    if (!active.length) return { label: "URL 상태 대기", chip: "URL 상태 대기" };
+    if (!active.length) return { label: "URL 상태 대기", chip: "URL 상태 대기", tone: "muted" };
     return {
       label: active.length + "개 필터 적용 중",
-      chip: active.map((binding) => binding.key + "=" + shorten(binding.value, 18)).join(" | ")
+      chip: active.map((binding) => binding.key + "=" + shorten(binding.value, 18)).join(" | "),
+      tone: "info"
     };
   };
   const primaryActionNode = () => document.querySelector("[data-primary-action='1']:not([disabled]):not([aria-disabled='true'])");
@@ -468,10 +487,12 @@ export const UI_SHELL_CLIENT = `
     if (shellPrimaryAction instanceof HTMLButtonElement) {
       if (shellPrimaryAction.disabled !== !hasPrimary) shellPrimaryAction.disabled = !hasPrimary;
       if (shellPrimaryAction.hidden !== !hasPrimary) shellPrimaryAction.hidden = !hasPrimary;
+      shellPrimaryAction.dataset.available = hasPrimary ? "1" : "0";
     }
     if (shellFilterAction instanceof HTMLButtonElement) {
       if (shellFilterAction.disabled !== !hasSearch) shellFilterAction.disabled = !hasSearch;
       if (shellFilterAction.hidden !== !hasSearch) shellFilterAction.hidden = !hasSearch;
+      shellFilterAction.dataset.available = hasSearch ? "1" : "0";
     }
     document.body.dataset.shellHasPrimary = hasPrimary ? "1" : "0";
     document.body.dataset.shellHasFilter = hasSearch ? "1" : "0";
@@ -498,8 +519,12 @@ export const UI_SHELL_CLIENT = `
     const error = cleanText(url.searchParams.get("error"));
     const errorState = error ? classifyError(error) : null;
     const alertLabel = errorState ? errorState.label : message ? "성공" : "정상";
+    const alertTone = errorState ? errorState.tone : message ? "ok" : "ok";
     const recovery = errorState ? errorState.recovery : nav ? nav.description : "작업 / 상태 / 비교";
+    const recoveryTone = errorState ? errorState.tone : nav ? "info" : "muted";
     const objectText = describeObject(url);
+    document.body.dataset.shellAlertTone = alertTone;
+    document.body.dataset.shellFilterTone = filterSummary.tone;
     setText(shellCurrentObject, objectText);
     setText(shellCurrentState, alertLabel);
     setText(shellPageGroup, nav ? nav.groupLabel : "컨트롤 플레인");
@@ -511,6 +536,12 @@ export const UI_SHELL_CLIENT = `
     setText(shellRecoveryState, recovery);
     setText(shellFilterChip, filterSummary.chip);
     setText(shellAlertChip, alertLabel);
+    setSeverity(shellCurrentState, alertTone);
+    setSeverity(shellAlertState, alertTone);
+    setSeverity(shellAlertChip, alertTone);
+    setSeverity(shellFilterState, filterSummary.tone);
+    setSeverity(shellFilterChip, filterSummary.tone);
+    setSeverity(shellRecoveryState, recoveryTone);
     syncPrimaryAction();
     syncNavCollapse();
   };
@@ -559,17 +590,26 @@ export const UI_SHELL_CLIENT = `
     if (initialValue && !node.value) node.value = initialValue;
     const rows = () => Array.from(table.querySelectorAll("tbody tr"));
     const applyFilter = () => {
-      const query = node.value.trim().toLowerCase();
+      const rawQuery = node.value.trim();
+      const query = rawQuery.toLowerCase();
       rows().forEach((row) => {
         const text = String(row.textContent || "").toLowerCase();
         row.style.display = !query || text.includes(query) ? "" : "none";
       });
-      persistQueryState(queryKey, node.value.trim());
+      markSearchActivity(node, rawQuery.length > 0);
+      table.dataset.filterActive = rawQuery.length > 0 ? "1" : "0";
+      persistQueryState(queryKey, rawQuery);
       syncShellState();
     };
     node.addEventListener("input", applyFilter);
     filterBindings.push({ node, key: queryKey });
     applyFilter();
+  });
+  document.querySelectorAll("input[type='search']").forEach((node) => {
+    if (!(node instanceof HTMLInputElement) || node.dataset.tableFilter) return;
+    const syncSearchAffordance = () => markSearchActivity(node, node.value.trim().length > 0);
+    node.addEventListener("input", syncSearchAffordance);
+    syncSearchAffordance();
   });
   document.querySelectorAll("form").forEach((form) => {
     form.addEventListener("submit", (event) => {
