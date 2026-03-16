@@ -156,7 +156,7 @@ function buildCharacterGeneratorStageMap(): string {
     {
       step: "01",
       title: "Inputs",
-      copy: "모드, 제공자, 프리셋, 종, 주제를 정해 이번 런의 경계를 먼저 닫습니다.",
+      copy: "모드, 제공자, 프리셋, 종, 주제로 Generation Run object의 입력 경계를 먼저 고정합니다.",
       links: [
         { href: "#cg-stage-basic", label: "기본 입력" },
         { href: "/ui/studio", label: "Studio" }
@@ -165,7 +165,7 @@ function buildCharacterGeneratorStageMap(): string {
     {
       step: "02",
       title: "References",
-      copy: "레퍼런스 에셋을 고정하고 더 깊은 입력 점검이 필요하면 Assets로 나갑니다.",
+      copy: "레퍼런스 에셋과 팩 맥락을 붙여 런을 고정하고, 더 깊은 입력 점검이 필요하면 Assets로 돌아갑니다.",
       links: [
         { href: "#cg-stage-context", label: "레퍼런스" },
         { href: "/ui/assets", label: "Assets" }
@@ -174,22 +174,22 @@ function buildCharacterGeneratorStageMap(): string {
     {
       step: "03",
       title: "Workflow Policy",
-      copy: "후보 수, HITL, 가드레일을 먼저 잠가 compare 이후의 승인/복구를 예측 가능하게 만듭니다.",
+      copy: "후보 수, HITL, 가드레일을 먼저 잠가 Candidate set과 이후 Approve/Rollback 판단을 예측 가능하게 만듭니다.",
       links: [{ href: "#cg-stage-policy", label: "정책" }]
     },
     {
       step: "04",
       title: "Candidates",
-      copy: "활성 작업, workflow export, stage diagnostics를 검토해 compare로 넘길 workset을 읽습니다.",
+      copy: "Generation Run object가 만든 candidate workset, route diagnostics, workflow export를 읽고 Compare로 넘깁니다.",
       links: [
-        { href: "#cg-active-job", label: "활성 작업" },
-        { href: "#cg-recent-jobs", label: "히스토리" }
+        { href: "#cg-active-job", label: "Generation Run" },
+        { href: "#cg-recent-jobs", label: "최근 런" }
       ]
     },
     {
       step: "05",
       title: "Compare",
-      copy: "후보 pick, approved-pack compare, preview를 한 단계에서 닫고 필요하면 Characters로 깊은 리뷰를 넘깁니다.",
+      copy: "Candidate compare와 Character Pack handoff를 닫고, 더 깊은 팩 판단이 필요하면 Characters로 넘깁니다.",
       links: [
         { href: "#pick-candidates", label: "HITL 선택" },
         { href: "/ui/characters", label: "Characters" }
@@ -198,15 +198,15 @@ function buildCharacterGeneratorStageMap(): string {
     {
       step: "06",
       title: "Approve / Rollback",
-      copy: "추천 액션, rollback, regenerate, recreate를 approval lane에서만 노출해 복구 패턴을 분리합니다.",
+      copy: "Character Pack approve, rollback, regenerate, recreate를 approval lane에서만 노출해 복구 문법을 고정합니다.",
       links: [
         { href: "#cg-approval-lane", label: "승인 레인" },
-        { href: "/ui/studio", label: "빠른 흐름" }
+        { href: "/ui/studio", label: "Studio" }
       ]
     }
   ];
 
-  return `<section class="card cg-stage-map"><div class="cg-stage-map-head"><div><div class="cg-section-kicker">Stage Rail</div><h2>Inputs -> References -> Workflow Policy -> Candidates -> Compare -> Approve / Rollback</h2></div><p>Studio는 빠른 전환과 디스패치만 담당하고, 이 페이지는 생성 허브와 compare/approve/recover 단계를 담당합니다. 더 깊은 팩 검수는 <a href="/ui/characters">Characters</a>로 보냅니다.</p></div><div class="cg-stage-track">${tiles
+  return `<section class="card cg-stage-map"><div class="cg-stage-map-head"><div><div class="cg-section-kicker">Stage Rail</div><h2>Inputs -> References -> Workflow Policy -> Candidates -> Compare -> Approve / Rollback</h2></div><p>Studio는 빠른 라우팅만 담당하고, 이 페이지는 Generation Run과 Character Pack object를 순서대로 닫는 surface입니다. 깊은 preview/QC/lineage/jobs 검수는 <a href="/ui/characters">Characters</a>로 넘깁니다.</p></div><div class="cg-stage-track">${tiles
     .map(
       (tile) =>
         `<article class="cg-stage-tile"><span class="cg-stage-index">${esc(tile.step)}</span><div class="cg-stage-title">${esc(
@@ -219,17 +219,155 @@ function buildCharacterGeneratorStageMap(): string {
 }
 
 export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopInput): string {
-  return `<section class="card cg-top-card"><div class="cg-top-layout"><div class="cg-hero"><div class="cg-eyebrow">단계형 생성 허브</div><div class="cg-title-row"><div class="cg-title-block"><h1>캐릭터 생성기</h1><p class="cg-subtitle">런을 순서대로 진행하세요. 기본값을 정하고, 레퍼런스 맥락을 고정하고, 워크플로 정책을 잠근 뒤, 필요할 때만 고급 제어를 열고, 마지막으로 후보 비교와 승인/롤백으로 이동합니다. 빠른 오케스트레이션은 <a href="/ui/studio">Studio</a>, 깊은 수동 팩 리뷰는 <a href="/ui/characters">Characters</a>가 맡습니다.</p></div></div><div class="cg-metric-grid"><div class="cg-metric"><span class="cg-metric-label">모드</span><span class="cg-metric-value">프롬프트 + 레퍼런스</span></div><div class="cg-metric"><span class="cg-metric-label">레퍼런스 입력</span><span class="cg-metric-value">필요 시 에셋 기반</span></div><div class="cg-metric"><span class="cg-metric-label">판단 흐름</span><span class="cg-metric-value">후보 -> compare -> 승인</span></div><div class="cg-metric"><span class="cg-metric-label">기본 시드</span><span class="cg-metric-value">${esc(
-    input.defaultSeed
-  )}</span></div></div><div class="cg-flow-grid"><div class="cg-flow-step"><strong>01 기본 입력</strong><span>모드, 제공자, 프리셋, 종, 주제가 이번 런의 범위를 결정합니다.</span></div><div class="cg-flow-step"><strong>02 레퍼런스 / 팩 맥락</strong><span>업로드한 에셋에 런을 고정하고 다운스트림 팩 검토 경로를 확인합니다.</span></div><div class="cg-flow-step"><strong>03 워크플로 정책</strong><span>검토 리소스를 쓰기 전에 후보 수와 승인 정책을 먼저 정합니다.</span></div><div class="cg-flow-step"><strong>04 고급 제어</strong><span>재현성 확보나 수리 작업이 필요할 때만 시드와 프롬프트 수정을 엽니다.</span></div><div class="cg-flow-step"><strong>05 후보 비교</strong><span>활성 작업, compare, HITL pick, preview를 닫고 deep review가 필요하면 Characters로 넘깁니다.</span></div><div class="cg-flow-step"><strong>06 승인 / 롤백</strong><span>비교 결과가 무엇을 앞으로 보낼지 보여준 뒤에만 regenerate/recreate/rollback 도구를 사용합니다.</span></div></div><div class="cg-status-stack">${
-    input.message ? `<div class="notice">${esc(input.message)}</div>` : ""
-  }${input.error ? `<div class="error">${esc(input.error)}</div>` : ""}<div class="cg-summary-note"><strong>운영자 의도:</strong> 동시에 내리는 결정을 줄이고, 검토 자세를 더 강하게 유지하며, 생성에서 compare, approve, rollback으로 이어지는 인계를 눈에 보이게 유지합니다. 빠른 흐름은 Studio, 깊은 수동 팩 검수는 Characters로 분리합니다.</div></div></div><aside class="cg-ops-rail"><div class="cg-ops-card"><h2>운영 레일</h2><div class="cg-ops-list"><div class="cg-ops-item"><strong>기본 -> 맥락</strong><span>먼저 런 프로필을 정하고, 그다음 레퍼런스 에셋이 이번 패스를 고정해야 하는지 판단합니다.</span></div><div class="cg-ops-item"><strong>정책 -> 후보</strong><span>후보 수와 HITL 정책을 계속 보이게 두고, 후보 workset이 compare 단계에 들어갈 준비가 되었는지 확인합니다.</span></div><div class="cg-ops-item"><strong>비교 -> 승인</strong><span>하단 단계에서 후보를 비교하고, 팩 경로를 승인하거나 롤백으로 라우팅합니다.</span></div><div class="cg-ops-item"><strong>깊은 검수 분리</strong><span>preview, QC, lineage, jobs를 한 화면에서 오래 읽어야 하면 Characters로 넘깁니다.</span></div></div></div><div class="cg-ops-card"><h2>바로 가기</h2><div class="cg-link-list"><a href="#cg-stage-basic">기본 입력</a><a href="#cg-stage-context">레퍼런스 맥락</a><a href="#cg-stage-policy">워크플로 정책</a><a href="#cg-stage-advanced">고급 제어</a><a href="#cg-active-job">후보 비교</a><a href="#cg-approval-lane">승인 레인</a><a href="/ui/characters">Characters</a><a href="#cg-recent-jobs">최근 작업</a></div></div></aside></div><form method="post" action="/ui/character-generator/create" class="cg-form-shell"><section class="cg-form-block" id="cg-stage-basic"><div class="cg-form-head"><span class="cg-step">01</span><div><h2>기본 입력</h2><p class="cg-form-copy">수리용 노브나 선택 전략을 고민하기 전에 이번 런의 핵심 경로부터 정하세요.</p></div></div><div class="cg-field-grid tight"><label>모드<select name="mode"><option value="new">new (프롬프트)</option><option value="reference">reference (내 이미지 사용)</option></select><small>레퍼런스 모드는 선택한 에셋을 생성 경로에 주입합니다.</small></label><label>제공자 <span class="hint" data-tooltip="외부 제공자가 실패하면 mock으로 폴백합니다">?</span><select name="provider"><option value="mock">mock (기본 무료)</option><option value="comfyui">comfyui (선택)</option><option value="remoteApi">remoteApi (선택)</option></select><small>제공자 폴백은 유지됩니다. 외부 제공자가 오프라인이면 mock으로 되돌아갑니다.</small></label><label>프롬프트 프리셋<select name="promptPreset">${input.styleOptions}</select><small>팩이 상속해야 할 비주얼 언어를 고르세요.</small></label><label>종<select name="species">${input.speciesOptions}</select><small>이 값을 명시해 두면 이후 비교 판단이 일관되게 유지됩니다.</small></label><label>주제 (선택)<input name="topic" placeholder="지우개 고양이 마스코트"/><small>짧은 주제 라벨이 비교와 히스토리 화면에서 더 잘 읽힙니다.</small></label></div></section><section class="cg-form-block" id="cg-stage-context"><div class="cg-form-head"><span class="cg-step">02</span><div><h2>레퍼런스 / 팩 맥락</h2><p class="cg-form-copy">실행 전에 올바른 소스에 런을 고정하고 팩 검토 경로가 보이도록 유지하세요.</p></div></div><div class="cg-field-grid tight"><label>레퍼런스 에셋<select name="referenceAssetId"><option value="">(없음)</option>${input.referenceOptions}</select><small>포즈, 실루엣, 마스코트 연속성을 물려주고 싶을 때 업로드한 에셋을 선택합니다.</small></label></div><div class="cg-context-grid"><article class="cg-context-card"><h3>레퍼런스 입력</h3><p>더 나은 시작 이미지나 QC 점검이 먼저 필요하면 에셋 화면으로 나가 정규화 출력을 검토한 뒤 더 강한 레퍼런스로 돌아오세요.</p><div class="cg-inline-links"><a href="/ui/assets">에셋 열기</a><a href="/ui/studio">Studio 열기</a></div></article><article class="cg-context-card"><h3>깊은 팩 리뷰 경로</h3><p>이 페이지는 생성과 compare를 담당하고, preview/QC/lineage/jobs를 오래 읽는 수동 검수는 Characters가 담당합니다. 비교 후 더 깊게 읽어야 하면 그쪽으로 넘기세요.</p><div class="cg-inline-links"><a href="/ui/characters">Characters 열기</a><a href="/ui/studio">빠른 흐름으로 복귀</a></div></article></div></section><section class="cg-form-block" id="cg-stage-policy"><div class="cg-form-head"><span class="cg-step">03</span><div><h2>워크플로 정책</h2><p class="cg-form-copy">후보 생성이 시작되기 전에 검토량과 승인 정책을 정해 compare와 recover 단계를 예측 가능하게 유지하세요.</p></div></div><div class="cg-field-grid tight"><label>후보 수 <span class="hint" data-tooltip="후보가 너무 많으면 비용과 시간이 증가합니다">?</span><input name="candidateCount" value="4" inputmode="numeric"/><small>개수가 많을수록 탐색 범위는 넓어지지만 운영자의 검토 부담도 커집니다.</small></label><label>자동 선택<select name="autoPick"><option value="false">false (수동 선택)</option><option value="true">true (자동 선택)</option></select><small>의도적인 compare 단계를 원하면 수동 선택을 유지하세요.</small></label><label>HITL 선택 요구<select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select><small>다운스트림 활성화가 명시적 승인 후에만 이뤄져야 한다면 이 옵션을 켜 두세요.</small></label></div><div class="cg-guardrail-grid"><div class="cg-guardrail"><strong>금지어</strong><span>${esc(
-    input.forbiddenTermsSummary
-  )}</span></div><div class="cg-guardrail"><strong>네거티브 용어</strong><span>${esc(
-    input.negativeTermsSummary
-  )}</span></div></div></section><details class="cg-advanced-shell" id="cg-stage-advanced"><summary><span class="cg-step">04</span><div><h2>고급 제어</h2><p class="cg-form-copy">결정론적 재실행, 프롬프트 수정, 알려진 실패 모드의 강한 억제가 필요할 때만 여세요.</p></div></summary><div class="cg-advanced-body"><div class="cg-field-grid"><label>시드 <span class="hint" data-tooltip="같은 입력과 시드를 쓰면 결정론적 결과를 유지합니다">?</span><input name="seed" value="${esc(
-    input.defaultSeed
-  )}" inputmode="numeric"/><small>같은 프롬프트로 결정론적 재현을 원할 때는 시드를 재사용하세요.</small></label><label>포지티브 프롬프트 (선택)<textarea name="positivePrompt" rows="4" placeholder="귀여운 네모 머리 고양이 마스코트, 흑백 라인아트, 발 모양 손, 지우개 가루 꼬리"></textarea><small>필요한 추가 지시만 넣으세요. 기본 스타일 의도는 이미 프리셋에 포함되어 있습니다.</small></label><label>네거티브 프롬프트 (선택)<textarea name="negativePrompt" rows="4" placeholder="사람 손가락, 광택 애니메이션 음영, 사실적 털, 긴 몸, 텍스트"></textarea><small>비교나 QC에서 같은 실패가 반복될 때 정밀 억제용으로 사용합니다.</small></label></div><div class="cg-toggle-list"><label class="cg-toggle"><input type="checkbox" name="boostNegativePrompt" value="true"/><span>손, 텍스트, 워터마크 같은 알려진 실패 모드를 더 강하게 억제하도록 네거티브 프롬프트를 강화합니다.</span></label></div></div></details><div class="cg-submit-row"><p class="cg-submit-copy">제출하면 후보 생성 런이 시작되고, 화면은 아래의 비교 및 승인 단계로 넘어갑니다. ComfyUI를 사용할 수 없으면 기존 폴백 동작이 유지되어 런은 mock으로 라우팅됩니다.</p><button type="submit" data-primary-action="1" data-primary-label="캐릭터 후보 생성 실행">캐릭터 후보 생성 실행</button></div></form></section>`;
+  return `<section class="card cg-top-card">
+    <div class="cg-top-layout">
+      <div class="cg-hero">
+        <div class="cg-eyebrow">Generation Run / staged decision flow</div>
+        <div class="cg-title-row">
+          <div class="cg-title-block">
+            <h1>캐릭터 생성기</h1>
+            <p class="cg-subtitle">Character Generator는 Generation Run object를 순서대로 닫는 단계형 surface입니다. Inputs와 References로 런 범위를 고정하고, Workflow Policy를 잠근 뒤 Candidate set을 만들고, Compare에서 Character Pack handoff를 읽고, 마지막에 Approve/Rollback으로 결정을 마무리하세요. 빠른 라우팅은 <a href="/ui/studio">Studio</a>, 깊은 evidence 검수는 <a href="/ui/characters">Characters</a>가 맡습니다.</p>
+          </div>
+        </div>
+        <div class="cg-metric-grid">
+          <div class="cg-metric"><span class="cg-metric-label">1차 오브젝트</span><span class="cg-metric-value">Generation Run</span></div>
+          <div class="cg-metric"><span class="cg-metric-label">2차 오브젝트</span><span class="cg-metric-value">Character Pack</span></div>
+          <div class="cg-metric"><span class="cg-metric-label">판단 흐름</span><span class="cg-metric-value">Candidates -> Compare -> Approve</span></div>
+          <div class="cg-metric"><span class="cg-metric-label">기본 시드</span><span class="cg-metric-value">${esc(
+            input.defaultSeed
+          )}</span></div>
+        </div>
+        <div class="cg-flow-grid">
+          <div class="cg-flow-step"><strong>01 Inputs</strong><span>모드, 제공자, 프리셋, 종, 주제가 이번 런의 입력 경계를 결정합니다.</span></div>
+          <div class="cg-flow-step"><strong>02 References</strong><span>레퍼런스 에셋과 팩 맥락을 붙여 Generation Run object를 올바른 소스에 고정합니다.</span></div>
+          <div class="cg-flow-step"><strong>03 Workflow Policy</strong><span>후보 수와 승인 정책을 먼저 잠가 compare 이후의 판단 문법을 고정합니다.</span></div>
+          <div class="cg-flow-step"><strong>04 Candidates</strong><span>제출 후 Generation Run object가 candidate workset, risk, next safe action을 들고 열립니다.</span></div>
+          <div class="cg-flow-step"><strong>05 Compare</strong><span>candidate set과 Character Pack handoff를 읽고, deep review가 필요하면 Characters로 넘깁니다.</span></div>
+          <div class="cg-flow-step"><strong>06 Approve / Rollback</strong><span>비교 결과가 분명해진 뒤에만 regenerate, recreate, rollback으로 이동합니다.</span></div>
+        </div>
+        <div class="cg-status-stack">
+          ${input.message ? `<div class="notice">${esc(input.message)}</div>` : ""}
+          ${input.error ? `<div class="error">${esc(input.error)}</div>` : ""}
+          <div class="cg-summary-note"><strong>운영자 의도:</strong> page보다 Generation Run과 Character Pack object를 먼저 읽게 만들고, object summary -> next safe action -> linked routes -> evidence 순서를 한 흐름으로 유지합니다.</div>
+        </div>
+      </div>
+      <aside class="cg-ops-rail">
+        <div class="cg-ops-card">
+          <h2>운영 레일</h2>
+          <div class="cg-ops-list">
+            <div class="cg-ops-item"><strong>Inputs -> References</strong><span>먼저 런 프로필을 정하고, 그다음 어떤 에셋이 Generation Run의 기준점이어야 하는지 고정합니다.</span></div>
+            <div class="cg-ops-item"><strong>Policy -> Candidates</strong><span>후보 수와 HITL 정책을 고정한 뒤 Candidate set이 compare 단계에 들어갈 준비가 되었는지 읽습니다.</span></div>
+            <div class="cg-ops-item"><strong>Compare -> Character Pack</strong><span>candidate set을 비교한 뒤 Character Pack handoff와 review route를 결정합니다.</span></div>
+            <div class="cg-ops-item"><strong>Approve -> Rollback</strong><span>복구 문법은 approval lane에만 남기고, 깊은 evidence 검수는 Characters로 분리합니다.</span></div>
+          </div>
+        </div>
+        <div class="cg-ops-card">
+          <h2>바로 가기</h2>
+          <div class="cg-link-list">
+            <a href="#cg-stage-basic">기본 입력</a>
+            <a href="#cg-stage-context">레퍼런스 맥락</a>
+            <a href="#cg-stage-policy">워크플로 정책</a>
+            <a href="#cg-stage-advanced">정책 세부 조정</a>
+            <a href="#cg-active-job">Generation Run</a>
+            <a href="#cg-approval-lane">승인 레인</a>
+            <a href="/ui/characters">Characters</a>
+            <a href="#cg-recent-jobs">최근 런</a>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <form method="post" action="/ui/character-generator/create" class="cg-form-shell">
+      <section class="cg-form-block" id="cg-stage-basic">
+        <div class="cg-form-head">
+          <span class="cg-step">01</span>
+          <div>
+            <h2>기본 입력</h2>
+            <p class="cg-form-copy">복구 노브를 만지기 전에, 이번 Generation Run object가 어떤 경계 안에서 움직여야 하는지 먼저 고정하세요.</p>
+          </div>
+        </div>
+        <div class="cg-field-grid tight">
+          <label>모드<select name="mode"><option value="new">new (프롬프트)</option><option value="reference">reference (내 이미지 사용)</option></select><small>레퍼런스 모드는 선택한 에셋을 생성 경로에 주입합니다.</small></label>
+          <label>제공자 <span class="hint" data-tooltip="외부 제공자가 실패하면 mock으로 폴백합니다">?</span><select name="provider"><option value="mock">mock (기본 무료)</option><option value="comfyui">comfyui (선택)</option><option value="remoteApi">remoteApi (선택)</option></select><small>제공자 폴백은 유지됩니다. 외부 제공자가 오프라인이면 mock으로 되돌아갑니다.</small></label>
+          <label>프롬프트 프리셋<select name="promptPreset">${input.styleOptions}</select><small>Character Pack이 상속해야 할 비주얼 언어를 고르세요.</small></label>
+          <label>종<select name="species">${input.speciesOptions}</select><small>이 값을 명시해 두면 이후 compare 판단이 일관되게 유지됩니다.</small></label>
+          <label>주제 (선택)<input name="topic" placeholder="지우개 고양이 마스코트"/><small>짧은 주제 라벨이 run history와 compare surface에서 더 잘 읽힙니다.</small></label>
+        </div>
+      </section>
+      <section class="cg-form-block" id="cg-stage-context">
+        <div class="cg-form-head">
+          <span class="cg-step">02</span>
+          <div>
+            <h2>레퍼런스 / 팩 맥락</h2>
+            <p class="cg-form-copy">실행 전에 올바른 소스에 런을 고정하고, Character Pack review route가 미리 보이도록 유지하세요.</p>
+          </div>
+        </div>
+        <div class="cg-field-grid tight">
+          <label>레퍼런스 에셋<select name="referenceAssetId"><option value="">(없음)</option>${input.referenceOptions}</select><small>포즈, 실루엣, 마스코트 연속성을 물려주고 싶을 때 업로드한 에셋을 선택합니다.</small></label>
+        </div>
+        <div class="cg-context-grid">
+          <article class="cg-context-card">
+            <h3>레퍼런스 입력</h3>
+            <p>더 나은 시작 이미지나 QC 점검이 먼저 필요하면 에셋 화면으로 나가 정규화 출력을 검토한 뒤 더 강한 레퍼런스로 돌아오세요.</p>
+            <div class="cg-inline-links"><a href="/ui/assets">에셋 열기</a><a href="/ui/studio">Studio 열기</a></div>
+          </article>
+          <article class="cg-context-card">
+            <h3>깊은 팩 리뷰 경로</h3>
+            <p>이 페이지는 생성과 compare를 담당하고, preview/QC/lineage/jobs를 오래 읽는 수동 검수는 Characters가 담당합니다. 비교 후 더 깊게 읽어야 하면 그쪽으로 넘기세요.</p>
+            <div class="cg-inline-links"><a href="/ui/characters">Characters 열기</a><a href="/ui/studio">빠른 흐름으로 복귀</a></div>
+          </article>
+        </div>
+      </section>
+      <section class="cg-form-block" id="cg-stage-policy">
+        <div class="cg-form-head">
+          <span class="cg-step">03</span>
+          <div>
+            <h2>워크플로 정책</h2>
+            <p class="cg-form-copy">Candidate set이 열리기 전에 검토량과 승인 정책을 정해 compare와 recover 단계를 예측 가능하게 유지하세요.</p>
+          </div>
+        </div>
+        <div class="cg-field-grid tight">
+          <label>후보 수 <span class="hint" data-tooltip="후보가 너무 많으면 비용과 시간이 증가합니다">?</span><input name="candidateCount" value="4" inputmode="numeric"/><small>개수가 많을수록 탐색 범위는 넓어지지만 운영자의 검토 부담도 커집니다.</small></label>
+          <label>자동 선택<select name="autoPick"><option value="false">false (수동 선택)</option><option value="true">true (자동 선택)</option></select><small>의도적인 compare 단계를 원하면 수동 선택을 유지하세요.</small></label>
+          <label>HITL 선택 요구<select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select><small>다운스트림 활성화가 명시적 승인 후에만 이뤄져야 한다면 이 옵션을 켜 두세요.</small></label>
+        </div>
+        <div class="cg-guardrail-grid">
+          <div class="cg-guardrail"><strong>금지어</strong><span>${esc(input.forbiddenTermsSummary)}</span></div>
+          <div class="cg-guardrail"><strong>네거티브 용어</strong><span>${esc(input.negativeTermsSummary)}</span></div>
+        </div>
+      </section>
+      <details class="cg-advanced-shell" id="cg-stage-advanced">
+        <summary><span class="cg-step">옵션</span><div><h2>정책 세부 조정</h2><p class="cg-form-copy">결정론적 재실행, 프롬프트 수정, 알려진 실패 모드 억제가 필요할 때만 여세요. staged flow의 주 단계는 여전히 Candidates -> Compare -> Approve / Rollback입니다.</p></div></summary>
+        <div class="cg-advanced-body">
+          <div class="cg-field-grid">
+            <label>시드 <span class="hint" data-tooltip="같은 입력과 시드를 쓰면 결정론적 결과를 유지합니다">?</span><input name="seed" value="${esc(
+              input.defaultSeed
+            )}" inputmode="numeric"/><small>같은 프롬프트로 결정론적 재현을 원할 때는 시드를 재사용하세요.</small></label>
+            <label>포지티브 프롬프트 (선택)<textarea name="positivePrompt" rows="4" placeholder="귀여운 네모 머리 고양이 마스코트, 흑백 라인아트, 발 모양 손, 지우개 가루 꼬리"></textarea><small>필요한 추가 지시만 넣으세요. 기본 스타일 의도는 이미 프리셋에 포함되어 있습니다.</small></label>
+            <label>네거티브 프롬프트 (선택)<textarea name="negativePrompt" rows="4" placeholder="사람 손가락, 광택 애니메이션 음영, 사실적 털, 긴 몸, 텍스트"></textarea><small>비교나 QC에서 같은 실패가 반복될 때 정밀 억제용으로 사용합니다.</small></label>
+          </div>
+          <div class="cg-toggle-list">
+            <label class="cg-toggle"><input type="checkbox" name="boostNegativePrompt" value="true"/><span>손, 텍스트, 워터마크 같은 알려진 실패 모드를 더 강하게 억제하도록 네거티브 프롬프트를 강화합니다.</span></label>
+          </div>
+        </div>
+      </details>
+      <div class="cg-submit-row">
+        <p class="cg-submit-copy">제출하면 Stage 04 Candidates가 열리며, Generation Run object가 상태, risk, next safe action, linked routes, evidence를 함께 노출합니다. ComfyUI를 사용할 수 없으면 런은 기존 폴백 정책에 따라 mock으로 라우팅됩니다.</p>
+        <button type="submit" data-primary-action="1" data-primary-label="캐릭터 후보 생성 실행">캐릭터 후보 생성 실행</button>
+      </div>
+      <div class="cg-context-grid">
+        <article class="cg-context-card">
+          <h3>Stage 04 / Generation Run object</h3>
+          <p>제출 후 하단 Candidates 단계에서 run status, policy snapshot, next safe action, evidence를 같은 surface에서 읽습니다.</p>
+          <div class="cg-inline-links"><a href="#cg-active-job">Generation Run 열기</a><a href="#cg-recent-jobs">최근 런 보기</a></div>
+        </article>
+        <article class="cg-context-card">
+          <h3>Stage 05-06 / Character Pack object</h3>
+          <p>Pack build 이후에는 Compare에서 handoff를 읽고, Approve/Rollback은 approval lane에서 닫습니다. 깊은 preview/QC/lineage/jobs 검수는 Characters로 넘깁니다.</p>
+          <div class="cg-inline-links"><a href="#cg-approval-lane">승인 레인</a><a href="/ui/characters">Characters 열기</a></div>
+        </article>
+      </div>
+    </form>
+  </section>`;
 }
 
 export function buildCharacterGeneratorStatusScript(): string {
@@ -259,20 +397,20 @@ export function buildCharacterGeneratorPageBody(input: CharacterGeneratorPageBod
   const compareLane = renderPhaseCard(
     "05",
     "후보 비교",
-    "활성 작업, 후보 pick, pack compare, preview handoff를 한 단계에서 닫으세요. 깊은 수동 검토가 필요하면 Characters로 넘깁니다.",
-    `${renderSlot(input.selectedSection, "cg-slot", "cg-active-job")}${renderSlot(input.compareSection, "cg-slot")}${renderSlot(
+    "Generation Run object와 Candidate set을 먼저 읽고, Character Pack handoff와 compare route를 한 단계에서 닫으세요. 깊은 수동 검토가 필요하면 Characters로 넘깁니다.",
+    `${renderSlot(input.selectedSection, "cg-slot", "cg-active-job")}${renderSlot(
       input.pickSection,
       "cg-slot"
-    )}${renderSlot(input.previewSection, "cg-slot")}`
+    )}${renderSlot(input.previewSection, "cg-slot")}${renderSlot(input.compareSection, "cg-slot")}`
   );
   const approvalLane = renderPhaseCard(
     "06",
     "승인 / 롤백",
-    "비교 결과가 올바른 다음 수순을 분명하게 보여준 뒤에만 권장 액션, rollback, regenerate, recreate 제어를 사용하세요.",
-    `${renderSlot(input.recommendedActionsSection, "cg-slot")}${renderSlot(
-      input.rollbackSection,
+    "비교 결과가 올바른 다음 수순을 분명하게 보여준 뒤에만 next safe action, regenerate, recreate, rollback 제어를 사용하세요.",
+    `${renderSlot(input.recommendedActionsSection, "cg-slot")}${renderSlot(input.regenerateSection, "cg-slot")}${renderSlot(
+      input.recreateSection,
       "cg-slot"
-    )}${renderSlot(input.regenerateSection, "cg-slot")}${renderSlot(input.recreateSection, "cg-slot")}`,
+    )}${renderSlot(input.rollbackSection, "cg-slot")}`,
     "cg-approval-lane",
     "cg-approval-lane"
   );
