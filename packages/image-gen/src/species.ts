@@ -337,16 +337,22 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "cat-first silhouette"
     ],
     negativeTokens: ["dog muzzle", "wolf wedge snout", "button nose", "floppy dog ears", "canine face"],
-    identityTokens: ["pointed cat ears", "two whisker strokes per cheek", "almost no muzzle projection"],
-    anchorTokens: ["same cat ear spacing", "same cat cheek width", "same whisker rhythm"],
+    identityTokens: [
+      "pointed cat ears",
+      "two whisker strokes per cheek",
+      "almost no muzzle projection",
+      "single connected cat silhouette"
+    ],
+    anchorTokens: ["same cat ear spacing", "same cat cheek width", "same whisker rhythm", "same centered upper face placement"],
     guardrails: [
       "do not add a realistic cat nose",
       "do not turn the face into a canine muzzle",
-      "keep whiskers simple and sparse"
+      "keep whiskers simple and sparse",
+      "do not split the cat into detached ear, whisker, or foreground fragments"
     ],
     viewHints: {
       front:
-        "front view should read as cat first, with pointed ears, minimal muzzle, a compact blocky head, exactly two short whisker strokes per side, and full body visible",
+        "front view should read as cat first, with pointed ears, minimal muzzle, a compact blocky head, exactly two short whisker strokes per side, full body visible, a single centered subject, a face sitting high in the upper head, and no duplicate foreground fragments",
       threeQuarter:
         "three-quarter cat should stay compact and cute, show both ears attached, keep both eyes visible, and avoid extra muzzle projection",
       profile:

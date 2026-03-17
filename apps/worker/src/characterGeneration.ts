@@ -5634,6 +5634,28 @@ export function deriveRetryAdjustmentForCandidate(input: {
     notes.push("reinforced single-subject composition");
   }
 
+  if (
+    input.view === "front" &&
+    normalizeGenerationSpecies(input.speciesId) === "cat" &&
+    (reasons.has("fragmented_or_multi_object_front") ||
+      reasons.has("subject_isolation_low") ||
+      reasons.has("cat_ear_silhouette_too_flat") ||
+      reasons.has("face_or_eyes_region_unstable"))
+  ) {
+    extraNegativeTokens.add("detached ear fragment");
+    extraNegativeTokens.add("detached whisker fragment");
+    extraNegativeTokens.add("split silhouette");
+    extraNegativeTokens.add("multiple foreground fragments");
+    extraNegativeTokens.add("low face placement");
+    viewPromptHints.add(
+      "single centered full-body cat mascot, one connected silhouette, face placed high and centered in the upper head, both pointed ears cleanly attached, minimal muzzle, and no detached whisker or ear fragments"
+    );
+    addDelta("front_master", 0.08);
+    addDelta("subject", 0.06);
+    addDelta("composition", 0.06);
+    notes.push("reinforced cat front anchor and silhouette");
+  }
+
   if (candidate?.consistencyScore !== null && typeof candidate?.consistencyScore === "number" && candidate.consistencyScore < 0.34) {
     addDelta("front_master", 0.04);
     addDelta("repair_base", 0.04);
@@ -7181,6 +7203,42 @@ export function shouldDowngradeCanineFrontFragmentationRisk(input: {
     (input.frontSymmetryScore ?? 0) >= profileThresholds.minFrontSymmetryScore &&
     (input.headSquarenessScore ?? 0) >= Math.max(0.18, profileThresholds.frontMasterMinHeadSquarenessScore - 0.08) &&
     (input.handRegionDensityScore ?? 0) >= handDensityFloor
+  );
+}
+
+export function shouldDowngradeCatFrontFragmentationRisk(input: {
+  speciesId?: string;
+  view: CharacterView;
+  subjectFillRatio?: number;
+  subjectIsolationScore?: number;
+  largestComponentShare?: number;
+  significantComponentCount?: number;
+  speciesScore?: number;
+  speciesEarScore?: number;
+  speciesMuzzleScore?: number;
+  targetStyleScore?: number;
+  frontSymmetryScore?: number;
+  headSquarenessScore?: number;
+  handRegionDensityScore?: number;
+}): boolean {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (species !== "cat" || input.view !== "front") {
+    return false;
+  }
+
+  const profileThresholds = resolveMascotQcThresholds(species);
+  return (
+    (input.subjectFillRatio ?? 0) >= 0.05 &&
+    (input.subjectIsolationScore ?? 0) >= Math.max(0.28, profileThresholds.minSubjectIsolationFront - 0.18) &&
+    (input.largestComponentShare ?? 0) >= 0.14 &&
+    (input.significantComponentCount ?? Number.POSITIVE_INFINITY) <= 3 &&
+    (input.speciesScore ?? 0) >= 0.42 &&
+    (input.speciesEarScore ?? 0) >= 0.16 &&
+    (input.speciesMuzzleScore ?? 0) >= 0.48 &&
+    (input.targetStyleScore ?? 0) >= 0.62 &&
+    (input.frontSymmetryScore ?? 0) >= Math.max(0.7, profileThresholds.minFrontSymmetryScore) &&
+    (input.headSquarenessScore ?? 0) >= Math.max(0.22, profileThresholds.frontMasterMinHeadSquarenessScore - 0.04) &&
+    (input.handRegionDensityScore ?? 0) >= 0.18
   );
 }
 
@@ -10177,6 +10235,31 @@ export function scoreCandidate(input: {
         speciesScore,
         speciesMuzzleScore,
         speciesSilhouetteScore,
+        targetStyleScore,
+        frontSymmetryScore,
+        headSquarenessScore,
+        handRegionDensityScore
+      })
+    ) {
+      removeReason(rejections, "fragmented_or_multi_object_front");
+      if (!warnings.includes("subject_isolation_low")) {
+        warnings.push("subject_isolation_low");
+      }
+    }
+
+    if (
+      mascotFrontView &&
+      rejections.includes("fragmented_or_multi_object_front") &&
+      shouldDowngradeCatFrontFragmentationRisk({
+        speciesId: input.speciesId,
+        view: input.candidate.view,
+        subjectFillRatio,
+        subjectIsolationScore,
+        largestComponentShare: input.analysis.largestComponentShare,
+        significantComponentCount: input.analysis.significantComponentCount,
+        speciesScore,
+        speciesEarScore,
+        speciesMuzzleScore,
         targetStyleScore,
         frontSymmetryScore,
         headSquarenessScore,
