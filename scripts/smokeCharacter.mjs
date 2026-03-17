@@ -7,7 +7,10 @@ const POLL_TIMEOUT_MS = Number.parseInt(process.env.SMOKE_TIMEOUT_MS ?? "1200000
 const REQUIRE_CONTINUITY = process.env.SMOKE_REQUIRE_CONTINUITY === "1";
 const REQUESTED_PROVIDER = process.env.SMOKE_CHARACTER_PROVIDER?.trim() || "comfyui";
 const REQUESTED_CANDIDATE_COUNT = Number.parseInt(process.env.SMOKE_CHARACTER_CANDIDATE_COUNT ?? "4", 10);
+const REQUESTED_MAX_ATTEMPTS = Number.parseInt(process.env.SMOKE_CHARACTER_MAX_ATTEMPTS ?? "2", 10);
+const REQUESTED_RETRY_BACKOFF_MS = Number.parseInt(process.env.SMOKE_CHARACTER_RETRY_BACKOFF_MS ?? "1000", 10);
 const REQUESTED_SPECIES = (process.env.SMOKE_CHARACTER_SPECIES?.trim().toLowerCase() || "cat");
+const STOP_AFTER_GENERATE = process.env.SMOKE_CHARACTER_STOP_AFTER_GENERATE === "1";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -25,6 +28,14 @@ function firstLine(value) {
     return "";
   }
   return value.split(/\r?\n/, 1)[0] ?? "";
+}
+
+function shouldRequireWorkflowArtifacts() {
+  return REQUESTED_PROVIDER.trim().toLowerCase() === "comfyui";
+}
+
+function generationProgressPathForJob(jobId) {
+  return path.resolve("out", "characters", "generations", jobId, "generation_progress.json");
 }
 
 async function fetchJson(url, init = {}) {
@@ -56,6 +67,69 @@ async function fetchJson(url, init = {}) {
   return json;
 }
 
+async function fetchCharacterGenerationJobData(jobId) {
+  try {
+    const json = await fetchJson(`${API_BASE_URL}/api/character-generator/jobs/${encodeURIComponent(jobId)}`);
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readGenerationProgressSnapshot(jobId) {
+  const progressPath = generationProgressPathForJob(jobId);
+  try {
+    if (!fs.existsSync(progressPath)) {
+      return null;
+    }
+    const parsed = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function summarizeLiveGenerationState(detailData, jobId) {
+  const progressSnapshot =
+    detailData && typeof detailData === "object" && detailData.progressSnapshot && typeof detailData.progressSnapshot === "object"
+      ? detailData.progressSnapshot
+      : readGenerationProgressSnapshot(jobId);
+  const latestLog =
+    detailData && typeof detailData === "object" && detailData.latestLog && typeof detailData.latestLog === "object"
+      ? detailData.latestLog
+      : null;
+  const stage = typeof progressSnapshot?.stage === "string" ? progressSnapshot.stage : "";
+  const workflowStage = typeof progressSnapshot?.details?.workflowStage === "string"
+    ? progressSnapshot.details.workflowStage
+    : "";
+  const executionViews = Array.isArray(progressSnapshot?.details?.executionViews)
+    ? progressSnapshot.details.executionViews.join(",")
+    : "";
+  const roundsCompleted = Number.isFinite(Number(progressSnapshot?.details?.roundsCompleted))
+    ? Number(progressSnapshot.details.roundsCompleted)
+    : null;
+  const totalRounds = Number.isFinite(Number(progressSnapshot?.details?.totalRounds))
+    ? Number(progressSnapshot.details.totalRounds)
+    : null;
+  const latestMessage = typeof latestLog?.message === "string" ? firstLine(latestLog.message) : "";
+  const latestLogAt = typeof latestLog?.createdAt === "string" ? latestLog.createdAt : "";
+  const updatedAt = typeof progressSnapshot?.updatedAt === "string" ? progressSnapshot.updatedAt : "";
+  const parts = [
+    stage ? `stage=${stage}` : "",
+    workflowStage ? `workflow=${workflowStage}` : "",
+    executionViews ? `views=${executionViews}` : "",
+    roundsCompleted !== null && totalRounds !== null ? `round=${roundsCompleted}/${totalRounds}` : "",
+    latestMessage ? `log=${latestMessage}` : "",
+    updatedAt ? `progressAt=${updatedAt}` : "",
+    latestLogAt ? `logAt=${latestLogAt}` : ""
+  ].filter((entry) => entry.length > 0);
+  return {
+    stage,
+    latestMessage,
+    summary: parts.join(" | ")
+  };
+}
+
 async function pollJob(jobId, label) {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
 
@@ -68,7 +142,12 @@ async function pollJob(jobId, label) {
 
     const status = String(data.status).toUpperCase();
     const progress = typeof data.progress === "number" ? data.progress : 0;
-    process.stdout.write(`\r[smoke:character] ${label} job=${jobId} status=${status} progress=${progress}%   `);
+    const generationDetail =
+      data.type === "GENERATE_CHARACTER_ASSETS" ? await fetchCharacterGenerationJobData(jobId) : null;
+    const liveState = summarizeLiveGenerationState(generationDetail, jobId);
+    process.stdout.write(
+      `\r[smoke:character] ${label} job=${jobId} status=${status} progress=${progress}%${liveState.summary ? ` ${liveState.summary}` : ""}   `
+    );
 
     if (status === "SUCCEEDED") {
       process.stdout.write("\n");
@@ -76,13 +155,23 @@ async function pollJob(jobId, label) {
     }
     if (status === "FAILED" || status === "CANCELLED") {
       process.stdout.write("\n");
-      throw new Error(`${label} job ${jobId} ended with ${status}: ${String(data.lastError ?? "(no error)")}`);
+      throw new Error(
+        `${label} job ${jobId} ended with ${status}: ${String(data.lastError ?? "(no error)")}` +
+          (liveState.summary ? ` | ${liveState.summary}` : "")
+      );
     }
 
     await sleep(POLL_INTERVAL_MS);
   }
 
-  throw new Error(`Timeout while waiting for ${label} job ${jobId}`);
+  const timedOutJob = await fetchJobData(jobId);
+  const generationDetail =
+    timedOutJob.type === "GENERATE_CHARACTER_ASSETS" ? await fetchCharacterGenerationJobData(jobId) : null;
+  const liveState = summarizeLiveGenerationState(generationDetail, jobId);
+  throw new Error(
+    `Timeout while waiting for ${label} job ${jobId} (status=${timedOutJob.status}/${timedOutJob.progress}%)` +
+      (liveState.summary ? ` | ${liveState.summary}` : "")
+  );
 }
 
 async function fetchJobData(jobId) {
@@ -334,6 +423,9 @@ function assertSelectedWorkflowRuntimeDiagnostics(jobData, label) {
 }
 
 function assertWorkflowArtifacts(manifest, label) {
+  if (!shouldRequireWorkflowArtifacts()) {
+    return;
+  }
   if (!manifest || typeof manifest !== "object") {
     throw new Error(`Missing ${label} manifest`);
   }
@@ -396,10 +488,41 @@ function assertWorkflowArtifacts(manifest, label) {
   }
 }
 
+function assertTopCandidateWorkflowArtifacts(manifest, label) {
+  if (!shouldRequireWorkflowArtifacts()) {
+    return;
+  }
+  if (!manifest || typeof manifest !== "object" || !Array.isArray(manifest.candidates)) {
+    throw new Error(`Missing ${label} candidates`);
+  }
+
+  const selectedCandidates = ["front", "threeQuarter", "profile"]
+    .map((view) => pickBestCandidate(manifest, view))
+    .map((best) => manifest.candidates.find((candidate) => candidate?.id === best.id))
+    .filter((candidate) => candidate && typeof candidate === "object");
+
+  if (selectedCandidates.length !== 3) {
+    throw new Error(`Missing ${label} top candidates for all views`);
+  }
+
+  for (const candidate of selectedCandidates) {
+    const workflowFiles = candidate?.providerMeta?.workflowFiles ?? {};
+    const apiPromptPath = ensureString(workflowFiles.apiPromptPath, `${label}.${candidate.id}.workflow.apiPromptPath`);
+    const summaryPath = ensureString(workflowFiles.summaryPath, `${label}.${candidate.id}.workflow.summaryPath`);
+    if (!fs.existsSync(apiPromptPath)) {
+      throw new Error(`Missing ${label}.${candidate.id} workflow_api.json: ${apiPromptPath}`);
+    }
+    if (!fs.existsSync(summaryPath)) {
+      throw new Error(`Missing ${label}.${candidate.id} workflow_summary.json: ${summaryPath}`);
+    }
+  }
+}
+
 async function main() {
   console.log(`[smoke:character] API base: ${API_BASE_URL}`);
   console.log(`[smoke:character] requireContinuity=${REQUIRE_CONTINUITY ? "1" : "0"}`);
   console.log(`[smoke:character] species=${REQUESTED_SPECIES}`);
+  console.log(`[smoke:character] stopAfterGenerate=${STOP_AFTER_GENERATE ? "1" : "0"}`);
 
   const seed = Number.parseInt(process.env.SMOKE_CHARACTER_SEED ?? "4242", 10);
   const topic = `Smoke Character Session ${new Date().toISOString()}`;
@@ -416,8 +539,9 @@ async function main() {
     autoPick: false,
     requireHitlPick: true,
     seed,
-    maxAttempts: 2,
-    retryBackoffMs: 1000
+    maxAttempts: Number.isFinite(REQUESTED_MAX_ATTEMPTS) && REQUESTED_MAX_ATTEMPTS > 0 ? REQUESTED_MAX_ATTEMPTS : 2,
+    retryBackoffMs:
+      Number.isFinite(REQUESTED_RETRY_BACKOFF_MS) && REQUESTED_RETRY_BACKOFF_MS > 0 ? REQUESTED_RETRY_BACKOFF_MS : 1000
   };
 
   const created = await fetchJson(`${API_BASE_URL}/api/character-generator/generate`, {
@@ -466,6 +590,13 @@ async function main() {
   console.log(
     `[smoke:character] best picks front=${frontBest.id}(${frontBest.score.toFixed(3)}), threeQuarter=${threeQuarterBest.id}(${threeQuarterBest.score.toFixed(3)}), profile=${profileBest.id}(${profileBest.score.toFixed(3)})`
   );
+  assertTopCandidateWorkflowArtifacts(manifest, "generateManifest");
+
+  if (STOP_AFTER_GENERATE) {
+    console.log(`[smoke:character] manifest.status=${generateManifestStatus}`);
+    console.log("[smoke:character] PASS (generate-only)");
+    return;
+  }
 
   const pickResult = await fetchJson(`${API_BASE_URL}/api/character-generator/pick`, {
     method: "POST",

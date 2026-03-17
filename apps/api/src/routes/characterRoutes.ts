@@ -2405,6 +2405,10 @@ function getGenerationManifestPath(generateJobId: string): string {
   return path.join(getRepoRoot(), "out", "characters", "generations", generateJobId, "generation_manifest.json");
 }
 
+function getGenerationProgressPath(generateJobId: string): string {
+  return path.join(getRepoRoot(), "out", "characters", "generations", generateJobId, "generation_progress.json");
+}
+
 function toArtifactUrlFromAbsolutePath(filePath: string): string | null {
   const outRoot = path.join(getRepoRoot(), "out");
   const resolved = path.resolve(filePath);
@@ -4481,6 +4485,55 @@ function readGenerationManifest(manifestPath: string): GenerationManifest | null
   };
 }
 
+function readGenerationProgress(progressPath: string): {
+  schemaVersion: string;
+  updatedAt: string;
+  jobId: string;
+  episodeId: string;
+  characterPackId: string;
+  sessionId: string | null;
+  stage: string;
+  progress: number;
+  details: Record<string, unknown>;
+} | null {
+  if (!fs.existsSync(progressPath)) {
+    return null;
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(progressPath, "utf8")) as unknown;
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : "";
+  const stage = typeof raw.stage === "string" ? raw.stage : "";
+  const jobId = typeof raw.jobId === "string" ? raw.jobId : "";
+  const episodeId = typeof raw.episodeId === "string" ? raw.episodeId : "";
+  const characterPackId = typeof raw.characterPackId === "string" ? raw.characterPackId : "";
+  const progress = typeof raw.progress === "number" && Number.isFinite(raw.progress) ? raw.progress : -1;
+  if (!updatedAt || !stage || !jobId || !episodeId || !characterPackId || progress < 0) {
+    return null;
+  }
+
+  return {
+    schemaVersion: typeof raw.schemaVersion === "string" ? raw.schemaVersion : "1.0",
+    updatedAt,
+    jobId,
+    episodeId,
+    characterPackId,
+    sessionId: typeof raw.sessionId === "string" && raw.sessionId.length > 0 ? raw.sessionId : null,
+    stage,
+    progress,
+    details: isRecord(raw.details) ? raw.details : {}
+  };
+}
+
 function extractChannelStylePresets(channelBibleJson: unknown): ChannelStylePreset[] {
   if (!isRecord(channelBibleJson)) {
     return [];
@@ -6204,7 +6257,9 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     }
 
     const manifestPath = getGenerationManifestPath(job.id);
+    const progressPath = getGenerationProgressPath(job.id);
     const manifest = readGenerationManifest(manifestPath);
+    const progressSnapshot = readGenerationProgress(progressPath);
     const packCoherence = manifest?.packCoherence ?? manifest?.providerMeta?.selectionDiagnostics?.packCoherence ?? null;
     const autoReroute = manifest?.autoReroute ?? manifest?.providerMeta?.selectionDiagnostics?.autoReroute ?? null;
     const selectionRisk = manifest?.providerMeta?.selectionDiagnostics?.selectionRisk ?? null;
@@ -6218,6 +6273,31 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const selectedWorkflowRuntimeDiagnostics = resolveSelectedWorkflowRuntimeDiagnostics(manifest);
     const recommendedActions = buildRecommendedActions(manifest);
     const failureSummary = pickFirstLine(job.lastError);
+    const latestLog = job.logs[0]
+      ? {
+          level: job.logs[0].level,
+          message: job.logs[0].message,
+          createdAt: job.logs[0].createdAt,
+          details: job.logs[0].details
+        }
+      : null;
+    const liveProgressSummary = progressSnapshot
+      ? [
+          `stage=${progressSnapshot.stage}`,
+          `progress=${progressSnapshot.progress}%`,
+          typeof progressSnapshot.details.workflowStage === "string"
+            ? `workflow=${progressSnapshot.details.workflowStage}`
+            : "",
+          typeof progressSnapshot.details.passLabel === "string"
+            ? `pass=${progressSnapshot.details.passLabel}`
+            : "",
+          Array.isArray(progressSnapshot.details.executionViews) && progressSnapshot.details.executionViews.length > 0
+            ? `views=${progressSnapshot.details.executionViews.join(",")}`
+            : ""
+        ]
+          .filter((entry) => entry.length > 0)
+          .join(" / ")
+      : null;
 
     return {
       data: {
@@ -6235,6 +6315,9 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         finishedAt: job.finishedAt,
         episode: job.episode,
         manifestPath,
+        progressPath,
+        progressSnapshot,
+        liveProgressSummary,
         manifestExists: manifest !== null,
         manifest,
         packCoherence,
@@ -6252,6 +6335,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         recommendedActions,
         sessionId: manifest?.sessionId ?? null,
         failureSummary,
+        latestLog,
         logs: job.logs
       }
     };

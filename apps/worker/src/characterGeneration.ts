@@ -12339,7 +12339,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     };
     fs.mkdirSync(path.dirname(progressPath), { recursive: true });
     fs.writeFileSync(progressPath, `${JSON.stringify(progressPayload, null, 2)}\n`, "utf8");
-    await helpers.setJobStatus(jobDbId, "RUNNING", { progress });
+    await helpers.setJobStatus(jobDbId, "RUNNING", { progress, lastError: null });
   };
   const session = await upsertGenerationSession({
     prisma,
@@ -13228,6 +13228,17 @@ export async function handleGenerateCharacterAssetsJob(input: {
         : input.stage === "angles"
           ? { start: 44, end: 78 }
           : { start: 44, end: 78 };
+    const inFlightStageProgressCeiling = Math.max(stageProgress.start, stageProgress.end - 1);
+    const resolveInFlightStageProgress = (completedRounds: number): number => {
+      const totalRounds = Math.max(1, autoRetryRounds + 1);
+      const span = Math.max(1, inFlightStageProgressCeiling - stageProgress.start);
+      const normalizedCompletedRounds = Math.min(totalRounds, Math.max(0, completedRounds));
+      if (normalizedCompletedRounds <= 0) {
+        return stageProgress.start;
+      }
+      const stepped = stageProgress.start + Math.floor((span * normalizedCompletedRounds) / totalRounds);
+      return Math.max(stageProgress.start, Math.min(inFlightStageProgressCeiling, stepped));
+    };
     const stageCandidatePlan = clampStageCandidateCount(
       input.candidateCountOverride ?? clamped.candidateCount,
       input.budgetViewCount ?? input.views.length,
@@ -13319,6 +13330,41 @@ export async function handleGenerateCharacterAssetsJob(input: {
         stageRuntimeVariantTags.add(`preflight:source:review:${view}`);
       }
     }
+    const writeStageRetryProgress = async (inputProgress: {
+      completedRounds: number;
+      phase: string;
+      belowThresholdViews?: CharacterView[];
+      retryAdjustments?: Partial<Record<CharacterView, string[]>>;
+      gateDiagnosticsByView?: ReturnType<typeof summarizeRetryGateDiagnosticsByView>;
+      bestScores?: ReturnType<typeof summarizeBestScores>;
+    }): Promise<void> => {
+      await writeGenerationProgress(resolveInFlightStageProgress(inputProgress.completedRounds), `${input.stage}_${inputProgress.phase}`, {
+        views: input.views,
+        executionViews,
+        workflowStage: stageConfig.workflowStage,
+        workflowTemplateVersion: stageConfig.templateVersion,
+        origin: input.origin,
+        passLabel: input.passLabel,
+        reasonCodes: input.reasonCodes,
+        triggerViews: input.triggerViews,
+        roundsCompleted: inputProgress.completedRounds,
+        totalRounds: Math.max(1, autoRetryRounds + 1),
+        acceptedScoreThreshold: Number(stageAcceptedScoreThreshold.toFixed(4)),
+        candidateCount: stageCandidatePlan.candidateCount,
+        ...(inputProgress.belowThresholdViews && inputProgress.belowThresholdViews.length > 0
+          ? { belowThresholdViews: inputProgress.belowThresholdViews }
+          : {}),
+        ...(inputProgress.retryAdjustments && Object.keys(inputProgress.retryAdjustments).length > 0
+          ? { retryAdjustments: inputProgress.retryAdjustments }
+          : {}),
+        ...(inputProgress.gateDiagnosticsByView && Object.keys(inputProgress.gateDiagnosticsByView).length > 0
+          ? { gateDiagnosticsByView: inputProgress.gateDiagnosticsByView }
+          : {}),
+        ...(inputProgress.bestScores && Object.keys(inputProgress.bestScores).length > 0
+          ? { bestScores: inputProgress.bestScores }
+          : {})
+      });
+    };
     if (preflightAssessment.status !== "ok") {
       const stageWarning = `${input.stage} preflight: ${preflightAssessment.summary}`;
       providerWarning = providerWarning ? `${providerWarning} | ${stageWarning}` : stageWarning;
@@ -13854,6 +13900,14 @@ export async function handleGenerateCharacterAssetsJob(input: {
           round: round + 1,
           belowThresholdViews,
           acceptedScoreThreshold: Number(stageAcceptedScoreThreshold.toFixed(4)),
+          retryAdjustments: nextRetryAdjustmentNotes,
+          gateDiagnosticsByView,
+          bestScores: summarizeBestScores(executionViews)
+        });
+        await writeStageRetryProgress({
+          completedRounds: round + 1,
+          phase: "retry_queued",
+          belowThresholdViews,
           retryAdjustments: nextRetryAdjustmentNotes,
           gateDiagnosticsByView,
           bestScores: summarizeBestScores(executionViews)
