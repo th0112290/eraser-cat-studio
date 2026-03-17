@@ -118,6 +118,59 @@ export type GeneratedCharacterManifest = {
   };
 };
 
+type CharacterPackAnchorView = GeneratedCharacterView;
+type CharacterPackAnchorId =
+  | "head_center"
+  | "mouth_center"
+  | "eye_near"
+  | "eye_far"
+  | "ear_near"
+  | "ear_far"
+  | "paw_anchor"
+  | "tail_root";
+type CharacterPackAnchorStatus = "present" | "occluded" | "missing" | "not_applicable";
+type CharacterPackAnchor = {
+  x?: number;
+  y?: number;
+  confidence?: number;
+  status?: CharacterPackAnchorStatus;
+  notes?: string;
+};
+type CharacterPackAnchorViewManifest = Partial<Record<CharacterPackAnchorId, CharacterPackAnchor>>;
+type CharacterPackAnchorViewSummary = {
+  present_anchor_ids?: CharacterPackAnchorId[];
+  missing_anchor_ids?: CharacterPackAnchorId[];
+  notes?: string;
+};
+type CharacterPackAnchorSummary = {
+  covered_views?: CharacterPackAnchorView[];
+  missing_views?: CharacterPackAnchorView[];
+  by_view?: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewSummary>>;
+  notes?: string;
+};
+type CharacterPackAnchorConfidenceSummary = {
+  overall?: number;
+  by_view?: Partial<Record<CharacterPackAnchorView, number>>;
+  notes?: string;
+};
+type CharacterPackAnchorManifest = {
+  views?: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>>;
+  summary?: CharacterPackAnchorSummary;
+  confidence_summary?: CharacterPackAnchorConfidenceSummary;
+};
+
+const CHARACTER_PACK_ANCHOR_VIEWS = ["front", "threeQuarter", "profile"] as const;
+const CHARACTER_PACK_ANCHOR_IDS = [
+  "head_center",
+  "mouth_center",
+  "eye_near",
+  "eye_far",
+  "ear_near",
+  "ear_far",
+  "paw_anchor",
+  "tail_root"
+] as const satisfies readonly CharacterPackAnchorId[];
+
 export type RunGenerateCharacterStillInput = {
   characterId: string;
   positivePrompt: string;
@@ -375,6 +428,10 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function ensureDir(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -394,6 +451,26 @@ function sleep(ms: number): Promise<void> {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function roundNumber(value: number, digits = 4): number {
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
+}
+
+function averageNumbers(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function joinNotes(notes: Array<string | undefined>): string | undefined {
+  const unique = notes
+    .map((entry) => entry?.trim())
+    .filter((entry): entry is string => Boolean(entry && entry.length > 0))
+    .filter((entry, index, all) => all.indexOf(entry) === index);
+  return unique.length > 0 ? unique.join("; ") : undefined;
 }
 
 function characterRootDir(characterId: string): string {
@@ -530,6 +607,10 @@ const BLOCKING_QC_CODES = new Set<string>([
   "VISEME_FACE_VARIATION_MOUTH_OPEN_SMALL",
   "VISEME_FACE_VARIATION_MOUTH_OPEN_WIDE",
   "VISEME_FACE_VARIATION_MOUTH_ROUND_O",
+  "PACK_ANCHOR_MANIFEST",
+  "PACK_ANCHOR_MISSING_FRONT",
+  "PACK_ANCHOR_MISSING_THREEQUARTER",
+  "PACK_ANCHOR_MISSING_PROFILE",
   "PACK_SCHEMA",
   "PACK_REQUIRED_SLOTS",
   "PACK_REQUIRED_VISEMES",
@@ -543,6 +624,11 @@ const MAX_FRONT_EYE_DENSITY = 0.18;
 const MIN_FRONT_MOUTH_DENSITY = 0.0003;
 const MAX_FRONT_MOUTH_DENSITY = 0.08;
 const MIN_VIEW_VARIATION = 0.01;
+const MIN_PACK_ANCHOR_CONFIDENCE = 0.55;
+const MIN_PACK_ANCHOR_VIEW_CONFIDENCE = 0.58;
+const MIN_PACK_ANCHOR_OVERALL_CONFIDENCE = 0.6;
+const MAX_VIEW_LANDMARK_VERTICAL_DELTA = 0.14;
+const MAX_VIEW_LANDMARK_HORIZONTAL_DELTA = 0.18;
 async function loadImageRaster(filePath: string): Promise<LoadedImageRaster> {
   const image = sharp(filePath).rotate().ensureAlpha();
   const metadata = await image.metadata();
@@ -920,6 +1006,156 @@ function detectInteriorDarkComponents(image: LoadedImageRaster, crop: CropBox): 
   return components.filter((component) => !component.touchesBorder).sort((a, b) => b.pixelCount - a.pixelCount);
 }
 
+function cropBoxWithinCrop(parentCrop: CropBox, relativeCrop: CropBox): CropBox {
+  const left = parentCrop.cx - parentCrop.w / 2;
+  const top = parentCrop.cy - parentCrop.h / 2;
+  return clampCropBox({
+    cx: left + parentCrop.w * relativeCrop.cx,
+    cy: top + parentCrop.h * relativeCrop.cy,
+    w: parentCrop.w * relativeCrop.w,
+    h: parentCrop.h * relativeCrop.h
+  });
+}
+
+function boundsFromCropBox(crop: CropBox, coverage = 0): ForegroundBounds {
+  const left = clamp(crop.cx - crop.w / 2, 0, 1);
+  const top = clamp(crop.cy - crop.h / 2, 0, 1);
+  const right = clamp(crop.cx + crop.w / 2, left, 1);
+  const bottom = clamp(crop.cy + crop.h / 2, top, 1);
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: Math.max(0.0001, right - left),
+    height: Math.max(0.0001, bottom - top),
+    centerX: clamp((left + right) / 2, 0, 1),
+    centerY: clamp((top + bottom) / 2, 0, 1),
+    coverage
+  };
+}
+
+function searchContainsComponentCenter(searchCrop: CropBox, component: DarkFeatureComponent): boolean {
+  return (
+    Math.abs(component.centerX - searchCrop.cx) <= searchCrop.w / 2 &&
+    Math.abs(component.centerY - searchCrop.cy) <= searchCrop.h / 2
+  );
+}
+
+function pickBestDarkComponentForSearch(
+  candidates: DarkFeatureComponent[],
+  searchCrop: CropBox,
+  options?: {
+    verticalWeight?: number;
+    widthMultiplier?: number;
+    heightMultiplier?: number;
+  }
+): DarkFeatureComponent | undefined {
+  const verticalWeight = options?.verticalWeight ?? 1.2;
+  const widthMultiplier = options?.widthMultiplier ?? 1.18;
+  const heightMultiplier = options?.heightMultiplier ?? 1.14;
+  return [...candidates]
+    .filter((component) => searchContainsComponentCenter(expandCropBox(searchCrop, widthMultiplier, heightMultiplier), component))
+    .sort((a, b) => {
+      const distanceA = Math.hypot(a.centerX - searchCrop.cx, (a.centerY - searchCrop.cy) * verticalWeight);
+      const distanceB = Math.hypot(b.centerX - searchCrop.cx, (b.centerY - searchCrop.cy) * verticalWeight);
+      return distanceA - distanceB || b.pixelCount - a.pixelCount;
+    })[0];
+}
+
+function fallbackFeatureCropFromDarkCenter(
+  image: LoadedImageRaster,
+  searchCrop: CropBox,
+  widthScale: number,
+  heightScale: number
+): CropBox | undefined {
+  const center = measureDarkFeatureCenter(image, searchCrop);
+  if (!center) {
+    return undefined;
+  }
+  return clampCropBox({
+    cx: center.x,
+    cy: center.y,
+    w: searchCrop.w * widthScale,
+    h: searchCrop.h * heightScale
+  });
+}
+
+function componentDetectionConfidence(component: DarkFeatureComponent, searchCrop: CropBox): number {
+  const distance = Math.hypot(
+    (component.centerX - searchCrop.cx) / Math.max(searchCrop.w, 0.001),
+    ((component.centerY - searchCrop.cy) / Math.max(searchCrop.h, 0.001)) * 1.15
+  );
+  return clamp(
+    0.44 +
+      clamp(component.density / 0.42, 0, 1) * 0.18 +
+      clamp(component.pixelCount / 1400, 0, 1) * 0.18 +
+      (1 - clamp(distance / 0.75, 0, 1)) * 0.16,
+    0.18,
+    0.98
+  );
+}
+
+function boundsDetectionConfidence(bounds: ForegroundBounds, searchCrop: CropBox): number {
+  const distance = Math.hypot(
+    (bounds.centerX - searchCrop.cx) / Math.max(searchCrop.w, 0.001),
+    ((bounds.centerY - searchCrop.cy) / Math.max(searchCrop.h, 0.001)) * 1.1
+  );
+  return clamp(
+    0.4 +
+      clamp(bounds.coverage / 0.3, 0, 1) * 0.24 +
+      clamp(bounds.height / Math.max(searchCrop.h, 0.001), 0, 1) * 0.12 +
+      (1 - clamp(distance / 0.8, 0, 1)) * 0.16,
+    0.16,
+    0.92
+  );
+}
+
+function measureTopForegroundAnchor(
+  image: LoadedImageRaster,
+  crop: CropBox
+): { x: number; y: number; density: number } | null {
+  const region = normalizedRegionToPixels(image, crop);
+  const bandHeight = Math.max(2, Math.floor((region.bottom - region.top) * 0.12));
+  let topY = Number.POSITIVE_INFINITY;
+  let count = 0;
+  let sumX = 0;
+  let sumY = 0;
+  for (let y = region.top; y < region.bottom; y += 1) {
+    let rowHasForeground = false;
+    for (let x = region.left; x < region.right; x += 1) {
+      const offset = (y * image.width + x) * 4;
+      if (!isForegroundPixel(image.data, offset)) {
+        continue;
+      }
+      rowHasForeground = true;
+      if (y < topY) {
+        topY = y;
+        count = 0;
+        sumX = 0;
+        sumY = 0;
+      }
+      if (y <= topY + bandHeight) {
+        count += 1;
+        sumX += x;
+        sumY += y;
+      }
+    }
+    if (rowHasForeground && y > topY + bandHeight) {
+      break;
+    }
+  }
+  if (!Number.isFinite(topY) || count === 0) {
+    return null;
+  }
+  const area = Math.max(1, (region.right - region.left) * (region.bottom - region.top));
+  return {
+    x: sumX / count / image.width,
+    y: sumY / count / image.height,
+    density: count / area
+  };
+}
+
 function detectFrontFaceFeatureCrops(
   image: LoadedImageRaster,
   headCrop: CropBox
@@ -930,36 +1166,6 @@ function detectFrontFaceFeatureCrops(
   components: DarkFeatureComponent[];
 } {
   const components = detectInteriorDarkComponents(image, headCrop);
-  const searchContainsComponentCenter = (searchCrop: CropBox, component: DarkFeatureComponent): boolean =>
-    Math.abs(component.centerX - searchCrop.cx) <= searchCrop.w / 2 &&
-    Math.abs(component.centerY - searchCrop.cy) <= searchCrop.h / 2;
-  const pickBestComponentForSearch = (
-    candidates: DarkFeatureComponent[],
-    searchCrop: CropBox
-  ): DarkFeatureComponent | undefined =>
-    [...candidates]
-      .filter((component) => searchContainsComponentCenter(expandCropBox(searchCrop, 1.18, 1.14), component))
-      .sort((a, b) => {
-        const distanceA = Math.hypot(a.centerX - searchCrop.cx, (a.centerY - searchCrop.cy) * 1.2);
-        const distanceB = Math.hypot(b.centerX - searchCrop.cx, (b.centerY - searchCrop.cy) * 1.2);
-        return distanceA - distanceB || b.pixelCount - a.pixelCount;
-      })[0];
-  const fallbackFeatureCrop = (
-    searchCrop: CropBox,
-    widthScale: number,
-    heightScale: number
-  ): CropBox | undefined => {
-    const center = measureDarkFeatureCenter(image, searchCrop);
-    if (!center) {
-      return undefined;
-    }
-    return clampCropBox({
-      cx: center.x,
-      cy: center.y,
-      w: searchCrop.w * widthScale,
-      h: searchCrop.h * heightScale
-    });
-  };
   const leftEyeSearch = clampCropBox({
     cx: headCrop.cx - headCrop.w * 0.12,
     cy: headCrop.cy + headCrop.h * 0.11,
@@ -981,15 +1187,15 @@ function detectFrontFaceFeatureCrops(
 
   if (components.length === 0) {
     return {
-      leftEye: fallbackFeatureCrop(leftEyeSearch, 0.7, 0.78),
-      rightEye: fallbackFeatureCrop(rightEyeSearch, 0.7, 0.78),
-      mouth: fallbackFeatureCrop(mouthSearch, 0.72, 0.82),
+      leftEye: fallbackFeatureCropFromDarkCenter(image, leftEyeSearch, 0.7, 0.78),
+      rightEye: fallbackFeatureCropFromDarkCenter(image, rightEyeSearch, 0.7, 0.78),
+      mouth: fallbackFeatureCropFromDarkCenter(image, mouthSearch, 0.72, 0.82),
       components
     };
   }
 
-  const leftEyeComponent = pickBestComponentForSearch(components, leftEyeSearch);
-  const rightEyeComponent = pickBestComponentForSearch(
+  const leftEyeComponent = pickBestDarkComponentForSearch(components, leftEyeSearch);
+  const rightEyeComponent = pickBestDarkComponentForSearch(
     components.filter((component) => component !== leftEyeComponent),
     rightEyeSearch
   );
@@ -1005,16 +1211,20 @@ function detectFrontFaceFeatureCrops(
 
   return {
     leftEye: normalizeEyeFeatureCrop(
-      leftEyeComponent ? componentToCropBox(leftEyeComponent, 0.45, 0.45) : fallbackFeatureCrop(leftEyeSearch, 0.7, 0.78) ?? leftEyeSearch,
+      leftEyeComponent
+        ? componentToCropBox(leftEyeComponent, 0.45, 0.45)
+        : fallbackFeatureCropFromDarkCenter(image, leftEyeSearch, 0.7, 0.78) ?? leftEyeSearch,
       headCrop
     ),
     rightEye: normalizeEyeFeatureCrop(
       rightEyeComponent
         ? componentToCropBox(rightEyeComponent, 0.45, 0.45)
-        : fallbackFeatureCrop(rightEyeSearch, 0.7, 0.78) ?? rightEyeSearch,
+        : fallbackFeatureCropFromDarkCenter(image, rightEyeSearch, 0.7, 0.78) ?? rightEyeSearch,
       headCrop
     ),
-    mouth: mouthComponent ? componentToCropBox(mouthComponent, 0.4, 0.55) : fallbackFeatureCrop(mouthSearch, 0.72, 0.82),
+    mouth: mouthComponent
+      ? componentToCropBox(mouthComponent, 0.4, 0.55)
+      : fallbackFeatureCropFromDarkCenter(image, mouthSearch, 0.72, 0.82),
     components
   };
 }
@@ -1159,13 +1369,18 @@ function repairActionForCode(code: string): CharacterPipelineRepairAction {
   if (code === "APPROVED_FRONT_MASTER") {
     return "approve_front_master";
   }
-  if (code.startsWith("VIEW_") || code.startsWith("VIEW_CANVAS_") || code.startsWith("VIEW_HEAD_")) {
+  if (
+    code.startsWith("VIEW_") ||
+    code.startsWith("VIEW_CANVAS_") ||
+    code.startsWith("VIEW_HEAD_") ||
+    code.startsWith("PACK_LANDMARK_CONSISTENCY_")
+  ) {
     return "rerun_view_generation";
   }
   if (code.startsWith("EXPRESSION_") || code.startsWith("EXPRESSION_BODY_") || code.startsWith("EYE_ANCHOR_")) {
     return "rerun_expression_generation";
   }
-  if (code.startsWith("VISEME_") || code.startsWith("MOUTH_ANCHOR_")) {
+  if (code.startsWith("VISEME_") || code.startsWith("MOUTH_ANCHOR_") || code === "PACK_MOUTH_ANCHOR_INSTABILITY") {
     return "rerun_viseme_generation";
   }
   if (code.startsWith("PACK_")) {
@@ -3612,6 +3827,526 @@ function applyCropBoxOverrides(characterId: string, baseCropBoxes: CharacterCrop
   };
 }
 
+function buildAnchorEntry(input: {
+  x?: number;
+  y?: number;
+  confidence?: number;
+  status: CharacterPackAnchorStatus;
+  notes?: string;
+}): CharacterPackAnchor {
+  const entry: CharacterPackAnchor = {
+    status: input.status,
+    ...(typeof input.confidence === "number" ? { confidence: roundNumber(clamp(input.confidence, 0, 1), 3) } : {}),
+    ...(input.notes ? { notes: input.notes } : {})
+  };
+  if (typeof input.x === "number" && typeof input.y === "number") {
+    entry.x = roundNumber(clamp(input.x, 0, 1), 4);
+    entry.y = roundNumber(clamp(input.y, 0, 1), 4);
+  }
+  return entry;
+}
+
+function anchorLabel(
+  view: CharacterPackAnchorView,
+  anchorId: CharacterPackAnchorId,
+  confidence?: number,
+  status?: CharacterPackAnchorStatus
+): string {
+  const suffix: string[] = [];
+  if (typeof confidence === "number") {
+    suffix.push(confidence.toFixed(2));
+  }
+  if (status && status !== "present") {
+    suffix.push(status);
+  }
+  return suffix.length > 0 ? `${view}.${anchorId} (${suffix.join(", ")})` : `${view}.${anchorId}`;
+}
+
+function finalizeCharacterPackAnchorManifest(
+  views: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>>,
+  notes?: string[]
+): CharacterPackAnchorManifest {
+  const normalizedViews: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>> = {};
+  const summaryByView: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewSummary>> = {};
+  const coveredViews: CharacterPackAnchorView[] = [];
+  const missingViews: CharacterPackAnchorView[] = [];
+  const confidenceByView: Partial<Record<CharacterPackAnchorView, number>> = {};
+  const confidenceValues: number[] = [];
+
+  for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
+    const sourceView = views[view] ?? {};
+    const normalizedView: CharacterPackAnchorViewManifest = {};
+    const presentAnchorIds: CharacterPackAnchorId[] = [];
+    const missingAnchorIds: CharacterPackAnchorId[] = [];
+    const occludedAnchorIds: CharacterPackAnchorId[] = [];
+    const viewConfidences: number[] = [];
+
+    for (const anchorId of CHARACTER_PACK_ANCHOR_IDS) {
+      const entry = sourceView[anchorId] ?? buildAnchorEntry({ status: "missing", confidence: 0, notes: "anchor not derived" });
+      normalizedView[anchorId] = entry;
+      if (entry.status === "present") {
+        presentAnchorIds.push(anchorId);
+      } else if (entry.status === "missing") {
+        missingAnchorIds.push(anchorId);
+      } else if (entry.status === "occluded") {
+        occludedAnchorIds.push(anchorId);
+      }
+      if (typeof entry.confidence === "number") {
+        viewConfidences.push(entry.confidence);
+        confidenceValues.push(entry.confidence);
+      }
+    }
+
+    const viewConfidence = averageNumbers(viewConfidences);
+    if (viewConfidence !== null) {
+      confidenceByView[view] = roundNumber(viewConfidence, 3);
+    }
+    if (presentAnchorIds.length > 0 || occludedAnchorIds.length > 0) {
+      coveredViews.push(view);
+    } else {
+      missingViews.push(view);
+    }
+    normalizedViews[view] = normalizedView;
+    summaryByView[view] = {
+      present_anchor_ids: presentAnchorIds,
+      missing_anchor_ids: missingAnchorIds,
+      notes: joinNotes([
+        occludedAnchorIds.length > 0 ? `occluded anchors: ${occludedAnchorIds.join(", ")}` : undefined,
+        viewConfidence !== null ? `mean confidence=${viewConfidence.toFixed(2)}` : undefined
+      ])
+    };
+  }
+
+  const manifestNotes = [
+    "Coordinates are normalized to source view rasters",
+    "Occluded anchors can carry inferred coordinates",
+    ...(notes ?? [])
+  ];
+  const overallConfidence = averageNumbers(confidenceValues);
+  return {
+    views: normalizedViews,
+    summary: {
+      covered_views: coveredViews,
+      missing_views: missingViews,
+      by_view: summaryByView,
+      notes: joinNotes(manifestNotes)
+    },
+    confidence_summary: {
+      ...(overallConfidence !== null ? { overall: roundNumber(overallConfidence, 3) } : {}),
+      by_view: confidenceByView,
+      notes: joinNotes(manifestNotes)
+    }
+  };
+}
+
+function collectAnchorReviewSummary(anchorManifest: CharacterPackAnchorManifest): {
+  missingAnchorIds: string[];
+  lowConfidenceAnchorIds: string[];
+  overallConfidence?: number;
+} {
+  const missingAnchorIds: string[] = [];
+  const lowConfidenceAnchorIds: string[] = [];
+  for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
+    const viewManifest = anchorManifest.views?.[view];
+    for (const anchorId of CHARACTER_PACK_ANCHOR_IDS) {
+      const entry = viewManifest?.[anchorId];
+      if (!entry || entry.status === "missing") {
+        missingAnchorIds.push(anchorLabel(view, anchorId));
+        continue;
+      }
+      if (
+        entry.status !== "not_applicable" &&
+        typeof entry.confidence === "number" &&
+        entry.confidence < MIN_PACK_ANCHOR_CONFIDENCE
+      ) {
+        lowConfidenceAnchorIds.push(anchorLabel(view, anchorId, entry.confidence, entry.status));
+      }
+    }
+  }
+  return {
+    missingAnchorIds,
+    lowConfidenceAnchorIds,
+    ...(typeof anchorManifest.confidence_summary?.overall === "number"
+      ? { overallConfidence: anchorManifest.confidence_summary.overall }
+      : {})
+  };
+}
+
+function applyAnchorOverrideEntry(baseEntry: CharacterPackAnchor, overrideEntry: JsonRecord): CharacterPackAnchor {
+  const status = asString(overrideEntry.status).trim();
+  return buildAnchorEntry({
+    x: asNumber(overrideEntry.x) ?? baseEntry.x,
+    y: asNumber(overrideEntry.y) ?? baseEntry.y,
+    confidence: asNumber(overrideEntry.confidence) ?? baseEntry.confidence,
+    status:
+      status === "present" || status === "occluded" || status === "missing" || status === "not_applicable"
+        ? status
+        : (baseEntry.status ?? "missing"),
+    notes: asString(overrideEntry.notes).trim() || baseEntry.notes
+  });
+}
+
+function applyAnchorOverrides(characterId: string, baseAnchorManifest: CharacterPackAnchorManifest): CharacterPackAnchorManifest {
+  const overridesPath = path.join(characterRootDir(characterId), "pack", "overrides", "anchors.json");
+  if (!fs.existsSync(overridesPath)) {
+    return baseAnchorManifest;
+  }
+  const rawOverrides = readJson<unknown>(overridesPath);
+  const overrideRoot = asRecord(rawOverrides);
+  const overrideViews = asRecord(overrideRoot?.views) ?? overrideRoot;
+  const mergedViews: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>> = {};
+  for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
+    const baseView = { ...(baseAnchorManifest.views?.[view] ?? {}) };
+    const overrideView = asRecord(overrideViews?.[view]);
+    if (overrideView) {
+      for (const anchorId of CHARACTER_PACK_ANCHOR_IDS) {
+        const overrideEntry = asRecord(overrideView[anchorId]);
+        if (!overrideEntry) {
+          continue;
+        }
+        baseView[anchorId] = applyAnchorOverrideEntry(
+          baseView[anchorId] ?? buildAnchorEntry({ status: "missing", confidence: 0 }),
+          overrideEntry
+        );
+      }
+    }
+    mergedViews[view] = baseView;
+  }
+  return finalizeCharacterPackAnchorManifest(mergedViews, ["anchors.json override applied"]);
+}
+
+async function deriveAutoAnchorManifest(
+  manifest: GeneratedCharacterManifest,
+  cropBoxes: CharacterCropBoxes
+): Promise<CharacterPackAnchorManifest> {
+  const views: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>> = {};
+
+  for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
+    const asset = manifest.views[view];
+    if (!asset?.file_path || !fs.existsSync(asset.file_path)) {
+      views[view] = Object.fromEntries(
+        CHARACTER_PACK_ANCHOR_IDS.map((anchorId) => [anchorId, buildAnchorEntry({ status: "missing", confidence: 0, notes: "view asset missing" })])
+      ) as CharacterPackAnchorViewManifest;
+      continue;
+    }
+
+    const raster = await loadImageRaster(asset.file_path);
+    const bodyBounds = measureForegroundBounds(raster) ?? boundsFromCropBox(FULL_IMAGE_CROP, 0);
+    const torsoCrop = cropBoxes.torso[view];
+    const headCrop = cropBoxes.head[view];
+    const headSearch = expandCropBox(headCrop, 1.06, 1.1);
+    const headBounds = measureForegroundBounds(raster, headSearch) ?? boundsFromCropBox(headCrop, 0);
+    const headComponents = detectInteriorDarkComponents(raster, headSearch);
+
+    const provisionalEyeCandidates = headComponents.filter(
+      (component) => component.relativeCenterY >= 0.1 && component.relativeCenterY <= 0.52
+    );
+    const provisionalMouthCandidates = headComponents.filter((component) => component.relativeCenterY >= 0.36);
+    const directionSource =
+      provisionalMouthCandidates.sort((a, b) => b.centerY - a.centerY || b.pixelCount - a.pixelCount)[0] ??
+      provisionalEyeCandidates.sort((a, b) => b.pixelCount - a.pixelCount)[0];
+    const facingSign = view === "front" ? 1 : directionSource ? (directionSource.centerX >= headBounds.centerX ? 1 : -1) : 1;
+    const nearRelativeX = facingSign >= 0 ? 0.64 : 0.36;
+    const farRelativeX = facingSign >= 0 ? 0.36 : 0.64;
+    const earNearRelativeX = facingSign >= 0 ? 0.8 : 0.2;
+    const earFarRelativeX = facingSign >= 0 ? 0.2 : 0.8;
+
+    const frontEyeFarCenter = view === "front" ? measureDarkFeatureCenter(raster, cropBoxes.eyes.left) : null;
+    const frontEyeNearCenter = view === "front" ? measureDarkFeatureCenter(raster, cropBoxes.eyes.right) : null;
+    const frontMouthCenter = view === "front" ? measureDarkFeatureCenter(raster, cropBoxes.mouth) : null;
+
+    const eyeNearSearch =
+      view === "front"
+        ? cropBoxes.eyes.right
+        : cropBoxWithinCrop(headCrop, {
+            cx: nearRelativeX,
+            cy: view === "profile" ? 0.38 : 0.36,
+            w: view === "profile" ? 0.18 : 0.2,
+            h: 0.18
+          });
+    const eyeFarSearch =
+      view === "front"
+        ? cropBoxes.eyes.left
+        : cropBoxWithinCrop(headCrop, {
+            cx: farRelativeX,
+            cy: 0.35,
+            w: view === "profile" ? 0.14 : 0.18,
+            h: 0.18
+          });
+    const mouthSearch =
+      view === "front"
+        ? cropBoxes.mouth
+        : cropBoxWithinCrop(headCrop, {
+            cx: facingSign >= 0 ? (view === "profile" ? 0.68 : 0.62) : view === "profile" ? 0.32 : 0.38,
+            cy: 0.72,
+            w: view === "profile" ? 0.24 : 0.28,
+            h: 0.18
+          });
+    const earNearSearch = cropBoxWithinCrop(headCrop, {
+      cx: earNearRelativeX,
+      cy: view === "profile" ? 0.14 : 0.18,
+      w: view === "profile" ? 0.22 : 0.24,
+      h: view === "profile" ? 0.28 : 0.3
+    });
+    const earFarSearch = cropBoxWithinCrop(headCrop, {
+      cx: earFarRelativeX,
+      cy: 0.18,
+      w: view === "profile" ? 0.18 : 0.22,
+      h: view === "profile" ? 0.24 : 0.28
+    });
+    const pawSearch = cropBoxWithinBounds(bodyBounds, {
+      cx: facingSign >= 0 ? (view === "profile" ? 0.76 : 0.68) : view === "profile" ? 0.24 : 0.32,
+      cy: 0.77,
+      w: view === "profile" ? 0.18 : 0.24,
+      h: 0.24
+    });
+    const tailSearch = cropBoxWithinBounds(bodyBounds, {
+      cx: facingSign >= 0 ? 0.22 : 0.78,
+      cy: 0.61,
+      w: 0.22,
+      h: 0.24
+    });
+
+    const eyeCandidates = headComponents.filter((component) => component.relativeCenterY >= 0.08 && component.relativeCenterY <= 0.52);
+    const mouthCandidates = headComponents.filter((component) => component.relativeCenterY >= 0.36);
+    const eyeNearComponent = view === "front" ? null : pickBestDarkComponentForSearch(eyeCandidates, eyeNearSearch, { verticalWeight: 1.1 });
+    const eyeFarComponent =
+      view === "front"
+        ? null
+        : pickBestDarkComponentForSearch(
+            eyeCandidates.filter((component) => component !== eyeNearComponent),
+            eyeFarSearch,
+            { verticalWeight: 1.1 }
+          );
+    const mouthComponent =
+      view === "front"
+        ? null
+        : pickBestDarkComponentForSearch(mouthCandidates, mouthSearch, {
+            verticalWeight: 1.35,
+            widthMultiplier: 1.24,
+            heightMultiplier: 1.22
+          }) ??
+          [...mouthCandidates].sort((a, b) => b.centerY - a.centerY || b.pixelCount - a.pixelCount)[0];
+
+    const mouthCenter = frontMouthCenter ?? (mouthComponent ? measureDarkFeatureCenter(raster, componentToCropBox(mouthComponent, 0.4, 0.5)) : measureDarkFeatureCenter(raster, mouthSearch));
+    const earNearTip = measureTopForegroundAnchor(raster, earNearSearch);
+    const earFarTip = measureTopForegroundAnchor(raster, earFarSearch);
+    const pawBounds = measureForegroundBounds(raster, pawSearch);
+    const tailBounds = measureForegroundBounds(raster, tailSearch);
+
+    const headCenter = buildAnchorEntry({
+      x: headBounds.centerX,
+      y: headBounds.centerY,
+      confidence: boundsDetectionConfidence(headBounds, headSearch),
+      status: "present",
+      notes: "head silhouette centroid"
+    });
+    const mouthCenterEntry = mouthCenter
+      ? buildAnchorEntry({
+          x: mouthCenter.x,
+          y: mouthCenter.y,
+          confidence:
+            view === "front"
+              ? clamp(0.5 + clamp((mouthCenter.density - MIN_FRONT_MOUTH_DENSITY) / (MAX_FRONT_MOUTH_DENSITY - MIN_FRONT_MOUTH_DENSITY), 0, 1) * 0.3, 0.38, 0.96)
+              : mouthComponent
+                ? componentDetectionConfidence(mouthComponent, mouthSearch)
+                : 0.44,
+          status: "present",
+          notes: view === "front" ? "front mouth crop dark-feature center" : "side muzzle dark-feature center"
+        })
+      : buildAnchorEntry({
+          x: mouthSearch.cx,
+          y: mouthSearch.cy,
+          confidence: 0.22,
+          status: "present",
+          notes: "fallback to current-view mouth search center"
+        });
+
+    const eyeFarEntry =
+      view === "front" && frontEyeFarCenter
+        ? buildAnchorEntry({
+            x: frontEyeFarCenter.x,
+            y: frontEyeFarCenter.y,
+            confidence: clamp(
+              0.5 +
+                clamp((frontEyeFarCenter.density - MIN_FRONT_EYE_DENSITY) / (MAX_FRONT_EYE_DENSITY - MIN_FRONT_EYE_DENSITY), 0, 1) * 0.28,
+              0.4,
+              0.96
+            ),
+            status: "present",
+            notes: "front far-eye crop dark-feature center"
+          })
+        : eyeFarComponent
+          ? buildAnchorEntry({
+              x: eyeFarComponent.centerX,
+              y: eyeFarComponent.centerY,
+              confidence: componentDetectionConfidence(eyeFarComponent, eyeFarSearch),
+              status: "present",
+              notes: "far-eye component localized in current view"
+            })
+          : buildAnchorEntry({
+              x: eyeFarSearch.cx,
+              y: eyeFarSearch.cy,
+              confidence: view === "front" ? 0.28 : view === "profile" ? 0.28 : 0.34,
+              status: view === "front" ? "present" : "occluded",
+              notes: view === "front" ? "fallback to front far-eye crop center" : "far eye inferred from current-view head geometry"
+            });
+    const eyeNearEntry =
+      view === "front" && frontEyeNearCenter
+        ? buildAnchorEntry({
+            x: frontEyeNearCenter.x,
+            y: frontEyeNearCenter.y,
+            confidence: clamp(
+              0.5 +
+                clamp((frontEyeNearCenter.density - MIN_FRONT_EYE_DENSITY) / (MAX_FRONT_EYE_DENSITY - MIN_FRONT_EYE_DENSITY), 0, 1) * 0.28,
+              0.4,
+              0.96
+            ),
+            status: "present",
+            notes: "front near-eye crop dark-feature center"
+          })
+        : eyeNearComponent
+          ? buildAnchorEntry({
+              x: eyeNearComponent.centerX,
+              y: eyeNearComponent.centerY,
+              confidence: componentDetectionConfidence(eyeNearComponent, eyeNearSearch),
+              status: "present",
+              notes: "near-eye component localized in current view"
+            })
+          : buildAnchorEntry({
+              x: eyeNearSearch.cx,
+              y: eyeNearSearch.cy,
+              confidence: 0.22,
+              status: "present",
+              notes: "fallback to near-eye search center"
+            });
+
+    const earNearEntry = earNearTip
+      ? buildAnchorEntry({
+          x: earNearTip.x,
+          y: earNearTip.y,
+          confidence: clamp(0.4 + clamp(earNearTip.density / 0.03, 0, 1) * 0.28, 0.28, 0.9),
+          status: "present",
+          notes: "near-ear top silhouette anchor"
+        })
+      : buildAnchorEntry({
+          x: earNearSearch.cx,
+          y: earNearSearch.cy - earNearSearch.h * 0.22,
+          confidence: 0.24,
+          status: "present",
+          notes: "fallback to near-ear search apex"
+        });
+    const earFarEntry = earFarTip
+      ? buildAnchorEntry({
+          x: earFarTip.x,
+          y: earFarTip.y,
+          confidence: clamp(0.38 + clamp(earFarTip.density / 0.025, 0, 1) * 0.26, 0.26, 0.86),
+          status: "present",
+          notes: "far-ear top silhouette anchor"
+        })
+      : buildAnchorEntry({
+          x: earFarSearch.cx,
+          y: earFarSearch.cy - earFarSearch.h * 0.2,
+          confidence: view === "profile" ? 0.3 : 0.34,
+          status: view === "front" ? "present" : "occluded",
+          notes: view === "front" ? "fallback to front far-ear search apex" : "far ear inferred from current-view head silhouette"
+        });
+
+    const pawAnchor = pawBounds
+      ? buildAnchorEntry({
+          x: facingSign >= 0 ? pawBounds.right - pawBounds.width * 0.12 : pawBounds.left + pawBounds.width * 0.12,
+          y: pawBounds.bottom - pawBounds.height * 0.16,
+          confidence: clamp(0.36 + clamp(pawBounds.coverage / 0.18, 0, 1) * 0.28, 0.24, 0.86),
+          status: "present",
+          notes: "near-paw foreground cluster anchor"
+        })
+      : buildAnchorEntry({
+          x: torsoCrop.cx + facingSign * torsoCrop.w * 0.46,
+          y: torsoCrop.cy + torsoCrop.h * 0.34,
+          confidence: 0.22,
+          status: "present",
+          notes: "fallback to near-paw torso anchor"
+        });
+
+    const tailRoot = tailBounds
+      ? buildAnchorEntry({
+          x: facingSign >= 0 ? tailBounds.right - tailBounds.width * 0.08 : tailBounds.left + tailBounds.width * 0.08,
+          y: clamp((tailBounds.top + tailBounds.bottom) / 2, bodyBounds.top, bodyBounds.bottom),
+          confidence: clamp(0.34 + clamp(tailBounds.coverage / 0.16, 0, 1) * 0.26, 0.24, 0.82),
+          status: "present",
+          notes: "tail-root back-body cluster anchor"
+        })
+      : buildAnchorEntry({
+          x: torsoCrop.cx - facingSign * torsoCrop.w * 0.46,
+          y: torsoCrop.cy + torsoCrop.h * 0.06,
+          confidence: 0.34,
+          status: "occluded",
+          notes: "tail root inferred from back torso edge"
+        });
+
+    views[view] = {
+      head_center: headCenter,
+      mouth_center: mouthCenterEntry,
+      eye_near: eyeNearEntry,
+      eye_far: eyeFarEntry,
+      ear_near: earNearEntry,
+      ear_far: earFarEntry,
+      paw_anchor: pawAnchor,
+      tail_root: tailRoot
+    };
+  }
+
+  return finalizeCharacterPackAnchorManifest(views, ["Heuristic anchors derived from foreground bounds, crop boxes, and view-local feature detection"]);
+}
+
+function coerceCharacterPackAnchorManifest(value: unknown): CharacterPackAnchorManifest | null {
+  const record = asRecord(value);
+  const viewRecord = asRecord(record?.views);
+  if (!viewRecord) {
+    return null;
+  }
+  const views: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>> = {};
+  for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
+    const rawView = asRecord(viewRecord[view]);
+    if (!rawView) {
+      continue;
+    }
+    const parsedView: CharacterPackAnchorViewManifest = {};
+    for (const anchorId of CHARACTER_PACK_ANCHOR_IDS) {
+      const rawEntry = asRecord(rawView[anchorId]);
+      if (!rawEntry) {
+        continue;
+      }
+      const status = asString(rawEntry.status).trim();
+      parsedView[anchorId] = buildAnchorEntry({
+        x: asNumber(rawEntry.x),
+        y: asNumber(rawEntry.y),
+        confidence: asNumber(rawEntry.confidence),
+        status:
+          status === "present" || status === "occluded" || status === "missing" || status === "not_applicable"
+            ? status
+            : "missing",
+        notes: asString(rawEntry.notes).trim() || undefined
+      });
+    }
+    views[view] = parsedView;
+  }
+  return Object.keys(views).length > 0 ? finalizeCharacterPackAnchorManifest(views) : null;
+}
+
+function normalizeAnchorWithinBounds(
+  entry: CharacterPackAnchor | undefined,
+  bounds: ForegroundBounds
+): { x: number; y: number } | null {
+  if (!entry || typeof entry.x !== "number" || typeof entry.y !== "number") {
+    return null;
+  }
+  return {
+    x: clamp((entry.x - bounds.left) / Math.max(bounds.width, 0.0001), 0, 1),
+    y: clamp((entry.y - bounds.top) / Math.max(bounds.height, 0.0001), 0, 1)
+  };
+}
+
 function expandCropBox(crop: CropBox, widthMultiplier: number, heightMultiplier: number, offsetY = 0): CropBox {
   return normalizeCropBox({
     cx: crop.cx,
@@ -4003,9 +4738,14 @@ export async function buildGeneratedCharacterPack(input: {
   );
   const autoCropBoxes = await deriveAutoCropBoxes(manifest);
   const cropBoxes = applyCropBoxOverrides(input.characterId, autoCropBoxes);
+  const autoAnchorManifest = await deriveAutoAnchorManifest(manifest, cropBoxes);
+  const anchorManifest = applyAnchorOverrides(input.characterId, autoAnchorManifest);
+  const anchorReview = collectAnchorReviewSummary(anchorManifest);
   const root = characterRootDir(input.characterId);
   const packDir = path.join(root, "pack");
   const assetsDir = path.join(packDir, "assets");
+  const overrideDir = path.join(packDir, "overrides");
+  const anchorOverridePath = path.join(overrideDir, "anchors.json");
   ensureDir(assetsDir);
 
   const frontView = viewAssetOrThrow(manifest, "front");
@@ -4030,12 +4770,22 @@ export async function buildGeneratedCharacterPack(input: {
     reference_bank: referenceBank,
     auto_proposal: {
       crop_boxes: cropBoxes,
-      override_dir: path.join(packDir, "overrides"),
+      anchors: anchorManifest,
+      override_dir: overrideDir,
+      anchor_override_path: anchorOverridePath,
       review_only: referenceBankReview.reviewOnly,
       required_manual_slots: referenceBankReview.requiredManualSlots,
+      anchor_confidence_summary: anchorManifest.confidence_summary,
+      anchor_review: {
+        overall_confidence: anchorReview.overallConfidence,
+        missing_anchor_ids: anchorReview.missingAnchorIds,
+        low_confidence_anchor_ids: anchorReview.lowConfidenceAnchorIds
+      },
       notes: [
         "crop-boxes.json can override torso/head/eye/mouth crops",
+        "anchors.json can override per-view anchor coordinates/status/confidence",
         "default proposal uses foreground bounds plus front-face feature detection",
+        "anchor coordinates are normalized to each source view raster",
         "full auto segmentation is intentionally avoided; override assets can replace any generated crop",
         ...referenceBankReview.reviewNotes
       ]
@@ -4203,6 +4953,7 @@ export async function buildGeneratedCharacterPack(input: {
         tail_profile: "shape://tail_profile"
       }
     },
+    anchors: anchorManifest,
     slots: [
       { slot_id: "tail", default_image_id: "tail", z_index: 0 },
       { slot_id: "torso", default_image_id: "torso_front_neutral", z_index: 1 },
@@ -4309,7 +5060,14 @@ export async function buildGeneratedCharacterPack(input: {
     reference_bank: referenceBank,
     review_only: referenceBankReview.reviewOnly,
     required_manual_slots: referenceBankReview.requiredManualSlots,
-    review_notes: referenceBankReview.reviewNotes
+    review_notes: referenceBankReview.reviewNotes,
+    anchor_confidence_summary: anchorManifest.confidence_summary,
+    anchor_review: {
+      overall_confidence: anchorReview.overallConfidence,
+      missing_anchor_ids: anchorReview.missingAnchorIds,
+      low_confidence_anchor_ids: anchorReview.lowConfidenceAnchorIds
+    },
+    anchor_override_path: anchorOverridePath
   });
 
   manifest.pack = {
@@ -4889,7 +5647,20 @@ export async function runCharacterAnimationSafeQc(input: {
 
   if (manifest.pack?.pack_path && fs.existsSync(manifest.pack.pack_path)) {
     const pack = readJson<unknown>(manifest.pack.pack_path);
+    const packRecord = asRecord(pack);
+    const packAnchorManifest = coerceCharacterPackAnchorManifest(packRecord?.anchors);
     const validation = schemaValidator.validate("character_pack.schema.json", pack);
+    pushCheck(
+      "PACK_ANCHOR_MANIFEST",
+      Boolean(packAnchorManifest),
+      packAnchorManifest
+        ? "CharacterPack includes a normalized anchor manifest."
+        : "CharacterPack is missing anchors.views data.",
+      packAnchorManifest ? "INFO" : "ERROR",
+      {
+        asset_paths: [manifest.pack.pack_path]
+      }
+    );
     pushCheck(
       "PACK_SCHEMA",
       validation.ok,
@@ -4900,7 +5671,6 @@ export async function runCharacterAnimationSafeQc(input: {
       }
     );
     if (validation.ok) {
-      const packRecord = asRecord(pack);
       const slots = Array.isArray(packRecord?.slots) ? packRecord.slots : [];
       const slotIds = new Set(
         slots
@@ -4935,6 +5705,206 @@ export async function runCharacterAnimationSafeQc(input: {
           asset_paths: [manifest.pack.pack_path]
         }
       );
+
+      if (packAnchorManifest) {
+        for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
+          const viewManifest = packAnchorManifest.views?.[view];
+          const missingAnchors = CHARACTER_PACK_ANCHOR_IDS.filter((anchorId) => {
+            const entry = viewManifest?.[anchorId];
+            return !entry || entry.status === "missing";
+          });
+          const viewConfidence =
+            packAnchorManifest.confidence_summary?.by_view?.[view] ??
+            averageNumbers(
+              CHARACTER_PACK_ANCHOR_IDS.flatMap((anchorId) => {
+                const confidence = viewManifest?.[anchorId]?.confidence;
+                return typeof confidence === "number" ? [confidence] : [];
+              })
+            ) ??
+            0;
+          const lowConfidenceAnchors = CHARACTER_PACK_ANCHOR_IDS.filter((anchorId) => {
+            const confidence = viewManifest?.[anchorId]?.confidence;
+            const status = viewManifest?.[anchorId]?.status;
+            return (
+              status !== "missing" &&
+              status !== "not_applicable" &&
+              typeof confidence === "number" &&
+              confidence < MIN_PACK_ANCHOR_CONFIDENCE
+            );
+          });
+          const missingPassed = missingAnchors.length === 0;
+          const confidencePassed = viewConfidence >= MIN_PACK_ANCHOR_VIEW_CONFIDENCE && lowConfidenceAnchors.length === 0;
+          pushCheck(
+            `PACK_ANCHOR_MISSING_${view.toUpperCase()}`,
+            strictGeneratedChecks ? missingPassed : true,
+            strictGeneratedChecks
+              ? missingPassed
+                ? `${view} anchor manifest covers all expected anchors.`
+                : `${view} anchor manifest is missing: ${missingAnchors.join(", ")}.`
+              : `Synthetic smoke fixture: ${view} anchor coverage check skipped.`,
+            strictGeneratedChecks ? (missingPassed ? "INFO" : "ERROR") : "INFO",
+            {
+              asset_paths: [manifest.pack.pack_path],
+              metric: missingAnchors.length,
+              threshold: 0
+            }
+          );
+          pushCheck(
+            `PACK_ANCHOR_CONFIDENCE_${view.toUpperCase()}`,
+            strictGeneratedChecks ? confidencePassed : true,
+            strictGeneratedChecks
+              ? confidencePassed
+                ? `${view} anchor confidence stays above the review threshold.`
+                : `${view} anchor confidence is low (mean=${viewConfidence.toFixed(2)}; low=${lowConfidenceAnchors.join(", ") || "n/a"}).`
+              : `Synthetic smoke fixture: ${view} anchor confidence check skipped.`,
+            strictGeneratedChecks ? (confidencePassed ? "INFO" : "WARN") : "INFO",
+            {
+              asset_paths: [manifest.pack.pack_path],
+              metric: Number(viewConfidence.toFixed(3)),
+              threshold: MIN_PACK_ANCHOR_VIEW_CONFIDENCE
+            }
+          );
+        }
+
+        const overallAnchorConfidence = packAnchorManifest.confidence_summary?.overall ?? 0;
+        pushCheck(
+          "PACK_ANCHOR_CONFIDENCE_OVERALL",
+          strictGeneratedChecks ? overallAnchorConfidence >= MIN_PACK_ANCHOR_OVERALL_CONFIDENCE : true,
+          strictGeneratedChecks
+            ? overallAnchorConfidence >= MIN_PACK_ANCHOR_OVERALL_CONFIDENCE
+              ? "Overall anchor confidence is within the automatic-accept range."
+              : `Overall anchor confidence is low (${overallAnchorConfidence.toFixed(2)}).`
+            : "Synthetic smoke fixture: overall anchor confidence check skipped.",
+          strictGeneratedChecks
+            ? overallAnchorConfidence >= MIN_PACK_ANCHOR_OVERALL_CONFIDENCE
+              ? "INFO"
+              : "WARN"
+            : "INFO",
+          {
+            asset_paths: [manifest.pack.pack_path],
+            metric: Number(overallAnchorConfidence.toFixed(3)),
+            threshold: MIN_PACK_ANCHOR_OVERALL_CONFIDENCE
+          }
+        );
+
+        const frontPackMouth = packAnchorManifest.views?.front?.mouth_center;
+        if (frontPackMouth && typeof frontPackMouth.x === "number" && typeof frontPackMouth.y === "number") {
+          const frontPackMouthX = frontPackMouth.x;
+          const frontPackMouthY = frontPackMouth.y;
+          const mouthAnchorSearch = expandCropBox(
+            {
+              cx: frontPackMouthX,
+              cy: frontPackMouthY,
+              w: mouthCrop.w,
+              h: mouthCrop.h
+            },
+            1.14,
+            1.22
+          );
+          const drifts = requiredVisemes.flatMap((viseme) => {
+            const asset = manifest.visemes.front?.[viseme];
+            const raster = asset ? rasterMap.get(asset.asset_id) ?? null : null;
+            if (!asset || !raster) {
+              return [];
+            }
+            const center = measureDarkFeatureCenter(raster, mouthAnchorSearch);
+            if (!center) {
+              return [];
+            }
+            return [Math.hypot(center.x - frontPackMouthX, center.y - frontPackMouthY)];
+          });
+          const maxDrift = drifts.length > 0 ? Math.max(...drifts) : Number.POSITIVE_INFINITY;
+          const mouthStable = drifts.length > 0 && maxDrift <= animationQc.maxMouthAnchorDrift;
+          pushCheck(
+            "PACK_MOUTH_ANCHOR_INSTABILITY",
+            strictGeneratedChecks ? mouthStable : true,
+            strictGeneratedChecks
+              ? mouthStable
+                ? "Pack mouth anchor stays stable across viseme renders."
+                : drifts.length === 0
+                  ? "Could not measure mouth anchor stability from pack visemes."
+                  : `Pack mouth anchor drifts too much across visemes (max=${maxDrift.toFixed(3)}).`
+              : "Synthetic smoke fixture: pack mouth anchor stability check skipped.",
+            strictGeneratedChecks ? (mouthStable ? "INFO" : "ERROR") : "INFO",
+            {
+              asset_paths: [manifest.pack.pack_path],
+              metric: Number((Number.isFinite(maxDrift) ? maxDrift : 0).toFixed(3)),
+              threshold: animationQc.maxMouthAnchorDrift
+            }
+          );
+        } else {
+          pushCheck(
+            "PACK_MOUTH_ANCHOR_INSTABILITY",
+            strictGeneratedChecks ? false : true,
+            strictGeneratedChecks
+              ? "Front mouth anchor missing from pack manifest."
+              : "Synthetic smoke fixture: pack mouth anchor stability check skipped.",
+            strictGeneratedChecks ? "ERROR" : "INFO",
+            {
+              asset_paths: [manifest.pack.pack_path]
+            }
+          );
+        }
+
+        const frontViewAnchors = packAnchorManifest.views?.front;
+        const frontViewBounds = referenceFrontRaster ? measureForegroundBounds(referenceFrontRaster) : null;
+        for (const view of ["threeQuarter", "profile"] as const) {
+          const asset = manifest.views[view];
+          const raster = asset ? rasterMap.get(asset.asset_id) ?? null : null;
+          const sideViewAnchors = packAnchorManifest.views?.[view];
+          const sideViewBounds = raster ? measureForegroundBounds(raster) : null;
+          if (!asset || !raster || !frontViewBounds || !frontViewAnchors || !sideViewAnchors || !sideViewBounds) {
+            pushCheck(
+              `PACK_LANDMARK_CONSISTENCY_${view.toUpperCase()}`,
+              strictGeneratedChecks ? false : true,
+              strictGeneratedChecks
+                ? `Could not compare front vs ${view} anchor geometry.`
+                : `Synthetic smoke fixture: ${view} landmark consistency check skipped.`,
+              strictGeneratedChecks ? "WARN" : "INFO",
+              {
+                asset_paths: asset?.file_path ? [asset.file_path] : manifest.pack.pack_path ? [manifest.pack.pack_path] : undefined
+              }
+            );
+            continue;
+          }
+
+          const verticalAnchorIds = ["head_center", "mouth_center", "paw_anchor", "tail_root"] as const;
+          const verticalDrifts = verticalAnchorIds.flatMap((anchorId) => {
+            const frontRelative = normalizeAnchorWithinBounds(frontViewAnchors[anchorId], frontViewBounds);
+            const sideRelative = normalizeAnchorWithinBounds(sideViewAnchors[anchorId], sideViewBounds);
+            return frontRelative && sideRelative ? [Math.abs(sideRelative.y - frontRelative.y)] : [];
+          });
+          const frontPaw = normalizeAnchorWithinBounds(frontViewAnchors.paw_anchor, frontViewBounds);
+          const frontTail = normalizeAnchorWithinBounds(frontViewAnchors.tail_root, frontViewBounds);
+          const sidePaw = normalizeAnchorWithinBounds(sideViewAnchors.paw_anchor, sideViewBounds);
+          const sideTail = normalizeAnchorWithinBounds(sideViewAnchors.tail_root, sideViewBounds);
+          const spanDelta =
+            frontPaw && frontTail && sidePaw && sideTail
+              ? Math.abs(Math.abs(sidePaw.x - sideTail.x) - Math.abs(frontPaw.x - frontTail.x))
+              : Number.POSITIVE_INFINITY;
+          const maxVerticalDelta = verticalDrifts.length > 0 ? Math.max(...verticalDrifts) : Number.POSITIVE_INFINITY;
+          const horizontalThreshold = view === "profile" ? MAX_VIEW_LANDMARK_HORIZONTAL_DELTA * 1.25 : MAX_VIEW_LANDMARK_HORIZONTAL_DELTA;
+          const consistencyPassed =
+            verticalDrifts.length >= 3 &&
+            maxVerticalDelta <= MAX_VIEW_LANDMARK_VERTICAL_DELTA &&
+            spanDelta <= horizontalThreshold;
+          pushCheck(
+            `PACK_LANDMARK_CONSISTENCY_${view.toUpperCase()}`,
+            strictGeneratedChecks ? consistencyPassed : true,
+            strictGeneratedChecks
+              ? consistencyPassed
+                ? `${view} landmarks stay structurally consistent with the front anchor layout.`
+                : `${view} landmark geometry drifts from front anchors (vertical=${maxVerticalDelta.toFixed(3)}, span=${spanDelta.toFixed(3)}).`
+              : `Synthetic smoke fixture: ${view} landmark consistency check skipped.`,
+            strictGeneratedChecks ? (consistencyPassed ? "INFO" : "WARN") : "INFO",
+            {
+              asset_paths: [asset.file_path],
+              metric: Number((Number.isFinite(maxVerticalDelta) ? maxVerticalDelta : 0).toFixed(3)),
+              threshold: MAX_VIEW_LANDMARK_VERTICAL_DELTA
+            }
+          );
+        }
+      }
 
       const imagesRecord = asRecord(asRecord(packRecord?.assets)?.images);
       const eyeOpenPath = resolvePackImageFilePath(imagesRecord?.eye_open);
@@ -4999,6 +5969,10 @@ export async function runCharacterAnimationSafeQc(input: {
       }
     }
   } else {
+    pushCheck("PACK_ANCHOR_MANIFEST", false, "CharacterPack not built yet.", "ERROR");
+    pushCheck("PACK_ANCHOR_MISSING_FRONT", false, "CharacterPack not built yet.", "ERROR");
+    pushCheck("PACK_ANCHOR_MISSING_THREEQUARTER", false, "CharacterPack not built yet.", "ERROR");
+    pushCheck("PACK_ANCHOR_MISSING_PROFILE", false, "CharacterPack not built yet.", "ERROR");
     pushCheck("PACK_SCHEMA", false, "CharacterPack not built yet.", "ERROR");
     pushCheck("PACK_REQUIRED_SLOTS", false, "CharacterPack not built yet.", "ERROR");
     pushCheck("PACK_REQUIRED_VISEMES", false, "CharacterPack not built yet.", "ERROR");
