@@ -3,6 +3,55 @@ export type Vec2 = {
   y: number;
 };
 
+export type CharacterPackAnchorView = "front" | "threeQuarter" | "profile";
+
+export type CharacterPackAnchorId =
+  | "head_center"
+  | "mouth_center"
+  | "eye_near"
+  | "eye_far"
+  | "ear_near"
+  | "ear_far"
+  | "paw_anchor"
+  | "tail_root";
+
+export type CharacterPackAnchorStatus = "present" | "occluded" | "missing" | "not_applicable";
+
+export type CharacterPackAnchor = {
+  x?: number;
+  y?: number;
+  confidence?: number;
+  status?: CharacterPackAnchorStatus;
+  notes?: string;
+};
+
+export type CharacterPackAnchorViewManifest = Partial<Record<CharacterPackAnchorId, CharacterPackAnchor>>;
+
+export type CharacterPackAnchorViewSummary = {
+  present_anchor_ids?: CharacterPackAnchorId[];
+  missing_anchor_ids?: CharacterPackAnchorId[];
+  notes?: string;
+};
+
+export type CharacterPackAnchorSummary = {
+  covered_views?: CharacterPackAnchorView[];
+  missing_views?: CharacterPackAnchorView[];
+  by_view?: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewSummary>>;
+  notes?: string;
+};
+
+export type CharacterPackAnchorConfidenceSummary = {
+  overall?: number;
+  by_view?: Partial<Record<CharacterPackAnchorView, number>>;
+  notes?: string;
+};
+
+export type CharacterPackAnchorManifest = {
+  views?: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>>;
+  summary?: CharacterPackAnchorSummary;
+  confidence_summary?: CharacterPackAnchorConfidenceSummary;
+};
+
 export type CharacterPack = {
   schema_version: "1.0";
   pack_id: string;
@@ -20,6 +69,7 @@ export type CharacterPack = {
   assets: {
     images: Record<string, string>;
   };
+  anchors?: CharacterPackAnchorManifest;
   slots: Array<{
     slot_id: string;
     default_image_id: string;
