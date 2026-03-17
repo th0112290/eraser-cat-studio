@@ -306,6 +306,8 @@ type AutoRerouteStrategy = "targeted_view_retry" | "full_pack_rebuild";
 type AutoRerouteTrigger =
   | "pack_coherence_block"
   | "pack_coherence_review"
+  | "rig_instability_block"
+  | "rig_instability_review"
   | "weak_front_anchor"
   | "continuity_miss"
   | "low_quality_views"
@@ -372,6 +374,9 @@ type SelectionRiskReason =
   | "selected_warning_density_high"
   | "selected_rejections_present"
   | "auto_reroute_failed"
+  | "rig_anchor_confidence_soft"
+  | "rig_landmark_consistency_soft"
+  | "rig_review_only"
   | "runtime_quality_compounded"
   | "runtime_fallback_selected";
 
@@ -393,7 +398,38 @@ type ObservedDefectFamily =
   | "silhouette"
   | "style"
   | "body"
+  | "rig"
   | "runtime";
+
+type CandidateRigStabilitySnapshot = {
+  anchorConfidence: number | null;
+  landmarkConsistency: number | null;
+  lowAnchorConfidence: boolean;
+  hardLowAnchorConfidence: boolean;
+  lowLandmarkConsistency: boolean;
+  hardLowLandmarkConsistency: boolean;
+  safeFrontExpression: boolean;
+  suppressAggressiveYaw: boolean;
+  lockMouthPreset: boolean;
+  reasonCodes: string[];
+};
+
+type RigStabilityDiagnostics = {
+  severity: "none" | "review" | "block";
+  summary: string;
+  reasonCodes: string[];
+  fallbackReasonCodes: string[];
+  warningViews: CharacterView[];
+  blockingViews: CharacterView[];
+  reviewOnly: boolean;
+  safeFrontExpression: boolean;
+  suppressAggressiveYaw: boolean;
+  lockMouthPreset: boolean;
+  anchorConfidenceOverall: number | null;
+  anchorConfidenceByView: Partial<Record<CharacterView, number | null>>;
+  landmarkConsistencyByView: Partial<Record<CharacterView, number | null>>;
+  suggestedAction?: "pick-manually" | "recreate";
+};
 
 type QualityEmbargoAssessment = {
   level: "none" | "review" | "block";
@@ -451,9 +487,12 @@ type SelectionCandidateSummary = {
   candidateId: string;
   score?: number;
   consistencyScore?: number | null;
+  anchorConfidence?: number | null;
+  landmarkConsistency?: number | null;
   warningCount?: number;
   rejectionCount?: number;
   runtimeBucket?: CandidateRuntimeBucketLevel;
+  rigFallbackReasonCodes?: string[];
 };
 
 type SideViewAcceptanceGateDecision =
@@ -927,6 +966,16 @@ function summarizeSelectionCandidate(input: {
     candidate: input.candidate,
     targetStyle: input.targetStyle
   });
+  const rig = summarizeCandidateRigStability({
+    candidate: input.candidate
+  });
+  const rigFallbackReasonCodes = dedupeStrings(
+    [
+      rig.safeFrontExpression ? "safe_front_expression" : "",
+      rig.suppressAggressiveYaw ? "suppress_aggressive_yaw" : "",
+      rig.lockMouthPreset ? "lock_mouth_preset" : ""
+    ].filter((reason) => reason.length > 0)
+  );
   return {
     candidateId: input.candidate.candidate.id,
     score: Number(input.candidate.score.toFixed(4)),
@@ -934,9 +983,12 @@ function summarizeSelectionCandidate(input: {
       typeof input.candidate.consistencyScore === "number"
         ? Number(input.candidate.consistencyScore.toFixed(4))
         : null,
+    anchorConfidence: rig.anchorConfidence,
+    landmarkConsistency: rig.landmarkConsistency,
     warningCount: input.candidate.warnings.length,
     rejectionCount: input.candidate.rejections.length,
-    runtimeBucket: runtimeBucket.level
+    runtimeBucket: runtimeBucket.level,
+    ...(rigFallbackReasonCodes.length > 0 ? { rigFallbackReasonCodes } : {})
   };
 }
 
@@ -1816,6 +1868,7 @@ export function buildRepairTriageGate(input: {
   frontAnchorAcceptedScoreThreshold: number;
   targetStyle?: string;
   packCoherence?: PackCoherenceDiagnostics;
+  rigStability?: RigStabilityDiagnostics;
   speciesId?: string;
   gateDecisionsByView?: Partial<Record<CharacterView, SideViewAcceptanceGateDecisionSummary>>;
 }): {
@@ -1856,6 +1909,10 @@ export function buildRepairTriageGate(input: {
       candidate,
       targetStyle: input.targetStyle
     });
+    const rigSnapshot = summarizeCandidateRigStability({
+      candidate,
+      speciesId: input.speciesId
+    });
     const runtimeDiagnostics = runtimeBucket.diagnostics;
     const runtimeHardReject = runtimeBucket.level === "block";
     const gateRuntimeReasons = gateReasons.filter((reason) => reason.includes("runtime_"));
@@ -1864,6 +1921,11 @@ export function buildRepairTriageGate(input: {
       runtimeBucket.level === "degraded" ||
       runtimeBucket.level === "compound" ||
       candidate.warnings.some((reason) => reason.startsWith("runtime_"));
+    const rigRepairSignal =
+      input.rigStability?.blockingViews.includes(view) ||
+      input.rigStability?.warningViews.includes(view) ||
+      rigSnapshot.lowAnchorConfidence ||
+      rigSnapshot.lowLandmarkConsistency;
     const directive = buildRepairDirectiveProfile({
       stage: "repair",
       view,
@@ -1896,6 +1958,13 @@ export function buildRepairTriageGate(input: {
       priority = "high";
       reasonCodes.push("score_below_repair_floor");
       blockedViews.push(view);
+    } else if (input.rigStability?.blockingViews.includes(view) || rigSnapshot.hardLowAnchorConfidence || rigSnapshot.hardLowLandmarkConsistency) {
+      decision = view === "front" ? "full_repair" : "targeted_repair";
+      priority = "high";
+      reasonCodes.push("rig_instability_block");
+      reasonCodes.push(...(input.rigStability?.reasonCodes.filter((reason) => reason.includes(view)) ?? []));
+      repairViews.push(view);
+      repairBaseByView[view] = candidate;
     } else if (runtimeSoftRepairSignal) {
       decision =
         view === "front" || gateDecision === "hold_lock" || runtimeBucket.level === "compound"
@@ -1921,6 +1990,21 @@ export function buildRepairTriageGate(input: {
       }
       if (runtimeDiagnostics.adapterWarnings.length > 0) {
         reasonCodes.push("runtime_adapter_soft");
+      }
+      repairViews.push(view);
+      repairBaseByView[view] = candidate;
+    } else if (rigRepairSignal) {
+      decision = view === "front" ? "full_repair" : "targeted_repair";
+      priority = view === "front" ? "high" : "medium";
+      reasonCodes.push("rig_instability_review");
+      if (rigSnapshot.safeFrontExpression) {
+        reasonCodes.push("rig_safe_front_expression");
+      }
+      if (rigSnapshot.suppressAggressiveYaw) {
+        reasonCodes.push("rig_yaw_suppressed");
+      }
+      if (rigSnapshot.lockMouthPreset) {
+        reasonCodes.push("rig_mouth_lock");
       }
       repairViews.push(view);
       repairBaseByView[view] = candidate;
@@ -2064,6 +2148,15 @@ export function buildPostRepairAcceptanceGate(input: {
       ].filter((token) => [...reasons].some((reason) => reason.toLowerCase().includes(token)))
     );
   };
+  const summarizeRigRepairIssues = (candidate: ScoredCandidate | undefined): string[] => {
+    const rig = summarizeCandidateRigStability({ candidate });
+    return dedupeStrings(
+      [
+        rig.hardLowAnchorConfidence ? "rig_instability_block" : "",
+        rig.hardLowLandmarkConsistency ? "rig_instability_block" : ""
+      ].filter((reason) => reason.length > 0)
+    );
+  };
 
   const selectedByView: Partial<Record<CharacterView, ScoredCandidate>> = {};
   const repairAcceptanceByView: Partial<Record<CharacterView, PostRepairAcceptanceDecisionSummary>> = {};
@@ -2087,6 +2180,7 @@ export function buildPostRepairAcceptanceGate(input: {
       "runtime_penalty_regressed",
       "runtime_preflight_regressed",
       "runtime_warning_regressed",
+      "rig_instability_block",
       "seam_alpha_jump",
       "contour_break",
       "local_blur_mismatch",
@@ -2134,6 +2228,7 @@ export function buildPostRepairAcceptanceGate(input: {
           repairedIntroducedCriticalFamilies.length > 0 ? "critical_defect_introduced" : "",
           hasConsistencyRecoveryIssue(repaired) ? "consistency_recovery_regressed" : "",
           ...summarizeCompositeRepairIssues(repaired),
+          ...summarizeRigRepairIssues(repaired),
           ...runtimeGuard.reasons
         ].filter((reason) => reason.length > 0)
       );
@@ -2165,6 +2260,8 @@ export function buildPostRepairAcceptanceGate(input: {
       const introducedCriticalFamilies = repairedDefects.filter(
         (family) => isCriticalObservedDefectFamily(family) && !preRepairDefects.includes(family)
       );
+      const preRepairRig = summarizeCandidateRigStability({ candidate: preRepair });
+      const repairedRig = summarizeCandidateRigStability({ candidate: repaired });
       const contenderBelowThreshold = repaired.score < promotionThreshold;
       const hardRejectedReasons = dedupeStrings(
         [
@@ -2176,6 +2273,13 @@ export function buildPostRepairAcceptanceGate(input: {
           hasConsistencyRecoveryIssue(repaired) && !hasConsistencyRecoveryIssue(preRepair)
             ? "consistency_recovery_regressed"
             : "",
+          (!preRepairRig.hardLowAnchorConfidence && repairedRig.hardLowAnchorConfidence) ||
+          (!preRepairRig.hardLowLandmarkConsistency && repairedRig.hardLowLandmarkConsistency)
+            ? "rig_instability_block"
+            : "",
+          (!preRepairRig.safeFrontExpression && repairedRig.safeFrontExpression) ? "rig_safe_front_expression" : "",
+          (!preRepairRig.suppressAggressiveYaw && repairedRig.suppressAggressiveYaw) ? "rig_yaw_suppressed" : "",
+          (!preRepairRig.lockMouthPreset && repairedRig.lockMouthPreset) ? "rig_mouth_lock" : "",
           defectDeltaVsRepair >= 2 ? "defect_count_regressed" : "",
           warningDeltaVsRepair >= 2 ? "warning_count_regressed" : "",
           ...summarizeCompositeRepairIssues(repaired)
@@ -2317,9 +2421,11 @@ function classifyRepairDefectFamilies(candidate: ScoredCandidate | undefined): {
   body: boolean;
   silhouette: boolean;
   style: boolean;
+  rig: boolean;
   runtime: boolean;
 } {
   const reasons = new Set<string>([...(candidate?.rejections ?? []), ...(candidate?.warnings ?? [])]);
+  const rig = summarizeCandidateRigStability({ candidate });
   const hasReason = (pattern: RegExp) => [...reasons].some((reason) => pattern.test(reason));
   const consistency =
     reasons.has("inconsistent_with_front_baseline") ||
@@ -2344,6 +2450,11 @@ function classifyRepairDefectFamilies(candidate: ScoredCandidate | undefined): {
     reasons.has("background_not_transparent") ||
     reasons.has("text_or_watermark_high_risk") ||
     hasReason(/style_drift|palette|monochrome|local_blur_mismatch/i);
+  const rigIssue =
+    rig.lowAnchorConfidence ||
+    rig.hardLowAnchorConfidence ||
+    rig.lowLandmarkConsistency ||
+    rig.hardLowLandmarkConsistency;
   const runtime =
     hasReason(/^runtime_/) ||
     reasons.has("runtime_adapter_warning_present") ||
@@ -2363,6 +2474,7 @@ function classifyRepairDefectFamilies(candidate: ScoredCandidate | undefined): {
     body,
     silhouette,
     style,
+    rig: rigIssue,
     runtime
   };
 }
@@ -2400,6 +2512,9 @@ function summarizeObservedDefectFamilies(candidate: ScoredCandidate | undefined)
   if (defect.body) {
     families.push("body");
   }
+  if (defect.rig) {
+    families.push("rig");
+  }
   if (defect.runtime) {
     families.push("runtime");
   }
@@ -2429,6 +2544,7 @@ function isReviewObservedDefectFamily(family: ObservedDefectFamily): boolean {
     family === "style" ||
     family === "paws" ||
     family === "body" ||
+    family === "rig" ||
     family === "runtime" ||
     family === "consistency" ||
     family === "face" ||
@@ -5222,6 +5338,10 @@ export function deriveRetryAdjustmentForCandidate(input: {
   const notes: string[] = [];
   let disablePose = false;
   let enforceSideTurnBalance = false;
+  const rig = summarizeCandidateRigStability({
+    candidate,
+    speciesId: input.speciesId
+  });
 
   const addDelta = (role: CharacterReferenceBankEntry["role"], amount: number) => {
     referenceWeightDeltas[role] = Number(((referenceWeightDeltas[role] ?? 0) + amount).toFixed(3));
@@ -5232,6 +5352,40 @@ export function deriveRetryAdjustmentForCandidate(input: {
       input.view === "front" ? frontHint : input.view === "threeQuarter" ? threeQuarterHint : profileHint
     );
   };
+
+  if (rig.safeFrontExpression) {
+    extraNegativeTokens.add("open mouth grin");
+    extraNegativeTokens.add("off-center smile");
+    extraNegativeTokens.add("asymmetric mouth");
+    viewPromptHints.add("front expression must stay neutral and centered, with a small closed mouth and stable muzzle placement");
+    addDelta("front_master", 0.06);
+    addDelta("subject", 0.04);
+    notes.push("safer front expression fallback");
+  }
+
+  if (rig.lockMouthPreset) {
+    extraNegativeTokens.add("wide open mouth");
+    extraNegativeTokens.add("teeth grin");
+    viewPromptHints.add("lock the mouth to a neutral closed preset, compact lip line, and stable centered muzzle");
+    addDelta("front_master", 0.04);
+    notes.push("mouth preset lock fallback");
+  }
+
+  if (rig.suppressAggressiveYaw) {
+    extraNegativeTokens.add("extreme turn");
+    extraNegativeTokens.add("dramatic yaw");
+    extraNegativeTokens.add("camera-facing cheat");
+    viewPromptHints.add(
+      input.view === "threeQuarter"
+        ? "hold a moderate three-quarter turn, readable near/far eye balance, and avoid aggressive torso yaw"
+        : "hold a calm true profile turn, no over-rotated torso, and keep the head/body turn simple and stable"
+    );
+    addDelta("composition", 0.05);
+    addDelta("view_starter", 0.05);
+    addDelta("front_master", -0.04);
+    enforceSideTurnBalance = input.view !== "front" || enforceSideTurnBalance;
+    notes.push("suppressed aggressive yaw fallback");
+  }
 
   if (defect.identity || defect.consistency) {
     extraNegativeTokens.add("identity drift");
@@ -5445,6 +5599,10 @@ function buildRepairDirectiveProfile(input: {
   const adjustment = deriveRetryAdjustmentForCandidate(input);
   const defect = classifyRepairDefectFamilies(candidate);
   const reasons = defect.reasons;
+  const rig = summarizeCandidateRigStability({
+    candidate,
+    speciesId: input.speciesId
+  });
   const families = new Set<RepairDirectiveFamily>();
   const notes = new Set<string>(adjustment.notes);
   const sideCollapse =
@@ -5463,6 +5621,11 @@ function buildRepairDirectiveProfile(input: {
     notes.add("face symmetry rescue");
   }
 
+  if (rig.safeFrontExpression) {
+    families.add("face_symmetry");
+    notes.add("rig-safe front expression");
+  }
+
   if (defect.ears || defect.muzzle || [...reasons].some((reason) => reason.includes("species_breakdown"))) {
     families.add("species_silhouette");
     notes.add("species silhouette rescue");
@@ -5476,6 +5639,11 @@ function buildRepairDirectiveProfile(input: {
   if (input.view === "threeQuarter" && reasons.has("threequarter_front_collapse")) {
     families.add("body_silhouette");
     notes.add("three-quarter yaw rescue");
+  }
+
+  if (rig.suppressAggressiveYaw && input.view !== "front") {
+    families.add("body_silhouette");
+    notes.add("rig yaw suppression");
   }
 
   if (defect.silhouette) {
@@ -6732,6 +6900,15 @@ function compareScoredCandidates(a: ScoredCandidate, b: ScoredCandidate): number
         reason === "consistency_shape_drift" ||
         reason === "consistency_style_drift"
     ).length;
+  const rigSignals = (candidate: ScoredCandidate): number => {
+    const rig = summarizeCandidateRigStability({ candidate });
+    return [
+      rig.lowAnchorConfidence,
+      rig.hardLowAnchorConfidence,
+      rig.lowLandmarkConsistency,
+      rig.hardLowLandmarkConsistency
+    ].filter(Boolean).length;
+  };
   const runtimeInstabilitySignals = (candidate: ScoredCandidate): number =>
     [...candidate.rejections, ...candidate.warnings].filter((reason) => reason.startsWith("runtime_")).length;
   const rejectionWeightA = a.rejections.length > 0 ? 1 : 0;
@@ -6762,6 +6939,12 @@ function compareScoredCandidates(a: ScoredCandidate, b: ScoredCandidate): number
   const identityPenaltyB = identityDriftSignals(b);
   if (identityPenaltyA !== identityPenaltyB) {
     return identityPenaltyA - identityPenaltyB;
+  }
+
+  const rigPenaltyA = rigSignals(a);
+  const rigPenaltyB = rigSignals(b);
+  if (rigPenaltyA !== rigPenaltyB) {
+    return rigPenaltyA - rigPenaltyB;
   }
 
   if (a.warnings.length !== b.warnings.length) {
@@ -6959,6 +7142,429 @@ function computeMetricSpread(values: Array<number | null | undefined>): number |
     return null;
   }
   return Math.max(...finite) - Math.min(...finite);
+}
+
+function asOptionalFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function averageFiniteNumbers(values: Array<number | null | undefined>): number | null {
+  const finite = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (finite.length === 0) {
+    return null;
+  }
+  return finite.reduce((sum, value) => sum + value, 0) / finite.length;
+}
+
+function getNestedRecordValue(record: Record<string, unknown> | null, path: string[]): unknown {
+  let current: unknown = record;
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
+function getNestedNumber(record: Record<string, unknown> | null, path: string[]): number | undefined {
+  return asOptionalFiniteNumber(getNestedRecordValue(record, path));
+}
+
+function resolveRigStabilityThresholds(speciesId?: string): {
+  frontAnchorSoftFloor: number;
+  frontAnchorHardFloor: number;
+  sideAnchorSoftFloorByView: Record<"threeQuarter" | "profile", number>;
+  sideAnchorHardFloorByView: Record<"threeQuarter" | "profile", number>;
+  landmarkSoftFloorByView: Record<"threeQuarter" | "profile", number>;
+  landmarkHardFloorByView: Record<"threeQuarter" | "profile", number>;
+  overallAnchorSoftFloor: number;
+  overallAnchorHardFloor: number;
+} {
+  const qc = resolveMascotQcThresholds(speciesId);
+  const selection = resolveMascotSelectionRiskThresholds(speciesId);
+  const threeQuarterAnchorSoft = clamp01(
+    Math.max(0.4, selection.threeQuarterGeometrySoftFloor + 0.05)
+  );
+  const profileAnchorSoft = clamp01(Math.max(0.36, selection.profileGeometrySoftFloor + 0.04));
+  const threeQuarterLandmarkSoft = clamp01(
+    Math.max(0.5, selection.threeQuarterConsistencySoftFloor + 0.03)
+  );
+  const profileLandmarkSoft = clamp01(Math.max(0.46, selection.profileConsistencySoftFloor + 0.03));
+  return {
+    frontAnchorSoftFloor: selection.frontAnchorScoreSoftFloor,
+    frontAnchorHardFloor: clamp01(Math.max(0.48, selection.frontAnchorScoreSoftFloor - 0.12)),
+    sideAnchorSoftFloorByView: {
+      threeQuarter: threeQuarterAnchorSoft,
+      profile: profileAnchorSoft
+    },
+    sideAnchorHardFloorByView: {
+      threeQuarter: clamp01(Math.max(0.3, threeQuarterAnchorSoft - 0.12)),
+      profile: clamp01(Math.max(0.28, profileAnchorSoft - 0.12))
+    },
+    landmarkSoftFloorByView: {
+      threeQuarter: threeQuarterLandmarkSoft,
+      profile: profileLandmarkSoft
+    },
+    landmarkHardFloorByView: {
+      threeQuarter: clamp01(Math.max(0.36, (qc.minConsistencyByView.threeQuarter ?? 0.48) - 0.04)),
+      profile: clamp01(Math.max(0.32, (qc.minConsistencyByView.profile ?? 0.4) - 0.05))
+    },
+    overallAnchorSoftFloor: clamp01(Math.max(0.66, selection.frontAnchorScoreSoftFloor - 0.02)),
+    overallAnchorHardFloor: clamp01(Math.max(0.56, selection.frontAnchorScoreSoftFloor - 0.12))
+  };
+}
+
+function resolveCandidateAnchorConfidenceFromMeta(
+  candidate: ScoredCandidate | undefined
+): { value: number; source: "provider" | "workflow" } | null {
+  if (!candidate?.candidate.providerMeta || !isRecord(candidate.candidate.providerMeta)) {
+    return null;
+  }
+  const providerMeta = candidate.candidate.providerMeta;
+  const workflowSummary = isRecord(providerMeta.workflowSummary) ? providerMeta.workflowSummary : null;
+  const view = candidate.candidate.view;
+  const providerPaths: string[][] = [
+    ["anchorConfidence"],
+    ["anchor_confidence"],
+    ["anchorConfidenceScore"],
+    ["anchor_confidence_score"],
+    ["anchorConfidenceByView", view],
+    ["anchor_confidence_by_view", view],
+    ["anchorConfidenceSummary", "byView", view],
+    ["anchor_confidence_summary", "by_view", view],
+    ["anchorDiagnostics", "byView", view, "confidence"],
+    ["anchor_diagnostics", "by_view", view, "confidence"],
+    ["anchorDiagnostics", view, "confidence"],
+    ["anchor_diagnostics", view, "confidence"],
+    ["anchors", "confidence_summary", "by_view", view]
+  ];
+  for (const path of providerPaths) {
+    const value = getNestedNumber(providerMeta, path);
+    if (value !== undefined) {
+      return {
+        value: clamp01(value),
+        source: "provider"
+      };
+    }
+  }
+  for (const path of providerPaths) {
+    const value = getNestedNumber(workflowSummary, path);
+    if (value !== undefined) {
+      return {
+        value: clamp01(value),
+        source: "workflow"
+      };
+    }
+  }
+  return null;
+}
+
+function resolveCandidateLandmarkConsistencyFromMeta(
+  candidate: ScoredCandidate | undefined
+): { value: number; source: "provider" | "workflow" } | null {
+  if (!candidate?.candidate.providerMeta || !isRecord(candidate.candidate.providerMeta)) {
+    return null;
+  }
+  const providerMeta = candidate.candidate.providerMeta;
+  const workflowSummary = isRecord(providerMeta.workflowSummary) ? providerMeta.workflowSummary : null;
+  const view = candidate.candidate.view;
+  const providerPaths: string[][] = [
+    ["landmarkConsistency"],
+    ["landmark_consistency"],
+    ["landmarkConsistencyScore"],
+    ["landmark_consistency_score"],
+    ["landmarkConsistencyByView", view],
+    ["landmark_consistency_by_view", view],
+    ["landmarkConsistencySummary", "byView", view],
+    ["landmark_consistency_summary", "by_view", view],
+    ["rigDiagnostics", "landmarkConsistencyByView", view],
+    ["rig_diagnostics", "landmark_consistency_by_view", view]
+  ];
+  for (const path of providerPaths) {
+    const value = getNestedNumber(providerMeta, path);
+    if (value !== undefined) {
+      return {
+        value: clamp01(value),
+        source: "provider"
+      };
+    }
+  }
+  for (const path of providerPaths) {
+    const value = getNestedNumber(workflowSummary, path);
+    if (value !== undefined) {
+      return {
+        value: clamp01(value),
+        source: "workflow"
+      };
+    }
+  }
+  return null;
+}
+
+function summarizeCandidateRigStability(input: {
+  candidate: ScoredCandidate | undefined;
+  speciesId?: string;
+}): CandidateRigStabilitySnapshot {
+  const candidate = input.candidate;
+  if (!candidate) {
+    return {
+      anchorConfidence: null,
+      landmarkConsistency: null,
+      lowAnchorConfidence: false,
+      hardLowAnchorConfidence: false,
+      lowLandmarkConsistency: false,
+      hardLowLandmarkConsistency: false,
+      safeFrontExpression: false,
+      suppressAggressiveYaw: false,
+      lockMouthPreset: false,
+      reasonCodes: []
+    };
+  }
+
+  const thresholds = resolveRigStabilityThresholds(input.speciesId);
+  const view = candidate.candidate.view;
+  const geometryCue = computeMascotGeometryCue(candidate);
+  const anchorFromMeta = resolveCandidateAnchorConfidenceFromMeta(candidate);
+  const landmarkFromMeta = resolveCandidateLandmarkConsistencyFromMeta(candidate);
+  const anchorConfidence =
+    anchorFromMeta?.value ??
+    (view === "front"
+      ? clamp01(
+          (candidate.score ?? 0) * 0.28 +
+            (candidate.breakdown.frontSymmetryScore ?? 0) * 0.24 +
+            (candidate.breakdown.headSquarenessScore ?? 0) * 0.16 +
+            (candidate.breakdown.speciesScore ?? 0) * 0.16 +
+            (candidate.breakdown.targetStyleScore ?? 0) * 0.16
+        )
+      : geometryCue !== null || typeof candidate.consistencyScore === "number"
+        ? clamp01(((geometryCue ?? 0.46) * 0.56) + (((candidate.consistencyScore ?? geometryCue ?? 0.46)) * 0.44))
+        : null);
+  const landmarkConsistency =
+    view === "front"
+      ? null
+      : landmarkFromMeta?.value ??
+        (typeof candidate.consistencyScore === "number" ? clamp01(candidate.consistencyScore) : null);
+  const sideAnchorSoftFloor =
+    view === "threeQuarter" ? thresholds.sideAnchorSoftFloorByView.threeQuarter : thresholds.sideAnchorSoftFloorByView.profile;
+  const sideAnchorHardFloor =
+    view === "threeQuarter" ? thresholds.sideAnchorHardFloorByView.threeQuarter : thresholds.sideAnchorHardFloorByView.profile;
+  const sideLandmarkSoftFloor =
+    view === "threeQuarter" ? thresholds.landmarkSoftFloorByView.threeQuarter : thresholds.landmarkSoftFloorByView.profile;
+  const sideLandmarkHardFloor =
+    view === "threeQuarter" ? thresholds.landmarkHardFloorByView.threeQuarter : thresholds.landmarkHardFloorByView.profile;
+  const lowAnchorConfidence =
+    typeof anchorConfidence === "number" &&
+    (view === "front"
+      ? anchorConfidence < thresholds.frontAnchorSoftFloor
+      : anchorConfidence < sideAnchorSoftFloor);
+  const hardLowAnchorConfidence =
+    typeof anchorConfidence === "number" &&
+    (view === "front"
+      ? anchorConfidence < thresholds.frontAnchorHardFloor
+      : anchorConfidence < sideAnchorHardFloor);
+  const lowLandmarkConsistency =
+    view !== "front" &&
+    typeof landmarkConsistency === "number" &&
+    landmarkConsistency < sideLandmarkSoftFloor;
+  const hardLowLandmarkConsistency =
+    view !== "front" &&
+    typeof landmarkConsistency === "number" &&
+    landmarkConsistency < sideLandmarkHardFloor;
+  const suppressAggressiveYaw =
+    view !== "front" &&
+    (lowAnchorConfidence ||
+      lowLandmarkConsistency ||
+      candidate.warnings.includes("consistency_shape_drift") ||
+      candidate.rejections.includes("inconsistent_with_front_baseline") ||
+      candidate.rejections.includes("threequarter_front_collapse"));
+  const safeFrontExpression = view === "front" && lowAnchorConfidence;
+  const lockMouthPreset = view === "front" && (lowAnchorConfidence || hardLowAnchorConfidence);
+  const reasonCodes = dedupeStrings(
+    [
+      lowAnchorConfidence ? `anchor_low:${view}` : "",
+      hardLowAnchorConfidence ? `anchor_hard:${view}` : "",
+      lowLandmarkConsistency ? `landmark_low:${view}` : "",
+      hardLowLandmarkConsistency ? `landmark_hard:${view}` : "",
+      safeFrontExpression ? "safe_front_expression" : "",
+      suppressAggressiveYaw ? `yaw_suppressed:${view}` : "",
+      lockMouthPreset ? "mouth_lock" : ""
+    ].filter((reason) => reason.length > 0)
+  );
+
+  return {
+    anchorConfidence: typeof anchorConfidence === "number" ? Number(anchorConfidence.toFixed(4)) : null,
+    landmarkConsistency:
+      typeof landmarkConsistency === "number" ? Number(landmarkConsistency.toFixed(4)) : null,
+    lowAnchorConfidence,
+    hardLowAnchorConfidence,
+    lowLandmarkConsistency,
+    hardLowLandmarkConsistency,
+    safeFrontExpression,
+    suppressAggressiveYaw,
+    lockMouthPreset,
+    reasonCodes
+  };
+}
+
+function assessRigStability(input: {
+  selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
+  packCoherence?: PackCoherenceDiagnostics;
+  targetStyle?: string;
+  speciesId?: string;
+  autoReroute?: AutoRerouteDiagnostics;
+}): RigStabilityDiagnostics {
+  if (!isMascotTargetStyle(input.targetStyle)) {
+    return {
+      severity: "none",
+      summary: "rig stability clear",
+      reasonCodes: [],
+      fallbackReasonCodes: [],
+      warningViews: [],
+      blockingViews: [],
+      reviewOnly: false,
+      safeFrontExpression: false,
+      suppressAggressiveYaw: false,
+      lockMouthPreset: false,
+      anchorConfidenceOverall: null,
+      anchorConfidenceByView: {},
+      landmarkConsistencyByView: {}
+    };
+  }
+
+  const thresholds = resolveRigStabilityThresholds(input.speciesId);
+  const warningViews = new Set<CharacterView>();
+  const blockingViews = new Set<CharacterView>();
+  const reasonCodes = new Set<string>();
+  const fallbackReasonCodes = new Set<string>();
+  const anchorConfidenceByView: Partial<Record<CharacterView, number | null>> = {};
+  const landmarkConsistencyByView: Partial<Record<CharacterView, number | null>> = {};
+  let safeFrontExpression = false;
+  let suppressAggressiveYaw = false;
+  let lockMouthPreset = false;
+
+  for (const view of CHARACTER_VIEWS) {
+    const candidate = input.selectedByView[view];
+    if (!candidate) {
+      continue;
+    }
+    const snapshot = summarizeCandidateRigStability({
+      candidate,
+      speciesId: input.speciesId
+    });
+    const anchorConfidence =
+      snapshot.anchorConfidence ??
+      (view === "front"
+        ? input.packCoherence?.metrics.frontAnchorScore ?? null
+        : view === "threeQuarter"
+          ? input.packCoherence?.metrics.threeQuarterGeometryCue ?? null
+          : input.packCoherence?.metrics.profileGeometryCue ?? null);
+    const landmarkConsistency =
+      snapshot.landmarkConsistency ??
+      (view === "threeQuarter"
+        ? input.packCoherence?.metrics.threeQuarterConsistency ?? null
+        : view === "profile"
+          ? input.packCoherence?.metrics.profileConsistency ?? null
+          : null);
+    anchorConfidenceByView[view] = anchorConfidence;
+    landmarkConsistencyByView[view] = landmarkConsistency;
+    if (snapshot.lowAnchorConfidence || snapshot.lowLandmarkConsistency) {
+      warningViews.add(view);
+    }
+    if (snapshot.hardLowAnchorConfidence || snapshot.hardLowLandmarkConsistency) {
+      blockingViews.add(view);
+    }
+    if (snapshot.lowAnchorConfidence) {
+      reasonCodes.add(`rig-anchor-review:${view}`);
+    }
+    if (snapshot.hardLowAnchorConfidence) {
+      reasonCodes.add(`rig-anchor-block:${view}`);
+    }
+    if (snapshot.lowLandmarkConsistency) {
+      reasonCodes.add(`rig-landmark-review:${view}`);
+    }
+    if (snapshot.hardLowLandmarkConsistency) {
+      reasonCodes.add(`rig-landmark-block:${view}`);
+    }
+    safeFrontExpression = safeFrontExpression || snapshot.safeFrontExpression;
+    suppressAggressiveYaw = suppressAggressiveYaw || snapshot.suppressAggressiveYaw;
+    lockMouthPreset = lockMouthPreset || snapshot.lockMouthPreset;
+  }
+
+  const anchorConfidenceOverall =
+    averageFiniteNumbers(
+      CHARACTER_VIEWS.map((view) => anchorConfidenceByView[view] ?? null)
+    ) ?? null;
+  if (typeof anchorConfidenceOverall === "number") {
+    if (anchorConfidenceOverall < thresholds.overallAnchorSoftFloor) {
+      reasonCodes.add("rig-anchor-overall-review");
+    }
+    if (anchorConfidenceOverall < thresholds.overallAnchorHardFloor) {
+      reasonCodes.add("rig-anchor-overall-block");
+    }
+  }
+
+  const reviewOnly = warningViews.size > 0 || blockingViews.size > 0;
+  if (reviewOnly) {
+    fallbackReasonCodes.add("review_only");
+  }
+  if (safeFrontExpression) {
+    fallbackReasonCodes.add("safe_front_expression");
+  }
+  if (suppressAggressiveYaw) {
+    fallbackReasonCodes.add("suppress_aggressive_yaw");
+  }
+  if (lockMouthPreset) {
+    fallbackReasonCodes.add("lock_mouth_preset");
+  }
+
+  const autoRerouteFailed = input.autoReroute?.attempted === true && input.autoReroute.recovered === false;
+  const compoundedFrontRisk =
+    blockingViews.has("front") &&
+    (autoRerouteFailed ||
+      input.packCoherence?.severity === "block" ||
+      (input.selectedByView.front?.warnings.includes("runtime_fallback_used") ?? false) ||
+      (input.selectedByView.front?.warnings.includes("runtime_route_degraded") ?? false));
+  const compoundedPackRisk =
+    blockingViews.size >= 2 ||
+    (blockingViews.size >= 1 && warningViews.size >= 2) ||
+    (typeof anchorConfidenceOverall === "number" && anchorConfidenceOverall < thresholds.overallAnchorHardFloor);
+  const severity: RigStabilityDiagnostics["severity"] =
+    compoundedFrontRisk || compoundedPackRisk ? "block" : reviewOnly ? "review" : "none";
+  if (severity !== "none") {
+    reasonCodes.add(severity === "block" ? "rig-compounded" : "rig-review-only");
+  }
+  if (severity === "block") {
+    fallbackReasonCodes.add("manual_compare");
+    fallbackReasonCodes.add("recreate");
+  } else if (reviewOnly) {
+    fallbackReasonCodes.add("manual_compare");
+  }
+
+  return {
+    severity,
+    summary:
+      severity === "none"
+        ? "rig stability clear"
+        : `${severity}:anchors=${[...warningViews].join(",") || "none"}; fallbacks=${[...fallbackReasonCodes].join(",")}`,
+    reasonCodes: [...reasonCodes],
+    fallbackReasonCodes: [...fallbackReasonCodes],
+    warningViews: [...warningViews].filter((view) => !blockingViews.has(view)),
+    blockingViews: [...blockingViews],
+    reviewOnly,
+    safeFrontExpression,
+    suppressAggressiveYaw,
+    lockMouthPreset,
+    anchorConfidenceOverall:
+      typeof anchorConfidenceOverall === "number" ? Number(anchorConfidenceOverall.toFixed(4)) : null,
+    anchorConfidenceByView,
+    landmarkConsistencyByView,
+    ...(severity === "block"
+      ? { suggestedAction: "recreate" as const }
+      : reviewOnly
+        ? { suggestedAction: "pick-manually" as const }
+        : {})
+  };
 }
 
 function resolveMascotSelectionRiskThresholds(speciesId?: string) {
@@ -7484,6 +8090,7 @@ function buildSelectionDecisionOutcome(input: {
   autoReroute: AutoRerouteDiagnostics | undefined;
   targetStyle?: string;
   acceptedScoreThreshold: number;
+  rigStability?: RigStabilityDiagnostics;
   selectionRisk?: SelectionRiskAssessment;
   qualityEmbargo?: QualityEmbargoAssessment;
   finalQualityFirewall?: FinalQualityFirewallAssessment;
@@ -7506,6 +8113,11 @@ function buildSelectionDecisionOutcome(input: {
     reasonCodes.push(`selection-risk:${input.selectionRisk.level}`);
     reasonCodes.push(...input.selectionRisk.reasonCodes.map((reason) => `risk:${reason}`));
   }
+  if (input.rigStability?.severity && input.rigStability.severity !== "none") {
+    reasonCodes.push(`rig-stability:${input.rigStability.severity}`);
+    reasonCodes.push(...input.rigStability.reasonCodes.map((reason) => `rig:${reason}`));
+    reasonCodes.push(...input.rigStability.fallbackReasonCodes.map((reason) => `rig-fallback:${reason}`));
+  }
   if (input.qualityEmbargo?.level && input.qualityEmbargo.level !== "none") {
     reasonCodes.push(`quality-embargo:${input.qualityEmbargo.level}`);
     reasonCodes.push(...input.qualityEmbargo.reasonCodes.map((reason) => `embargo:${reason}`));
@@ -7525,6 +8137,7 @@ function buildSelectionDecisionOutcome(input: {
   }
 
   const blocked =
+    input.rigStability?.severity === "block" ||
     input.packCoherence?.severity === "block" ||
     input.selectionRisk?.level === "block" ||
     input.qualityEmbargo?.level === "block" ||
@@ -7532,6 +8145,7 @@ function buildSelectionDecisionOutcome(input: {
   const review =
     blocked ||
     input.referenceBankReviewOnly === true ||
+    input.rigStability?.reviewOnly === true ||
     input.missingGeneratedViews.length > 0 ||
     input.lowQualityGeneratedViews.length > 0 ||
     input.packCoherence?.severity === "review" ||
@@ -7559,6 +8173,8 @@ function buildSelectionDecisionOutcome(input: {
         ? `blocked by final quality firewall: ${summarizeFinalQualityFirewall(input.finalQualityFirewall)}`
         : input.qualityEmbargo?.level === "block"
         ? `blocked by quality embargo: ${summarizeQualityEmbargo(input.qualityEmbargo)}`
+        : input.rigStability?.severity === "block"
+        ? `blocked by rig stability: ${input.rigStability.summary}`
         : input.selectionRisk?.level === "block"
         ? `blocked by selection risk: ${summarizeSelectionRisk(input.selectionRisk)}`
         : `blocked by pack coherence: ${input.packCoherence?.issues.join(", ") || "unknown"}`;
@@ -7566,6 +8182,8 @@ function buildSelectionDecisionOutcome(input: {
     summary =
       input.referenceBankReviewOnly
         ? "manual review required: mascot reference bank is scaffold-only"
+        : input.rigStability?.reviewOnly
+        ? `manual review required: ${input.rigStability.summary}`
         : input.finalQualityFirewall?.level === "review"
         ? `manual review required: ${summarizeFinalQualityFirewall(input.finalQualityFirewall)}`
         : input.qualityEmbargo?.level === "review"
@@ -7590,6 +8208,8 @@ function buildSelectionDecisionOutcome(input: {
       ? { escalatedAction: input.finalQualityFirewall.suggestedAction }
       : input.qualityEmbargo?.suggestedAction
         ? { escalatedAction: input.qualityEmbargo.suggestedAction }
+      : input.rigStability?.suggestedAction
+        ? { escalatedAction: input.rigStability.suggestedAction }
       : input.selectionRisk?.suggestedAction
         ? { escalatedAction: input.selectionRisk.suggestedAction }
         : {})
@@ -7599,6 +8219,7 @@ function buildSelectionDecisionOutcome(input: {
 export function assessAutoSelectionRisk(input: {
   selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
   packCoherence: PackCoherenceDiagnostics;
+  rigStability?: RigStabilityDiagnostics;
   targetStyle?: string;
   acceptedScoreThreshold: number;
   speciesId?: string;
@@ -7780,6 +8401,15 @@ export function assessAutoSelectionRisk(input: {
   if (input.autoReroute?.attempted && input.autoReroute.recovered === false) {
     reasons.add("auto_reroute_failed");
   }
+  if (input.rigStability?.reviewOnly) {
+    reasons.add("rig_review_only");
+  }
+  if (input.rigStability?.reasonCodes.some((reason) => reason.startsWith("rig-anchor-"))) {
+    reasons.add("rig_anchor_confidence_soft");
+  }
+  if (input.rigStability?.reasonCodes.some((reason) => reason.startsWith("rig-landmark-"))) {
+    reasons.add("rig_landmark_consistency_soft");
+  }
   if (runtimeCriticalViews.length > 0 || runtimeWarningViews.length >= 2 || totalRuntimeWarnings >= 3) {
     reasons.add("runtime_quality_compounded");
   }
@@ -7806,6 +8436,7 @@ export function assessAutoSelectionRisk(input: {
   const runtimeCompoundedHard =
     runtimeCriticalViews.includes("front") || runtimeCriticalViews.length >= 2 || totalRuntimeWarnings >= 4;
   const block =
+    input.rigStability?.severity === "block" ||
     reasonCodes.includes("selected_rejections_present") ||
     reasonCodes.includes("auto_reroute_failed") ||
     (reasonCodes.includes("runtime_quality_compounded") && runtimeCompoundedHard) ||
@@ -7826,6 +8457,7 @@ export function assessAutoSelectionRisk(input: {
       block ||
       reasonCodes.includes("front_anchor_soft") ||
       reasonCodes.includes("auto_reroute_failed") ||
+      input.rigStability?.severity === "block" ||
       (reasonCodes.includes("runtime_quality_compounded") &&
         (runtimeCriticalViews.includes("front") || runtimeFallbackViews.includes("front")))
         ? "recreate"
@@ -7836,6 +8468,7 @@ export function assessAutoSelectionRisk(input: {
 
 export function assessQualityEmbargo(input: {
   selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
+  rigStability?: RigStabilityDiagnostics;
   targetStyle?: string;
   acceptedScoreThreshold: number;
   autoReroute?: AutoRerouteDiagnostics;
@@ -7946,6 +8579,14 @@ export function assessQualityEmbargo(input: {
       reasons.add(`identity_review:${view}`);
     }
 
+    if (input.rigStability?.blockingViews.includes(view)) {
+      blockingViews.add(view);
+      reasons.add(view === "front" ? "rig_front_anchor_embargo" : `rig_landmark_embargo:${view}`);
+    } else if (input.rigStability?.warningViews.includes(view)) {
+      warningViews.add(view);
+      reasons.add(view === "front" ? "rig_front_anchor_review" : `rig_landmark_review:${view}`);
+    }
+
     if (
       runtimeDiagnostics.workflowStage === "repair_refine" &&
       (runtimeCritical || runtimeFallbackOrRoute || runtimeSoftReasons.length >= 2)
@@ -7993,6 +8634,9 @@ export function assessQualityEmbargo(input: {
   } else if (runtimeSoftViews.length >= 2) {
     reasons.add("pack_runtime_review");
   }
+  if (input.rigStability?.reviewOnly) {
+    reasons.add("rig_review_only");
+  }
 
   const level: QualityEmbargoAssessment["level"] =
     blockingViews.size > 0 ? "block" : warningViews.size > 0 || reasons.size > 0 ? "review" : "none";
@@ -8028,6 +8672,7 @@ export function assessFinalQualityFirewall(input: {
   acceptedScoreThreshold: number;
   autoReroute?: AutoRerouteDiagnostics;
   packCoherence?: PackCoherenceDiagnostics;
+  rigStability?: RigStabilityDiagnostics;
   selectionRisk?: SelectionRiskAssessment;
   qualityEmbargo?: QualityEmbargoAssessment;
   packDefectSummary: PackDefectSummary;
@@ -8100,6 +8745,14 @@ export function assessFinalQualityFirewall(input: {
         warningViews.add(view);
       }
       reasons.add(`runtime-lock-stage:${view}`);
+    }
+
+    if (input.rigStability?.blockingViews.includes(view)) {
+      blockingViews.add(view);
+      reasons.add(`rig-firewall:${view}`);
+    } else if (input.rigStability?.warningViews.includes(view)) {
+      warningViews.add(view);
+      reasons.add(`rig-review:${view}`);
     }
 
     if (
@@ -8231,6 +8884,14 @@ export function assessFinalQualityFirewall(input: {
     blockingViews.add("front");
     reasons.add("selection_risk_compounded_runtime");
   }
+  if (
+    input.rigStability?.severity === "block" &&
+    (input.rigStability.blockingViews.includes("front") || input.rigStability.blockingViews.length >= 2)
+  ) {
+    reasons.add("rig_stability_compounded");
+  } else if (input.rigStability?.reviewOnly) {
+    reasons.add("rig_review_only");
+  }
 
   const level: FinalQualityFirewallAssessment["level"] =
     blockingViews.size > 0 ? "block" : warningViews.size > 0 || reasons.size > 0 ? "review" : "none";
@@ -8313,6 +8974,7 @@ export function decideAutoReroute(input: {
   providerName: CharacterProviderName;
   requestedViews: CharacterView[];
   packCoherence: PackCoherenceDiagnostics | undefined;
+  rigStability?: RigStabilityDiagnostics;
   missingGeneratedViews: CharacterView[];
   lowQualityGeneratedViews: CharacterView[];
   runtimeLowQualityViews?: CharacterView[];
@@ -8385,7 +9047,10 @@ export function decideAutoReroute(input: {
       )
     );
   if (input.packCoherence?.severity === "review" && !shouldReviewReroute) {
-    return undefined;
+    const rigOnlyReviewViews = input.rigStability?.warningViews.filter((view) => view !== "front") ?? [];
+    if (rigOnlyReviewViews.length === 0 || input.rigStability?.reviewOnly !== true) {
+      return undefined;
+    }
   }
 
   if (!input.frontStrong) {
@@ -8422,6 +9087,39 @@ export function decideAutoReroute(input: {
     notes.add(
       `pack coherence blocked (${input.packCoherence.blockingViews.join(", ") || "unknown"}) score=${input.packCoherence.score.toFixed(2)}`
     );
+  }
+
+  if (input.rigStability?.severity === "block") {
+    triggers.add("rig_instability_block");
+    for (const view of dedupeCharacterViews([
+      ...input.rigStability.blockingViews,
+      ...input.rigStability.warningViews
+    ])) {
+      targetViews.add(view);
+    }
+    if (
+      input.rigStability.blockingViews.includes("front") ||
+      input.rigStability.blockingViews.length >= 2 ||
+      !input.frontStrong
+    ) {
+      strategy = "full_pack_rebuild";
+    }
+    notes.add(
+      `rig instability block (${[
+        ...new Set([...input.rigStability.blockingViews, ...input.rigStability.warningViews])
+      ].join(", ") || "unknown"}) fallbacks=${input.rigStability.fallbackReasonCodes.join(",") || "none"}`
+    );
+  } else if (input.rigStability?.reviewOnly) {
+    const rigReviewViews = dedupeCharacterViews(input.rigStability.warningViews.filter((view) => view !== "front"));
+    if (rigReviewViews.length > 0) {
+      triggers.add("rig_instability_review");
+      for (const view of rigReviewViews) {
+        targetViews.add(view);
+      }
+      notes.add(
+        `rig instability review (${rigReviewViews.join(", ")}) fallbacks=${input.rigStability.fallbackReasonCodes.join(",") || "none"}`
+      );
+    }
   }
 
   if (shouldReviewReroute && input.packCoherence) {
@@ -10565,6 +11263,7 @@ function buildHitlSessionStatusMessage(input: {
   coherenceIssues?: string[];
   packCoherence?: PackCoherenceDiagnostics;
   autoReroute?: AutoRerouteDiagnostics;
+  rigStability?: RigStabilityDiagnostics;
   selectionRisk?: SelectionRiskAssessment;
   qualityEmbargo?: QualityEmbargoAssessment;
   finalQualityFirewall?: FinalQualityFirewallAssessment;
@@ -10585,6 +11284,10 @@ function buildHitlSessionStatusMessage(input: {
     input.selectionRisk && input.selectionRisk.level !== "none"
       ? ` Selection risk=${summarizeSelectionRisk(input.selectionRisk)}.`
       : "";
+  const rigStabilitySentence =
+    input.rigStability && input.rigStability.severity !== "none"
+      ? ` Rig stability=${input.rigStability.summary}.`
+      : "";
   const qualityEmbargoSentence =
     input.qualityEmbargo && input.qualityEmbargo.level !== "none"
       ? ` Quality embargo=${summarizeQualityEmbargo(input.qualityEmbargo)}.`
@@ -10595,21 +11298,21 @@ function buildHitlSessionStatusMessage(input: {
       : "";
 
   if (input.viewToGenerate) {
-    return `Candidates ready for view ${input.viewToGenerate}. Pick to continue.${autoRerouteSentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuitySentence}${continuityQueueStatusSuffix}`;
+    return `Candidates ready for view ${input.viewToGenerate}. Pick to continue.${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuitySentence}${continuityQueueStatusSuffix}`;
   }
   if (input.missingGeneratedViews.length > 0) {
-    return `Partial generation complete. Missing: ${input.missingGeneratedViews.join(", ")}${autoRerouteSentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
+    return `Partial generation complete. Missing: ${input.missingGeneratedViews.join(", ")}${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
   }
   if (input.lowQualityGeneratedViews.length > 0) {
-    return `Candidates generated but quality below threshold for: ${input.lowQualityGeneratedViews.join(", ")}${autoRerouteSentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
+    return `Candidates generated but quality below threshold for: ${input.lowQualityGeneratedViews.join(", ")}${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
   }
   if (Array.isArray(input.coherenceIssues) && input.coherenceIssues.length > 0) {
     const packSummary = input.packCoherence
       ? ` severity=${input.packCoherence.severity} score=${input.packCoherence.score.toFixed(2)}`
       : "";
-    return `Candidates generated but pack coherence needs review:${packSummary} ${input.coherenceIssues.join(", ")}${autoRerouteSentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
+    return `Candidates generated but pack coherence needs review:${packSummary} ${input.coherenceIssues.join(", ")}${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
   }
-  return `Candidates ready. Waiting for pick.${autoRerouteSentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuitySentence}${continuityQueueStatusSuffix}`;
+  return `Candidates ready. Waiting for pick.${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuitySentence}${continuityQueueStatusSuffix}`;
 }
 
 async function persistSelectedCandidates(input: {
@@ -10659,9 +11362,17 @@ async function persistSelectedCandidates(input: {
     targetStyle: manifest.qualityProfile?.targetStyle,
     acceptedScoreThreshold
   });
+  const rigStability = assessRigStability({
+    selectedByView,
+    packCoherence,
+    targetStyle: manifest.qualityProfile?.targetStyle,
+    speciesId: manifest.species,
+    autoReroute: manifest.autoReroute
+  });
   const selectionRisk = assessAutoSelectionRisk({
     selectedByView,
     packCoherence,
+    rigStability,
     targetStyle: manifest.qualityProfile?.targetStyle,
     acceptedScoreThreshold,
     autoReroute: manifest.autoReroute,
@@ -10669,6 +11380,7 @@ async function persistSelectedCandidates(input: {
   });
   const qualityEmbargo = assessQualityEmbargo({
     selectedByView,
+    rigStability,
     targetStyle: manifest.qualityProfile?.targetStyle,
     acceptedScoreThreshold,
     autoReroute: manifest.autoReroute
@@ -10679,20 +11391,23 @@ async function persistSelectedCandidates(input: {
   });
   const finalQualityFirewall = assessFinalQualityFirewall({
     selectedByView,
-    targetStyle: manifest.qualityProfile?.targetStyle,
-    acceptedScoreThreshold,
-    autoReroute: manifest.autoReroute,
-    packCoherence,
-    selectionRisk,
-    qualityEmbargo,
-    packDefectSummary
-  });
+      targetStyle: manifest.qualityProfile?.targetStyle,
+      acceptedScoreThreshold,
+      autoReroute: manifest.autoReroute,
+      packCoherence,
+      rigStability,
+      selectionRisk,
+      qualityEmbargo,
+      packDefectSummary
+    });
   const requiresSelectionReview =
+    rigStability.severity === "block" ||
     packCoherence.severity === "block" ||
     qualityEmbargo.level === "block" ||
     finalQualityFirewall.level === "block" ||
     (source === "auto" &&
-      (selectionRisk.level !== "none" ||
+      (rigStability.reviewOnly ||
+        selectionRisk.level !== "none" ||
         qualityEmbargo.level === "review" ||
         finalQualityFirewall.level === "review"));
   const decisionOutcome = buildSelectionDecisionOutcome({
@@ -10708,6 +11423,7 @@ async function persistSelectedCandidates(input: {
     autoReroute: manifest.autoReroute,
     targetStyle: manifest.qualityProfile?.targetStyle,
     acceptedScoreThreshold,
+    rigStability,
     selectionRisk,
     qualityEmbargo,
     finalQualityFirewall
@@ -10722,6 +11438,7 @@ async function persistSelectedCandidates(input: {
       finalSelectionSource: source,
       selectedCandidateSummaryByView: attemptedSelectionSummary,
       packCoherence,
+      rigStability,
       selectionRisk,
       qualityEmbargo,
       packDefectSummary,
@@ -10740,11 +11457,14 @@ async function persistSelectedCandidates(input: {
     fs.writeFileSync(manifestPath, `${JSON.stringify(blockedManifest, null, 2)}\n`, "utf8");
 
     const coherenceSummary = `${packCoherence.issues.join(", ")} (score=${packCoherence.score.toFixed(2)})`;
+    const rigStabilitySummary = rigStability.summary;
     const selectionRiskSummary = summarizeSelectionRisk(selectionRisk);
     const qualityEmbargoSummary = summarizeQualityEmbargo(qualityEmbargo);
     const finalQualityFirewallSummary = summarizeFinalQualityFirewall(finalQualityFirewall);
     const blockedMessage =
-      packCoherence.severity === "block"
+      rigStability.severity === "block"
+        ? `Selected candidate pack failed rig stability guard: ${rigStabilitySummary}`
+        : packCoherence.severity === "block"
         ? `Selected candidate pack failed coherence gate: ${coherenceSummary}`
         : finalQualityFirewall.level === "block"
           ? `Selected candidate pack failed final quality firewall: ${finalQualityFirewallSummary}`
@@ -10758,6 +11478,7 @@ async function persistSelectedCandidates(input: {
       source,
       provider: providerName,
       manifestPath,
+      rigStability,
       packCoherence,
       selectionRisk,
       qualityEmbargo,
@@ -10774,6 +11495,7 @@ async function persistSelectedCandidates(input: {
       await helpers.logJob(character.buildJobDbId, "warn", "Cancelled after selection gate blocked selected pack", {
         source: `worker:generate-character-assets:${source}`,
         manifestPath,
+        rigStability,
         packCoherence,
         selectionRisk,
         qualityEmbargo,
@@ -10803,7 +11525,9 @@ async function persistSelectedCandidates(input: {
         status: "PENDING",
         title: "Selected pack needs re-pick",
         summary:
-          packCoherence.severity === "block"
+          rigStability.severity === "block"
+            ? `Selected candidates still fail the rig stability guard: ${rigStabilitySummary}. Manual compare or full-pack recreate is recommended.`
+            : packCoherence.severity === "block"
             ? `Selected candidates still fail the pack coherence gate: ${coherenceSummary}. Pick a different combination or regenerate weak views.`
             : finalQualityFirewall.level === "block"
               ? `Selected candidates still fail the final quality firewall: ${finalQualityFirewallSummary}. Recreate the pack or replace persistent weak views.`
@@ -10816,6 +11540,7 @@ async function persistSelectedCandidates(input: {
           manifestPath,
           provider: providerName,
           source,
+          rigStability,
           packCoherence,
           selectionRisk,
           qualityEmbargo,
@@ -10840,6 +11565,7 @@ async function persistSelectedCandidates(input: {
               lowQualityGeneratedViews: [],
               coherenceIssues: packCoherence.issues,
               packCoherence,
+              rigStability,
               selectionRisk,
               qualityEmbargo,
               finalQualityFirewall,
@@ -14029,6 +14755,16 @@ export async function handleGenerateCharacterAssetsJob(input: {
       frontAnchorAcceptedScoreThreshold,
       targetStyle: promptBundle.qualityProfile.targetStyle,
       packCoherence: repairTriagePackCoherence,
+      rigStability:
+        generation.viewToGenerate === undefined
+          ? assessRigStability({
+              selectedByView: repairTriageCandidateByView,
+              packCoherence: repairTriagePackCoherence,
+              targetStyle: promptBundle.qualityProfile.targetStyle,
+              speciesId: promptBundle.speciesId,
+              autoReroute: autoRerouteDiagnostics
+            })
+          : undefined,
       speciesId: promptBundle.speciesId,
       gateDecisionsByView: sideViewAcceptanceGate.gateDecisionsByView
     });
@@ -14333,6 +15069,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     lowQualityGeneratedViews: CharacterView[];
     runtimeLowQualityViews: CharacterView[];
     packCoherence: PackCoherenceDiagnostics | undefined;
+    rigStability: RigStabilityDiagnostics | undefined;
     coherenceIssues: string[];
     frontStrong: boolean;
   } => {
@@ -14383,12 +15120,23 @@ export async function handleGenerateCharacterAssetsJob(input: {
             speciesId: promptBundle.speciesId
           })
         : undefined;
+    const rigStability =
+      generation.viewToGenerate === undefined
+        ? assessRigStability({
+            selectedByView,
+            packCoherence,
+            targetStyle: promptBundle.qualityProfile.targetStyle,
+            speciesId: promptBundle.speciesId,
+            autoReroute: autoRerouteDiagnostics
+          })
+        : undefined;
     return {
       selectedByView,
       missingGeneratedViews,
       lowQualityGeneratedViews,
       runtimeLowQualityViews,
       packCoherence,
+      rigStability,
       coherenceIssues: packCoherence?.issues ?? [],
       frontStrong: isStrongFrontMasterCandidate(
         selectedByView.front,
@@ -14406,6 +15154,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     providerName,
     requestedViews,
     packCoherence: selectionOutcome.packCoherence,
+    rigStability: selectionOutcome.rigStability,
     missingGeneratedViews: selectionOutcome.missingGeneratedViews,
     lowQualityGeneratedViews: selectionOutcome.lowQualityGeneratedViews,
     runtimeLowQualityViews: selectionOutcome.runtimeLowQualityViews,
@@ -14768,6 +15517,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
       frontAnchorAcceptedScoreThreshold,
       targetStyle: promptBundle.qualityProfile.targetStyle,
       packCoherence: selectionOutcome.packCoherence,
+      rigStability: selectionOutcome.rigStability,
       speciesId: promptBundle.speciesId,
       gateDecisionsByView: autoRerouteAcceptanceGate?.gateDecisionsByView
     });
@@ -15086,12 +15836,14 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const missingGeneratedViews = selectionOutcome.missingGeneratedViews;
   const lowQualityGeneratedViews = selectionOutcome.lowQualityGeneratedViews;
   const packCoherence = selectionOutcome.packCoherence;
+  const initialRigStability = selectionOutcome.rigStability;
   const coherenceIssues = selectionOutcome.coherenceIssues;
   const initialSelectionRisk =
     packCoherence && selectionOutcome.selectedByView && Object.keys(selectionOutcome.selectedByView).length > 0
       ? assessAutoSelectionRisk({
           selectedByView: selectionOutcome.selectedByView,
           packCoherence,
+          rigStability: initialRigStability,
           targetStyle: promptBundle.qualityProfile.targetStyle,
           acceptedScoreThreshold,
           autoReroute: autoRerouteDiagnostics,
@@ -15102,6 +15854,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     selectionOutcome.selectedByView && Object.keys(selectionOutcome.selectedByView).length > 0
       ? assessQualityEmbargo({
           selectedByView: selectionOutcome.selectedByView,
+          rigStability: initialRigStability,
           targetStyle: promptBundle.qualityProfile.targetStyle,
           acceptedScoreThreshold,
           autoReroute: autoRerouteDiagnostics
@@ -15122,6 +15875,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           acceptedScoreThreshold,
           autoReroute: autoRerouteDiagnostics,
           packCoherence,
+          rigStability: initialRigStability,
           selectionRisk: initialSelectionRisk,
           qualityEmbargo: initialQualityEmbargo,
           packDefectSummary: initialPackDefectSummary
@@ -15139,8 +15893,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
     generation.autoPick === false ||
     missingGeneratedViews.length > 0 ||
     lowQualityGeneratedViews.length > 0 ||
+    initialRigStability?.reviewOnly === true ||
     coherenceIssues.length > 0 ||
     packCoherence?.severity === "block" ||
+    initialRigStability?.severity === "block" ||
     initialFinalQualityFirewall?.level === "block";
   const decisionOutcome = buildSelectionDecisionOutcome({
     kind: requiresHitl ? "hitl_review" : "auto_selected",
@@ -15152,6 +15908,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     autoReroute: autoRerouteDiagnostics,
     targetStyle: promptBundle.qualityProfile.targetStyle,
     acceptedScoreThreshold,
+    rigStability: initialRigStability,
     selectionRisk: initialSelectionRisk,
     qualityEmbargo: initialQualityEmbargo,
     finalQualityFirewall: initialFinalQualityFirewall,
@@ -15194,6 +15951,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
               workflowStages: workflowStageRuns,
               coherenceIssues,
               packCoherence,
+              ...(initialRigStability ? { rigStability: initialRigStability } : {}),
               ...(initialSelectionRisk ? { selectionRisk: initialSelectionRisk } : {}),
               ...(initialQualityEmbargo ? { qualityEmbargo: initialQualityEmbargo } : {}),
               ...(initialPackDefectSummary ? { packDefectSummary: initialPackDefectSummary } : {}),
@@ -15218,6 +15976,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 workflowStages: workflowStageRuns,
                 coherenceIssues,
                 packCoherence,
+                ...(initialRigStability ? { rigStability: initialRigStability } : {}),
                 ...(initialSelectionRisk ? { selectionRisk: initialSelectionRisk } : {}),
                 ...(initialQualityEmbargo ? { qualityEmbargo: initialQualityEmbargo } : {}),
                 ...(initialPackDefectSummary ? { packDefectSummary: initialPackDefectSummary } : {}),
@@ -15238,6 +15997,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
               selectionDiagnostics: {
                 coherenceIssues,
                 packCoherence,
+                ...(initialRigStability ? { rigStability: initialRigStability } : {}),
                 ...(initialSelectionRisk ? { selectionRisk: initialSelectionRisk } : {}),
                 ...(initialQualityEmbargo ? { qualityEmbargo: initialQualityEmbargo } : {}),
                 ...(initialPackDefectSummary ? { packDefectSummary: initialPackDefectSummary } : {}),
@@ -15318,6 +16078,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
             packCoherence ? ` (severity=${packCoherence.severity}, score=${packCoherence.score.toFixed(2)})` : ""
           }.`
         : "";
+    const rigStabilityText =
+      initialRigStability?.severity && initialRigStability.severity !== "none"
+        ? ` Rig stability: ${initialRigStability.summary}.`
+        : "";
     const continuityDescriptor = formatContinuityDescriptor(continuitySnapshot);
     const continuityQueueStats = formatContinuityQueueStats(continuitySnapshot);
     const continuityText = continuityDescriptor
@@ -15337,7 +16101,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           : "Choose best character view candidates",
         summary: generation.viewToGenerate
           ? `View-only regenerate completed for ${generation.viewToGenerate}. Pick candidates to continue.${continuityText}${continuityQueueText}`
-          : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText}${coherenceText}${continuityText}${continuityQueueText} Select one candidate per view from generation manifest.`,
+          : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText}${coherenceText}${rigStabilityText}${continuityText}${continuityQueueText} Select one candidate per view from generation manifest.`,
         payload: toPrismaJson({
           manifestPath,
           provider: providerName,
@@ -15347,6 +16111,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           sessionId,
           viewToGenerate: generation.viewToGenerate ?? null,
           packCoherence,
+          ...(initialRigStability ? { rigStability: initialRigStability } : {}),
           ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {}),
           ...toFlatContinuityFields(manifest.reference.continuity)
         })
@@ -15388,6 +16153,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
             coherenceIssues,
             packCoherence,
             autoReroute: autoRerouteDiagnostics,
+            rigStability: initialRigStability,
             selectionRisk: initialSelectionRisk,
             qualityEmbargo: initialQualityEmbargo,
             finalQualityFirewall: initialFinalQualityFirewall,

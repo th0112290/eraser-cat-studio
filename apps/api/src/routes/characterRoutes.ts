@@ -439,9 +439,29 @@ type GenerationManifestSelectionCandidateSummary = {
   candidateId: string;
   score?: number;
   consistencyScore?: number | null;
+  anchorConfidence?: number | null;
+  landmarkConsistency?: number | null;
   warningCount?: number;
   rejectionCount?: number;
   runtimeBucket?: "clean" | "warn" | "degraded" | "compound" | "block";
+  rigFallbackReasonCodes?: string[];
+};
+
+type GenerationManifestRigStability = {
+  severity: "none" | "review" | "block";
+  summary: string;
+  reasonCodes: string[];
+  fallbackReasonCodes: string[];
+  warningViews?: CharacterGenerationView[];
+  blockingViews?: CharacterGenerationView[];
+  reviewOnly?: boolean;
+  safeFrontExpression?: boolean;
+  suppressAggressiveYaw?: boolean;
+  lockMouthPreset?: boolean;
+  anchorConfidenceOverall?: number | null;
+  anchorConfidenceByView?: Partial<Record<CharacterGenerationView, number | null>>;
+  landmarkConsistencyByView?: Partial<Record<CharacterGenerationView, number | null>>;
+  suggestedAction?: "pick-manually" | "recreate";
 };
 
 type GenerationManifestSelectionDiagnostics = {
@@ -449,6 +469,7 @@ type GenerationManifestSelectionDiagnostics = {
   coherenceIssues?: string[];
   packCoherence?: GenerationManifestPackCoherence;
   autoReroute?: GenerationManifestAutoReroute;
+  rigStability?: GenerationManifestRigStability;
   selectionRisk?: GenerationManifestSelectionRisk;
   qualityEmbargo?: GenerationManifestQualityEmbargo;
   packDefectSummary?: GenerationManifestPackDefectSummary;
@@ -1580,6 +1601,7 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
 
   const packCoherence = manifest.packCoherence ?? manifest.providerMeta?.selectionDiagnostics?.packCoherence;
   const autoReroute = manifest.autoReroute ?? manifest.providerMeta?.selectionDiagnostics?.autoReroute;
+  const rigStability = manifest.providerMeta?.selectionDiagnostics?.rigStability;
   const selectionRisk = manifest.providerMeta?.selectionDiagnostics?.selectionRisk;
   const qualityEmbargo = manifest.providerMeta?.selectionDiagnostics?.qualityEmbargo;
   const packDefectSummary = manifest.providerMeta?.selectionDiagnostics?.packDefectSummary;
@@ -1589,6 +1611,8 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
   const finalSelectionSource = manifest.providerMeta?.selectionDiagnostics?.finalSelectionSource;
   const autoRerouteFailed = autoReroute?.attempted === true && autoReroute.recovered === false;
   const autoRerouteRecovered = autoReroute?.attempted === true && autoReroute.recovered === true;
+  const rigReviewOnly = rigStability?.reviewOnly === true;
+  const rigBlocked = rigStability?.severity === "block";
   const highRiskAutoSelection = selectionRisk?.level === "review" || selectionRisk?.level === "block";
   const embargoedSelection = qualityEmbargo?.level === "review" || qualityEmbargo?.level === "block";
   const firewalledSelection = finalQualityFirewall?.level === "review" || finalQualityFirewall?.level === "block";
@@ -1705,6 +1729,12 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
   for (const view of finalQualityFirewall?.warningViews ?? []) {
     pushRegenerateAction(view, finalQualityFirewall?.level === "block" ? "high" : "medium", "warning");
   }
+  for (const view of rigStability?.blockingViews ?? []) {
+    pushRegenerateAction(view, "high", "blocking");
+  }
+  for (const view of rigStability?.warningViews ?? []) {
+    pushRegenerateAction(view, rigBlocked ? "high" : "medium", "warning");
+  }
   for (const view of ["front", "threeQuarter", "profile"] as const) {
     const triage = findLatestRepairTriageForView(workflowStages, view).triage;
     if (!triage) {
@@ -1753,6 +1783,7 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
     packBlocked ||
     multiBlock ||
     frontBlocked ||
+    rigBlocked ||
     firewallBlocked ||
     multiFirewallBlock ||
     frontFirewalled ||
@@ -1767,6 +1798,7 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
         packBlocked ||
         firewallBlocked)) ||
     selectionRisk?.suggestedAction === "recreate" ||
+    rigStability?.suggestedAction === "recreate" ||
     qualityEmbargo?.suggestedAction === "recreate" ||
     qualityEmbargo?.level === "block" ||
     finalQualityFirewall?.suggestedAction === "recreate";
@@ -1790,6 +1822,7 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
     const regenerateSameSeed = !frontBlocked && !weakContinuity;
     const reasons = [
       ...(packCoherence ? [`coherence:${packCoherence.severity}`] : []),
+      ...(rigStability ? [`rig-stability:${rigStability.severity}`] : []),
       ...(multiBlock ? ["multi-block"] : []),
       ...(frontBlocked ? ["front-anchor-blocked"] : []),
       ...(finalQualityFirewall ? [`final-firewall:${finalQualityFirewall.level}`] : []),
@@ -1802,10 +1835,11 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
       id: "recreate-pack",
       action: "recreate",
       label: "Character Pack / recreate",
-      description: `Run a fresh Character Pack recreate pass with ${recreateCandidateCount} candidates${regenerateSameSeed ? " on the same seed" : " on a new seed"} to rebuild the front anchor and all linked angles.${autoRerouteFailed ? " Auto-reroute already failed once, so this is the safest reset." : ""}${selectionRisk?.suggestedAction === "recreate" ? ` Selection gate marked this pack as ${selectionRisk.level}.` : ""}${qualityEmbargo?.suggestedAction === "recreate" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.suggestedAction === "recreate" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
+      description: `Run a fresh Character Pack recreate pass with ${recreateCandidateCount} candidates${regenerateSameSeed ? " on the same seed" : " on a new seed"} to rebuild the front anchor and all linked angles.${autoRerouteFailed ? " Auto-reroute already failed once, so this is the safest reset." : ""}${rigStability?.suggestedAction === "recreate" ? ` Rig stability marked this pack as ${rigStability.severity}.` : ""}${selectionRisk?.suggestedAction === "recreate" ? ` Selection gate marked this pack as ${selectionRisk.level}.` : ""}${qualityEmbargo?.suggestedAction === "recreate" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.suggestedAction === "recreate" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
       priority:
         frontBlocked ||
         multiBlock ||
+        rigBlocked ||
         frontFirewalled ||
         multiFirewallBlock ||
         autoRerouteFailed ||
@@ -1823,6 +1857,7 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
         .concat(triageFullRepairCount >= 2 ? [`triage:full_repair_x${triageFullRepairCount}`] : [])
         .concat(triageRejectCount >= 2 ? [`triage:reject_view_x${triageRejectCount}`] : [])
         .concat(repairRejectCount >= 2 ? [`repair-accept:reject_repair_x${repairRejectCount}`] : [])
+        .concat(rigStability?.severity && rigStability.severity !== "none" ? [`rig-stability:${rigStability.severity}`] : [])
         .concat(selectionRisk?.level && selectionRisk.level !== "none" ? [`selection-risk:${selectionRisk.level}`] : [])
         .concat(qualityEmbargo?.level && qualityEmbargo.level !== "none" ? [`quality-embargo:${qualityEmbargo.level}`] : [])
         .concat(finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? [`final-firewall:${finalQualityFirewall.level}`] : [])
@@ -1836,6 +1871,7 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
     hasCandidateCoverage &&
     (
       manifest.status === "PENDING_HITL" ||
+      rigReviewOnly ||
       packCoherence?.severity === "review" ||
       highRiskAutoSelection ||
       embargoedSelection ||
@@ -1849,13 +1885,14 @@ function buildRecommendedActions(manifest: GenerationManifest | null): Character
       label: "Candidate set / manual compare",
       description:
         manifest.status === "PENDING_HITL"
-          ? `Open the HITL compare surface and choose a tighter front/threeQuarter/profile combination for the Character Pack handoff.${autoReroute?.attempted ? ` Auto-reroute ${autoReroute.recovered ? "already recovered the pack once" : "already tried a recovery pass"} first.` : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`
-          : `Manual compare is recommended before building the Character Pack.${autoRerouteRecovered ? " Auto-reroute recovered the pack, but a human pass is still useful." : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
+          ? `Open the HITL compare surface and choose a tighter front/threeQuarter/profile combination for the Character Pack handoff.${autoReroute?.attempted ? ` Auto-reroute ${autoReroute.recovered ? "already recovered the pack once" : "already tried a recovery pass"} first.` : ""}${rigReviewOnly ? ` Rig stability requests review-only handling (${rigStability?.summary}).` : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`
+          : `Manual compare is recommended before building the Character Pack.${autoRerouteRecovered ? " Auto-reroute recovered the pack, but a human pass is still useful." : ""}${rigReviewOnly ? ` Rig stability requests review-only handling (${rigStability?.summary}).` : ""}${highRiskAutoSelection ? ` Selection gate marked this pack as ${selectionRisk?.level}.` : ""}${qualityEmbargo?.level && qualityEmbargo.level !== "none" ? ` Quality embargo marked this pack as ${qualityEmbargo.level}.` : ""}${finalQualityFirewall?.level && finalQualityFirewall.level !== "none" ? ` Final quality firewall marked this pack as ${finalQualityFirewall.level}.` : ""}${packDefectSummary?.repeatedFamilies.length ? ` Repeated defects=${packDefectSummary.repeatedFamilies.slice(0, 3).join("+")}.` : ""}`,
       priority: manifest.status === "PENDING_HITL" ? "high" : "medium",
       anchorId: "pick-candidates",
       reasonCodes: [
         `manifest:${manifest.status}`,
         ...(packCoherence ? [`coherence:${packCoherence.severity}`] : []),
+        ...(rigStability ? [`rig-stability:${rigStability.severity}`] : []),
         ...(finalSelectionSource ? [`selection:${finalSelectionSource}`] : []),
         ...(autoReroute?.attempted ? [`auto-reroute:${autoReroute.recovered ? "recovered" : "failed"}`] : []),
         ...(selectionRisk?.level && selectionRisk.level !== "none" ? [`selection-risk:${selectionRisk.level}`] : []),
@@ -3258,11 +3295,20 @@ function parseSelectionCandidateSummary(
     ...(parseOptionalNullableNumber(value.consistencyScore) !== undefined
       ? { consistencyScore: parseOptionalNullableNumber(value.consistencyScore) }
       : {}),
+    ...(parseOptionalNullableNumber(value.anchorConfidence) !== undefined
+      ? { anchorConfidence: parseOptionalNullableNumber(value.anchorConfidence) }
+      : {}),
+    ...(parseOptionalNullableNumber(value.landmarkConsistency) !== undefined
+      ? { landmarkConsistency: parseOptionalNullableNumber(value.landmarkConsistency) }
+      : {}),
     ...(parseOptionalNumber(value.warningCount) !== undefined ? { warningCount: parseOptionalNumber(value.warningCount) } : {}),
     ...(parseOptionalNumber(value.rejectionCount) !== undefined
       ? { rejectionCount: parseOptionalNumber(value.rejectionCount) }
       : {}),
-    ...(parseRuntimeBucketLevel(value.runtimeBucket) ? { runtimeBucket: parseRuntimeBucketLevel(value.runtimeBucket) } : {})
+    ...(parseRuntimeBucketLevel(value.runtimeBucket) ? { runtimeBucket: parseRuntimeBucketLevel(value.runtimeBucket) } : {}),
+    ...(parseStringArray(value.rigFallbackReasonCodes).length > 0
+      ? { rigFallbackReasonCodes: parseStringArray(value.rigFallbackReasonCodes) }
+      : {})
   };
 }
 
@@ -3281,6 +3327,79 @@ function parseSelectionCandidateSummaryByView(
     }
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseViewNullableNumberMap(
+  value: unknown
+): Partial<Record<CharacterGenerationView, number | null>> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const out: Partial<Record<CharacterGenerationView, number | null>> = {};
+  for (const view of ["front", "threeQuarter", "profile"] as const) {
+    const parsed = parseOptionalNullableNumber(value[view]);
+    if (parsed !== undefined) {
+      out[view] = parsed;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseRigStability(value: unknown): GenerationManifestRigStability | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const severity =
+    value.severity === "none" || value.severity === "review" || value.severity === "block"
+      ? value.severity
+      : undefined;
+  const summary = typeof value.summary === "string" ? value.summary.trim() : "";
+  const reasonCodes = parseStringArray(value.reasonCodes);
+  const fallbackReasonCodes = parseStringArray(value.fallbackReasonCodes);
+  const warningViews = parseCharacterGenerationViewArray(value.warningViews);
+  const blockingViews = parseCharacterGenerationViewArray(value.blockingViews);
+  const anchorConfidenceByView = parseViewNullableNumberMap(value.anchorConfidenceByView);
+  const landmarkConsistencyByView = parseViewNullableNumberMap(value.landmarkConsistencyByView);
+  const anchorConfidenceOverall = parseOptionalNullableNumber(value.anchorConfidenceOverall);
+  const suggestedAction =
+    value.suggestedAction === "pick-manually" || value.suggestedAction === "recreate"
+      ? value.suggestedAction
+      : undefined;
+
+  if (
+    !severity &&
+    !summary &&
+    reasonCodes.length === 0 &&
+    fallbackReasonCodes.length === 0 &&
+    warningViews.length === 0 &&
+    blockingViews.length === 0 &&
+    anchorConfidenceByView === undefined &&
+    landmarkConsistencyByView === undefined &&
+    anchorConfidenceOverall === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    severity: severity ?? "none",
+    summary: summary || `${severity ?? "none"}:${reasonCodes.join(",")}`,
+    reasonCodes,
+    fallbackReasonCodes,
+    ...(warningViews.length > 0 ? { warningViews } : {}),
+    ...(blockingViews.length > 0 ? { blockingViews } : {}),
+    ...(typeof value.reviewOnly === "boolean" ? { reviewOnly: value.reviewOnly } : {}),
+    ...(typeof value.safeFrontExpression === "boolean" ? { safeFrontExpression: value.safeFrontExpression } : {}),
+    ...(typeof value.suppressAggressiveYaw === "boolean"
+      ? { suppressAggressiveYaw: value.suppressAggressiveYaw }
+      : {}),
+    ...(typeof value.lockMouthPreset === "boolean" ? { lockMouthPreset: value.lockMouthPreset } : {}),
+    ...(anchorConfidenceOverall !== undefined ? { anchorConfidenceOverall } : {}),
+    ...(anchorConfidenceByView ? { anchorConfidenceByView } : {}),
+    ...(landmarkConsistencyByView ? { landmarkConsistencyByView } : {}),
+    ...(suggestedAction ? { suggestedAction } : {})
+  };
 }
 
 function parseAutoRerouteViewDelta(value: unknown): GenerationManifestAutoRerouteViewDelta | undefined {
@@ -3618,6 +3737,7 @@ function parseSelectionDiagnostics(value: unknown): GenerationManifestSelectionD
   const out: GenerationManifestSelectionDiagnostics = {};
   const packCoherence = parsePackCoherence(value.packCoherence);
   const autoReroute = parseAutoReroute(value.autoReroute);
+  const rigStability = parseRigStability(value.rigStability);
   const selectionRisk = parseSelectionRisk(value.selectionRisk);
   const qualityEmbargo = parseQualityEmbargo(value.qualityEmbargo);
   const packDefectSummary = parsePackDefectSummary(value.packDefectSummary);
@@ -3637,6 +3757,9 @@ function parseSelectionDiagnostics(value: unknown): GenerationManifestSelectionD
   }
   if (autoReroute) {
     out.autoReroute = autoReroute;
+  }
+  if (rigStability) {
+    out.rigStability = rigStability;
   }
   if (selectionRisk) {
     out.selectionRisk = selectionRisk;
@@ -6084,6 +6207,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       selectedManifest?.packCoherence ?? selectedSelectionDiagnostics?.packCoherence;
     const selectedAutoReroute =
       selectedManifest?.autoReroute ?? selectedSelectionDiagnostics?.autoReroute;
+    const selectedRigStability = selectedSelectionDiagnostics?.rigStability;
     const selectedSelectionRisk = selectedSelectionDiagnostics?.selectionRisk;
     const selectedQualityEmbargo = selectedSelectionDiagnostics?.qualityEmbargo;
     const selectedPackDefectSummary = selectedSelectionDiagnostics?.packDefectSummary;
@@ -6125,9 +6249,23 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           )}</p>`
         : `<div class="notice">pack coherence diagnostics not recorded yet.</div>`
       : "";
+    const selectedRigStabilitySection =
+      selectedManifest && selectedRigStability
+        ? `<div class="notice">rig stability: <span class="badge ${coherenceBadge(
+            selectedRigStability.severity
+          )}">${escHtml(selectedRigStability.severity)}</span> / overallAnchor=${escHtml(
+            formatMetric(selectedRigStability.anchorConfidenceOverall)
+          )} / blocking=${escHtml(
+            selectedRigStability.blockingViews?.join(", ") || "none"
+          )} / warnings=${escHtml(
+            selectedRigStability.warningViews?.join(", ") || "none"
+          )}</div><p>fallbacks: ${escHtml(
+            selectedRigStability.fallbackReasonCodes.join(", ") || "none"
+          )}</p><p>summary: ${escHtml(selectedRigStability.summary)}</p>`
+        : "";
     const selectedCandidateSummarySection =
       selectedManifest && selectedSelectionDiagnostics?.selectedCandidateSummaryByView
-        ? `<details class="card" style="margin-top:10px"><summary><strong>Selected Candidate Summary</strong></summary><div class="asset-table-wrap" style="margin-top:10px"><table><thead><tr><th>View</th><th>Candidate</th><th>RT</th><th>Score</th><th>Consistency</th><th>Warnings</th><th>Rejections</th></tr></thead><tbody>${(["front", "threeQuarter", "profile"] as const)
+        ? `<details class="card" style="margin-top:10px"><summary><strong>Selected Candidate Summary</strong></summary><div class="asset-table-wrap" style="margin-top:10px"><table><thead><tr><th>View</th><th>Candidate</th><th>RT</th><th>Score</th><th>Consistency</th><th>Anchor</th><th>Rig</th><th>Warnings</th><th>Rejections</th></tr></thead><tbody>${(["front", "threeQuarter", "profile"] as const)
             .map((view) => {
               const summary = selectedSelectionDiagnostics.selectedCandidateSummaryByView?.[view];
               return summary
@@ -6141,10 +6279,18 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                       : summary.consistencyScore === null
                         ? "null"
                         : "-"
+                  )}</td><td>${escHtml(
+                    typeof summary.anchorConfidence === "number"
+                      ? summary.anchorConfidence.toFixed(4)
+                      : summary.anchorConfidence === null
+                        ? "null"
+                        : "-"
+                  )}</td><td>${escHtml(
+                    summary.rigFallbackReasonCodes?.join(", ") || "-"
                   )}</td><td>${escHtml(summary.warningCount ?? "-")}</td><td>${escHtml(
                     summary.rejectionCount ?? "-"
                   )}</td></tr>`
-                : `<tr><td>${escHtml(view)}</td><td colspan="6">-</td></tr>`;
+                : `<tr><td>${escHtml(view)}</td><td colspan="8">-</td></tr>`;
             })
             .join("")}</tbody></table></div></details>`
         : "";
@@ -6802,7 +6948,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       );
     }
     const selectedDecisionEvidenceSection = selectedManifest
-      ? `${selectedPackCoherenceSection}${selectedDecisionOutcomeSection}${selectedFinalQualityFirewallSection}${selectedQualityEmbargoSection}${selectedPackDefectSummarySection}${selectedSelectionRiskSection}${selectedAutoRerouteSection}${selectedCandidateSummarySection}${selectedViewDecisionMatrixSection}`
+      ? `${selectedPackCoherenceSection}${selectedRigStabilitySection}${selectedDecisionOutcomeSection}${selectedFinalQualityFirewallSection}${selectedQualityEmbargoSection}${selectedPackDefectSummarySection}${selectedSelectionRiskSection}${selectedAutoRerouteSection}${selectedCandidateSummarySection}${selectedViewDecisionMatrixSection}`
       : `<div class="notice">Manifest not available yet for this job.</div>`;
     const selectedRouteEvidenceSection = selectedManifest
       ? `${selectedReferenceSection}${selectedWorkflowRuntimeSection}${selectedWorkflowArtifactsSection}${selectedWorkflowStageSection}`
