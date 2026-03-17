@@ -138,6 +138,35 @@ type SmokeArtifactBundle = {
   renderLogDoc: unknown | null;
 };
 
+const RIG_SIGNAL_KEYS = ["head_pose", "eye_drift", "mouth_readability", "landmark_consistency"] as const;
+type RigSignalKey = (typeof RIG_SIGNAL_KEYS)[number];
+type RigAnchorViewKey = "front" | "threeQuarter" | "profile";
+
+type RigSignalCell = {
+  score: number | null;
+  status: string | null;
+  reasons: string[];
+  source: string | null;
+  sourceDetail: string | null;
+};
+
+type RigReviewState = {
+  signals: Record<RigSignalKey, RigSignalCell>;
+  anchorConfidence: number | null;
+  anchorByView: Partial<Record<RigAnchorViewKey, number>>;
+  lowConfidenceAnchorIds: string[];
+  missingAnchorIds: string[];
+  reviewOnly: boolean;
+  lowAnchorConfidence: boolean;
+  recreateRecommended: boolean;
+  rigBlocked: boolean;
+  rigReasonCodes: string[];
+  fallbackReasonCodes: string[];
+  issueCodes: string[];
+  evidenceSources: string[];
+  suggestedAction: string | null;
+};
+
 type RepairAcceptanceRow = {
   scenario: string;
   bundle: string;
@@ -176,6 +205,7 @@ type RepairAcceptanceRow = {
   visualJudgePath: string | null;
   candidateComparePath: string | null;
   artifactRelativePath: string;
+  rig: RigReviewState;
 };
 
 type RouteReasonExplorerRow = {
@@ -215,6 +245,7 @@ type RouteReasonExplorerRow = {
   candidateComparePath: string | null;
   renderModeArtifactPath: string | null;
   artifactRelativePath: string;
+  rig: RigReviewState;
 };
 
 type DatasetLineageRow = {
@@ -240,6 +271,7 @@ type DatasetLineageRow = {
   manifestPaths: string[];
   selectedImagePaths: string[];
   schemaGaps: string[];
+  rig: RigReviewState;
 };
 
 type ReviewIssueEntry = {
@@ -1697,10 +1729,10 @@ function collectBundleReviewState(input: {
 function collectReferenceLineage(
   source: RolloutArtifactSource,
   baseDir: string
-): { manifestPaths: string[]; selectedImagePaths: string[] } {
+): { manifestPaths: string[]; selectedImagePaths: string[]; rig: RigReviewState } {
   const shotSidecarDir = path.basename(baseDir).toLowerCase() === "shot_sidecar" ? baseDir : path.join(baseDir, "shot_sidecar");
   if (!fs.existsSync(shotSidecarDir)) {
-    return { manifestPaths: [], selectedImagePaths: [] };
+    return { manifestPaths: [], selectedImagePaths: [], rig: createEmptyRigReviewState() };
   }
 
   let entries: string[] = [];
@@ -1710,16 +1742,18 @@ function collectReferenceLineage(
       .map((name) => path.join(shotSidecarDir, name))
       .slice(0, 12);
   } catch {
-    return { manifestPaths: [], selectedImagePaths: [] };
+    return { manifestPaths: [], selectedImagePaths: [], rig: createEmptyRigReviewState() };
   }
 
   const manifestPaths: string[] = [];
   const selectedImagePaths: string[] = [];
+  let rig = createEmptyRigReviewState();
   for (const filePath of entries) {
     const doc = readJsonFileSafe(filePath);
     if (!isRecord(doc)) {
       continue;
     }
+    rig = mergeRigReviewStates(rig, extractRigReviewState(doc));
     const referenceBundle = isRecord(doc.reference_bundle) ? doc.reference_bundle : {};
     const candidateManifest = str(referenceBundle.generation_manifest_path);
     const candidateImage = str(referenceBundle.selected_image_path) ?? str(doc.first_frame);
@@ -1733,6 +1767,7 @@ function collectReferenceLineage(
     if (requestPath && requestPath !== filePath) {
       const requestDoc = readJsonFileSafe(requestPath);
       if (isRecord(requestDoc) && isRecord(requestDoc.reference_bundle)) {
+        rig = mergeRigReviewStates(rig, extractRigReviewState(requestDoc));
         const nestedReference = requestDoc.reference_bundle;
         const nestedManifest = str(nestedReference.generation_manifest_path);
         const nestedImage = str(nestedReference.selected_image_path) ?? str(requestDoc.first_frame);
@@ -1748,7 +1783,8 @@ function collectReferenceLineage(
 
   return {
     manifestPaths: uniqueStrings(manifestPaths),
-    selectedImagePaths: uniqueStrings(selectedImagePaths)
+    selectedImagePaths: uniqueStrings(selectedImagePaths),
+    rig
   };
 }
 
@@ -1847,6 +1883,20 @@ function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
           : null
       ]);
       const acceptanceStatus = acceptanceStatusFromArtifact(raw);
+      const selectedCandidateId =
+        str(raw.premium_actual_selected_candidate_id) ??
+        str(raw.premium_selected_candidate_id) ??
+        (planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : null) ??
+        "-";
+      const actualJudgePath =
+        safeJsonArtifactPath(bundle.source, raw.premium_actual_judge_path) ?? planReview?.actualJudgePath ?? null;
+      const visualJudgePath =
+        safeJsonArtifactPath(bundle.source, raw.premium_actual_visual_signal_report_path) ?? planReview?.visualJudgePath ?? null;
+      const rig = mergeRigReviewStates(
+        extractRigReviewState(raw, selectedCandidateId === "-" ? null : selectedCandidateId),
+        readRigReviewStateFromArtifactPath(actualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId),
+        readRigReviewStateFromArtifactPath(visualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId)
+      );
       rows.push({
         scenario: bundle.scenario,
         bundle: bundle.bundle,
@@ -1874,11 +1924,7 @@ function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
                 " | "
               ) || "-",
         attemptSummary: planReview?.attemptSummary && planReview.attemptSummary !== "-" ? planReview.attemptSummary : "-",
-        selectedCandidateId:
-          str(raw.premium_actual_selected_candidate_id) ??
-          str(raw.premium_selected_candidate_id) ??
-          (planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : null) ??
-          "-",
+        selectedCandidateId,
         acceptanceStatus,
         acceptanceTone: acceptanceTone(acceptanceStatus),
         qcStatus: qcState.status,
@@ -1905,11 +1951,11 @@ function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
         planArtifactPath: bundle.sidecarPlanPath,
         qcArtifactPath: bundleReview.qcArtifactPath,
         renderLogPath: bundleReview.renderLogPath,
-        actualJudgePath: safeJsonArtifactPath(bundle.source, raw.premium_actual_judge_path) ?? planReview?.actualJudgePath ?? null,
-        visualJudgePath:
-          safeJsonArtifactPath(bundle.source, raw.premium_actual_visual_signal_report_path) ?? planReview?.visualJudgePath ?? null,
+        actualJudgePath,
+        visualJudgePath,
         candidateComparePath: compareMap.get(shotId) ?? null,
-        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath)
+        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath),
+        rig
       });
     }
   }
@@ -1956,6 +2002,15 @@ function collectRouteReasonRows(): RouteReasonExplorerRow[] {
       const acceptanceStatus = item.acceptanceStatus ?? item.sidecarStatus ?? "-";
       const planReview = planReviewByShot.get(item.shotId);
       const issueEntries = reviewIssuesForShot(bundleReview.issuesByShot, item.shotId);
+      const selectedCandidateId =
+        planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : "-";
+      const actualJudgePath = planReview?.actualJudgePath ?? null;
+      const visualJudgePath = planReview?.visualJudgePath ?? null;
+      const rig = mergeRigReviewStates(
+        extractRigReviewState(item as unknown, selectedCandidateId === "-" ? null : selectedCandidateId),
+        readRigReviewStateFromArtifactPath(actualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId),
+        readRigReviewStateFromArtifactPath(visualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId)
+      );
       rows.push({
         scenario: bundle.scenario,
         bundle: bundle.bundle,
@@ -1969,8 +2024,7 @@ function collectRouteReasonRows(): RouteReasonExplorerRow[] {
         providerSummary: planReview?.providerSummary && planReview.providerSummary !== "-" ? planReview.providerSummary : item.backend ?? "-",
         policySummary: planReview?.policySummary && planReview.policySummary !== "-" ? planReview.policySummary : "-",
         attemptSummary: planReview?.attemptSummary && planReview.attemptSummary !== "-" ? planReview.attemptSummary : "-",
-        selectedCandidateId:
-          planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : "-",
+        selectedCandidateId,
         acceptanceStatus,
         acceptanceTone: acceptanceTone(acceptanceStatus),
         qcSummary: item.qcSummary,
@@ -1996,11 +2050,12 @@ function collectRouteReasonRows(): RouteReasonExplorerRow[] {
         planArtifactPath: bundle.sidecarPlanPath,
         qcArtifactPath: bundleReview.qcArtifactPath,
         renderLogPath: bundleReview.renderLogPath,
-        actualJudgePath: planReview?.actualJudgePath ?? null,
-        visualJudgePath: planReview?.visualJudgePath ?? null,
+        actualJudgePath,
+        visualJudgePath,
         candidateComparePath: compareMap.get(item.shotId) ?? null,
         renderModeArtifactPath: bundle.renderModePath,
-        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath)
+        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath),
+        rig
       });
     }
   }
@@ -2085,7 +2140,8 @@ function collectDatasetLineageRows(): DatasetLineageRow[] {
       renderModeArtifactPath: bundle.renderModePath,
       manifestPaths: referenceLineage.manifestPaths,
       selectedImagePaths: referenceLineage.selectedImagePaths,
-      schemaGaps
+      schemaGaps,
+      rig: referenceLineage.rig
     });
   }
 
@@ -2123,6 +2179,550 @@ function readStringArrayAtPath(root: unknown, keys: string[]): string[] {
         .map((item) => str(item))
         .filter((item): item is string => Boolean(item))
     : [];
+}
+
+function readNumberAtPath(root: unknown, keys: string[]): number | null {
+  let current: unknown = root;
+  for (const key of keys) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return num(current);
+}
+
+function readBooleanAtPath(root: unknown, keys: string[]): boolean | null {
+  let current: unknown = root;
+  for (const key of keys) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return readBooleanOrNull(current);
+}
+
+function readRecordAtPath(root: unknown, keys: string[]): JsonRecord | null {
+  let current: unknown = root;
+  for (const key of keys) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return isRecord(current) ? current : null;
+}
+
+function firstStringAtPaths(root: unknown, keyPaths: string[][]): string | null {
+  for (const keyPath of keyPaths) {
+    const value = readStringAtPath(root, keyPath);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function firstNumberAtPaths(root: unknown, keyPaths: string[][]): number | null {
+  for (const keyPath of keyPaths) {
+    const value = readNumberAtPath(root, keyPath);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function firstBooleanAtPaths(root: unknown, keyPaths: string[][]): boolean | null {
+  for (const keyPath of keyPaths) {
+    const value = readBooleanAtPath(root, keyPath);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function firstRecordAtPaths(root: unknown, keyPaths: string[][]): JsonRecord | null {
+  for (const keyPath of keyPaths) {
+    const value = readRecordAtPath(root, keyPath);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function flattenStringArraysAtPaths(root: unknown, keyPaths: string[][]): string[] {
+  return uniqueStrings(keyPaths.flatMap((keyPath) => readStringArrayAtPath(root, keyPath)));
+}
+
+function averageNumbers(values: number[]): number | null {
+  return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function createEmptyRigSignalCell(): RigSignalCell {
+  return {
+    score: null,
+    status: null,
+    reasons: [],
+    source: null,
+    sourceDetail: null
+  };
+}
+
+function createEmptyRigReviewState(): RigReviewState {
+  return {
+    signals: Object.fromEntries(RIG_SIGNAL_KEYS.map((signal) => [signal, createEmptyRigSignalCell()])) as Record<RigSignalKey, RigSignalCell>,
+    anchorConfidence: null,
+    anchorByView: {},
+    lowConfidenceAnchorIds: [],
+    missingAnchorIds: [],
+    reviewOnly: false,
+    lowAnchorConfidence: false,
+    recreateRecommended: false,
+    rigBlocked: false,
+    rigReasonCodes: [],
+    fallbackReasonCodes: [],
+    issueCodes: [],
+    evidenceSources: [],
+    suggestedAction: null
+  };
+}
+
+function mergeRigReviewStates(...states: RigReviewState[]): RigReviewState {
+  const merged = createEmptyRigReviewState();
+  for (const state of states) {
+    for (const signal of RIG_SIGNAL_KEYS) {
+      const target = merged.signals[signal];
+      const source = state.signals[signal];
+      if (target.score === null && source.score !== null) {
+        target.score = source.score;
+      }
+      if (target.status === null && source.status !== null) {
+        target.status = source.status;
+      }
+      if (target.source === null && source.source !== null) {
+        target.source = source.source;
+      }
+      if (target.sourceDetail === null && source.sourceDetail !== null) {
+        target.sourceDetail = source.sourceDetail;
+      }
+      target.reasons = uniqueStrings([...target.reasons, ...source.reasons]);
+    }
+    if (merged.anchorConfidence === null && state.anchorConfidence !== null) {
+      merged.anchorConfidence = state.anchorConfidence;
+    }
+    for (const view of ["front", "threeQuarter", "profile"] as const) {
+      if (merged.anchorByView[view] === undefined && state.anchorByView[view] !== undefined) {
+        merged.anchorByView[view] = state.anchorByView[view];
+      }
+    }
+    merged.lowConfidenceAnchorIds = uniqueStrings([...merged.lowConfidenceAnchorIds, ...state.lowConfidenceAnchorIds]);
+    merged.missingAnchorIds = uniqueStrings([...merged.missingAnchorIds, ...state.missingAnchorIds]);
+    merged.reviewOnly = merged.reviewOnly || state.reviewOnly;
+    merged.recreateRecommended = merged.recreateRecommended || state.recreateRecommended;
+    merged.rigBlocked = merged.rigBlocked || state.rigBlocked;
+    merged.rigReasonCodes = uniqueStrings([...merged.rigReasonCodes, ...state.rigReasonCodes]);
+    merged.fallbackReasonCodes = uniqueStrings([...merged.fallbackReasonCodes, ...state.fallbackReasonCodes]);
+    merged.issueCodes = uniqueStrings([...merged.issueCodes, ...state.issueCodes]);
+    merged.evidenceSources = uniqueStrings([...merged.evidenceSources, ...state.evidenceSources]);
+    if (merged.suggestedAction === null && state.suggestedAction) {
+      merged.suggestedAction = state.suggestedAction;
+    }
+  }
+
+  const signalFailures = RIG_SIGNAL_KEYS.filter((signal) => merged.signals[signal].status === "fail");
+  const signalWarnings = RIG_SIGNAL_KEYS.filter((signal) => merged.signals[signal].status === "warn");
+  const derivedFallbackCodes = uniqueStrings(
+    RIG_SIGNAL_KEYS.flatMap((signal) => {
+      const cell = merged.signals[signal];
+      const values: string[] = [...cell.reasons];
+      if (cell.sourceDetail) {
+        values.push(cell.sourceDetail);
+      }
+      if (cell.source && cell.source !== "provider" && cell.source !== "local_vlm") {
+        values.push(cell.source);
+      }
+      return values;
+    })
+  );
+  merged.lowAnchorConfidence =
+    merged.lowAnchorConfidence ||
+    (merged.anchorConfidence !== null && merged.anchorConfidence < 0.55) ||
+    merged.lowConfidenceAnchorIds.length > 0;
+  merged.fallbackReasonCodes = uniqueStrings([...merged.fallbackReasonCodes, ...derivedFallbackCodes]);
+  merged.rigReasonCodes = uniqueStrings([
+    ...merged.rigReasonCodes,
+    ...(merged.reviewOnly ? ["review_only"] : []),
+    ...(merged.lowAnchorConfidence ? ["low_anchor_confidence"] : []),
+    ...(merged.lowConfidenceAnchorIds.length > 0 ? ["anchor_low_confidence"] : []),
+    ...(merged.missingAnchorIds.length > 0 ? ["anchor_missing"] : []),
+    ...signalFailures.map((signal) => `${signal}_below_threshold`),
+    ...signalWarnings.map((signal) => `${signal}_near_threshold`)
+  ]);
+  merged.recreateRecommended =
+    merged.recreateRecommended ||
+    merged.suggestedAction === "recreate" ||
+    merged.fallbackReasonCodes.some((code) => code.toLowerCase().includes("recreate")) ||
+    (merged.reviewOnly && (merged.lowAnchorConfidence || signalFailures.length >= 2));
+  merged.rigBlocked =
+    merged.rigBlocked ||
+    signalFailures.length > 0 ||
+    merged.issueCodes.some((code) => code.includes("overall_below_threshold")) ||
+    (merged.reviewOnly && merged.lowAnchorConfidence);
+  if (!merged.suggestedAction && merged.recreateRecommended) {
+    merged.suggestedAction = "recreate";
+  }
+  if (merged.suggestedAction) {
+    merged.rigReasonCodes = uniqueStrings([...merged.rigReasonCodes, `suggested_action:${merged.suggestedAction}`]);
+  }
+  return merged;
+}
+
+function resolveRigCandidateScope(doc: JsonRecord, candidateId: string | null): JsonRecord | null {
+  const candidates = recordList(doc.candidates);
+  if (candidates.length === 0) {
+    return null;
+  }
+  if (candidateId) {
+    return candidates.find((candidate) => str(candidate.candidate_id) === candidateId) ?? null;
+  }
+  const selectedCandidateId = str(doc.selected_candidate_id);
+  return (
+    candidates.find((candidate) => candidate.selected === true) ??
+    (selectedCandidateId ? candidates.find((candidate) => str(candidate.candidate_id) === selectedCandidateId) ?? null : null) ??
+    candidates[0] ??
+    null
+  );
+}
+
+function resolveSidecarScorecardSource(
+  doc: JsonRecord,
+  candidateId: string | null
+): { scorecard: JsonRecord; issues: JsonRecord[]; policy: JsonRecord | null; selectedCandidateId: string | null } | null {
+  const runs = recordList(doc.runs);
+  const finalRun = runs[runs.length - 1] ?? null;
+  if (finalRun) {
+    const selectedCandidateId = str(finalRun.selected_candidate_id) ?? str(doc.selected_candidate_id);
+    const scorecards = recordList(finalRun.scorecards);
+    const scorecardEntry =
+      (candidateId ? scorecards.find((entry) => str(entry.candidate_id) === candidateId) ?? null : null) ??
+      (selectedCandidateId ? scorecards.find((entry) => str(entry.candidate_id) === selectedCandidateId) ?? null : null) ??
+      scorecards[0] ??
+      null;
+    const scorecard = isRecord(scorecardEntry?.scorecard) ? scorecardEntry.scorecard : null;
+    if (scorecard) {
+      return {
+        scorecard,
+        issues: recordList(finalRun.issues),
+        policy: isRecord(doc.policy) ? doc.policy : null,
+        selectedCandidateId
+      };
+    }
+  }
+  const scorecard = isRecord(doc.scorecard) ? doc.scorecard : null;
+  return scorecard
+    ? {
+        scorecard,
+        issues: recordList(doc.issues),
+        policy: isRecord(doc.policy) ? doc.policy : null,
+        selectedCandidateId: str(doc.selected_candidate_id)
+      }
+    : null;
+}
+
+function readRigSignalCell(scope: unknown, signal: RigSignalKey): RigSignalCell {
+  return {
+    score: firstNumberAtPaths(scope, [[`${signal}_score`], ["signals", signal, "score"]]),
+    status: firstStringAtPaths(scope, [[`${signal}_status`], ["signals", signal, "status"]]),
+    reasons: uniqueStrings([
+      ...flattenStringArraysAtPaths(scope, [[`${signal}_reasons`], ["signals", signal, "reasons"]])
+    ]),
+    source: firstStringAtPaths(scope, [[`${signal}_source`], ["signals", signal, "evidence", "source"]]),
+    sourceDetail: firstStringAtPaths(scope, [[`${signal}_source_detail`], ["signals", signal, "evidence", "source_detail"]])
+  };
+}
+
+function extractRigReviewState(doc: unknown, candidateId: string | null = null): RigReviewState {
+  if (!isRecord(doc)) {
+    return createEmptyRigReviewState();
+  }
+
+  const state = createEmptyRigReviewState();
+  const candidateScope = resolveRigCandidateScope(doc, candidateId);
+  const scopes = candidateScope ? [candidateScope, doc] : [doc];
+  for (const scope of scopes) {
+    for (const signal of RIG_SIGNAL_KEYS) {
+      const cell = readRigSignalCell(scope, signal);
+      if (state.signals[signal].score === null && cell.score !== null) {
+        state.signals[signal].score = cell.score;
+      }
+      if (state.signals[signal].status === null && cell.status !== null) {
+        state.signals[signal].status = cell.status;
+      }
+      state.signals[signal].reasons = uniqueStrings([...state.signals[signal].reasons, ...cell.reasons]);
+      if (state.signals[signal].source === null && cell.source !== null) {
+        state.signals[signal].source = cell.source;
+      }
+      if (state.signals[signal].sourceDetail === null && cell.sourceDetail !== null) {
+        state.signals[signal].sourceDetail = cell.sourceDetail;
+      }
+      if (cell.source) {
+        state.evidenceSources = uniqueStrings([...state.evidenceSources, cell.source]);
+      }
+    }
+
+    const summaryRecord =
+      (isRecord(scope) && (num(scope.overall) !== null || isRecord(scope.by_view) || isRecord(scope.byView)) ? scope : null) ??
+      firstRecordAtPaths(scope, [
+        ["anchor_confidence_summary"],
+        ["anchorConfidenceSummary"],
+        ["proposal", "auto_proposal", "anchor_confidence_summary"],
+        ["proposal", "auto_proposal", "anchorConfidenceSummary"],
+        ["reference_bundle", "anchor_confidence_summary"],
+        ["reference_bundle", "anchorConfidenceSummary"]
+      ]);
+    if (summaryRecord) {
+      const overall =
+        num(summaryRecord.overall) ??
+        averageNumbers(
+          ["front", "threeQuarter", "profile"]
+            .map((view) => num(isRecord(summaryRecord.by_view) ? summaryRecord.by_view[view] : undefined))
+            .filter((value): value is number => value !== null)
+        );
+      if (state.anchorConfidence === null && overall !== null) {
+        state.anchorConfidence = overall;
+      }
+      const byViewRecord = isRecord(summaryRecord.by_view) ? summaryRecord.by_view : isRecord(summaryRecord.byView) ? summaryRecord.byView : {};
+      for (const view of ["front", "threeQuarter", "profile"] as const) {
+        const viewValue = num(byViewRecord[view]);
+        if (state.anchorByView[view] === undefined && viewValue !== null) {
+          state.anchorByView[view] = viewValue;
+        }
+      }
+    }
+
+    state.lowConfidenceAnchorIds = uniqueStrings([
+      ...state.lowConfidenceAnchorIds,
+      ...flattenStringArraysAtPaths(scope, [
+        ["anchor_review", "low_confidence_anchor_ids"],
+        ["anchorReview", "lowConfidenceAnchorIds"],
+        ["proposal", "auto_proposal", "anchor_review", "low_confidence_anchor_ids"],
+        ["proposal", "auto_proposal", "anchorReview", "lowConfidenceAnchorIds"]
+      ])
+    ]);
+    state.missingAnchorIds = uniqueStrings([
+      ...state.missingAnchorIds,
+      ...flattenStringArraysAtPaths(scope, [
+        ["anchor_review", "missing_anchor_ids"],
+        ["anchorReview", "missingAnchorIds"],
+        ["proposal", "auto_proposal", "anchor_review", "missing_anchor_ids"],
+        ["proposal", "auto_proposal", "anchorReview", "missingAnchorIds"]
+      ])
+    ]);
+    state.reviewOnly =
+      state.reviewOnly ||
+      firstBooleanAtPaths(scope, [
+        ["review_only"],
+        ["reviewOnly"],
+        ["proposal", "auto_proposal", "review_only"],
+        ["proposal", "auto_proposal", "reviewOnly"]
+      ]) === true;
+    state.recreateRecommended =
+      state.recreateRecommended ||
+      firstBooleanAtPaths(scope, [
+        ["recreate_recommended"],
+        ["recreateRecommended"],
+        ["proposal", "auto_proposal", "recreate_recommended"],
+        ["proposal", "auto_proposal", "recreateRecommended"]
+      ]) === true;
+    state.rigReasonCodes = uniqueStrings([
+      ...state.rigReasonCodes,
+      ...flattenStringArraysAtPaths(scope, [
+        ["reason_codes"],
+        ["reasonCodes"],
+        ["rig_reason_codes"],
+        ["rigReasonCodes"],
+        ["details", "reason_codes"],
+        ["details", "reasonCodes"]
+      ])
+    ]);
+    state.fallbackReasonCodes = uniqueStrings([
+      ...state.fallbackReasonCodes,
+      ...flattenStringArraysAtPaths(scope, [
+        ["fallback_reason_codes"],
+        ["fallbackReasonCodes"],
+        ["fallback_steps_applied"],
+        ["details", "fallback_reason_codes"],
+        ["details", "fallbackReasonCodes"]
+      ]),
+      ...(firstStringAtPaths(scope, [["fallback_reason"], ["fallbackReason"]]) ? [firstStringAtPaths(scope, [["fallback_reason"], ["fallbackReason"]])!] : [])
+    ]);
+    const suggestedAction = firstStringAtPaths(scope, [
+      ["suggested_action"],
+      ["suggestedAction"],
+      ["proposal", "auto_proposal", "suggested_action"],
+      ["proposal", "auto_proposal", "suggestedAction"]
+    ]);
+    if (state.suggestedAction === null && suggestedAction) {
+      state.suggestedAction = suggestedAction;
+    }
+  }
+
+  const scorecardSource = resolveSidecarScorecardSource(doc, candidateId);
+  if (scorecardSource) {
+    for (const signal of RIG_SIGNAL_KEYS) {
+      const standardized = readRecordAtPath(scorecardSource.scorecard, ["signals", signal]);
+      if (!standardized) {
+        continue;
+      }
+      const evidence = isRecord(standardized.evidence) ? standardized.evidence : {};
+      state.signals[signal].score = num(standardized.score) ?? state.signals[signal].score;
+      state.signals[signal].status = str(standardized.status) ?? state.signals[signal].status;
+      state.signals[signal].reasons = uniqueStrings([
+        ...state.signals[signal].reasons,
+        ...readStringArrayAtPath(standardized, ["reasons"])
+      ]);
+      state.signals[signal].source = str(evidence.source) ?? state.signals[signal].source;
+      state.signals[signal].sourceDetail = str(evidence.source_detail) ?? state.signals[signal].sourceDetail;
+      if (state.signals[signal].source) {
+        state.evidenceSources = uniqueStrings([...state.evidenceSources, state.signals[signal].source]);
+      }
+      const evidenceState = extractRigReviewState(evidence);
+      const mergedEvidence = mergeRigReviewStates(state, evidenceState);
+      state.anchorConfidence = mergedEvidence.anchorConfidence;
+      state.anchorByView = mergedEvidence.anchorByView;
+      state.lowConfidenceAnchorIds = mergedEvidence.lowConfidenceAnchorIds;
+      state.missingAnchorIds = mergedEvidence.missingAnchorIds;
+      state.reviewOnly = mergedEvidence.reviewOnly;
+      state.recreateRecommended = mergedEvidence.recreateRecommended;
+      state.rigReasonCodes = mergedEvidence.rigReasonCodes;
+      state.fallbackReasonCodes = mergedEvidence.fallbackReasonCodes;
+      state.issueCodes = mergedEvidence.issueCodes;
+      state.evidenceSources = mergedEvidence.evidenceSources;
+      state.suggestedAction = state.suggestedAction ?? mergedEvidence.suggestedAction;
+    }
+
+    const issueScopes =
+      candidateId && scorecardSource.selectedCandidateId && candidateId !== scorecardSource.selectedCandidateId
+        ? []
+        : scorecardSource.issues;
+    state.issueCodes = uniqueStrings([...state.issueCodes, ...issueScopes.map((issue) => str(issue.code)).filter((value): value is string => Boolean(value))]);
+    state.rigReasonCodes = uniqueStrings([
+      ...state.rigReasonCodes,
+      ...issueScopes
+        .map((issue) => str(issue.code))
+        .filter((value): value is string => Boolean(value))
+        .filter((value) => value.startsWith("selected_") || value === "selected_overall_below_threshold")
+    ]);
+    state.fallbackReasonCodes = uniqueStrings([
+      ...state.fallbackReasonCodes,
+      ...(scorecardSource.policy && str(scorecardSource.policy.escalation_reason)
+        ? [str(scorecardSource.policy.escalation_reason)!]
+        : []),
+      ...issueScopes
+        .map((issue) => firstStringAtPaths(issue, [["details", "reason"], ["details", "source_detail"]]))
+        .filter((value): value is string => Boolean(value))
+    ]);
+  }
+
+  return mergeRigReviewStates(state);
+}
+
+const rigReviewStateCache = new Map<string, RigReviewState>();
+
+function readRigReviewStateFromArtifactPath(filePath: string | null, candidateId: string | null = null): RigReviewState {
+  if (!filePath) {
+    return createEmptyRigReviewState();
+  }
+  const cacheKey = `${filePath}#${candidateId ?? "*"}`;
+  const cached = rigReviewStateCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const state = extractRigReviewState(readJsonFileSafe(filePath), candidateId);
+  rigReviewStateCache.set(cacheKey, state);
+  return state;
+}
+
+function rigStateTone(state: RigReviewState): UiBadgeTone {
+  if (state.rigBlocked) return "bad";
+  if (state.reviewOnly || state.lowAnchorConfidence || state.rigReasonCodes.length > 0) return "warn";
+  if (
+    state.anchorConfidence !== null ||
+    RIG_SIGNAL_KEYS.some((signal) => state.signals[signal].score !== null) ||
+    state.fallbackReasonCodes.length > 0
+  ) {
+    return "ok";
+  }
+  return "muted";
+}
+
+function formatRigSignalValue(state: RigReviewState, signal: RigSignalKey): string {
+  const score = state.signals[signal].score;
+  return score === null ? "-" : formatNumber(score);
+}
+
+function formatRigSignalTableCell(state: RigReviewState, signal: RigSignalKey): string {
+  const cell = state.signals[signal];
+  if (cell.score === null) {
+    return "-";
+  }
+  const tone: UiBadgeTone = cell.status === "fail" ? "bad" : cell.status === "warn" ? "warn" : "ok";
+  return `<div class="table-note"><strong>${esc(formatNumber(cell.score))}</strong><span class="badge ${tone}">${esc(cell.status ?? "pass")}</span></div>`;
+}
+
+function formatAnchorConfidenceSummary(state: RigReviewState): string {
+  const parts: string[] = [];
+  if (state.anchorConfidence !== null) {
+    parts.push(formatNumber(state.anchorConfidence, 2));
+  }
+  for (const view of ["front", "threeQuarter", "profile"] as const) {
+    const value = state.anchorByView[view];
+    if (typeof value === "number") {
+      parts.push(`${view === "threeQuarter" ? "3/4" : view} ${formatNumber(value, 2)}`);
+    }
+  }
+  return parts.length > 0 ? parts.join(" | ") : "-";
+}
+
+function formatAnchorConfidenceTableCell(state: RigReviewState): string {
+  if (state.anchorConfidence === null && Object.keys(state.anchorByView).length === 0) {
+    return "-";
+  }
+  const tone = state.lowAnchorConfidence ? "warn" : rigStateTone(state);
+  return `<div class="table-note"><strong>${esc(state.anchorConfidence === null ? "-" : formatNumber(state.anchorConfidence, 2))}</strong><span class="badge ${tone}">${esc(
+    state.reviewOnly ? "review_only" : state.lowAnchorConfidence ? "low" : "tracked"
+  )}</span></div>`;
+}
+
+function summarizeRigFlags(state: RigReviewState): string {
+  const flags = uniqueStrings([
+    ...(state.rigBlocked ? ["rig_blocked"] : []),
+    ...(state.reviewOnly ? ["review_only"] : []),
+    ...(state.lowAnchorConfidence ? ["low_anchor_confidence"] : []),
+    ...(state.recreateRecommended ? ["recreate_recommended"] : [])
+  ]);
+  return flags.length > 0 ? flags.join(", ") : "-";
+}
+
+function summarizeRigSignals(state: RigReviewState): string {
+  const parts = RIG_SIGNAL_KEYS.map((signal) => {
+    const score = state.signals[signal].score;
+    return score === null ? null : `${humanizeOpsLabel(signal)} ${formatNumber(score)}`;
+  }).filter((value): value is string => Boolean(value));
+  return parts.length > 0 ? parts.join(" | ") : "-";
+}
+
+function renderRigDiffChip(label: string, left: number | null, right: number | null): string {
+  if (left === null && right === null) {
+    return `<span class="decision-diff-chip tone-muted">${esc(label)} -</span>`;
+  }
+  if (left === null || right === null) {
+    return `<span class="decision-diff-chip tone-warn">${esc(label)} ${esc(left === null ? "-" : formatNumber(left))} -> ${esc(
+      right === null ? "-" : formatNumber(right)
+    )}</span>`;
+  }
+  const delta = right - left;
+  const tone: UiBadgeTone = delta >= 4 ? "ok" : delta <= -4 ? "warn" : "muted";
+  const deltaLabel = delta === 0 ? "0" : `${delta > 0 ? "+" : ""}${formatNumber(delta, 2)}`;
+  return `<span class="decision-diff-chip tone-${tone}">${esc(label)} ${esc(formatNumber(left))} -> ${esc(formatNumber(right))} (${esc(deltaLabel)})</span>`;
 }
 
 function countBibleStylePresets(doc: unknown): number {
@@ -7888,10 +8488,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      decisionSetHas(benchmarkPinnedTokens, ...values) ||
 	      values.some((value) => benchmarkFocusValue === decisionToken(value));
 	    const { sources, backendScenarios, regressions } = collectBenchmarkViewerData();
+      const benchmarkRigRows = collectRepairAcceptanceRows();
 	    const backendReady = backendScenarios.filter((row) => normalizeRolloutStatus(row.status) === "ready").length;
 	    const regressionBlocked = regressions.filter((row) => normalizeRolloutStatus(row.status) === "blocked").length;
 	    const regressionWarn = regressions.filter((row) => normalizeRolloutStatus(row.status) === "warn").length;
 	    const mismatchTotal = regressions.reduce((sum, row) => sum + row.mismatchCount, 0);
+      const rigBlockedCount = benchmarkRigRows.filter((row) => row.rig.rigBlocked).length;
+      const reviewOnlyCount = benchmarkRigRows.filter((row) => row.rig.reviewOnly).length;
+      const lowAnchorCount = benchmarkRigRows.filter((row) => row.rig.lowAnchorConfidence).length;
 	    const availableSources = sources.filter((source) => source.exists).length;
 	    const benchmarkCompareLinks =
 	      backendScenarios.reduce((sum, row) => sum + row.candidateCompareItems.length, 0) +
@@ -7949,7 +8553,10 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      { label: "Ready Backends", value: String(backendReady), hint: "usable benchmark scenarios", tone: backendReady > 0 ? "ok" : "warn" },
 	      { label: "Regression Queue", value: String(regressions.length), hint: `${regressionBlocked} blocked / ${regressionWarn} warn`, tone: benchmarkTone },
 	      { label: "Compare Links", value: String(benchmarkCompareLinks), hint: "candidate compare surfaces adjacent to queue review", tone: benchmarkCompareLinks > 0 ? "warn" : "muted" },
-	      { label: "Render Drift", value: String(mismatchTotal), hint: "stored vs recommended render-mode mismatches", tone: mismatchTotal > 0 ? "warn" : "ok" }
+	      { label: "Render Drift", value: String(mismatchTotal), hint: "stored vs recommended render-mode mismatches", tone: mismatchTotal > 0 ? "warn" : "ok" },
+        { label: "Rig Blocked", value: String(rigBlockedCount), hint: "selected winners with fail-level rig signals", tone: rigBlockedCount > 0 ? "bad" : "ok" },
+        { label: "Review Only", value: String(reviewOnlyCount), hint: "anchor-backed rows still marked review_only", tone: reviewOnlyCount > 0 ? "warn" : "ok" },
+        { label: "Low Anchor", value: String(lowAnchorCount), hint: "rows with low anchor confidence or low-confidence anchors", tone: lowAnchorCount > 0 ? "warn" : "ok" }
 	    ];
 
 	    const sourceRows = sources
@@ -8138,6 +8745,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	        badge: "sources"
 	      });
 	    }
+      if (rigBlockedCount > 0) {
+        benchmarkBlockers.push({
+          title: "Rig-blocked winners in queue",
+          detail: `${rigBlockedCount} benchmark shots currently point at selected candidates with fail-level rig signals. Keep those in compare-before-promote review.`,
+          tone: "bad",
+          badge: "rig"
+        });
+      }
 	    const benchmarkPrimaryActions: DecisionCard[] = [
 	      {
 	        title: "Start with blocked regression rows",
@@ -8204,7 +8819,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      { label: "Sources", value: `${availableSources}/${sources.length}`, hint: "configured artifact roots available" },
 	      { label: "Backend Objects", value: String(backendScenarios.length), hint: "artifact-backed backend scenarios" },
 	      { label: "Regression Objects", value: String(regressions.length), hint: `${regressionBlocked} blocked / ${regressionWarn} warn` },
-	      { label: "Compare Links", value: String(benchmarkCompareLinks), hint: "candidate compare surfaces attached to queue" }
+	      { label: "Compare Links", value: String(benchmarkCompareLinks), hint: "candidate compare surfaces attached to queue" },
+        { label: "Rig Flags", value: `${rigBlockedCount} blocked / ${reviewOnlyCount} review_only / ${lowAnchorCount} low anchor`, hint: "selected-candidate rig summary across benchmark shots" }
 	    ];
 	    const benchmarkJumpFacts: DecisionFact[] = [
 	      ...(decisionState.focus
@@ -8312,6 +8928,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const backendFilter = (q(request.query, "backend") ?? "").toLowerCase();
     const bundleFilter = (q(request.query, "bundle") ?? "").toLowerCase();
     const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const rigFilter = (q(request.query, "rig") ?? "").toLowerCase();
+    const fallbackFilter = (q(request.query, "fallback") ?? "").toLowerCase();
+    const reviewOnlyFilter = q(request.query, "reviewOnly") === "1";
+    const lowAnchorFilter = q(request.query, "lowAnchor") === "1";
+    const recreateFilter = q(request.query, "recreate") === "1";
     const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
     const decisionState = readDecisionLinkState(request.query);
     const repairFocusValue = decisionToken(decisionState.focus);
@@ -8332,6 +8953,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       if (backendFilter && ![row.backend, row.renderer, row.providerSummary].some((value) => value.toLowerCase().includes(backendFilter))) return false;
       if (bundleFilter && ![row.bundle, row.scenario].some((value) => value.toLowerCase().includes(bundleFilter))) return false;
       if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (rigFilter && !row.rig.rigReasonCodes.some((value) => value.toLowerCase().includes(rigFilter))) return false;
+      if (fallbackFilter && !row.rig.fallbackReasonCodes.some((value) => value.toLowerCase().includes(fallbackFilter))) return false;
+      if (reviewOnlyFilter && !row.rig.reviewOnly) return false;
+      if (lowAnchorFilter && !row.rig.lowAnchorConfidence) return false;
+      if (recreateFilter && !row.rig.recreateRecommended) return false;
       if (
         queryFilter &&
         ![
@@ -8343,7 +8969,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           row.judgeSummary,
           row.repairSummary,
           row.policySummary,
-          row.selectedCandidateId
+          row.selectedCandidateId,
+          ...row.rig.rigReasonCodes,
+          ...row.rig.fallbackReasonCodes
         ].some((value) => value.toLowerCase().includes(queryFilter))
       ) {
         return false;
@@ -8353,10 +8981,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 
     const summaryCards = [
       { label: "Rows", value: String(rows.length), tone: "muted" as UiBadgeTone, hint: "sidecar artifacts in scope" },
-      { label: "Accepted", value: String(rows.filter((row) => row.acceptanceTone === "ok").length), tone: "ok" as UiBadgeTone, hint: "accepted / resolved artifacts" },
       { label: "Rejected", value: String(rows.filter((row) => row.acceptanceTone === "bad").length), tone: "bad" as UiBadgeTone, hint: "rejected or failed artifacts" },
       { label: "QC Failed", value: String(rows.filter((row) => row.qcTone === "bad").length), tone: "bad" as UiBadgeTone, hint: "qc reasons need operator review" },
-      { label: "Repair Tagged", value: String(rows.filter((row) => row.repairSignals.length > 0).length), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.repairSignals), 1) }
+      { label: "Rig Blocked", value: String(rows.filter((row) => row.rig.rigBlocked).length), tone: "bad" as UiBadgeTone, hint: "selected candidates with fail-level rig signals" },
+      { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "rows still tagged review_only" },
+      { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence or low-confidence anchors" }
     ]
       .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
       .join("");
@@ -8367,6 +8996,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backend: backendFilter || null,
         bundle: bundleFilter || null,
         source: sourceFilter || null,
+        rig: rigFilter || null,
+        fallback: fallbackFilter || null,
+        reviewOnly: reviewOnlyFilter ? "1" : null,
+        lowAnchor: lowAnchorFilter ? "1" : null,
+        recreate: recreateFilter ? "1" : null,
         q: queryFilter || null,
         ...decisionStateParams(decisionState)
       },
@@ -8414,6 +9048,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div class="field"><label for="repair-backend">Backend / renderer</label><input id="repair-backend" name="backend" value="${esc(backendFilter)}" placeholder="wan, hunyuan..."/></div>
     <div class="field"><label for="repair-bundle">Bundle / scenario</label><input id="repair-bundle" name="bundle" value="${esc(bundleFilter)}" placeholder="economy, convergence..."/></div>
     <div class="field"><label for="repair-source">Source root</label><input id="repair-source" name="source" value="${esc(sourceFilter)}" placeholder="local worktree..."/></div>
+    <div class="field"><label for="repair-rig">Rig reason code</label><input id="repair-rig" name="rig" value="${esc(rigFilter)}" placeholder="head_pose_below_threshold, review_only..."/></div>
+    <div class="field"><label for="repair-fallback">Fallback reason code</label><input id="repair-fallback" name="fallback" value="${esc(fallbackFilter)}" placeholder="metadata_head_pose_fallback, anchor_manifest..."/></div>
+    <div class="field"><label><input type="checkbox" name="reviewOnly" value="1"${reviewOnlyFilter ? " checked" : ""}/> review_only only</label></div>
+    <div class="field"><label><input type="checkbox" name="lowAnchor" value="1"${lowAnchorFilter ? " checked" : ""}/> low anchor only</label></div>
+    <div class="field"><label><input type="checkbox" name="recreate" value="1"${recreateFilter ? " checked" : ""}/> recreate recommended</label></div>
     <div class="field"><label for="repair-q">Free text</label><input id="repair-q" name="q" value="${esc(queryFilter)}" placeholder="episode id, shot id, failure, qc reason..."/></div>
   </div>
   ${renderDecisionStateHiddenInputs(decisionState)}
@@ -8510,8 +9149,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">provider ${esc(row.providerSummary)}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span></div></td>
           <td><div class="table-note"><span class="badge ${row.acceptanceTone}">${esc(humanizeOpsLabel(row.acceptanceStatus))}</span><span class="muted-text">final ${esc(finalLabel)} / ${esc(row.finalStage ?? "-")}</span><span class="mono">${esc(row.selectedCandidateId)}</span></div></td>
           <td><div class="table-note"><span class="badge ${row.qcTone}">${esc(humanizeOpsLabel(row.qcStatus))}</span><span class="muted-text">${esc(row.qcSummary)}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">${esc(row.fallbackSummary === "-" ? "no fallback steps" : `fallback ${row.fallbackSummary}`)}</span></div></td>
-          <td><div class="table-note"><strong>${esc(row.policySummary)}</strong><span class="muted-text">${esc(row.repairSummary)}</span></div></td>
-          <td><div class="table-note"><strong>${esc(row.judgeSummary || "-")}</strong><span class="muted-text">${esc(row.failureSummary)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.policySummary)}</strong><span class="muted-text">${esc(row.repairSummary)}</span><span class="muted-text">rig ${esc(summarizeRigSignals(row.rig))}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.judgeSummary || "-")}</strong><span class="muted-text">${esc(row.failureSummary)}</span><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
           <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.artifactRelativePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
@@ -8524,6 +9163,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backendFilter ? `backend ${backendFilter}` : null,
         bundleFilter ? `bundle ${bundleFilter}` : null,
         sourceFilter ? `source ${sourceFilter}` : null,
+        rigFilter ? `rig ${rigFilter}` : null,
+        fallbackFilter ? `fallback ${fallbackFilter}` : null,
+        reviewOnlyFilter ? "review_only" : null,
+        lowAnchorFilter ? "low_anchor" : null,
+        recreateFilter ? "recreate" : null,
         queryFilter ? `q ${queryFilter}` : null
       ],
       " | "
@@ -8531,17 +9175,18 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const rejectedCount = rows.filter((row) => row.acceptanceTone === "bad").length;
     const qcFailedCount = rows.filter((row) => row.qcTone === "bad").length;
     const compareCount = rows.filter((row) => Boolean(row.candidateComparePath)).length;
+    const rigBlockedCount = rows.filter((row) => row.rig.rigBlocked).length;
     const repairRail = [
       {
         title: "Start with blocked acceptance rows",
         detail:
-          rejectedCount > 0
-            ? `${rejectedCount} rows are rejected or failed. Clear those before treating accepted rows as a promotion baseline.`
+          rejectedCount > 0 || rigBlockedCount > 0
+            ? `${rejectedCount} rows are rejected or failed, and ${rigBlockedCount} rows are rig-blocked. Clear those before treating accepted rows as a promotion baseline.`
             : qcFailedCount > 0
               ? `No rejected rows remain, but ${qcFailedCount} rows still carry QC-failed baggage.`
               : "No blocked acceptance rows remain. Review compare evidence before promoting a candidate set.",
-        tone: rejectedCount > 0 ? ("bad" as UiBadgeTone) : qcFailedCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
-        badge: rejectedCount > 0 ? "blocked" : qcFailedCount > 0 ? "review" : "ready",
+        tone: rejectedCount > 0 || rigBlockedCount > 0 ? ("bad" as UiBadgeTone) : qcFailedCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
+        badge: rejectedCount > 0 || rigBlockedCount > 0 ? "blocked" : qcFailedCount > 0 ? "review" : "ready",
         html: `<a href="${repairBenchmarksHref}">Benchmark Queue</a><a href="${repairRolloutsHref}">Rollouts</a>`
       },
       {
@@ -8566,6 +9211,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "Filter Scope", value: repairScope, hint: "current explorer scope" },
       { label: "Rows", value: String(rows.length), hint: `${compareCount} compare-linked rows` },
       { label: "QC Failed", value: String(qcFailedCount), hint: "rows that still need operator recovery review" },
+      { label: "Rig Review", value: `${rigBlockedCount} blocked / ${rows.filter((row) => row.rig.reviewOnly).length} review_only`, hint: "selected-candidate rig gate summary" },
       {
         label: "Rollback Anchor",
         value: compareCount > 0 ? "candidate compare -> smoke -> plan" : "smoke -> plan -> QC",
@@ -8668,6 +9314,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const backendFilter = (q(request.query, "backend") ?? "").toLowerCase();
     const bundleFilter = (q(request.query, "bundle") ?? "").toLowerCase();
     const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const rigFilter = (q(request.query, "rig") ?? "").toLowerCase();
+    const fallbackFilter = (q(request.query, "fallback") ?? "").toLowerCase();
+    const reviewOnlyFilter = q(request.query, "reviewOnly") === "1";
+    const lowAnchorFilter = q(request.query, "lowAnchor") === "1";
+    const recreateFilter = q(request.query, "recreate") === "1";
     const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
     const decisionState = readDecisionLinkState(request.query);
     const routeFocusValue = decisionToken(decisionState.focus);
@@ -8688,6 +9339,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       if (backendFilter && ![row.backend, row.providerSummary].some((value) => value.toLowerCase().includes(backendFilter))) return false;
       if (bundleFilter && ![row.bundle, row.scenario].some((value) => value.toLowerCase().includes(bundleFilter))) return false;
       if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (rigFilter && !row.rig.rigReasonCodes.some((value) => value.toLowerCase().includes(rigFilter))) return false;
+      if (fallbackFilter && !row.rig.fallbackReasonCodes.some((value) => value.toLowerCase().includes(fallbackFilter))) return false;
+      if (reviewOnlyFilter && !row.rig.reviewOnly) return false;
+      if (lowAnchorFilter && !row.rig.lowAnchorConfidence) return false;
+      if (recreateFilter && !row.rig.recreateRecommended) return false;
       if (
         queryFilter &&
         ![
@@ -8699,7 +9355,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           row.repairSummary,
           row.fallbackSummary,
           row.policySummary,
-          row.selectedCandidateId
+          row.selectedCandidateId,
+          ...row.rig.rigReasonCodes,
+          ...row.rig.fallbackReasonCodes
         ].some((value) => value.toLowerCase().includes(queryFilter))
       ) {
         return false;
@@ -8712,7 +9370,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "Reasons", value: String(new Set(rows.map((row) => row.routeReason)).size), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.routeReason), 1) },
       { label: "Accepted", value: String(rows.filter((row) => row.acceptanceTone === "ok").length), tone: "ok" as UiBadgeTone, hint: "accepted / resolved routed shots" },
       { label: "Render Drift", value: String(mismatchedCount), tone: mismatchedCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone), hint: "stored vs recommended render-mode mismatches" },
-      { label: "Repair Tagged", value: String(rows.filter((row) => row.repairSummary !== "-").length), tone: "bad" as UiBadgeTone, hint: "shots with repair or QC baggage" }
+      { label: "Rig Blocked", value: String(rows.filter((row) => row.rig.rigBlocked).length), tone: "bad" as UiBadgeTone, hint: "selected candidates with fail-level rig signals" },
+      { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "route rows still tagged review_only" }
     ]
       .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
       .join("");
@@ -8723,6 +9382,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backend: backendFilter || null,
         bundle: bundleFilter || null,
         source: sourceFilter || null,
+        rig: rigFilter || null,
+        fallback: fallbackFilter || null,
+        reviewOnly: reviewOnlyFilter ? "1" : null,
+        lowAnchor: lowAnchorFilter ? "1" : null,
+        recreate: recreateFilter ? "1" : null,
         q: queryFilter || null,
         ...decisionStateParams(decisionState)
       },
@@ -8770,6 +9434,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div class="field"><label for="route-backend-filter">Backend</label><input id="route-backend-filter" name="backend" value="${esc(backendFilter)}" placeholder="wan, hunyuan..."/></div>
     <div class="field"><label for="route-bundle-filter">Bundle / scenario</label><input id="route-bundle-filter" name="bundle" value="${esc(bundleFilter)}" placeholder="economy, convergence..."/></div>
     <div class="field"><label for="route-source-filter">Source root</label><input id="route-source-filter" name="source" value="${esc(sourceFilter)}" placeholder="main repo..."/></div>
+    <div class="field"><label for="route-rig-filter">Rig reason code</label><input id="route-rig-filter" name="rig" value="${esc(rigFilter)}" placeholder="head_pose_near_threshold, review_only..."/></div>
+    <div class="field"><label for="route-fallback-filter">Fallback reason code</label><input id="route-fallback-filter" name="fallback" value="${esc(fallbackFilter)}" placeholder="anchor_manifest_eye_drift, metadata..."/></div>
+    <div class="field"><label><input type="checkbox" name="reviewOnly" value="1"${reviewOnlyFilter ? " checked" : ""}/> review_only only</label></div>
+    <div class="field"><label><input type="checkbox" name="lowAnchor" value="1"${lowAnchorFilter ? " checked" : ""}/> low anchor only</label></div>
+    <div class="field"><label><input type="checkbox" name="recreate" value="1"${recreateFilter ? " checked" : ""}/> recreate recommended</label></div>
     <div class="field"><label for="route-q-filter">Free text</label><input id="route-q-filter" name="q" value="${esc(queryFilter)}" placeholder="episode id, shot id, blocker, qc reason..."/></div>
   </div>
   ${renderDecisionStateHiddenInputs(decisionState)}
@@ -8889,9 +9558,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         return `<tr id="${rowId}" class="ops-review-table-row${isRouteFocused(row.episodeId, row.shotId, row.routeReason, row.selectedCandidateId, row.bundle, row.artifactRelativePath) ? " is-focused" : ""}">
           <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span></div></td>
           <td><div class="table-note"><strong>${esc(row.routeReasonLabel)}</strong><span class="mono">${esc(row.routeReason)}</span><span class="muted-text">candidate ${esc(row.selectedCandidateId)}</span></div></td>
-          <td><div class="table-note"><strong>${esc(row.renderModeSummary)}</strong><span class="muted-text">${esc(row.providerSummary)}</span><span class="muted-text">${esc(row.policySummary)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.renderModeSummary)}</strong><span class="muted-text">${esc(row.providerSummary)}</span><span class="muted-text">${esc(row.policySummary)}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span></div></td>
           <td><div class="table-note"><span class="badge ${row.acceptanceTone}">${esc(humanizeOpsLabel(row.acceptanceStatus))}</span><span class="muted-text">final ${esc(finalLabel)} / ${esc(row.finalStage ?? "-")}</span></div></td>
-          <td><div class="table-note"><span class="muted-text">${esc(compact([row.qcSummary !== "-" ? row.qcSummary : null, row.repairSummary !== "-" ? row.repairSummary : null], " | ") || "-")}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">${esc(row.fallbackSummary)}</span></div></td>
+          <td><div class="table-note"><span class="muted-text">${esc(compact([row.qcSummary !== "-" ? row.qcSummary : null, row.repairSummary !== "-" ? row.repairSummary : null], " | ") || "-")}</span><span class="muted-text">rig ${esc(summarizeRigSignals(row.rig))}</span><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
           <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${runtimeHref ? `<a href="${runtimeHref}">Runtime Shots</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.artifactRelativePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
@@ -8904,18 +9573,24 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backendFilter ? `backend ${backendFilter}` : null,
         bundleFilter ? `bundle ${bundleFilter}` : null,
         sourceFilter ? `source ${sourceFilter}` : null,
+        rigFilter ? `rig ${rigFilter}` : null,
+        fallbackFilter ? `fallback ${fallbackFilter}` : null,
+        reviewOnlyFilter ? "review_only" : null,
+        lowAnchorFilter ? "low_anchor" : null,
+        recreateFilter ? "recreate" : null,
         queryFilter ? `q ${queryFilter}` : null
       ],
       " | "
     ) || "all routed shots";
     const compareCount = rows.filter((row) => Boolean(row.candidateComparePath)).length;
-    const routedBlockers = rows.filter((row) => row.acceptanceTone !== "ok" || row.issueCount > 0 || row.repairSummary !== "-").length;
+    const routedBlockers = rows.filter((row) => row.acceptanceTone !== "ok" || row.issueCount > 0 || row.repairSummary !== "-" || row.rig.rigBlocked).length;
+    const rigBlockedCount = rows.filter((row) => row.rig.rigBlocked).length;
     const routeRail = [
       {
         title: "Start with routed blockers",
         detail:
           routedBlockers > 0
-            ? `${routedBlockers} rows still carry acceptance, QC, or repair baggage. Review those before trusting the route_reason mix.`
+            ? `${routedBlockers} rows still carry acceptance, QC, repair, or rig baggage. ${rigBlockedCount} are rig-blocked. Review those before trusting the route_reason mix.`
             : "No routed blockers remain. Use this explorer to confirm route_reason still matches the promoted outcome.",
         tone: routedBlockers > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone),
         badge: routedBlockers > 0 ? "review" : "ready",
@@ -8943,6 +9618,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "Filter Scope", value: routeScope, hint: "current route explorer scope" },
       { label: "Rows", value: String(rows.length), hint: `${compareCount} compare-linked rows` },
       { label: "Render Drift", value: String(mismatchedCount), hint: "stored vs recommended render-mode mismatches" },
+      { label: "Rig Review", value: `${rigBlockedCount} blocked / ${rows.filter((row) => row.rig.reviewOnly).length} review_only`, hint: "route-side rig summary" },
       {
         label: "Rollback Anchor",
         value: compareCount > 0 ? "candidate compare -> runtime shots" : "runtime shots -> render modes",
@@ -9044,6 +9720,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const datasetFilter = (q(request.query, "dataset") ?? "").toLowerCase();
     const packFilter = (q(request.query, "pack") ?? "").toLowerCase();
     const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const rigFilter = (q(request.query, "rig") ?? "").toLowerCase();
+    const fallbackFilter = (q(request.query, "fallback") ?? "").toLowerCase();
+    const reviewOnlyFilter = q(request.query, "reviewOnly") === "1";
+    const lowAnchorFilter = q(request.query, "lowAnchor") === "1";
+    const recreateFilter = q(request.query, "recreate") === "1";
     const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
     const decisionState = readDecisionLinkState(request.query);
     const lineageFocusValue = decisionToken(decisionState.focus);
@@ -9063,9 +9744,23 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       if (datasetFilter && !row.datasetIds.some((value) => value.toLowerCase().includes(datasetFilter))) return false;
       if (packFilter && !row.packIds.some((value) => value.toLowerCase().includes(packFilter))) return false;
       if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (rigFilter && !row.rig.rigReasonCodes.some((value) => value.toLowerCase().includes(rigFilter))) return false;
+      if (fallbackFilter && !row.rig.fallbackReasonCodes.some((value) => value.toLowerCase().includes(fallbackFilter))) return false;
+      if (reviewOnlyFilter && !row.rig.reviewOnly) return false;
+      if (lowAnchorFilter && !row.rig.lowAnchorConfidence) return false;
+      if (recreateFilter && !row.rig.recreateRecommended) return false;
       if (
         queryFilter &&
-        ![row.episodeId, row.bibleRef, row.datasetIds.join(" "), row.packIds.join(" "), row.routeReasons.join(" "), row.schemaGaps.join(" ")]
+        ![
+          row.episodeId,
+          row.bibleRef,
+          row.datasetIds.join(" "),
+          row.packIds.join(" "),
+          row.routeReasons.join(" "),
+          row.schemaGaps.join(" "),
+          row.rig.rigReasonCodes.join(" "),
+          row.rig.fallbackReasonCodes.join(" ")
+        ]
           .some((value) => value.toLowerCase().includes(queryFilter))
       ) {
         return false;
@@ -9077,7 +9772,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "Datasets", value: String(new Set(rows.flatMap((row) => row.datasetIds)).size), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.datasetIds), 1) },
       { label: "Character Packs", value: String(new Set(rows.flatMap((row) => row.packIds)).size), tone: "ok" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.packIds), 1) },
       { label: "Bible Refs", value: String(new Set(rows.map((row) => row.bibleRef).filter((value) => value !== "-")).size), tone: "muted" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.bibleRef), 1) },
-      { label: "Schema Gaps", value: String(rows.filter((row) => row.schemaGaps.length > 0).length), tone: "bad" as UiBadgeTone, hint: "rows missing lossless dataset versioning" }
+      { label: "Schema Gaps", value: String(rows.filter((row) => row.schemaGaps.length > 0).length), tone: "bad" as UiBadgeTone, hint: "rows missing lossless dataset versioning" },
+      { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "manifest or request lineage still tagged review_only" },
+      { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence across lineage inputs" }
     ]
       .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
       .join("");
@@ -9087,6 +9784,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         dataset: datasetFilter || null,
         pack: packFilter || null,
         source: sourceFilter || null,
+        rig: rigFilter || null,
+        fallback: fallbackFilter || null,
+        reviewOnly: reviewOnlyFilter ? "1" : null,
+        lowAnchor: lowAnchorFilter ? "1" : null,
+        recreate: recreateFilter ? "1" : null,
         q: queryFilter || null,
         ...decisionStateParams(decisionState)
       },
@@ -9133,6 +9835,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div class="field"><label for="lineage-dataset-filter">dataset_id</label><input id="lineage-dataset-filter" name="dataset" value="${esc(datasetFilter)}" placeholder="transit_ridership..."/></div>
     <div class="field"><label for="lineage-pack-filter">character pack</label><input id="lineage-pack-filter" name="pack" value="${esc(packFilter)}" placeholder="smoke-generated-rig..."/></div>
     <div class="field"><label for="lineage-source-filter">Source root</label><input id="lineage-source-filter" name="source" value="${esc(sourceFilter)}" placeholder="main repo..."/></div>
+    <div class="field"><label for="lineage-rig-filter">Rig reason code</label><input id="lineage-rig-filter" name="rig" value="${esc(rigFilter)}" placeholder="review_only, low_anchor_confidence..."/></div>
+    <div class="field"><label for="lineage-fallback-filter">Fallback reason code</label><input id="lineage-fallback-filter" name="fallback" value="${esc(fallbackFilter)}" placeholder="anchor_manifest, metadata..."/></div>
+    <div class="field"><label><input type="checkbox" name="reviewOnly" value="1"${reviewOnlyFilter ? " checked" : ""}/> review_only only</label></div>
+    <div class="field"><label><input type="checkbox" name="lowAnchor" value="1"${lowAnchorFilter ? " checked" : ""}/> low anchor only</label></div>
+    <div class="field"><label><input type="checkbox" name="recreate" value="1"${recreateFilter ? " checked" : ""}/> recreate recommended</label></div>
     <div class="field"><label for="lineage-q-filter">Free text</label><input id="lineage-q-filter" name="q" value="${esc(queryFilter)}" placeholder="bible ref, route_reason, schema gap..."/></div>
   </div>
   ${renderDecisionStateHiddenInputs(decisionState)}
@@ -9220,8 +9927,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           <td><div class="table-note"><strong>${esc(row.episodeId)}</strong><span class="muted-text">bible ${esc(row.bibleRef)}</span><span class="muted-text">beats ${esc(String(row.beatCount))} / route reasons ${esc(summarizeValues(row.routeReasons, 2))}</span></div></td>
           <td><div class="table-note"><strong>${esc(summarizeValues(row.datasetIds, 3))}</strong><span class="muted-text">packs ${esc(summarizeValues(row.packIds, 3))}</span></div></td>
           <td><div class="inline-actions">${artifactLinks}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div><div class="muted-text">${esc(compact([row.inputShotsPath, row.runtimeShotsPath], " -> ") || "-")}</div></td>
-          <td><div class="table-note"><strong>${esc(summarizeValues(row.manifestPaths, 2))}</strong><span class="muted-text">${esc(summarizeValues(row.selectedImagePaths, 2))}</span></div></td>
-          <td>${esc(summarizeValues(row.schemaGaps, 3))}</td>
+          <td><div class="table-note"><strong>${esc(summarizeValues(row.manifestPaths, 2))}</strong><span class="muted-text">${esc(summarizeValues(row.selectedImagePaths, 2))}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(summarizeValues(row.schemaGaps, 3))}</strong><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
       })
@@ -9232,12 +9939,19 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         datasetFilter ? `dataset ${datasetFilter}` : null,
         packFilter ? `pack ${packFilter}` : null,
         sourceFilter ? `source ${sourceFilter}` : null,
+        rigFilter ? `rig ${rigFilter}` : null,
+        fallbackFilter ? `fallback ${fallbackFilter}` : null,
+        reviewOnlyFilter ? "review_only" : null,
+        lowAnchorFilter ? "low_anchor" : null,
+        recreateFilter ? "recreate" : null,
         queryFilter ? `q ${queryFilter}` : null
       ],
       " | "
     ) || "all lineage rows";
     const schemaGapCount = rows.filter((row) => row.schemaGaps.length > 0).length;
     const manifestBackedRows = rows.filter((row) => row.manifestPaths.length > 0 || row.selectedImagePaths.length > 0).length;
+    const lineageReviewOnlyCount = rows.filter((row) => row.rig.reviewOnly).length;
+    const lineageLowAnchorCount = rows.filter((row) => row.rig.lowAnchorConfidence).length;
     const lineageRail = [
       {
         title: "Verify lineage before promote",
@@ -9274,6 +9988,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "Filter Scope", value: lineageScope, hint: "current lineage explorer scope" },
       { label: "Bundles", value: String(rows.length), hint: `${manifestBackedRows} manifest-backed rows` },
       { label: "Datasets", value: String(new Set(rows.flatMap((row) => row.datasetIds)).size), hint: summarizeCounts(rows.flatMap((row) => row.datasetIds), 2) },
+      { label: "Rig Review", value: `${lineageReviewOnlyCount} review_only / ${lineageLowAnchorCount} low anchor`, hint: "lineage-side rig summary" },
       {
         label: "Rollback Anchor",
         value: schemaGapCount > 0 ? "smoke -> runtime shots -> manifest" : "manifest-backed lineage",
@@ -9444,8 +10159,10 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       preflightPath: string | null;
       videoPath: string | null;
       notes: string[];
+      rig: RigReviewState;
     };
 
+    const bundleRig = mergeRigReviewStates(extractRigReviewState(requestDoc), extractRigReviewState(planDoc));
     const candidateMap = new Map<string, CandidateRow>();
     const ensureCandidate = (candidateId: string): CandidateRow => {
       const existing = candidateMap.get(candidateId);
@@ -9473,7 +10190,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         workflowPath: null,
         preflightPath: null,
         videoPath: null,
-        notes: []
+        notes: [],
+        rig: mergeRigReviewStates(bundleRig)
       };
       candidateMap.set(candidateId, created);
       return created;
@@ -9539,6 +10257,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           str(raw.error)
         ]);
       }
+    }
+
+    for (const row of candidateMap.values()) {
+      row.rig = mergeRigReviewStates(
+        row.rig,
+        extractRigReviewState(actualJudgeDoc, row.candidateId),
+        readRigReviewStateFromArtifactPath(row.visualJudgePath, row.candidateId)
+      );
     }
 
     const candidateRows = Array.from(candidateMap.values()).sort((left, right) => {
@@ -9719,6 +10445,62 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      .filter((item) => item.length > 0)
 	      .join("");
 	    const topCandidate = visibleCandidateRows[0] ?? candidateRows[0] ?? null;
+	    const promptWinnerRow =
+	      candidateRows.find((row) => row.candidateId === plannedSelectionId) ??
+	      candidateRows.find((row) => row.plannedSelected) ??
+	      null;
+	    const actualWinnerRow =
+	      candidateRows.find((row) => row.candidateId === actualSelectionId) ??
+	      candidateRows.find((row) => row.actualSelected) ??
+	      null;
+	    const promptRigState = promptWinnerRow?.rig ?? bundleRig;
+	    const actualRigState = actualWinnerRow?.rig ?? promptRigState;
+	    const promptRigFlags = summarizeRigFlags(promptRigState);
+	    const actualRigFlags = summarizeRigFlags(actualRigState);
+	    const promptRigSignals = summarizeRigSignals(promptRigState);
+	    const actualRigSignals = summarizeRigSignals(actualRigState);
+	    const promptRigAnchorSummary = formatAnchorConfidenceSummary(promptRigState);
+	    const actualRigAnchorSummary = formatAnchorConfidenceSummary(actualRigState);
+	    const selectedRigCardValue = actualRigState.rigBlocked
+	      ? "rig_blocked"
+	      : actualRigState.reviewOnly
+	        ? "review_only"
+	        : actualRigState.lowAnchorConfidence
+	          ? "low_anchor_confidence"
+	          : actualRigState.anchorConfidence !== null
+	            ? "tracked"
+	            : "pending";
+	    const selectedRigFallbackSummary = summarizeValues(actualRigState.fallbackReasonCodes, 3);
+	    const winnerRigFlagTone: UiBadgeTone =
+	      actualRigState.rigBlocked || promptRigState.rigBlocked
+	        ? "bad"
+	        : actualRigState.reviewOnly ||
+	            actualRigState.lowAnchorConfidence ||
+	            promptRigState.reviewOnly ||
+	            promptRigState.lowAnchorConfidence
+	          ? "warn"
+	          : actualRigSignals !== "-" || promptRigSignals !== "-"
+	            ? "ok"
+	            : "muted";
+	    const winnerRigFlagChip = `<span class="decision-diff-chip tone-${winnerRigFlagTone}">Rig flags ${esc(promptRigFlags)} -> ${esc(
+	      actualRigFlags
+	    )}</span>`;
+	    const winnerRigDiffChips = [
+	      renderRigDiffChip("Head Pose", promptRigState.signals.head_pose.score, actualRigState.signals.head_pose.score),
+	      renderRigDiffChip("Eye Drift", promptRigState.signals.eye_drift.score, actualRigState.signals.eye_drift.score),
+	      renderRigDiffChip(
+	        "Mouth Readability",
+	        promptRigState.signals.mouth_readability.score,
+	        actualRigState.signals.mouth_readability.score
+	      ),
+	      renderRigDiffChip(
+	        "Landmark Consistency",
+	        promptRigState.signals.landmark_consistency.score,
+	        actualRigState.signals.landmark_consistency.score
+	      ),
+	      renderRigDiffChip("Anchor Confidence", promptRigState.anchorConfidence, actualRigState.anchorConfidence),
+	      winnerRigFlagChip
+	    ].join("");
 	    const candidateRecoveryRail: DecisionCard[] = [
 	      {
 	        title: "Retry / rollback path",
@@ -9758,7 +10540,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      { label: "Prompt Winner", value: humanizeOpsLabel(promptWinner), hint: "prompt-side approved candidate" },
 	      { label: "Actual Winner", value: humanizeOpsLabel(actualWinner), hint: "actual-side chosen candidate" },
 	      { label: "Promotion Gate", value: comparisonVerdict, hint: comparisonNextDecision },
-	      { label: "Rollback Point", value: humanizeOpsLabel(promptWinner), hint: "prompt winner remains the safest rollback anchor" }
+	      { label: "Rig Review", value: selectedRigCardValue, hint: `${actualRigSignals} | anchor ${actualRigAnchorSummary}` },
+	      { label: "Rollback Point", value: humanizeOpsLabel(promptWinner), hint: "prompt winner remains the safest rollback anchor" },
+	      { label: "Fallback Reasons", value: selectedRigFallbackSummary, hint: "metadata or anchor-derived fallback context" }
 	    ];
 	    const candidateEvidenceDrawerBody = `<div class="decision-copy">Use the compare shell, candidate score matrix, and linked artifact detail before reading lower-level request payloads. Raw prompt text stays intentionally below the gate.</div>
 	<div class="quick-links"><a href="${candidateReturnHref}">${candidateReturnLabel}</a>${topLinks || `<a href="${candidateRolloutsHref}">Open Rollouts</a>`}</div>
@@ -9852,6 +10636,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           <td>${esc(row.actualScore === null ? "-" : formatNumber(row.actualScore))}</td>
           <td>${esc(delta === null ? "-" : formatNumber(delta, 2))}</td>
           <td>${esc(qcLabel)}</td>
+          <td>${formatRigSignalTableCell(row.rig, "head_pose")}</td>
+          <td>${formatRigSignalTableCell(row.rig, "eye_drift")}</td>
+          <td>${formatRigSignalTableCell(row.rig, "mouth_readability")}</td>
+          <td>${formatRigSignalTableCell(row.rig, "landmark_consistency")}</td>
+          <td>${formatAnchorConfidenceTableCell(row.rig)}</td>
           <td>${esc(row.latencyMs === null ? "-" : `${Math.round(row.latencyMs)} ms`)}</td>
           <td>${esc(row.visualSignalScore === null ? "-" : formatNumber(row.visualSignalScore))}</td>
           <td><div class="inline-actions">${detailLinks || "-"}</div></td>
@@ -9926,6 +10715,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         const breakdown = row.scoreBreakdown
           .map((item) => `<span class="editor-chip">${esc(item.label)} ${esc(item.value)}</span>`)
           .join("");
+        const rigBadges = [
+          row.rig.rigBlocked ? '<span class="badge bad">rig blocked</span>' : "",
+          row.rig.reviewOnly ? '<span class="badge warn">review_only</span>' : "",
+          row.rig.lowAnchorConfidence ? '<span class="badge warn">low anchor</span>' : "",
+          row.rig.recreateRecommended ? '<span class="badge bad">recreate</span>' : ""
+        ]
+          .filter((item) => item.length > 0)
+          .join("");
         return `<section class="card decision-jump-target${isFocused ? " decision-focus-row is-focused" : ""}" id="${cardId}">
           <div class="section-head">
             <div>
@@ -9953,6 +10750,17 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
               <p>qc reasons: <strong>${esc(summarizeValues(row.qcReasons, 3))}</strong></p>
               <p>visual signal: <strong>${esc(row.visualSignalScore === null ? "-" : formatNumber(row.visualSignalScore))}</strong></p>
             </div>
+          </div>
+          <div class="form-card" style="margin-top:10px">
+            <h3>Rig Review</h3>
+            <div class="inline-actions">${rigBadges || '<span class="badge ok">rig tracked</span>'}</div>
+            <p>head pose: <strong>${esc(formatRigSignalValue(row.rig, "head_pose"))}</strong></p>
+            <p>eye drift: <strong>${esc(formatRigSignalValue(row.rig, "eye_drift"))}</strong></p>
+            <p>mouth readability: <strong>${esc(formatRigSignalValue(row.rig, "mouth_readability"))}</strong></p>
+            <p>landmark consistency: <strong>${esc(formatRigSignalValue(row.rig, "landmark_consistency"))}</strong></p>
+            <p>anchor confidence: <strong>${esc(formatAnchorConfidenceSummary(row.rig))}</strong></p>
+            <p>rig reasons: <strong>${esc(summarizeValues(row.rig.rigReasonCodes, 4))}</strong></p>
+            <p>fallback reasons: <strong>${esc(summarizeValues(row.rig.fallbackReasonCodes, 4))}</strong></p>
           </div>
           <div class="quick-links" style="margin-top:10px">${detailLinks || '<span class="muted-text">No detailed artifacts for this candidate.</span>'}${videoHref ? `<a href="${videoHref}">Open Video</a>` : ""}</div>
           ${row.notes.length > 0 ? `<div class="notice" style="margin-top:10px">notes: ${esc(summarizeValues(row.notes, 4))}</div>` : ""}
@@ -9983,13 +10791,33 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         { label: "Prompt Winner", value: humanizeOpsLabel(promptWinner), hint: "prompt candidate judge", tone: "muted" },
         { label: "Actual Winner", value: humanizeOpsLabel(actualWinner), hint: "actual output judge", tone: comparisonTone },
         { label: "Promotion Gate", value: comparisonVerdict, hint: comparisonNextDecision, tone: comparisonTone },
-        { label: "Visible Candidates", value: String(visibleCandidateRows.length), hint: focusSelected ? `filtered from ${candidateRows.length}` : compact([renderer !== "-" ? renderer : null, backend !== "-" ? backend : null]) || "sidecar compare set", tone: "muted" }
+        {
+          label: "Rig Review",
+          value: selectedRigCardValue,
+          hint: actualRigSignals !== "-" ? actualRigSignals : actualRigFlags,
+          tone: rigStateTone(actualRigState)
+        },
+        {
+          label: "Reference View",
+          value: effectiveSelectedView ?? "-",
+          hint: selectedImagePath ? path.basename(selectedImagePath) : "reference bundle",
+          tone: "warn"
+        }
       ],
       metaItems: [
         { label: "Episode", value: episodeId, hint: shotId },
         { label: "Renderer", value: renderer, hint: backend },
-        { label: "Reference View", value: effectiveSelectedView ?? "-", hint: selectedImagePath ? path.basename(selectedImagePath) : "reference bundle" },
-        { label: "Promotion Target", value: promotionTarget, hint: topCandidate?.candidateId ?? "none" }
+        {
+          label: "Visible Candidates",
+          value: String(visibleCandidateRows.length),
+          hint: focusSelected ? `filtered from ${candidateRows.length}` : "full compare set"
+        },
+        { label: "Promotion Target", value: promotionTarget, hint: topCandidate?.candidateId ?? "none" },
+        {
+          label: "Anchor Confidence",
+          value: actualRigAnchorSummary,
+          hint: selectedRigFallbackSummary !== "-" ? selectedRigFallbackSummary : "selected winner anchor fallback context"
+        }
       ],
       blockers: !actualSelectionId ? [{ title: "Actual judge missing", detail: "No actual selected candidate was recorded, so approval and rollback should pause until the actual judge is inspected.", tone: "bad", badge: "retry" }] : [],
       primaryActions: [
@@ -10137,7 +10965,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	  <div class="section-head">
 	    <div>
 	      <h2 id="candidate-compare-shell-title">Compare Shell</h2>
-	      <p class="section-intro">Prompt candidate scoring vs actual sidecar output scoring for one shot. Compare-before-promote logic stays above the matrix.</p>
+	      <p class="section-intro">Prompt candidate scoring vs actual sidecar output scoring for one shot. Rig-aware compare-before-promote logic stays above the matrix.</p>
 	    </div>
 	    <div class="quick-links"><a href="${candidateReturnHref}">${candidateReturnLabel}</a><a href="${candidateRolloutsHref}">Open Rollouts</a></div>
 	  </div>
@@ -10148,6 +10976,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <span class="decision-diff-chip tone-${comparisonAligned ? "ok" : "warn"}">Prompt ${esc(humanizeOpsLabel(promptWinner))} vs Actual ${esc(humanizeOpsLabel(actualWinner))}</span>
     <span class="decision-diff-chip tone-${focusSelected ? "warn" : "muted"}">${focusSelected ? `Focused ${visibleCandidateRows.length}/${candidateRows.length}` : `${candidateRows.length} candidates in matrix`}</span>
     <span class="decision-diff-chip tone-${selectedImagePath ? "ok" : "muted"}">Reference ${esc(effectiveSelectedView ?? "-")}</span>
+    ${winnerRigDiffChips}
   </div>
   <div class="decision-compare-shell">
     <div class="decision-action-rail" aria-label="Candidate compare actions"><a href="${candidateReturnHref}">${candidateReturnLabel}</a><a href="${candidateRolloutsHref}">Rollouts</a>${candidateEpisodeHref ? `<a href="${candidateEpisodeHref}">Episode Detail</a>` : ""}<a href="#candidate-score-matrix">Score Matrix</a>${topLinks}</div>
@@ -10165,6 +10994,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           <div class="decision-meta-card"><span class="label">Episode / Shot</span><div class="value">${esc(episodeId)}</div><div class="hint">${esc(shotId)}</div></div>
           <div class="decision-meta-card"><span class="label">Reference view</span><div class="value">${esc(effectiveSelectedView ?? "-")}</div><div class="hint">${selectedImagePath ? esc(path.basename(selectedImagePath)) : "reference bundle"}</div></div>
           <div class="decision-meta-card"><span class="label">Preset stack</span><div class="value">${esc(requestSummary || "-")}</div><div class="hint">prompt-side request context</div></div>
+          <div class="decision-meta-card"><span class="label">Rig review</span><div class="value">${esc(promptRigFlags)}</div><div class="hint">${esc(promptRigSignals !== "-" ? `${promptRigSignals} | anchor ${promptRigAnchorSummary}` : `anchor ${promptRigAnchorSummary}`)}</div></div>
         </div>
         <div class="decision-action-rail" aria-label="Prompt-side actions">${topLinks || `<a href="${candidateRolloutsHref}">Open Rollouts</a>`}</div>
       </article>
@@ -10181,6 +11011,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           <div class="decision-meta-card"><span class="label">Renderer / Backend</span><div class="value">${esc(renderer)}</div><div class="hint">${esc(backend)}</div></div>
           <div class="decision-meta-card"><span class="label">Promotion target</span><div class="value">${esc(promotionTarget)}</div><div class="hint">${topCandidate?.candidateId ? esc(topCandidate.candidateId) : "no top candidate"}</div></div>
           <div class="decision-meta-card"><span class="label">Visible candidates</span><div class="value">${esc(String(visibleCandidateRows.length))}</div><div class="hint">${focusSelected ? `filtered from ${candidateRows.length}` : "full compare set"}</div></div>
+          <div class="decision-meta-card"><span class="label">Rig review</span><div class="value">${esc(actualRigFlags)}</div><div class="hint">${esc(actualRigSignals !== "-" ? `${actualRigSignals} | anchor ${actualRigAnchorSummary}` : `anchor ${actualRigAnchorSummary}`)}</div></div>
         </div>
         <div class="decision-action-rail" aria-label="Actual-side actions"><a href="#candidate-score-matrix">Open score matrix</a>${candidateEpisodeHref ? `<a href="${candidateEpisodeHref}">Episode Detail</a>` : ""}<a href="${candidateRolloutsHref}">Rollouts</a></div>
       </article>
@@ -10188,8 +11019,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
   </div>
 </section>
 <section class="card decision-jump-target" id="candidate-score-matrix">
-  <div class="section-head"><h2>Candidate Score Matrix</h2><span class="muted-text">Compare prompt selection score against actual rendered output score before deciding on promotion.</span></div>
-  <div class="table-wrap"><table><thead><tr><th>Candidate</th><th>Prompt Score</th><th>Actual Score</th><th>Delta</th><th>QC</th><th>Latency</th><th>Visual Signal</th><th>Artifacts</th></tr></thead><tbody>${compareTableRows || '<tr><td colspan="8"><div class="notice">No candidate judge rows found.</div></td></tr>'}</tbody></table></div>
+  <div class="section-head"><h2>Candidate Score Matrix</h2><span class="muted-text">Compare prompt selection score, actual rendered output score, and rig-aware judge signals before deciding on promotion.</span></div>
+  <div class="table-wrap"><table><thead><tr><th>Candidate</th><th>Prompt Score</th><th>Actual Score</th><th>Delta</th><th>QC</th><th>Head Pose</th><th>Eye Drift</th><th>Mouth Readability</th><th>Landmark Consistency</th><th>Anchor Confidence</th><th>Latency</th><th>Visual Signal</th><th>Artifacts</th></tr></thead><tbody>${compareTableRows || '<tr><td colspan="13"><div class="notice">No candidate judge rows found.</div></td></tr>'}</tbody></table></div>
 </section>
 <section class="card decision-jump-target" id="candidate-raw-evidence">
 	  <div class="section-head"><h2>Artifact Evidence Drawer</h2><span class="muted-text">Prompt and reference bundle that produced this candidate set. Raw prompt text stays behind a disclosure.</span></div>
