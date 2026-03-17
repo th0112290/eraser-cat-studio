@@ -45,6 +45,26 @@ assert.equal(
   "severely fragmented cat fronts should remain rejected"
 );
 
+assert.equal(
+  shouldDowngradeCatFrontFragmentationRisk({
+    speciesId: "cat",
+    view: "front",
+    subjectFillRatio: 0.1677,
+    subjectIsolationScore: 0.4688,
+    largestComponentShare: 0.4882,
+    significantComponentCount: 5,
+    speciesScore: 0.5944,
+    speciesEarScore: 0.5574,
+    speciesMuzzleScore: 0.7778,
+    targetStyleScore: 0.6229,
+    frontSymmetryScore: 0.9897,
+    headSquarenessScore: 0.3585,
+    handRegionDensityScore: 0.2857
+  }),
+  true,
+  "sparse but clearly single-subject cat fronts with strong isolation should downgrade fragmentation risk"
+);
+
 const retryAdjustment = deriveRetryAdjustmentForCandidate({
   stage: "front",
   view: "front",

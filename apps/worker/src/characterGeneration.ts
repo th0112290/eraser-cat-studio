@@ -7227,11 +7227,16 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
   }
 
   const profileThresholds = resolveMascotQcThresholds(species);
+  const subjectIsolationScore = input.subjectIsolationScore ?? 0;
+  const largestComponentShare = input.largestComponentShare ?? 0;
+  const significantComponentCount = input.significantComponentCount ?? Number.POSITIVE_INFINITY;
+  const sparseSingleSubjectCat =
+    subjectIsolationScore >= 0.4 && largestComponentShare >= 0.35 && significantComponentCount <= 5;
   return (
     (input.subjectFillRatio ?? 0) >= 0.05 &&
-    (input.subjectIsolationScore ?? 0) >= Math.max(0.28, profileThresholds.minSubjectIsolationFront - 0.18) &&
-    (input.largestComponentShare ?? 0) >= 0.14 &&
-    (input.significantComponentCount ?? Number.POSITIVE_INFINITY) <= 3 &&
+    subjectIsolationScore >= Math.max(0.28, profileThresholds.minSubjectIsolationFront - 0.18) &&
+    largestComponentShare >= 0.14 &&
+    significantComponentCount <= (sparseSingleSubjectCat ? 5 : 3) &&
     (input.speciesScore ?? 0) >= 0.42 &&
     (input.speciesEarScore ?? 0) >= 0.16 &&
     (input.speciesMuzzleScore ?? 0) >= 0.48 &&
