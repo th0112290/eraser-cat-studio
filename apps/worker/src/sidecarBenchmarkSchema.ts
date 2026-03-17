@@ -27,6 +27,17 @@ export type SidecarBenchmarkRigFields = {
   anchor_confidence_overall: number | null;
   anchor_confidence_by_view: SidecarBenchmarkAnchorConfidenceByView | null;
   review_only: boolean | null;
+  recreate_recommended: boolean | null;
+  repairable: boolean | null;
+  species_id: string | null;
+  selected_view: string | null;
+  required_manual_slots: string[];
+  repair_source_candidate_ids: string[];
+  repair_lineage_summary: string[];
+  directive_family_summary: string[];
+  rig_reason_families: string[];
+  anchor_override_present: boolean | null;
+  crop_override_present: boolean | null;
   fallback_reason_codes: string[];
 };
 
@@ -66,6 +77,17 @@ export type SidecarBenchmarkRow = {
   anchor_confidence_overall: number | null;
   anchor_confidence_by_view: SidecarBenchmarkAnchorConfidenceByView | null;
   review_only: boolean | null;
+  recreate_recommended: boolean | null;
+  repairable: boolean | null;
+  species_id: string | null;
+  selected_view: string | null;
+  required_manual_slots: string[];
+  repair_source_candidate_ids: string[];
+  repair_lineage_summary: string[];
+  directive_family_summary: string[];
+  rig_reason_families: string[];
+  anchor_override_present: boolean | null;
+  crop_override_present: boolean | null;
   retake_count: number | null;
   candidate_count: number | null;
   selected_candidate_id: string | null;
@@ -152,6 +174,10 @@ function normalizeStringArray(values: string[] | null | undefined): string[] {
     : [];
 }
 
+function uniqueNormalizedStrings(values: string[] | null | undefined): string[] {
+  return [...new Set(normalizeStringArray(values).map((value) => value.trim()).filter((value) => value.length > 0))];
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
@@ -202,6 +228,14 @@ function normalizeFallbackReasonCodes(
     codes.add(value.trim());
   }
   return [...codes];
+}
+
+function normalizeNullableString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeNullableStringArray(value: string[] | null | undefined): string[] {
+  return normalizeStringArray(value).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
 }
 
 function collectRigScopes(
@@ -263,6 +297,18 @@ function findFirstBooleanByKeys(scopes: Record<string, unknown>[], keys: readonl
   return null;
 }
 
+function findFirstStringByKeys(scopes: Record<string, unknown>[], keys: readonly string[]): string | null {
+  for (const scope of scopes) {
+    for (const key of keys) {
+      const value = normalizeNullableString(scope[key]);
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
 function findFirstRecordByKeys(scopes: Record<string, unknown>[], keys: readonly string[]): Record<string, unknown> | null {
   for (const scope of scopes) {
     for (const key of keys) {
@@ -315,6 +361,108 @@ const BENCHMARK_RIG_SCORE_KEYS = {
   ]
 } as const;
 
+function deriveRigReasonFamilies(input: {
+  rigReasonCodes: string[];
+  fallbackReasonCodes: string[];
+  requiredManualSlots: string[];
+  recreateRecommended: boolean;
+  reviewOnly: boolean;
+}): string[] {
+  const families = new Set<string>();
+  const tokens = [
+    ...input.rigReasonCodes,
+    ...input.fallbackReasonCodes,
+    ...input.requiredManualSlots
+  ].map((value) => value.toLowerCase());
+
+  for (const token of tokens) {
+    if (token.includes("anchor")) families.add("anchor");
+    if (token.includes("landmark")) families.add("landmark");
+    if (token.includes("species")) families.add("species");
+    if (token.includes("muzzle")) families.add("muzzle");
+    if (token.includes("ear")) families.add("ear");
+    if (token.includes("eye")) families.add("eye");
+    if (token.includes("paw")) families.add("paw");
+    if (token.includes("tail")) families.add("tail");
+    if (token.includes("repair")) families.add("repair");
+    if (token.includes("fallback")) families.add("fallback");
+    if (token.includes("review")) families.add("review");
+    if (token.includes("occluded")) families.add("occlusion");
+    if (token.includes("recreate")) families.add("recreate");
+  }
+
+  if (input.reviewOnly) {
+    families.add("review");
+  }
+  if (input.recreateRecommended) {
+    families.add("recreate");
+  }
+
+  return [...families];
+}
+
+function summarizeRepairLineageByView(value: unknown): string[] {
+  const record = asRecord(value);
+  if (!record) {
+    return [];
+  }
+  const summaries: string[] = [];
+  for (const view of ["front", "threeQuarter", "profile"] as const) {
+    const lineage = asRecord(record[view]);
+    if (!lineage) {
+      continue;
+    }
+    const fromStage = normalizeNullableString(lineage.repairFromStage ?? lineage.repair_from_stage);
+    const fromCandidate = normalizeNullableString(lineage.repairFromCandidateId ?? lineage.repair_from_candidate_id);
+    const gateDecision = normalizeNullableString(lineage.gateDecision ?? lineage.gate_decision);
+    const sourcePass = normalizeNullableString(lineage.sourcePassLabel ?? lineage.source_pass_label);
+    const detail = [fromStage, fromCandidate ? `@${fromCandidate}` : null, gateDecision, sourcePass]
+      .filter((entry): entry is string => Boolean(entry))
+      .join("/");
+    summaries.push(detail.length > 0 ? `${view}:${detail}` : `${view}:repair`);
+  }
+  return summaries;
+}
+
+function summarizeDirectiveFamilies(value: unknown): string[] {
+  const record = asRecord(value);
+  if (!record) {
+    return [];
+  }
+  const families = new Set<string>();
+  for (const view of ["front", "threeQuarter", "profile"] as const) {
+    const directive = asRecord(record[view]);
+    if (!directive) {
+      continue;
+    }
+    for (const family of normalizeStringArray(
+      Array.isArray(directive.families) ? (directive.families as string[]) : null
+    )) {
+      families.add(family);
+    }
+  }
+  return [...families];
+}
+
+function collectRepairSourceCandidateIds(scopes: Record<string, unknown>[]): string[] {
+  const ids = new Set<string>();
+  for (const scope of scopes) {
+    const record =
+      findFirstRecordByKeys([scope], ["repairFromCandidateIds", "repair_from_candidate_ids", "repairSourceCandidateIds"]) ??
+      null;
+    if (!record) {
+      continue;
+    }
+    for (const value of Object.values(record)) {
+      const normalized = normalizeNullableString(value);
+      if (normalized) {
+        ids.add(normalized);
+      }
+    }
+  }
+  return [...ids];
+}
+
 export function resolveSidecarBenchmarkRigFields(input: {
   sources?: Array<Record<string, unknown> | null | undefined>;
   fallbackReason?: string | null;
@@ -326,6 +474,54 @@ export function resolveSidecarBenchmarkRigFields(input: {
     anchorConfidenceSummary?.by_view ?? anchorConfidenceSummary?.byView ?? null
   );
   const explicitFallbackReasonCodes = findStringArraysByKeys(scopes, ["fallback_reason_codes", "fallbackReasonCodes"]);
+  const reviewOnly = findFirstBooleanByKeys(scopes, ["review_only", "reviewOnly"]);
+  const recreateRecommended =
+    findFirstBooleanByKeys(scopes, ["recreate_recommended", "recreateRecommended"]) ??
+    (findFirstStringByKeys(scopes, ["suggested_action", "suggestedAction"]) === "recreate");
+  const requiredManualSlots = uniqueNormalizedStrings(
+    findStringArraysByKeys(scopes, ["required_manual_slots", "requiredManualSlots"])
+  );
+  const rigReasonCodes = uniqueNormalizedStrings(
+    findStringArraysByKeys(scopes, ["reason_codes", "reasonCodes", "rig_reason_codes", "rigReasonCodes"])
+  );
+  const fallbackReasonCodes = normalizeFallbackReasonCodes(
+    [...explicitFallbackReasonCodes, ...(input.fallbackReasonCodes ?? [])],
+    input.fallbackReason
+  );
+  const repairLineageSummary = uniqueNormalizedStrings(
+    scopes.flatMap((scope) =>
+      summarizeRepairLineageByView(scope.repairLineageByView ?? scope.repair_lineage_by_view ?? null)
+    )
+  );
+  const directiveFamilySummary = uniqueNormalizedStrings(
+    scopes.flatMap((scope) =>
+      summarizeDirectiveFamilies(scope.directiveProfilesByView ?? scope.directive_profiles_by_view ?? null)
+    )
+  );
+  const repairSourceCandidateIds = collectRepairSourceCandidateIds(scopes);
+  const speciesId = findFirstStringByKeys(scopes, ["species_id", "speciesId"]);
+  const selectedView = findFirstStringByKeys(scopes, [
+    "requested_reference_view",
+    "requestedReferenceView",
+    "reference_view",
+    "referenceView",
+    "selected_view",
+    "selectedView",
+    "view"
+  ]);
+  const anchorOverridePresent =
+    findFirstBooleanByKeys(scopes, ["anchor_override_present", "anchorOverridePresent"]) ??
+    (findFirstStringByKeys(scopes, ["anchor_override_path", "anchorOverridePath"]) ? true : null);
+  const cropOverridePresent =
+    findFirstBooleanByKeys(scopes, ["crop_override_present", "cropOverridePresent"]) ??
+    (findFirstRecordByKeys(scopes, ["crop_boxes", "cropBoxes"]) ? true : null);
+  const repairable =
+    findFirstBooleanByKeys(scopes, ["repairable"]) ??
+    (recreateRecommended === true
+      ? false
+      : reviewOnly === true || requiredManualSlots.length > 0 || repairLineageSummary.length > 0
+        ? true
+        : null);
   return {
     head_pose_score: normalizeFiniteNumber(findFirstFiniteNumberByKeys(scopes, BENCHMARK_RIG_SCORE_KEYS.head_pose)),
     eye_drift_score: normalizeFiniteNumber(findFirstFiniteNumberByKeys(scopes, BENCHMARK_RIG_SCORE_KEYS.eye_drift)),
@@ -340,11 +536,25 @@ export function resolveSidecarBenchmarkRigFields(input: {
       3
     ),
     anchor_confidence_by_view: anchorConfidenceByView,
-    review_only: findFirstBooleanByKeys(scopes, ["review_only", "reviewOnly"]),
-    fallback_reason_codes: normalizeFallbackReasonCodes(
-      [...explicitFallbackReasonCodes, ...(input.fallbackReasonCodes ?? [])],
-      input.fallbackReason
-    )
+    review_only: reviewOnly,
+    recreate_recommended: recreateRecommended,
+    repairable,
+    species_id: speciesId,
+    selected_view: selectedView,
+    required_manual_slots: requiredManualSlots,
+    repair_source_candidate_ids: repairSourceCandidateIds,
+    repair_lineage_summary: repairLineageSummary,
+    directive_family_summary: directiveFamilySummary,
+    rig_reason_families: deriveRigReasonFamilies({
+      rigReasonCodes,
+      fallbackReasonCodes,
+      requiredManualSlots,
+      recreateRecommended: recreateRecommended === true,
+      reviewOnly: reviewOnly === true
+    }),
+    anchor_override_present: anchorOverridePresent,
+    crop_override_present: cropOverridePresent,
+    fallback_reason_codes: fallbackReasonCodes
   };
 }
 
@@ -397,6 +607,17 @@ export function buildSidecarBenchmarkRow(input: {
   anchorConfidenceOverall?: number | null;
   anchorConfidenceByView?: SidecarBenchmarkAnchorConfidenceByView | null;
   reviewOnly?: boolean | null;
+  recreateRecommended?: boolean | null;
+  repairable?: boolean | null;
+  speciesId?: string | null;
+  selectedView?: string | null;
+  requiredManualSlots?: string[] | null;
+  repairSourceCandidateIds?: string[] | null;
+  repairLineageSummary?: string[] | null;
+  directiveFamilySummary?: string[] | null;
+  rigReasonFamilies?: string[] | null;
+  anchorOverridePresent?: boolean | null;
+  cropOverridePresent?: boolean | null;
   retakeCount?: number | null;
   candidateCount?: number | null;
   selectedCandidateId?: string | null;
@@ -450,6 +671,17 @@ export function buildSidecarBenchmarkRow(input: {
     anchor_confidence_overall: normalizeFiniteNumber(input.anchorConfidenceOverall, 3),
     anchor_confidence_by_view: normalizeSidecarBenchmarkAnchorConfidenceByView(input.anchorConfidenceByView),
     review_only: normalizeNullableBoolean(input.reviewOnly),
+    recreate_recommended: normalizeNullableBoolean(input.recreateRecommended),
+    repairable: normalizeNullableBoolean(input.repairable),
+    species_id: normalizeNullableString(input.speciesId),
+    selected_view: normalizeNullableString(input.selectedView),
+    required_manual_slots: normalizeNullableStringArray(input.requiredManualSlots),
+    repair_source_candidate_ids: normalizeNullableStringArray(input.repairSourceCandidateIds),
+    repair_lineage_summary: normalizeNullableStringArray(input.repairLineageSummary),
+    directive_family_summary: normalizeNullableStringArray(input.directiveFamilySummary),
+    rig_reason_families: normalizeNullableStringArray(input.rigReasonFamilies),
+    anchor_override_present: normalizeNullableBoolean(input.anchorOverridePresent),
+    crop_override_present: normalizeNullableBoolean(input.cropOverridePresent),
     retake_count: typeof input.retakeCount === "number" ? input.retakeCount : null,
     candidate_count: typeof input.candidateCount === "number" ? input.candidateCount : null,
     selected_candidate_id: input.selectedCandidateId ?? null,
