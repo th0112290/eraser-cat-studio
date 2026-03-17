@@ -10301,8 +10301,8 @@ export function scoreCandidate(input: {
     }
     score += postprocessBonus * 0.5;
     score -= runtimeDiagnostics.penalty * 0.12;
-    score -= warnings.length * 0.028;
-    score -= rejections.length * 0.18;
+    score -= dedupeStrings(warnings).length * 0.028;
+    score -= dedupeStrings(rejections).length * 0.18;
   } else {
     score += input.styleScore * 0.14;
     score += qualityScore * 0.24;
@@ -10311,9 +10311,12 @@ export function scoreCandidate(input: {
     score += runtimeDiagnostics.routeQualityScore * 0.03;
     score += postprocessBonus;
     score -= runtimeDiagnostics.penalty * 0.08;
-    score -= warnings.length * 0.05;
-    score -= rejections.length * 0.25;
+    score -= dedupeStrings(warnings).length * 0.05;
+    score -= dedupeStrings(rejections).length * 0.25;
   }
+
+  const normalizedWarnings = dedupeStrings(warnings);
+  const normalizedRejections = dedupeStrings(rejections);
 
   return {
     candidate: input.candidate,
@@ -10322,8 +10325,8 @@ export function scoreCandidate(input: {
     styleScore: input.styleScore,
     referenceSimilarity,
     consistencyScore: null,
-    warnings,
-    rejections,
+    warnings: normalizedWarnings,
+    rejections: normalizedRejections,
     breakdown: {
       alphaScore,
       occupancyScore,

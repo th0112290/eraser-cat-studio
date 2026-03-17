@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   deriveRetryAdjustmentForCandidate,
+  scoreCandidate,
   shouldDowngradeCatFrontFragmentationRisk
 } from "./characterGeneration";
 
@@ -76,6 +77,60 @@ assert.ok(
 assert.ok(
   retryAdjustment.viewPromptHints.some((hint) => hint.includes("single centered full-body cat mascot")),
   "cat front retry adjustment should strengthen centered single-subject guidance"
+);
+
+const duplicateFrontGateCandidate = scoreCandidate({
+  candidate: {
+    id: "cat-front-duplicate-risk",
+    view: "front",
+    seed: 4242
+  } as any,
+  analysis: {
+    originalWidth: 1024,
+    originalHeight: 1024,
+    width: 1024,
+    height: 1024,
+    alphaCoverage: 0.03,
+    bboxOccupancy: 0.4,
+    bboxCenterX: 0.5,
+    bboxCenterY: 0.5,
+    bboxScale: 0.45,
+    bboxAspectRatio: 0.92,
+    contrast: 48,
+    blurScore: 260,
+    noiseScore: 12,
+    watermarkTextRisk: 0.02,
+    edgeDensityBottomRight: 0.02,
+    upperFaceCoverage: 0.08,
+    upperAlphaRatio: 0.62,
+    headBoxAspectRatio: 0.92,
+    monochromeScore: 0.94,
+    paletteComplexity: 0.12,
+    symmetryScore: 0.97,
+    handRegionEdgeDensity: 0.4,
+    pawRoundnessScore: 0.58,
+    pawSymmetryScore: 0.6,
+    fingerSpikeScore: 0.08,
+    largestComponentShare: 0.2,
+    significantComponentCount: 6,
+    phash: "00ff00ff00ff00ff",
+    palette: [
+      [250, 250, 250],
+      [25, 25, 25],
+      [180, 180, 180]
+    ]
+  },
+  mode: "reference",
+  styleScore: 0.76,
+  targetStyle: "eraser-cat-mascot-production",
+  speciesId: "cat",
+  generationRound: 1
+});
+
+assert.equal(
+  duplicateFrontGateCandidate.rejections.filter((reason) => reason === "fragmented_or_multi_object_front").length,
+  1,
+  "duplicate front fragmentation gates should collapse to a single rejection reason"
 );
 
 console.log("[characterGenerationCatFrontGate.smoke] PASS");
