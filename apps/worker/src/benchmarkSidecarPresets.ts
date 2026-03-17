@@ -17,7 +17,12 @@ import {
   buildRuntimeSidecarPresetRolloutFile,
   writeRuntimeSidecarPresetRolloutArtifacts
 } from "./sidecarPresetRolloutArtifact";
-import { buildSidecarBenchmarkRow, type SidecarBenchmarkRow } from "./sidecarBenchmarkSchema";
+import {
+  buildSidecarBenchmarkRow,
+  resolveSidecarBenchmarkRigFields,
+  type SidecarBenchmarkAnchorConfidenceByView,
+  type SidecarBenchmarkRow
+} from "./sidecarBenchmarkSchema";
 import { resolveSmokeProfileSelection, toSmokeProfileArgs } from "./sidecarSmokeProfiles";
 import { runSidecarSmokePreflight } from "./sidecarSmokePreflight";
 import { ensureSidecarSmokeCharacterPack } from "./sidecarSmokeCharacterPack";
@@ -47,6 +52,7 @@ type PresetBenchmarkRawResult = {
   fixture_path: string;
   output_dir: string;
   smoke_report_path: string | null;
+  sidecar_plan_path: string | null;
   profile_bundle: "economy" | "medical";
   studio_profile_id: string;
   channel_profile_id: string;
@@ -104,7 +110,15 @@ type PresetBenchmarkRawResult = {
   accepted: boolean | null;
   judge_score: number | null;
   fallback_reason: string | null;
+  fallback_reason_codes: string[];
   fallback_count: number | null;
+  head_pose_score: number | null;
+  eye_drift_score: number | null;
+  mouth_readability_score: number | null;
+  landmark_consistency_score: number | null;
+  anchor_confidence_overall: number | null;
+  anchor_confidence_by_view: SidecarBenchmarkAnchorConfidenceByView | null;
+  review_only: boolean | null;
   retake_count: number | null;
   duration_sec: number | null;
   output_duration_sec: number | null;
@@ -617,10 +631,19 @@ function summarizeTopScenario(result: PresetBenchmarkScoredResult | null) {
     impact_preset: result.impact_preset,
     qc_preset: result.qc_preset,
     latency_ms: result.latency_ms,
+    fallback_reason: result.fallback_reason,
+    fallback_reason_codes: [...result.fallback_reason_codes],
     fallback_count: result.fallback_count,
     retake_count: result.retake_count,
     qc_passed: result.qc_passed,
-    duration_delta_sec: result.duration_delta_sec
+    duration_delta_sec: result.duration_delta_sec,
+    head_pose_score: result.head_pose_score,
+    eye_drift_score: result.eye_drift_score,
+    mouth_readability_score: result.mouth_readability_score,
+    landmark_consistency_score: result.landmark_consistency_score,
+    anchor_confidence_overall: result.anchor_confidence_overall,
+    anchor_confidence_by_view: result.anchor_confidence_by_view ? { ...result.anchor_confidence_by_view } : null,
+    review_only: result.review_only
   };
 }
 
@@ -796,6 +819,15 @@ async function main() {
     const report = asRecord(readJson(reportPath));
     const sidecarArtifacts = Array.isArray(report?.sidecar_artifacts) ? report.sidecar_artifacts : [];
     const firstArtifact = asRecord(sidecarArtifacts[0] ?? null);
+    const sidecarPlanPathRaw =
+      typeof report?.sidecar_plan_path === "string" ? report.sidecar_plan_path : path.join(scenarioOutDir, "shot_sidecar_plan.json");
+    const sidecarPlanPath = path.isAbsolute(sidecarPlanPathRaw)
+      ? sidecarPlanPathRaw
+      : path.resolve(repoRoot, sidecarPlanPathRaw);
+    const sidecarPlan = asRecord(readJson(sidecarPlanPath));
+    const firstPlan = Array.isArray(sidecarPlan?.plans) ? asRecord(sidecarPlan.plans[0] ?? null) : null;
+    const firstPlanMetadata = asRecord(firstPlan?.metadata ?? null);
+    const firstPlanJudge = asRecord(firstPlan?.judge ?? null);
     const qcEvaluation = asRecord(firstArtifact?.qc_evaluation ?? null);
     const executionProfile = asRecord(firstArtifact?.execution_profile ?? null);
     const workflowBinding = asRecord(firstArtifact?.workflow_binding ?? null);
@@ -812,6 +844,17 @@ async function main() {
       typeof report?.sidecar_retake_count === "number" ? Number(report.sidecar_retake_count) : null;
     const sidecarStatus = typeof report?.sidecar_status === "string" ? report.sidecar_status : null;
     const effectiveSuccess = sidecarStatus === expectedStatus && run.status === 0;
+    const fallbackReason = typeof firstArtifact?.fallback_reason === "string" ? firstArtifact.fallback_reason : null;
+    const premiumActualPolicyRejectionReasons = Array.isArray(firstArtifact?.premium_actual_policy_rejection_reasons)
+      ? firstArtifact.premium_actual_policy_rejection_reasons.filter((value): value is string => typeof value === "string")
+      : Array.isArray(firstPlanMetadata?.premiumActualPolicyRejectionReasons)
+        ? firstPlanMetadata.premiumActualPolicyRejectionReasons.filter((value): value is string => typeof value === "string")
+        : [];
+    const rigFields = resolveSidecarBenchmarkRigFields({
+      sources: [firstArtifact, firstPlanMetadata, firstPlanJudge],
+      fallbackReason,
+      fallbackReasonCodes: premiumActualPolicyRejectionReasons
+    });
     rawResults.push({
       scenario: scenario.name,
       backend: typeof firstArtifact?.backend === "string" ? firstArtifact.backend : null,
@@ -826,6 +869,7 @@ async function main() {
       fixture_path: fixturePath,
       output_dir: scenarioOutDir,
       smoke_report_path: fs.existsSync(reportPath) ? reportPath : null,
+      sidecar_plan_path: fs.existsSync(sidecarPlanPath) ? sidecarPlanPath : null,
       profile_bundle: profileSelection.bundleName,
       studio_profile_id: profileSelection.selection.studio_profile_id,
       channel_profile_id: profileSelection.selection.channel_profile_id,
@@ -930,9 +974,7 @@ async function main() {
         typeof firstArtifact?.premium_actual_policy_accepted === "boolean"
           ? firstArtifact.premium_actual_policy_accepted
           : null,
-      premium_actual_policy_rejection_reasons: Array.isArray(firstArtifact?.premium_actual_policy_rejection_reasons)
-        ? firstArtifact.premium_actual_policy_rejection_reasons.filter((value): value is string => typeof value === "string")
-        : [],
+      premium_actual_policy_rejection_reasons: premiumActualPolicyRejectionReasons,
       premium_actual_retake_round:
         typeof firstArtifact?.premium_actual_retake_round === "number"
           ? Number(firstArtifact.premium_actual_retake_round)
@@ -988,8 +1030,16 @@ async function main() {
       sidecar_renderer: typeof report?.sidecar_renderer === "string" ? report.sidecar_renderer : null,
       accepted: typeof firstArtifact?.accepted === "boolean" ? firstArtifact.accepted : null,
       judge_score: typeof firstArtifact?.judge_score === "number" ? firstArtifact.judge_score : null,
-      fallback_reason: typeof firstArtifact?.fallback_reason === "string" ? firstArtifact.fallback_reason : null,
+      fallback_reason: fallbackReason,
+      fallback_reason_codes: rigFields.fallback_reason_codes,
       fallback_count: sidecarFallbackCount,
+      head_pose_score: rigFields.head_pose_score,
+      eye_drift_score: rigFields.eye_drift_score,
+      mouth_readability_score: rigFields.mouth_readability_score,
+      landmark_consistency_score: rigFields.landmark_consistency_score,
+      anchor_confidence_overall: rigFields.anchor_confidence_overall,
+      anchor_confidence_by_view: rigFields.anchor_confidence_by_view,
+      review_only: rigFields.review_only,
       retake_count: sidecarRetakeCount,
       duration_sec: typeof firstArtifact?.duration_sec === "number" ? firstArtifact.duration_sec : outputDurationSeconds,
       output_duration_sec: outputDurationSeconds,
@@ -1038,6 +1088,14 @@ async function main() {
       judgeDecision: result.success ? "accepted" : "rejected",
       judgeScore: result.judge_score ?? result.score,
       fallbackReason: result.fallback_reason,
+      fallbackReasonCodes: result.fallback_reason_codes,
+      headPoseScore: result.head_pose_score,
+      eyeDriftScore: result.eye_drift_score,
+      mouthReadabilityScore: result.mouth_readability_score,
+      landmarkConsistencyScore: result.landmark_consistency_score,
+      anchorConfidenceOverall: result.anchor_confidence_overall,
+      anchorConfidenceByView: result.anchor_confidence_by_view,
+      reviewOnly: result.review_only,
       retakeCount: result.retake_count,
       candidateCount: result.premium_actual_candidate_count ?? result.premium_candidate_count,
       selectedCandidateId: result.premium_actual_selected_candidate_id ?? result.premium_selected_candidate_id,
@@ -1052,7 +1110,7 @@ async function main() {
       qcWarnings: result.qc_warnings,
       preflightWarnings: result.preflight_warnings,
       artifacts: {
-        plan_path: null,
+        plan_path: result.sidecar_plan_path,
         preflight_path: null,
         workflow_path: null,
         result_path: null,
@@ -1067,6 +1125,8 @@ async function main() {
         fixture_path: result.fixture_path,
         output_dir: result.output_dir,
         smoke_report_path: result.smoke_report_path,
+        sidecar_plan_path: result.sidecar_plan_path,
+        fallback_reason_codes: result.fallback_reason_codes,
         profile_ids: {
           studio_profile_id: result.studio_profile_id,
           channel_profile_id: result.channel_profile_id,
@@ -1133,6 +1193,12 @@ async function main() {
       "verdict",
       "latency_ms",
       "success",
+      "head_pose_score",
+      "eye_drift_score",
+      "mouth_readability_score",
+      "landmark_consistency_score",
+      "anchor_confidence_overall",
+      "review_only",
       "output_duration_sec",
       "duration_delta_sec",
       "fallback_count",
