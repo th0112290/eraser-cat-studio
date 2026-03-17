@@ -15,6 +15,7 @@ import {
 import {
   buildSidecarBackendRecommendationSummary,
   buildSidecarBenchmarkRow,
+  resolveSidecarBenchmarkRigFields,
   writeSidecarBackendNightlyScaffold,
   type SidecarBenchmarkRow
 } from "./sidecarBenchmarkSchema";
@@ -213,6 +214,14 @@ async function main() {
       judge: firstPlanJudge
     });
     const judgeScore = resolveSidecarJudgeScore(firstPlanMetadata);
+    const premiumActualPolicyRejectionReasons = Array.isArray(firstPlanMetadata?.premiumActualPolicyRejectionReasons)
+      ? firstPlanMetadata.premiumActualPolicyRejectionReasons.filter((value): value is string => typeof value === "string")
+      : [];
+    const rigFields = resolveSidecarBenchmarkRigFields({
+      sources: [firstPlanMetadata, firstPlanJudge],
+      fallbackReason,
+      fallbackReasonCodes: premiumActualPolicyRejectionReasons
+    });
     const renderLogRecord = asRecord(renderLog);
     const latencyMs =
       canReuseExistingScenario && typeof renderLogRecord?.duration_ms === "number"
@@ -261,6 +270,14 @@ async function main() {
       actual_backend_capability: actualBackendCapability,
       fallback_from: typeof firstPlanMetadata?.fallbackFrom === "string" ? firstPlanMetadata.fallbackFrom : null,
       fallback_reason: fallbackReason,
+      fallback_reason_codes: rigFields.fallback_reason_codes,
+      head_pose_score: rigFields.head_pose_score,
+      eye_drift_score: rigFields.eye_drift_score,
+      mouth_readability_score: rigFields.mouth_readability_score,
+      landmark_consistency_score: rigFields.landmark_consistency_score,
+      anchor_confidence_overall: rigFields.anchor_confidence_overall,
+      anchor_confidence_by_view: rigFields.anchor_confidence_by_view,
+      review_only: rigFields.review_only,
       retake_count: effectiveRetakeCount,
       duration_sec:
         typeof firstPlanMetadata?.outputDurationSeconds === "number"
@@ -365,9 +382,7 @@ async function main() {
         typeof firstPlanMetadata?.premiumActualPolicyAccepted === "boolean"
           ? firstPlanMetadata.premiumActualPolicyAccepted
           : null,
-      premium_actual_policy_rejection_reasons: Array.isArray(firstPlanMetadata?.premiumActualPolicyRejectionReasons)
-        ? firstPlanMetadata.premiumActualPolicyRejectionReasons.filter((value): value is string => typeof value === "string")
-        : [],
+      premium_actual_policy_rejection_reasons: premiumActualPolicyRejectionReasons,
       premium_actual_retake_round:
         typeof firstPlanMetadata?.premiumActualRetakeRound === "number" ? firstPlanMetadata.premiumActualRetakeRound : null,
       premium_actual_retake_count:
@@ -461,11 +476,19 @@ async function main() {
         judgeDecision: typeof firstPlanJudge?.decision === "string" ? firstPlanJudge.decision : null,
         judgeScore,
         fallbackReason,
+        fallbackReasonCodes: rigFields.fallback_reason_codes,
         fallbackFrom: typeof firstPlanMetadata?.fallbackFrom === "string" ? firstPlanMetadata.fallbackFrom : null,
         fallbackTo:
           fallbackReason && typeof actualBackendCapability === "string" && actualBackendCapability !== scenario.name
             ? actualBackendCapability
             : null,
+        headPoseScore: rigFields.head_pose_score,
+        eyeDriftScore: rigFields.eye_drift_score,
+        mouthReadabilityScore: rigFields.mouth_readability_score,
+        landmarkConsistencyScore: rigFields.landmark_consistency_score,
+        anchorConfidenceOverall: rigFields.anchor_confidence_overall,
+        anchorConfidenceByView: rigFields.anchor_confidence_by_view,
+        reviewOnly: rigFields.review_only,
         retakeCount: effectiveRetakeCount,
         candidateCount:
           typeof firstPlanMetadata?.premiumActualCandidateCount === "number"
@@ -546,6 +569,12 @@ async function main() {
       "latency_ms",
       "success",
       "output_duration_sec",
+      "head_pose_score",
+      "eye_drift_score",
+      "mouth_readability_score",
+      "landmark_consistency_score",
+      "anchor_confidence_overall",
+      "review_only",
       "motion_coherence_score",
       "face_consistency_score",
       "geometric_drift_score",

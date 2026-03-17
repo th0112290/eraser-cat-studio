@@ -15,6 +15,21 @@ export type SidecarBenchmarkArtifactPaths = {
   judge_path: string | null;
 };
 
+export type SidecarBenchmarkAnchorView = "front" | "threeQuarter" | "profile";
+
+export type SidecarBenchmarkAnchorConfidenceByView = Partial<Record<SidecarBenchmarkAnchorView, number>>;
+
+export type SidecarBenchmarkRigFields = {
+  head_pose_score: number | null;
+  eye_drift_score: number | null;
+  mouth_readability_score: number | null;
+  landmark_consistency_score: number | null;
+  anchor_confidence_overall: number | null;
+  anchor_confidence_by_view: SidecarBenchmarkAnchorConfidenceByView | null;
+  review_only: boolean | null;
+  fallback_reason_codes: string[];
+};
+
 export type SidecarBenchmarkRow = {
   schema_version: "1.1";
   benchmark_kind: SidecarBenchmarkKind;
@@ -41,8 +56,16 @@ export type SidecarBenchmarkRow = {
   judge_decision: string | null;
   judge_score: number | null;
   fallback_reason: string | null;
+  fallback_reason_codes: string[];
   fallback_from: string | null;
   fallback_to: string | null;
+  head_pose_score: number | null;
+  eye_drift_score: number | null;
+  mouth_readability_score: number | null;
+  landmark_consistency_score: number | null;
+  anchor_confidence_overall: number | null;
+  anchor_confidence_by_view: SidecarBenchmarkAnchorConfidenceByView | null;
+  review_only: boolean | null;
   retake_count: number | null;
   candidate_count: number | null;
   selected_candidate_id: string | null;
@@ -71,10 +94,18 @@ export type SidecarBenchmarkRecommendationCandidate = {
   judge_score: number | null;
   latency_ms: number | null;
   fallback_reason: string | null;
+  fallback_reason_codes: string[];
   resolution_profile: string | null;
   step_profile: string | null;
   cache_profile: string | null;
   sr_profile: string | null;
+  head_pose_score: number | null;
+  eye_drift_score: number | null;
+  mouth_readability_score: number | null;
+  landmark_consistency_score: number | null;
+  anchor_confidence_overall: number | null;
+  anchor_confidence_by_view: SidecarBenchmarkAnchorConfidenceByView | null;
+  review_only: boolean | null;
 };
 
 export type SidecarBackendBenchmarkRecommendationSummary = {
@@ -121,6 +152,202 @@ function normalizeStringArray(values: string[] | null | undefined): string[] {
     : [];
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function normalizeFiniteNumber(value: number | null | undefined, digits = 2): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? round(value, digits) : null;
+}
+
+function normalizeNullableBoolean(value: boolean | null | undefined): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+export function normalizeSidecarBenchmarkAnchorConfidenceByView(
+  value: unknown
+): SidecarBenchmarkAnchorConfidenceByView | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  const normalized = {
+    front: normalizeFiniteNumber(typeof record.front === "number" ? record.front : null, 3),
+    threeQuarter: normalizeFiniteNumber(
+      typeof record.threeQuarter === "number"
+        ? record.threeQuarter
+        : typeof record.three_quarter === "number"
+          ? record.three_quarter
+          : null,
+      3
+    ),
+    profile: normalizeFiniteNumber(typeof record.profile === "number" ? record.profile : null, 3)
+  } satisfies Partial<Record<SidecarBenchmarkAnchorView | "three_quarter", number | null>>;
+  const entries = Object.entries(normalized).filter(
+    (entry): entry is [SidecarBenchmarkAnchorView, number] =>
+      (entry[0] === "front" || entry[0] === "threeQuarter" || entry[0] === "profile") && typeof entry[1] === "number"
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+function normalizeFallbackReasonCodes(
+  values: string[] | null | undefined,
+  fallbackReason?: string | null
+): string[] {
+  const codes = new Set<string>();
+  if (typeof fallbackReason === "string" && fallbackReason.trim().length > 0) {
+    codes.add(fallbackReason.trim());
+  }
+  for (const value of normalizeStringArray(values)) {
+    codes.add(value.trim());
+  }
+  return [...codes];
+}
+
+function collectRigScopes(
+  sources: Array<Record<string, unknown> | null | undefined>
+): Record<string, unknown>[] {
+  const scopes: Record<string, unknown>[] = [];
+  const queue = sources.filter((source): source is Record<string, unknown> => Boolean(source));
+  const visited = new Set<Record<string, unknown>>();
+  while (queue.length > 0) {
+    const record = queue.shift();
+    if (!record || visited.has(record)) {
+      continue;
+    }
+    visited.add(record);
+    scopes.push(record);
+    for (const value of Object.values(record)) {
+      const nested = asRecord(value);
+      if (nested) {
+        queue.push(nested);
+        continue;
+      }
+      if (!Array.isArray(value)) {
+        continue;
+      }
+      for (const entry of value) {
+        const nestedEntry = asRecord(entry);
+        if (nestedEntry) {
+          queue.push(nestedEntry);
+        }
+      }
+    }
+  }
+  return scopes;
+}
+
+function findFirstFiniteNumberByKeys(
+  scopes: Record<string, unknown>[],
+  keys: readonly string[]
+): number | null {
+  for (const scope of scopes) {
+    for (const key of keys) {
+      const value = scope[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function findFirstBooleanByKeys(scopes: Record<string, unknown>[], keys: readonly string[]): boolean | null {
+  for (const scope of scopes) {
+    for (const key of keys) {
+      if (typeof scope[key] === "boolean") {
+        return scope[key] as boolean;
+      }
+    }
+  }
+  return null;
+}
+
+function findFirstRecordByKeys(scopes: Record<string, unknown>[], keys: readonly string[]): Record<string, unknown> | null {
+  for (const scope of scopes) {
+    for (const key of keys) {
+      const record = asRecord(scope[key]);
+      if (record) {
+        return record;
+      }
+    }
+  }
+  return null;
+}
+
+function findStringArraysByKeys(scopes: Record<string, unknown>[], keys: readonly string[]): string[] {
+  const values: string[] = [];
+  for (const scope of scopes) {
+    for (const key of keys) {
+      if (Array.isArray(scope[key])) {
+        values.push(...normalizeStringArray(scope[key] as string[]));
+      }
+    }
+  }
+  return values;
+}
+
+const BENCHMARK_RIG_SCORE_KEYS = {
+  head_pose: ["head_pose_score", "headPoseScore", "pose_score", "poseScore", "head_pose_stability_score", "headPoseStabilityScore"],
+  eye_drift: [
+    "eye_drift_score",
+    "eyeDriftScore",
+    "eye_anchor_stability_score",
+    "eyeAnchorStabilityScore",
+    "eye_consistency_score",
+    "eyeConsistencyScore"
+  ],
+  mouth_readability: [
+    "mouth_readability_score",
+    "mouthReadabilityScore",
+    "mouth_anchor_stability_score",
+    "mouthAnchorStabilityScore",
+    "viseme_readability_score",
+    "visemeReadabilityScore"
+  ],
+  landmark_consistency: [
+    "landmark_consistency_score",
+    "landmarkConsistencyScore",
+    "rig_consistency_score",
+    "rigConsistencyScore",
+    "pack_landmark_consistency_score",
+    "packLandmarkConsistencyScore"
+  ]
+} as const;
+
+export function resolveSidecarBenchmarkRigFields(input: {
+  sources?: Array<Record<string, unknown> | null | undefined>;
+  fallbackReason?: string | null;
+  fallbackReasonCodes?: string[] | null;
+}): SidecarBenchmarkRigFields {
+  const scopes = collectRigScopes(input.sources ?? []);
+  const anchorConfidenceSummary = findFirstRecordByKeys(scopes, ["anchor_confidence_summary", "anchorConfidenceSummary"]);
+  const anchorConfidenceByView = normalizeSidecarBenchmarkAnchorConfidenceByView(
+    anchorConfidenceSummary?.by_view ?? anchorConfidenceSummary?.byView ?? null
+  );
+  const explicitFallbackReasonCodes = findStringArraysByKeys(scopes, ["fallback_reason_codes", "fallbackReasonCodes"]);
+  return {
+    head_pose_score: normalizeFiniteNumber(findFirstFiniteNumberByKeys(scopes, BENCHMARK_RIG_SCORE_KEYS.head_pose)),
+    eye_drift_score: normalizeFiniteNumber(findFirstFiniteNumberByKeys(scopes, BENCHMARK_RIG_SCORE_KEYS.eye_drift)),
+    mouth_readability_score: normalizeFiniteNumber(
+      findFirstFiniteNumberByKeys(scopes, BENCHMARK_RIG_SCORE_KEYS.mouth_readability)
+    ),
+    landmark_consistency_score: normalizeFiniteNumber(
+      findFirstFiniteNumberByKeys(scopes, BENCHMARK_RIG_SCORE_KEYS.landmark_consistency)
+    ),
+    anchor_confidence_overall: normalizeFiniteNumber(
+      typeof anchorConfidenceSummary?.overall === "number" ? anchorConfidenceSummary.overall : null,
+      3
+    ),
+    anchor_confidence_by_view: anchorConfidenceByView,
+    review_only: findFirstBooleanByKeys(scopes, ["review_only", "reviewOnly"]),
+    fallback_reason_codes: normalizeFallbackReasonCodes(
+      [...explicitFallbackReasonCodes, ...(input.fallbackReasonCodes ?? [])],
+      input.fallbackReason
+    )
+  };
+}
+
 function normalizeArtifactPaths(value: Partial<SidecarBenchmarkArtifactPaths> | null | undefined): SidecarBenchmarkArtifactPaths | null {
   if (!value) {
     return null;
@@ -160,8 +387,16 @@ export function buildSidecarBenchmarkRow(input: {
   judgeDecision?: string | null;
   judgeScore?: number | null;
   fallbackReason?: string | null;
+  fallbackReasonCodes?: string[] | null;
   fallbackFrom?: string | null;
   fallbackTo?: string | null;
+  headPoseScore?: number | null;
+  eyeDriftScore?: number | null;
+  mouthReadabilityScore?: number | null;
+  landmarkConsistencyScore?: number | null;
+  anchorConfidenceOverall?: number | null;
+  anchorConfidenceByView?: SidecarBenchmarkAnchorConfidenceByView | null;
+  reviewOnly?: boolean | null;
   retakeCount?: number | null;
   candidateCount?: number | null;
   selectedCandidateId?: string | null;
@@ -205,8 +440,16 @@ export function buildSidecarBenchmarkRow(input: {
     judge_decision: input.judgeDecision ?? null,
     judge_score: typeof input.judgeScore === "number" ? round(input.judgeScore) : null,
     fallback_reason: input.fallbackReason ?? null,
+    fallback_reason_codes: normalizeFallbackReasonCodes(input.fallbackReasonCodes, input.fallbackReason),
     fallback_from: input.fallbackFrom ?? null,
     fallback_to: input.fallbackTo ?? null,
+    head_pose_score: normalizeFiniteNumber(input.headPoseScore),
+    eye_drift_score: normalizeFiniteNumber(input.eyeDriftScore),
+    mouth_readability_score: normalizeFiniteNumber(input.mouthReadabilityScore),
+    landmark_consistency_score: normalizeFiniteNumber(input.landmarkConsistencyScore),
+    anchor_confidence_overall: normalizeFiniteNumber(input.anchorConfidenceOverall, 3),
+    anchor_confidence_by_view: normalizeSidecarBenchmarkAnchorConfidenceByView(input.anchorConfidenceByView),
+    review_only: normalizeNullableBoolean(input.reviewOnly),
     retake_count: typeof input.retakeCount === "number" ? input.retakeCount : null,
     candidate_count: typeof input.candidateCount === "number" ? input.candidateCount : null,
     selected_candidate_id: input.selectedCandidateId ?? null,
@@ -266,10 +509,18 @@ function toRecommendationCandidate(row: SidecarBenchmarkRow | null): SidecarBenc
     judge_score: row.judge_score,
     latency_ms: row.latency_ms,
     fallback_reason: row.fallback_reason,
+    fallback_reason_codes: [...row.fallback_reason_codes],
     resolution_profile: row.resolution_profile,
     step_profile: row.step_profile,
     cache_profile: row.cache_profile,
-    sr_profile: row.sr_profile
+    sr_profile: row.sr_profile,
+    head_pose_score: row.head_pose_score,
+    eye_drift_score: row.eye_drift_score,
+    mouth_readability_score: row.mouth_readability_score,
+    landmark_consistency_score: row.landmark_consistency_score,
+    anchor_confidence_overall: row.anchor_confidence_overall,
+    anchor_confidence_by_view: row.anchor_confidence_by_view ? { ...row.anchor_confidence_by_view } : null,
+    review_only: row.review_only
   };
 }
 

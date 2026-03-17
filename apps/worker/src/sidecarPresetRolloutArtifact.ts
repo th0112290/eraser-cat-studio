@@ -8,6 +8,10 @@ import {
   DEFAULT_SIDECAR_PRESET_ROLLOUT_PRESERVE_CONTROLNET,
   type RolloutTarget
 } from "./sidecarPresetRollout";
+import {
+  normalizeSidecarBenchmarkAnchorConfidenceByView,
+  type SidecarBenchmarkAnchorConfidenceByView
+} from "./sidecarBenchmarkSchema";
 
 export type RuntimeRolloutArtifactTarget = Exclude<RolloutTarget, "auto">;
 
@@ -15,6 +19,15 @@ export type RuntimeRolloutSummaryCandidate = {
   scenario: string | null;
   score: number | null;
   verdict: string | null;
+  fallback_reason: string | null;
+  fallback_reason_codes: string[];
+  head_pose_score: number | null;
+  eye_drift_score: number | null;
+  mouth_readability_score: number | null;
+  landmark_consistency_score: number | null;
+  anchor_confidence_overall: number | null;
+  anchor_confidence_by_view: SidecarBenchmarkAnchorConfidenceByView | null;
+  review_only: boolean | null;
   controlnet_preset: SidecarControlNetPresetId;
   impact_preset: SidecarImpactPresetId;
   qc_preset: SidecarQcPresetId;
@@ -80,6 +93,35 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function normalizeStringArray(values: unknown): string[] {
+  return Array.isArray(values)
+    ? values.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).map((entry) => entry.trim())
+    : [];
+}
+
+function normalizeFallbackReasonCodes(values: unknown, fallbackReason: string | null): string[] {
+  const codes = new Set<string>();
+  if (fallbackReason) {
+    codes.add(fallbackReason);
+  }
+  for (const code of normalizeStringArray(values)) {
+    codes.add(code);
+  }
+  return [...codes];
+}
+
+function normalizeNullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function normalizeFiniteNumber(value: unknown, digits = 2): number | null {
+  if (!isFiniteNumber(value)) {
+    return null;
+  }
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
 const CONTROLNET_PRESETS = new Set<SidecarControlNetPresetId>([
   "pose_depth_balance_v1",
   "pose_canny_balance_v1",
@@ -121,10 +163,20 @@ export function parseRuntimeRolloutSummaryCandidate(value: unknown): RuntimeRoll
   if (!isQcPreset(record.qc_preset)) {
     return null;
   }
+  const fallbackReason = isNonEmptyString(record.fallback_reason) ? record.fallback_reason.trim() : null;
   return {
     scenario: isNonEmptyString(record.scenario) ? record.scenario.trim() : null,
     score: isFiniteNumber(record.score) ? record.score : null,
     verdict: isNonEmptyString(record.verdict) ? record.verdict.trim() : null,
+    fallback_reason: fallbackReason,
+    fallback_reason_codes: normalizeFallbackReasonCodes(record.fallback_reason_codes, fallbackReason),
+    head_pose_score: normalizeFiniteNumber(record.head_pose_score),
+    eye_drift_score: normalizeFiniteNumber(record.eye_drift_score),
+    mouth_readability_score: normalizeFiniteNumber(record.mouth_readability_score),
+    landmark_consistency_score: normalizeFiniteNumber(record.landmark_consistency_score),
+    anchor_confidence_overall: normalizeFiniteNumber(record.anchor_confidence_overall, 3),
+    anchor_confidence_by_view: normalizeSidecarBenchmarkAnchorConfidenceByView(record.anchor_confidence_by_view),
+    review_only: normalizeNullableBoolean(record.review_only),
     controlnet_preset: record.controlnet_preset,
     impact_preset: record.impact_preset,
     qc_preset: record.qc_preset
