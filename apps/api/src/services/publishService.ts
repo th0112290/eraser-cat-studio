@@ -250,6 +250,18 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isRedisUnavailableError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return (
+    message.includes("ECONNREFUSED") ||
+    message.includes("ETIMEDOUT") ||
+    message.includes("EAI_AGAIN") ||
+    message.includes("Connection is closed") ||
+    message.includes("connect ECONNREFUSED") ||
+    message.includes("All sentinels are unreachable")
+  );
+}
+
 function parsePositiveIntEnv(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
@@ -571,8 +583,35 @@ export function registerPublishRoutes(input: {
   const queueName = queue.name ?? DEMO_QUEUE_NAME;
   const assetQueue = new BullQueue(ASSET_QUEUE_NAME, {
     connection: {
-      url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+      url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+      lazyConnect: true,
+      connectTimeout: 5000,
+      maxRetriesPerRequest: 1,
+      retryStrategy: () => null
     }
+  });
+
+  assetQueue.on("error", (error) => {
+    if (isRedisUnavailableError(error)) {
+      app.log.warn(
+        {
+          redis: "down",
+          queue: ASSET_QUEUE_NAME,
+          redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+          reason: errorMessage(error)
+        },
+        "Asset ingest queue is unavailable. Asset enqueue routes will return 503 until Redis is reachable."
+      );
+      return;
+    }
+
+    app.log.error(
+      {
+        queue: ASSET_QUEUE_NAME,
+        error
+      },
+      "Asset ingest queue error"
+    );
   });
 
   registerFormBody(app);
