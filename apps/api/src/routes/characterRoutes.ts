@@ -636,6 +636,13 @@ type CharacterPackLineageRigSummary = {
   missingAnchorIds: string[];
 };
 
+type CharacterPackLineageOverrideSummary = {
+  anchorsPath: string | null;
+  anchorsUrl: string | null;
+  cropBoxesPath: string | null;
+  cropBoxesUrl: string | null;
+};
+
 type CharacterPackLineage = {
   sourceLabel: string;
   characterRoot: string;
@@ -664,6 +671,7 @@ type CharacterPackLineage = {
   repairTasks: CharacterLineageTask[];
   viewEntries: CharacterViewLineage[];
   rigSummary: CharacterPackLineageRigSummary | null;
+  overrides: CharacterPackLineageOverrideSummary;
 };
 
 function computeManifestHashes(input: {
@@ -1348,6 +1356,104 @@ function summarizeRigViewState(
     return { label: "clear", tone: "ok" };
   }
   return { label: "observe", tone: "muted" };
+}
+
+function formatSignedMetric(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    if (value === null) {
+      return "null";
+    }
+    return "-";
+  }
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
+function summarizeRigReasonFamilies(reasonCodes: string[] | undefined): string {
+  const families = dedupeStrings(
+    (reasonCodes ?? [])
+      .map((reasonCode) => {
+        const normalized = String(reasonCode || "").trim().toLowerCase();
+        if (!normalized) {
+          return "";
+        }
+        if (normalized.includes("anchor")) {
+          return "anchor";
+        }
+        if (normalized.includes("landmark")) {
+          return "landmark";
+        }
+        if (normalized.includes("yaw")) {
+          return "yaw";
+        }
+        if (normalized.includes("review")) {
+          return "review";
+        }
+        if (normalized.includes("recreate")) {
+          return "recreate";
+        }
+        if (normalized.includes("compare")) {
+          return "compare";
+        }
+        if (normalized.includes("front")) {
+          return "front";
+        }
+        return normalized.includes(":") ? normalized.slice(0, normalized.indexOf(":")) : normalized;
+      })
+      .filter((value) => value.length > 0)
+      .map((value) => humanizeToken(value))
+  );
+  return families.length > 0 ? families.join(" / ") : "none";
+}
+
+function summarizeAnchorDiagnosisForView(
+  rigSummary: CharacterPackLineageRigSummary | null | undefined,
+  view: CharacterGenerationView
+): string {
+  const byView = rigSummary?.byView?.[view];
+  if (!rigSummary || !byView) {
+    return "pack anchor evidence not materialized";
+  }
+  const present = byView.presentAnchorIds.length > 0 ? `${byView.presentAnchorIds.length} present` : "0 present";
+  const missing = byView.missingAnchorIds.length > 0 ? `${byView.missingAnchorIds.length} missing` : "0 missing";
+  const note = byView.notes ? ` / ${byView.notes}` : "";
+  return `${present} / ${missing}${note}`;
+}
+
+function summarizeRepairTriageDecision(
+  triage: GenerationManifestStageRepairTriageDecision | undefined
+): string {
+  if (!triage) {
+    return "-";
+  }
+  const familySummary = triage.repairFamilies?.length ? `{${triage.repairFamilies.join("+")}}` : "";
+  const scoreSummary = typeof triage.score === "number" ? ` score=${triage.score.toFixed(2)}` : "";
+  const consistencySummary =
+    typeof triage.consistencyScore === "number"
+      ? ` consistency=${triage.consistencyScore.toFixed(2)}`
+      : triage.consistencyScore === null
+        ? " consistency=null"
+        : "";
+  const sourceSummary = triage.sourceCandidateId ? ` from ${triage.sourceCandidateId}` : "";
+  return `${triage.decision}${triage.priority ? `:${triage.priority}` : ""}${sourceSummary}${scoreSummary}${consistencySummary}${familySummary}`.trim();
+}
+
+function summarizeRepairAcceptanceDecision(
+  acceptance: GenerationManifestStageRepairAcceptanceDecision | undefined
+): string {
+  if (!acceptance) {
+    return "-";
+  }
+  const chosen = acceptance.chosenCandidateId ? ` chosen=${acceptance.chosenCandidateId}` : "";
+  const scoreDelta = typeof acceptance.scoreDeltaVsPreRepair === "number" ? ` score${formatSignedMetric(acceptance.scoreDeltaVsPreRepair)}` : "";
+  const consistencyDelta =
+    typeof acceptance.consistencyDeltaVsPreRepair === "number"
+      ? ` consistency${formatSignedMetric(acceptance.consistencyDeltaVsPreRepair)}`
+      : acceptance.consistencyDeltaVsPreRepair === null
+        ? " consistency=null"
+        : "";
+  const familySummary =
+    acceptance.introducedCriticalFamilies?.length ? ` critical={${acceptance.introducedCriticalFamilies.join("+")}}` : "";
+  return `${acceptance.decision}${chosen}${scoreDelta}${consistencyDelta}${familySummary}`.trim();
 }
 
 function summarizeWorkflowStages(stages: GenerationManifestWorkflowStage[] | undefined): string {
@@ -2430,6 +2536,8 @@ function readCharacterPackLineage(characterPackId: string): CharacterPackLineage
   const packMetaPath = path.join(resolvedRoot.characterRoot, "pack", "character.pack.meta.json");
   const packJsonPath = path.join(resolvedRoot.characterRoot, "pack", "character.pack.json");
   const proposalPath = path.join(resolvedRoot.characterRoot, "pack", "proposal.json");
+  const anchorsOverridePath = path.join(resolvedRoot.characterRoot, "pack", "overrides", "anchors.json");
+  const cropBoxesOverridePath = path.join(resolvedRoot.characterRoot, "pack", "overrides", "crop-boxes.json");
   const qcReportPath = path.join(resolvedRoot.characterRoot, "qc", "qc_report.json");
   const repairTasksPath = path.join(resolvedRoot.characterRoot, "qc", "repair_tasks.json");
 
@@ -2522,7 +2630,13 @@ function readCharacterPackLineage(characterPackId: string): CharacterPackLineage
     repairOpenCount: repairTasks.filter((task) => task.status.toLowerCase() === "open").length,
     repairTasks,
     viewEntries,
-    rigSummary
+    rigSummary,
+    overrides: {
+      anchorsPath: fs.existsSync(anchorsOverridePath) ? anchorsOverridePath : null,
+      anchorsUrl: toGeneratedCharacterFileUrl(anchorsOverridePath),
+      cropBoxesPath: fs.existsSync(cropBoxesOverridePath) ? cropBoxesOverridePath : null,
+      cropBoxesUrl: toGeneratedCharacterFileUrl(cropBoxesOverridePath)
+    }
   };
 }
 
@@ -6476,9 +6590,13 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const selectedWorkflowStages =
       selectedManifest?.workflowStages ?? selectedSelectionDiagnostics?.workflowStages ?? [];
     const selectedContinuity = selectedManifest?.reference?.continuity;
+    const selectedGeneratedLineage =
+      selectedManifest?.characterPackId ? readCharacterPackLineage(selectedManifest.characterPackId) : null;
+    const selectedPackRigSummary = selectedGeneratedLineage?.rigSummary ?? null;
     const selectedWorkflowRuntimeDiagnostics = resolveSelectedWorkflowRuntimeDiagnostics(selectedManifest);
     const selectedRecommendedActions = buildRecommendedActions(selectedManifest);
     const selectedRigState = summarizeRigSeverity(selectedRigStability);
+    const selectedRigReasonFamilies = summarizeRigReasonFamilies(selectedRigStability?.reasonCodes);
     const selectedRigFallbackCards = dedupeStrings(selectedRigStability?.fallbackReasonCodes ?? [])
       .map((reasonCode) => {
         const detail = describeRigFallbackReason(reasonCode);
@@ -6486,6 +6604,19 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           detail.label
         )}</div><h4>${escHtml(detail.copy)}</h4><p>flag=${escHtml(reasonCode)}</p></article>`;
       })
+      .join("");
+    const selectedRigOverrideLinks = [
+      selectedGeneratedLineage?.overrides.anchorsUrl
+        ? `<a href="${escHtml(selectedGeneratedLineage.overrides.anchorsUrl)}">anchors.json</a>`
+        : "",
+      selectedGeneratedLineage?.overrides.cropBoxesUrl
+        ? `<a href="${escHtml(selectedGeneratedLineage.overrides.cropBoxesUrl)}">crop-boxes.json</a>`
+        : "",
+      selectedGeneratedLineage?.repairTasksUrl
+        ? `<a href="${escHtml(selectedGeneratedLineage.repairTasksUrl)}">repair_tasks.json</a>`
+        : ""
+    ]
+      .filter((value) => value.length > 0)
       .join("");
     const selectedRigViewRows = (["front", "threeQuarter", "profile"] as const)
       .map((view) => {
@@ -6499,11 +6630,81 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           formatMetric(selectedRigStability?.landmarkConsistencyByView?.[view] ?? selectedSummary?.landmarkConsistency)
         )}</td><td>${escHtml(
           summarizeRigFallbackReasonCodes(selectedSummary?.rigFallbackReasonCodes)
-        )}</td><td>${escHtml(selectedSummary?.warningCount ?? "-")}</td><td>${escHtml(
-          selectedSummary?.rejectionCount ?? "-"
-        )}</td></tr>`;
+          )}</td><td>${escHtml(selectedSummary?.warningCount ?? "-")}</td><td>${escHtml(
+            selectedSummary?.rejectionCount ?? "-"
+          )}</td></tr>`;
       })
       .join("");
+    const selectedRigRepairRows = (["front", "threeQuarter", "profile"] as const)
+      .map((view) => {
+        const viewState = summarizeRigViewState(view, selectedRigStability);
+        const selectedSummary = selectedSelectionDiagnostics?.selectedCandidateSummaryByView?.[view];
+        const latestDirective = findLatestDirectiveProfileForView(selectedWorkflowStages, view);
+        const latestTriage = findLatestRepairTriageForView(selectedWorkflowStages, view);
+        const latestRepairAcceptance = findLatestRepairAcceptanceForView(selectedWorkflowStages, view);
+        const defects =
+          selectedPackDefectSummary?.persistentFamiliesByView?.[view] ??
+          selectedPackDefectSummary?.defectFamiliesByView?.[view] ??
+          [];
+        const action = selectedRecommendedActions.find((entry) => entry.view === view);
+        const overrideSummary =
+          selectedGeneratedLineage?.overrides.anchorsUrl || selectedGeneratedLineage?.overrides.cropBoxesUrl
+            ? selectedRigOverrideLinks || "available"
+            : "none";
+        const directiveSummary = latestDirective.directive
+          ? `${latestDirective.directive.severity}:${latestDirective.directive.families.join("+") || "none"}`
+          : "-";
+        const evidenceSummary = [
+          selectedGeneratedLineage?.viewEntries.find((entry) => entry.view === view)?.metadataUrl
+            ? `<a href="${escHtml(
+                selectedGeneratedLineage.viewEntries.find((entry) => entry.view === view)?.metadataUrl ?? ""
+              )}">metadata</a>`
+            : "",
+          selectedGeneratedLineage?.viewEntries.find((entry) => entry.view === view)?.parentAssetUrl
+            ? `<a href="${escHtml(
+                selectedGeneratedLineage.viewEntries.find((entry) => entry.view === view)?.parentAssetUrl ?? ""
+              )}">source</a>`
+            : ""
+        ]
+          .filter((value) => value.length > 0)
+          .join(" / ");
+        return `<tr><td>${escHtml(view)}</td><td><span class="badge ${viewState.tone}">${escHtml(
+          viewState.label
+        )}</span></td><td>${escHtml(
+          summarizeAnchorDiagnosisForView(selectedPackRigSummary, view)
+        )}</td><td>${escHtml(
+          formatMetric(selectedRigStability?.anchorConfidenceByView?.[view] ?? selectedSummary?.anchorConfidence)
+        )} / ${escHtml(
+          formatMetric(selectedRigStability?.landmarkConsistencyByView?.[view] ?? selectedSummary?.landmarkConsistency)
+        )}</td><td>${escHtml(
+          summarizeRepairTriageDecision(latestTriage.triage)
+        )}</td><td>${escHtml(
+          summarizeRepairAcceptanceDecision(latestRepairAcceptance.acceptance)
+        )}</td><td>${escHtml(directiveSummary)}</td><td>${escHtml(
+          defects.join(", ") || "none"
+        )}</td><td>${escHtml(action?.label ?? (viewState.label === "block" ? "Regenerate / recreate" : "Observe"))}</td><td>${
+          evidenceSummary || "-"
+        }</td></tr>`;
+      })
+      .join("");
+    const selectedRigRepairConsoleSection =
+      selectedManifest && selectedRigStability
+        ? `<div class="cg-diagnostic-grid"><article class="cg-diagnostic-card"><div class="cg-rig-kicker">Reason Families</div><h4>${escHtml(
+            selectedRigReasonFamilies
+          )}</h4><p>Use these families to decide whether this is anchor repair, landmark repair, compare-only review, or full recreate pressure.</p></article><article class="cg-diagnostic-card"><div class="cg-rig-kicker">Override Availability</div><h4>${escHtml(
+            selectedRigOverrideLinks ? "override files present" : "no override files recorded"
+          )}</h4><p>${
+            selectedRigOverrideLinks
+              ? `Read-only override evidence: ${selectedRigOverrideLinks}`
+              : "anchors.json and crop-boxes.json are not recorded for this run yet."
+          }</p></article><article class="cg-diagnostic-card"><div class="cg-rig-kicker">Repair Queue</div><h4>${escHtml(
+            selectedGeneratedLineage ? `${selectedGeneratedLineage.repairOpenCount} open tasks` : "repair queue not materialized"
+          )}</h4><p>${escHtml(
+            selectedGeneratedLineage
+              ? `${selectedGeneratedLineage.qcFailedCount}/${selectedGeneratedLineage.qcTotalCount} QC checks failed. Approval status=${selectedGeneratedLineage.acceptanceStatus ?? "-"}`
+              : "Repair tasks and pack-level QC appear only after pack artifacts are materialized."
+          )}</p></article></div><div class="cg-signal-table" style="margin-top:12px"><table><thead><tr><th>View</th><th>State</th><th>Anchor diagnosis</th><th>Metrics</th><th>Repair triage</th><th>Repair acceptance</th><th>Directive</th><th>Defects</th><th>Suggested path</th><th>Evidence</th></tr></thead><tbody>${selectedRigRepairRows}</tbody></table></div>`
+        : "";
     const selectedPackCoherenceSection = selectedManifest
       ? selectedPackCoherence
         ? `<div class="notice">pack coherence: <span class="badge ${coherenceBadge(
@@ -7249,7 +7450,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     }
     const selectedRigOverviewSection =
       selectedManifest && selectedRigStability
-        ? `<section class="card cg-rig-surface" id="cg-rig-surface"><div class="cg-section-head"><div><div class="cg-section-kicker">Rig Surface</div><h3>Rig stability, anchor confidence, and fallback state</h3></div><p>Read this block before compare, approval, or rollback. Raw manifest JSON stays below as secondary evidence.</p></div><div class="cg-rig-grid"><article class="cg-rig-card ${selectedRigState.tone}"><div class="cg-rig-kicker">Current State</div><h3>${escHtml(
+        ? `<section class="card cg-rig-surface" id="cg-rig-surface"><div class="cg-section-head"><div><div class="cg-section-kicker">Rig Repair Console</div><h3>Rig stability, repair posture, and anchor evidence</h3></div><p>Read this block before compare, approval, or rollback. Per-view repair posture and override evidence stay above raw manifest JSON, which remains secondary evidence.</p></div><div class="cg-rig-grid"><article class="cg-rig-card ${selectedRigState.tone}"><div class="cg-rig-kicker">Current State</div><h3>${escHtml(
             selectedRigState.title
           )}</h3><p class="cg-rig-copy">${escHtml(selectedRigState.copy)}</p><div class="cg-rig-meta"><span class="badge ${coherenceBadge(
             selectedRigStability.severity
@@ -7261,7 +7462,9 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                 : "READY"
           )}">${escHtml(selectedRigStability.suggestedAction ?? "observe")}</span></div><p class="cg-rig-copy">blocking=${escHtml(
             selectedRigStability.blockingViews?.join(", ") || "none"
-          )} / warnings=${escHtml(selectedRigStability.warningViews?.join(", ") || "none")}</p></article><article class="cg-rig-card ${selectedRigState.tone}"><div class="cg-rig-kicker">Anchor Confidence</div><h3>${escHtml(
+          )} / warnings=${escHtml(selectedRigStability.warningViews?.join(", ") || "none")}</p><p class="cg-rig-copy">reason families=${escHtml(
+            selectedRigReasonFamilies
+          )}</p></article><article class="cg-rig-card ${selectedRigState.tone}"><div class="cg-rig-kicker">Anchor Confidence</div><h3>${escHtml(
             formatMetric(selectedRigStability.anchorConfidenceOverall)
           )}</h3><p class="cg-rig-copy">front=${escHtml(
             formatMetric(selectedRigStability.anchorConfidenceByView?.front)
@@ -7273,13 +7476,15 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             formatMetric(selectedRigStability.landmarkConsistencyByView?.threeQuarter)
           )} / profile=${escHtml(formatMetric(selectedRigStability.landmarkConsistencyByView?.profile))}</p></article><article class="cg-rig-card muted"><div class="cg-rig-kicker">Fallback State</div><h3>${escHtml(
             summarizeRigFallbackReasonCodes(selectedRigStability.fallbackReasonCodes)
-          )}</h3><p class="cg-rig-copy">${escHtml(selectedRigStability.summary)}</p><div class="cg-inline-links"><a href="#recommended-actions">Next safe actions</a><a href="#pick-candidates">Candidate compare</a>${
+          )}</h3><p class="cg-rig-copy">${escHtml(selectedRigStability.summary)}</p><p class="cg-rig-copy">override files=${escHtml(
+            selectedRigOverrideLinks ? "present" : "not recorded"
+          )} / pack anchor evidence=${escHtml(selectedPackRigSummary ? "present" : "not materialized")}</p><div class="cg-inline-links"><a href="#recommended-actions">Next safe actions</a><a href="#pick-candidates">Candidate compare</a>${
             selectedCharactersHref ? `<a href="${escHtml(selectedCharactersHref)}">Characters</a>` : ""
           }</div></article></div><div class="cg-signal-table"><table><thead><tr><th>View</th><th>State</th><th>Selected Candidate</th><th>Anchor</th><th>Landmark</th><th>Fallbacks</th><th>Warnings</th><th>Rejections</th></tr></thead><tbody>${selectedRigViewRows}</tbody></table></div>${
             selectedRigFallbackCards ? `<div class="cg-signal-flag-grid">${selectedRigFallbackCards}</div>` : ""
-          }</section>`
+          }${selectedRigRepairConsoleSection}</section>`
         : selectedManifest
-          ? `<section class="card cg-rig-surface" id="cg-rig-surface"><div class="cg-section-head"><div><div class="cg-section-kicker">Rig Surface</div><h3>Rig stability, anchor confidence, and fallback state</h3></div><p>No rig summary was recorded for this run yet. Continue with the route and decision evidence below.</p></div></section>`
+          ? `<section class="card cg-rig-surface" id="cg-rig-surface"><div class="cg-section-head"><div><div class="cg-section-kicker">Rig Repair Console</div><h3>Rig stability, repair posture, and anchor evidence</h3></div><p>No rig summary was recorded for this run yet. Continue with the route and decision evidence below.</p></div></section>`
           : "";
     const selectedRigActionBanner =
       selectedManifest && selectedRigStability
@@ -7289,16 +7494,18 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             summarizeRigFallbackReasonCodes(selectedRigStability.fallbackReasonCodes)
           )} / blocking=${escHtml(
             selectedRigStability.blockingViews?.join(", ") || "none"
-          )} / warnings=${escHtml(selectedRigStability.warningViews?.join(", ") || "none")}</p><div class="cg-inline-links"><a href="#cg-rig-surface">Rig surface</a><a href="#pick-candidates">Compare</a><a href="#recreate-pack">Recreate</a></div></div>`
+          )} / warnings=${escHtml(
+            selectedRigStability.warningViews?.join(", ") || "none"
+          )}</p><p>Use regenerate when the fault is isolated to one view. Escalate to recreate only when the same reason family keeps hitting multiple views or pack-level gates.</p><div class="cg-inline-links"><a href="#cg-rig-surface">Rig console</a><a href="#regenerate-view">Regenerate one view</a><a href="#pick-candidates">Manual compare</a><a href="#recreate-pack">Recreate pack</a></div></div>`
         : "";
     const selectedRigCompareNotice =
       selectedManifest && selectedRigStability
         ? `<div class="notice">${
             selectedRigStability.severity === "block"
-              ? `Rig block is active. Compare is evidence gathering only until blocked views are regenerated or the pack is recreated.`
+              ? `Rig block is active. Compare is evidence gathering only until the blocked views are repaired, replaced, or the pack is recreated.`
               : selectedRigStability.reviewOnly
-                ? `Rig review-only is active. Manual compare is required before approval.`
-                : `Rig signals are clear enough for compare.`
+                ? `Rig review-only is active. Manual compare is required before approval, with special attention on the warning views listed in the repair console.`
+                : `Rig signals are clear enough for compare. Use compare to verify repaired views before you promote the pack.`
           } front=${escHtml(
             formatMetric(selectedRigStability.anchorConfidenceByView?.front)
           )} / threeQuarter=${escHtml(
@@ -7497,7 +7704,13 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                         objectScope
                       )}</strong></p><p>${escHtml(
                         action.description
-                      )}</p><p>reasons: ${escHtml(reasonSummary)}</p><div class="cg-inline-links"><a href="${escHtml(
+                      )}</p><p>reasons: ${escHtml(reasonSummary)}</p><p>${
+                        action.action === "regenerate-view"
+                          ? `Repair only the ${escHtml(action.view ?? "target")} lane first and re-enter compare before touching the rest of the pack.`
+                          : action.action === "recreate"
+                            ? "Use this only when view-level repair is no longer enough or the same rig family keeps reappearing across the pack."
+                            : "Use compare to validate repaired views and to decide whether the current pack is safe to approve."
+                      }</p><div class="cg-inline-links"><a href="${escHtml(
                         routeHref
                       )}">${escHtml(routeLabel)}</a></div><div class="actions">${controls}</div></article>`;
                     })
@@ -7631,20 +7844,48 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         : compareSection;
     const recommendedActionsSurfaceSection = recommendedActionsSection.replace(
       /(<h2>Next Safe Actions<\/h2>)<p>[\s\S]*?<\/p>/,
-      "$1<p>Start with the current rig and decision state, then use regenerate, compare, or recreate from this lane. Approval and rollback stay here so the blocker is still visible when a human acts.</p>"
+      "$1<p>Start from the rig repair console, then choose the smallest safe recovery path. Prefer per-view regenerate for isolated failures, use manual compare to validate the repaired lane, and escalate to recreate only when pack-wide blockers remain.</p>"
     );
-    const regenerateSurfaceSection = regenerateSection.replace(
-      /(<h2>Candidate Set \/ regenerate one view<\/h2>)<p>[\s\S]*?<\/p>/,
-      "$1<p>Regenerate one view when the pack is mostly sound and only one angle needs a safer candidate set. This preserves compare context without recreating the full pack.</p>"
-    );
-    const recreateSurfaceSection = recreateSection.replace(
-      /(<h2>Character Pack \/ recreate from current run<\/h2>)<p>[\s\S]*?<\/p>/,
-      "$1<p>Recreate the full Character Pack when rig, coherence, or final gate pressure makes the current selection unsafe. This is the full reset path before compare and approval reopen.</p>"
-    );
-    const pickSurfaceSection = pickSection.replace(
-      /(<h2>Candidate Set \/ HITL compare<\/h2>)<p>[\s\S]*?<\/p>/,
-      "$1<p>Use manual compare to choose the front, threeQuarter, and profile candidates before the Character Pack handoff. This lane stays readable even when rig review-only or block pressure is active.</p>"
-    );
+    const regenerateSurfaceSection = regenerateSection
+      .replace(
+        /(<h2>Candidate Set \/ regenerate one view<\/h2>)<p>[\s\S]*?<\/p>/,
+        "$1<p>Use this lane when the repair console shows a blocked or warning state isolated to one view. It keeps the rest of the pack stable while you regenerate a narrower candidate set and return to compare.</p>"
+      )
+      .replace(
+        /<label><input type="checkbox" name="regenerateSameSeed" value="true" checked\/>[\s\S]*?<\/label>/,
+        '<label><input type="checkbox" name="regenerateSameSeed" value="true" checked/> Keep same seed</label>'
+      )
+      .replace(
+        /<label><input type="checkbox" name="boostNegativePrompt" value="true"\/>[\s\S]*?<\/label>/,
+        '<label><input type="checkbox" name="boostNegativePrompt" value="true"/> Boost negative prompt</label>'
+      )
+      .replace(/<button type="submit">[\s\S]*?<\/button>/, "<button type=\"submit\">Regenerate selected view</button>");
+    const recreateSurfaceSection = recreateSection
+      .replace(
+        /(<h2>Character Pack \/ recreate from current run<\/h2>)<p>[\s\S]*?<\/p>/,
+        "$1<p>Use recreate only when the repair console shows pack-wide instability, repeated blocked views, or fallback families that keep returning after targeted regenerate attempts. This is the full reset path before compare and approval reopen.</p>"
+      )
+      .replace(
+        /<label><input type="checkbox" name="regenerateSameSeed" value="true"\/>[\s\S]*?<\/label>/,
+        '<label><input type="checkbox" name="regenerateSameSeed" value="true"/> Keep same seed</label>'
+      )
+      .replace(
+        /<label><input type="checkbox" name="boostNegativePrompt" value="true"\/>[\s\S]*?<\/label>/,
+        '<label><input type="checkbox" name="boostNegativePrompt" value="true"/> Boost negative prompt</label>'
+      )
+      .replace(
+        /<button type="submit" class="secondary">[\s\S]*?<\/button>/,
+        '<button type="submit" class="secondary">Recreate character pack</button>'
+      );
+    const pickSurfaceSection = pickSection
+      .replace(
+        /(<h2>Candidate Set \/ HITL compare<\/h2>)<p>[\s\S]*?<\/p>/,
+        "$1<p>Use compare as the repair validation lane. Confirm that the repaired view is now safe, keep the untouched views stable, and only then rebuild the Character Pack candidate for approval.</p>"
+      )
+      .replace(
+        /<button type="submit"( disabled)?>[\s\S]*?<\/button>/,
+        (_match, disabled = "") => `<button type="submit"${disabled}>Build pack from selected candidates</button>`
+      );
     const previewSurfaceSection = previewSection.replace(
       /(<h2>Character Pack object \/ handoff<\/h2>)<p>[\s\S]*?<\/p>/,
       "$1<p>Once compare settles, hand the Character Pack object into preview, QC, lineage, and jobs review. Characters remains the slower inspection surface after this handoff.</p>"

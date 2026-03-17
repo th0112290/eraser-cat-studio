@@ -90,6 +90,11 @@ function buildCharacterGeneratorPageStyles(): string {
 .cg-rig-card h3,.cg-signal-flag h4{margin:0;font-size:15px}
 .cg-rig-copy,.cg-signal-flag p,.cg-action-banner p{margin:0;color:#4f6270;font-size:13px;line-height:1.55}
 .cg-rig-meta{display:flex;flex-wrap:wrap;gap:8px}
+.cg-diagnostic-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.cg-diagnostic-card{display:grid;gap:8px;padding:15px 16px;border:1px solid #d6e4ea;border-radius:16px;background:linear-gradient(180deg,#ffffff,#f5fafc)}
+.cg-diagnostic-card h4{margin:0;font-size:15px}
+.cg-diagnostic-card p{margin:0;color:#4f6270;font-size:13px;line-height:1.55}
+.cg-diagnostic-card a{font-weight:800}
 .cg-signal-table{overflow:auto;border:1px solid #d4e1ea;border-radius:14px;background:#fff}
 .cg-signal-table table{margin:0;border:none;border-radius:0;min-width:760px}
 .cg-signal-table th{position:sticky;top:0;z-index:1}
