@@ -109,6 +109,7 @@ import { getAssetObject } from "./assetStorage";
 import { handleAssetIngestJob } from "./assetIngest";
 import { handleGenerateCharacterAssetsJob } from "./characterGeneration";
 import { workerQueueRetentionOptions } from "./jobRetention";
+import { reconcileStaleCharacterGenerationJobs } from "./jobReconciliation";
 
 function resolveDefaultCatQualityReferenceImage(repoRoot: string): string {
   const dirPath = path.join(repoRoot, "refs", "cat_quality_input", "01_main_style");
@@ -138,6 +139,18 @@ const ASSET_INGEST_TIMEOUT_MS = Number.parseInt(process.env.ASSET_INGEST_TIMEOUT
 const WORKER_LOCK_DURATION_MS = Number.parseInt(process.env.WORKER_LOCK_DURATION_MS ?? "900000", 10);
 const WORKER_STALLED_INTERVAL_MS = Number.parseInt(process.env.WORKER_STALLED_INTERVAL_MS ?? "60000", 10);
 const WORKER_MAX_STALLED_COUNT = Number.parseInt(process.env.WORKER_MAX_STALLED_COUNT ?? "5", 10);
+const WORKER_RECONCILE_STALE_CHARACTER_JOBS = parseBoolean(
+  process.env.WORKER_RECONCILE_STALE_CHARACTER_JOBS,
+  true
+);
+const WORKER_STALE_CHARACTER_JOB_AGE_MINUTES = parsePositiveInt(
+  process.env.WORKER_STALE_CHARACTER_JOB_AGE_MINUTES,
+  12 * 60
+);
+const WORKER_STALE_CHARACTER_JOB_MAX_ROWS = parsePositiveInt(
+  process.env.WORKER_STALE_CHARACTER_JOB_MAX_ROWS,
+  250
+);
 const COMFY_SERVER_URL = (process.env.COMFY_SERVER_URL?.trim() || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const COMFY_INPUT_DIR = process.env.COMFY_INPUT_DIR?.trim() || "C:\\input";
 const VIDEO_BROLL_COMFY_TIMEOUT_MS = Number.parseInt(process.env.VIDEO_BROLL_COMFY_TIMEOUT_MS ?? "900000", 10);
@@ -9083,6 +9096,16 @@ async function handleRenderCharacterPreview(payload: EpisodeJobPayload, jobDbId:
   await logJob(jobDbId, "info", "Character preview render completed", {
     previewPath: out.previewPath,
     qcReportPath: out.qcReportPath
+  });
+}
+
+if (WORKER_RECONCILE_STALE_CHARACTER_JOBS) {
+  await reconcileStaleCharacterGenerationJobs({
+    prisma,
+    queue,
+    staleAgeMs: WORKER_STALE_CHARACTER_JOB_AGE_MINUTES * 60 * 1000,
+    maxRows: WORKER_STALE_CHARACTER_JOB_MAX_ROWS,
+    log: (message) => console.log(message)
   });
 }
 
