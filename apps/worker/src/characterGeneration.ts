@@ -412,6 +412,52 @@ type CandidateRigStabilitySnapshot = {
   suppressAggressiveYaw: boolean;
   lockMouthPreset: boolean;
   reasonCodes: string[];
+  reasonFamilies?: RigRepairReasonFamily[];
+  repairRecommendations?: RigRepairRecommendation[];
+  preferredAction?: RigRepairAction;
+};
+
+type RigAnchorTarget =
+  | "head_center"
+  | "mouth_center"
+  | "eye_near"
+  | "eye_far"
+  | "ear_near"
+  | "ear_far"
+  | "paw_anchor"
+  | "tail_root";
+
+type RigRepairReasonFamily =
+  | "repairable_anchor"
+  | "repairable_landmark"
+  | "species_misread"
+  | "protective_fallback"
+  | "recreate_required";
+
+type RigRepairAction =
+  | "monitor"
+  | "regenerate-view"
+  | "manual-compare"
+  | "protective-fallback"
+  | "recreate-pack";
+
+type RigRepairRecommendation = {
+  view: CharacterView;
+  family: RigRepairReasonFamily;
+  action: RigRepairAction;
+  priority: "low" | "medium" | "high";
+  reasonCode: string;
+  summary: string;
+  repairable: boolean;
+  anchorTargets?: RigAnchorTarget[];
+};
+
+type RigViewRepairPlan = {
+  status: "ok" | "review" | "block";
+  familyCodes: RigRepairReasonFamily[];
+  anchorTargets: RigAnchorTarget[];
+  preferredAction?: RigRepairAction;
+  recommendations: RigRepairRecommendation[];
 };
 
 type RigStabilityDiagnostics = {
@@ -429,6 +475,10 @@ type RigStabilityDiagnostics = {
   anchorConfidenceByView: Partial<Record<CharacterView, number | null>>;
   landmarkConsistencyByView: Partial<Record<CharacterView, number | null>>;
   suggestedAction?: "pick-manually" | "recreate";
+  reasonFamilies?: RigRepairReasonFamily[];
+  repairability?: "none" | "surgical" | "manual" | "recreate";
+  repairRecommendations?: RigRepairRecommendation[];
+  repairPlanByView?: Partial<Record<CharacterView, RigViewRepairPlan>>;
 };
 
 type QualityEmbargoAssessment = {
@@ -493,6 +543,9 @@ type SelectionCandidateSummary = {
   rejectionCount?: number;
   runtimeBucket?: CandidateRuntimeBucketLevel;
   rigFallbackReasonCodes?: string[];
+  rigReasonFamilies?: RigRepairReasonFamily[];
+  rigRepairability?: "none" | "surgical" | "manual" | "recreate";
+  rigPreferredAction?: RigRepairAction;
 };
 
 type SideViewAcceptanceGateDecision =
@@ -976,6 +1029,14 @@ function summarizeSelectionCandidate(input: {
       rig.lockMouthPreset ? "lock_mouth_preset" : ""
     ].filter((reason) => reason.length > 0)
   );
+  const rigRepairability: SelectionCandidateSummary["rigRepairability"] =
+    rig.hardLowAnchorConfidence || rig.hardLowLandmarkConsistency
+      ? "manual"
+      : (rig.repairRecommendations?.some((entry) => entry.action === "regenerate-view") ?? false)
+        ? "surgical"
+        : rig.repairRecommendations && rig.repairRecommendations.length > 0
+          ? "manual"
+          : "none";
   return {
     candidateId: input.candidate.candidate.id,
     score: Number(input.candidate.score.toFixed(4)),
@@ -988,7 +1049,10 @@ function summarizeSelectionCandidate(input: {
     warningCount: input.candidate.warnings.length,
     rejectionCount: input.candidate.rejections.length,
     runtimeBucket: runtimeBucket.level,
-    ...(rigFallbackReasonCodes.length > 0 ? { rigFallbackReasonCodes } : {})
+    ...(rigFallbackReasonCodes.length > 0 ? { rigFallbackReasonCodes } : {}),
+    ...(rig.reasonFamilies && rig.reasonFamilies.length > 0 ? { rigReasonFamilies: rig.reasonFamilies } : {}),
+    ...(rigRepairability !== "none" ? { rigRepairability } : {}),
+    ...(rig.preferredAction ? { rigPreferredAction: rig.preferredAction } : {})
   };
 }
 
@@ -7302,6 +7366,124 @@ function resolveCandidateLandmarkConsistencyFromMeta(
   return null;
 }
 
+function inferRigAnchorTargets(input: {
+  view: CharacterView;
+  family: RigRepairReasonFamily;
+  reasonCode: string;
+}): RigAnchorTarget[] {
+  const { view, family, reasonCode } = input;
+  const targets = new Set<RigAnchorTarget>();
+  if (family === "repairable_anchor") {
+    targets.add("head_center");
+    targets.add("mouth_center");
+    if (view === "front") {
+      targets.add("eye_near");
+      targets.add("eye_far");
+    } else {
+      targets.add("eye_near");
+      targets.add("ear_near");
+      if (view === "threeQuarter") {
+        targets.add("eye_far");
+        targets.add("ear_far");
+      }
+    }
+  }
+  if (family === "repairable_landmark") {
+    targets.add("head_center");
+    targets.add("mouth_center");
+    if (view !== "front") {
+      targets.add("paw_anchor");
+      targets.add("tail_root");
+    }
+  }
+  if (family === "species_misread") {
+    targets.add("head_center");
+    targets.add("mouth_center");
+    targets.add("ear_near");
+    if (view === "threeQuarter") {
+      targets.add("ear_far");
+    }
+  }
+  if (family === "protective_fallback") {
+    targets.add("mouth_center");
+    if (reasonCode.includes("yaw")) {
+      targets.add("head_center");
+      targets.add("eye_near");
+    }
+  }
+  if (family === "recreate_required") {
+    targets.add("head_center");
+    targets.add("mouth_center");
+    targets.add("paw_anchor");
+    targets.add("tail_root");
+  }
+  return [...targets];
+}
+
+function createRigRepairRecommendation(input: {
+  view: CharacterView;
+  family: RigRepairReasonFamily;
+  reasonCode: string;
+  priority: "low" | "medium" | "high";
+  action: RigRepairAction;
+  summary: string;
+}): RigRepairRecommendation {
+  return {
+    view: input.view,
+    family: input.family,
+    action: input.action,
+    priority: input.priority,
+    reasonCode: input.reasonCode,
+    summary: input.summary,
+    repairable: input.action !== "recreate-pack",
+    anchorTargets: inferRigAnchorTargets({
+      view: input.view,
+      family: input.family,
+      reasonCode: input.reasonCode
+    })
+  };
+}
+
+function detectRigSpeciesMisread(candidate: ScoredCandidate | undefined): boolean {
+  if (!candidate) {
+    return false;
+  }
+  const combined = dedupeStrings([...candidate.warnings, ...candidate.rejections]).join(" ").toLowerCase();
+  return (
+    combined.includes("species") ||
+    combined.includes("muzzle") ||
+    combined.includes("ear") ||
+    combined.includes("canine") ||
+    combined.includes("feline")
+  );
+}
+
+function summarizeRigRepairability(input: {
+  severity: RigStabilityDiagnostics["severity"];
+  blockingViews: CharacterView[];
+  warningViews: CharacterView[];
+  repairRecommendations: RigRepairRecommendation[];
+  anchorConfidenceOverall: number | null;
+  overallAnchorHardFloor: number;
+}): "none" | "surgical" | "manual" | "recreate" {
+  if (input.repairRecommendations.length === 0) {
+    return "none";
+  }
+  const hasRecreate = input.repairRecommendations.some((entry) => entry.action === "recreate-pack");
+  if (
+    hasRecreate ||
+    (input.severity === "block" &&
+      (input.blockingViews.includes("front") ||
+        input.blockingViews.length >= 2 ||
+        (typeof input.anchorConfidenceOverall === "number" &&
+          input.anchorConfidenceOverall < input.overallAnchorHardFloor)))
+  ) {
+    return "recreate";
+  }
+  const hasManual = input.repairRecommendations.some((entry) => entry.action === "manual-compare");
+  return hasManual ? "manual" : "surgical";
+}
+
 function summarizeCandidateRigStability(input: {
   candidate: ScoredCandidate | undefined;
   speciesId?: string;
@@ -7318,7 +7500,10 @@ function summarizeCandidateRigStability(input: {
       safeFrontExpression: false,
       suppressAggressiveYaw: false,
       lockMouthPreset: false,
-      reasonCodes: []
+      reasonCodes: [],
+      reasonFamilies: [],
+      repairRecommendations: [],
+      preferredAction: undefined
     };
   }
 
@@ -7391,6 +7576,93 @@ function summarizeCandidateRigStability(input: {
       lockMouthPreset ? "mouth_lock" : ""
     ].filter((reason) => reason.length > 0)
   );
+  const reasonFamilies = new Set<RigRepairReasonFamily>();
+  const repairRecommendations: RigRepairRecommendation[] = [];
+  if (lowAnchorConfidence || hardLowAnchorConfidence) {
+    reasonFamilies.add("repairable_anchor");
+    repairRecommendations.push(
+      createRigRepairRecommendation({
+        view,
+        family: "repairable_anchor",
+        reasonCode: hardLowAnchorConfidence ? `anchor_hard:${view}` : `anchor_low:${view}`,
+        priority: hardLowAnchorConfidence ? "high" : "medium",
+        action: view === "front" && hardLowAnchorConfidence ? "manual-compare" : "regenerate-view",
+        summary:
+          view === "front"
+            ? "Front anchor confidence is weak enough that the face anchor should be regenerated or manually compared before approval."
+            : `${view} anchor confidence is weak enough that this angle should be regenerated before approving the pack.`
+      })
+    );
+  }
+  if (lowLandmarkConsistency || hardLowLandmarkConsistency) {
+    reasonFamilies.add("repairable_landmark");
+    repairRecommendations.push(
+      createRigRepairRecommendation({
+        view,
+        family: "repairable_landmark",
+        reasonCode: hardLowLandmarkConsistency ? `landmark_hard:${view}` : `landmark_low:${view}`,
+        priority: hardLowLandmarkConsistency ? "high" : "medium",
+        action: hardLowLandmarkConsistency ? "manual-compare" : "regenerate-view",
+        summary: `${view} landmark geometry is drifting against the front anchor layout and should be repaired before promotion.`
+      })
+    );
+  }
+  if (detectRigSpeciesMisread(candidate)) {
+    reasonFamilies.add("species_misread");
+    repairRecommendations.push(
+      createRigRepairRecommendation({
+        view,
+        family: "species_misread",
+        reasonCode: `species_misread:${view}`,
+        priority: view === "front" ? "high" : "medium",
+        action: view === "front" ? "manual-compare" : "regenerate-view",
+        summary: `${view} candidate is showing species-shape drift, so compare or regenerate this view before approval.`
+      })
+    );
+  }
+  if (safeFrontExpression || suppressAggressiveYaw || lockMouthPreset) {
+    reasonFamilies.add("protective_fallback");
+  }
+  if (safeFrontExpression) {
+    repairRecommendations.push(
+      createRigRepairRecommendation({
+        view,
+        family: "protective_fallback",
+        reasonCode: "safe_front_expression",
+        priority: "medium",
+        action: "protective-fallback",
+        summary: "Keep a safer front expression until the front anchor is repaired."
+      })
+    );
+  }
+  if (suppressAggressiveYaw) {
+    repairRecommendations.push(
+      createRigRepairRecommendation({
+        view,
+        family: "protective_fallback",
+        reasonCode: `yaw_suppressed:${view}`,
+        priority: "medium",
+        action: "protective-fallback",
+        summary: `${view} yaw should stay conservative until anchor and landmark stability improves.`
+      })
+    );
+  }
+  if (lockMouthPreset) {
+    repairRecommendations.push(
+      createRigRepairRecommendation({
+        view,
+        family: "protective_fallback",
+        reasonCode: "mouth_lock",
+        priority: "medium",
+        action: "protective-fallback",
+        summary: "Keep the safer mouth preset locked until front-mouth stability improves."
+      })
+    );
+  }
+  const preferredAction: RigRepairAction | undefined =
+    repairRecommendations.find((entry) => entry.action === "manual-compare")?.action ??
+    repairRecommendations.find((entry) => entry.action === "regenerate-view")?.action ??
+    repairRecommendations.find((entry) => entry.action === "protective-fallback")?.action;
 
   return {
     anchorConfidence: typeof anchorConfidence === "number" ? Number(anchorConfidence.toFixed(4)) : null,
@@ -7403,7 +7675,10 @@ function summarizeCandidateRigStability(input: {
     safeFrontExpression,
     suppressAggressiveYaw,
     lockMouthPreset,
-    reasonCodes
+    reasonCodes,
+    reasonFamilies: [...reasonFamilies],
+    repairRecommendations,
+    ...(preferredAction ? { preferredAction } : {})
   };
 }
 
@@ -7428,7 +7703,11 @@ function assessRigStability(input: {
       lockMouthPreset: false,
       anchorConfidenceOverall: null,
       anchorConfidenceByView: {},
-      landmarkConsistencyByView: {}
+      landmarkConsistencyByView: {},
+      reasonFamilies: [],
+      repairability: "none",
+      repairRecommendations: [],
+      repairPlanByView: {}
     };
   }
 
@@ -7437,8 +7716,11 @@ function assessRigStability(input: {
   const blockingViews = new Set<CharacterView>();
   const reasonCodes = new Set<string>();
   const fallbackReasonCodes = new Set<string>();
+  const reasonFamilies = new Set<RigRepairReasonFamily>();
   const anchorConfidenceByView: Partial<Record<CharacterView, number | null>> = {};
   const landmarkConsistencyByView: Partial<Record<CharacterView, number | null>> = {};
+  const repairRecommendations: RigRepairRecommendation[] = [];
+  const repairPlanByView: Partial<Record<CharacterView, RigViewRepairPlan>> = {};
   let safeFrontExpression = false;
   let suppressAggressiveYaw = false;
   let lockMouthPreset = false;
@@ -7485,6 +7767,34 @@ function assessRigStability(input: {
     }
     if (snapshot.hardLowLandmarkConsistency) {
       reasonCodes.add(`rig-landmark-block:${view}`);
+    }
+    for (const family of snapshot.reasonFamilies ?? []) {
+      reasonFamilies.add(family);
+    }
+    if ((snapshot.repairRecommendations?.length ?? 0) > 0) {
+      repairRecommendations.push(...(snapshot.repairRecommendations ?? []));
+      const familyCodes = dedupeStrings((snapshot.reasonFamilies ?? []).map((family) => family));
+      const anchorTargets = dedupeStrings(
+        (snapshot.repairRecommendations ?? []).flatMap((entry) => entry.anchorTargets ?? [])
+      ) as RigAnchorTarget[];
+      const viewStatus: RigViewRepairPlan["status"] =
+        snapshot.hardLowAnchorConfidence || snapshot.hardLowLandmarkConsistency
+          ? "block"
+          : snapshot.lowAnchorConfidence || snapshot.lowLandmarkConsistency
+            ? "review"
+            : "ok";
+      const preferredAction =
+        snapshot.preferredAction ??
+        snapshot.repairRecommendations?.find((entry) => entry.action === "manual-compare")?.action ??
+        snapshot.repairRecommendations?.find((entry) => entry.action === "regenerate-view")?.action ??
+        snapshot.repairRecommendations?.find((entry) => entry.action === "protective-fallback")?.action;
+      repairPlanByView[view] = {
+        status: viewStatus,
+        familyCodes: familyCodes as RigRepairReasonFamily[],
+        anchorTargets,
+        ...(preferredAction ? { preferredAction } : {}),
+        recommendations: snapshot.repairRecommendations ?? []
+      };
     }
     safeFrontExpression = safeFrontExpression || snapshot.safeFrontExpression;
     suppressAggressiveYaw = suppressAggressiveYaw || snapshot.suppressAggressiveYaw;
@@ -7537,9 +7847,46 @@ function assessRigStability(input: {
   if (severity === "block") {
     fallbackReasonCodes.add("manual_compare");
     fallbackReasonCodes.add("recreate");
+    reasonFamilies.add("recreate_required");
   } else if (reviewOnly) {
     fallbackReasonCodes.add("manual_compare");
   }
+  if (severity === "block") {
+    for (const view of [...blockingViews]) {
+      repairRecommendations.push(
+        createRigRepairRecommendation({
+          view,
+          family: "recreate_required",
+          reasonCode: `recreate_required:${view}`,
+          priority: "high",
+          action: "recreate-pack",
+          summary:
+            view === "front" || blockingViews.size >= 2
+              ? "Rig failures are compounded enough that recreating the pack is safer than approving the current selection."
+              : `${view} is still too unstable and should stay in compare until the pack is recreated or fully repaired.`
+        })
+      );
+    }
+  }
+  for (const view of [...warningViews].filter((entry) => !blockingViews.has(entry))) {
+    if (!repairPlanByView[view] && reviewOnly) {
+      repairPlanByView[view] = {
+        status: "review",
+        familyCodes: [],
+        anchorTargets: [],
+        preferredAction: "manual-compare",
+        recommendations: []
+      };
+    }
+  }
+  const repairability = summarizeRigRepairability({
+    severity,
+    blockingViews: [...blockingViews],
+    warningViews: [...warningViews].filter((view) => !blockingViews.has(view)),
+    repairRecommendations,
+    anchorConfidenceOverall,
+    overallAnchorHardFloor: thresholds.overallAnchorHardFloor
+  });
 
   return {
     severity,
@@ -7559,6 +7906,23 @@ function assessRigStability(input: {
       typeof anchorConfidenceOverall === "number" ? Number(anchorConfidenceOverall.toFixed(4)) : null,
     anchorConfidenceByView,
     landmarkConsistencyByView,
+    reasonFamilies: [...reasonFamilies],
+    repairability,
+    repairRecommendations: dedupeStrings(
+      repairRecommendations.map((entry) =>
+        stableStringify({
+          view: entry.view,
+          family: entry.family,
+          action: entry.action,
+          priority: entry.priority,
+          reasonCode: entry.reasonCode,
+          summary: entry.summary,
+          repairable: entry.repairable,
+          anchorTargets: entry.anchorTargets ?? []
+        })
+      )
+    ).map((entry) => JSON.parse(entry) as RigRepairRecommendation),
+    repairPlanByView,
     ...(severity === "block"
       ? { suggestedAction: "recreate" as const }
       : reviewOnly
@@ -8117,6 +8481,10 @@ function buildSelectionDecisionOutcome(input: {
     reasonCodes.push(`rig-stability:${input.rigStability.severity}`);
     reasonCodes.push(...input.rigStability.reasonCodes.map((reason) => `rig:${reason}`));
     reasonCodes.push(...input.rigStability.fallbackReasonCodes.map((reason) => `rig-fallback:${reason}`));
+    reasonCodes.push(...(input.rigStability.reasonFamilies ?? []).map((family) => `rig-family:${family}`));
+    if (input.rigStability.repairability && input.rigStability.repairability !== "none") {
+      reasonCodes.push(`rig-repairability:${input.rigStability.repairability}`);
+    }
   }
   if (input.qualityEmbargo?.level && input.qualityEmbargo.level !== "none") {
     reasonCodes.push(`quality-embargo:${input.qualityEmbargo.level}`);
@@ -8450,6 +8818,10 @@ export function assessAutoSelectionRisk(input: {
     frontRiskCount >= 2 ||
     reasonCodes.length >= 4;
 
+  const rigRequiresRecreate =
+    input.rigStability?.repairability === "recreate" ||
+    (input.rigStability?.reasonFamilies ?? []).includes("recreate_required");
+
   return {
     level: block ? "block" : "review",
     reasonCodes,
@@ -8457,6 +8829,7 @@ export function assessAutoSelectionRisk(input: {
       block ||
       reasonCodes.includes("front_anchor_soft") ||
       reasonCodes.includes("auto_reroute_failed") ||
+      rigRequiresRecreate ||
       input.rigStability?.severity === "block" ||
       (reasonCodes.includes("runtime_quality_compounded") &&
         (runtimeCriticalViews.includes("front") || runtimeFallbackViews.includes("front")))
@@ -8640,9 +9013,12 @@ export function assessQualityEmbargo(input: {
 
   const level: QualityEmbargoAssessment["level"] =
     blockingViews.size > 0 ? "block" : warningViews.size > 0 || reasons.size > 0 ? "review" : "none";
+  const rigRequiresRecreate =
+    input.rigStability?.repairability === "recreate" ||
+    (input.rigStability?.reasonFamilies ?? []).includes("recreate_required");
   const suggestedAction =
     level === "block"
-      ? blockingViews.has("front") || blockingViews.size >= 2
+      ? blockingViews.has("front") || blockingViews.size >= 2 || rigRequiresRecreate
         ? "recreate"
         : "pick-manually"
       : level === "review"
@@ -8895,13 +9271,16 @@ export function assessFinalQualityFirewall(input: {
 
   const level: FinalQualityFirewallAssessment["level"] =
     blockingViews.size > 0 ? "block" : warningViews.size > 0 || reasons.size > 0 ? "review" : "none";
+  const rigRequiresRecreate =
+    input.rigStability?.repairability === "recreate" ||
+    (input.rigStability?.reasonFamilies ?? []).includes("recreate_required");
   const suggestedAction =
     level === "block"
-      ? blockingViews.has("front") || blockingViews.size >= 2
+      ? blockingViews.has("front") || blockingViews.size >= 2 || rigRequiresRecreate
         ? "recreate"
         : "pick-manually"
       : level === "review"
-        ? warningViews.has("front") || input.packDefectSummary.repeatedFamilies.length >= 2
+        ? warningViews.has("front") || input.packDefectSummary.repeatedFamilies.length >= 2 || rigRequiresRecreate
           ? "recreate"
           : "pick-manually"
         : undefined;
