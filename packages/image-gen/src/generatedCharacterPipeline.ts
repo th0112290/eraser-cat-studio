@@ -12,7 +12,12 @@ import {
   resolveMascotStyleReferenceAsset,
   type MascotReferenceBankDiagnostics
 } from "./mascotReferenceBank";
-import { resolveMascotSpeciesProfile } from "./species";
+import {
+  resolveMascotAnchorHeuristics,
+  resolveMascotSpeciesProfile,
+  type MascotAnchorExpectation,
+  type MascotSpeciesAnchorExtractorViewProfile
+} from "./species";
 import type {
   CharacterCandidateProviderMeta,
   CharacterReferenceBankEntry,
@@ -4015,11 +4020,95 @@ function applyAnchorOverrides(characterId: string, baseAnchorManifest: Character
   return finalizeCharacterPackAnchorManifest(mergedViews, ["anchors.json override applied"]);
 }
 
+function directionalAnchorX(
+  view: GeneratedCharacterView,
+  facingSign: number,
+  input: {
+    defaultPositiveX: number;
+    defaultNegativeX: number;
+    profilePositiveX?: number;
+    profileNegativeX?: number;
+    biasX?: number;
+  }
+): number {
+  const positiveX = view === "profile" ? (input.profilePositiveX ?? input.defaultPositiveX) : input.defaultPositiveX;
+  const negativeX = view === "profile" ? (input.profileNegativeX ?? input.defaultNegativeX) : input.defaultNegativeX;
+  const biasX = input.biasX ?? 0;
+  return clamp((facingSign >= 0 ? positiveX : negativeX) + (facingSign >= 0 ? biasX : -biasX), 0.08, 0.92);
+}
+
+function applyConfidenceBoost(baseConfidence: number, boost: number | undefined, floor = 0.12, ceiling = 0.98): number {
+  return clamp(baseConfidence + (boost ?? 0), floor, ceiling);
+}
+
+function buildFallbackAnchorByExpectation(input: {
+  x: number;
+  y: number;
+  confidence: number;
+  expectation: MascotAnchorExpectation;
+  notes: string;
+}): CharacterPackAnchor {
+  if (input.expectation === "not_applicable") {
+    return buildAnchorEntry({
+      confidence: input.confidence,
+      status: "not_applicable",
+      notes: input.notes
+    });
+  }
+  return buildAnchorEntry({
+    x: input.x,
+    y: input.y,
+    confidence: input.confidence,
+    status: input.expectation,
+    notes: input.notes
+  });
+}
+
+function anchorStatusMatchesExpectation(
+  actualStatus: CharacterPackAnchorStatus | undefined,
+  expectation: MascotAnchorExpectation
+): boolean {
+  const actual = actualStatus ?? "missing";
+  if (expectation === "present") {
+    return actual === "present";
+  }
+  if (expectation === "occluded") {
+    return actual === "occluded" || actual === "present";
+  }
+  return actual === "not_applicable" || actual === "occluded";
+}
+
+function normalizedHorizontalDelta(
+  head: CharacterPackAnchor | undefined,
+  anchor: CharacterPackAnchor | undefined,
+  bounds: ForegroundBounds,
+  facingSign: number
+): number | null {
+  if (typeof head?.x !== "number" || typeof anchor?.x !== "number") {
+    return null;
+  }
+  return clamp(((anchor.x - head.x) * facingSign) / Math.max(bounds.width, 0.0001), 0, 1);
+}
+
+function normalizedEarHeight(
+  head: CharacterPackAnchor | undefined,
+  ear: CharacterPackAnchor | undefined,
+  bounds: ForegroundBounds
+): number | null {
+  if (typeof head?.y !== "number" || typeof ear?.y !== "number") {
+    return null;
+  }
+  return clamp((head.y - ear.y) / Math.max(bounds.height, 0.0001), 0, 1);
+}
+
 async function deriveAutoAnchorManifest(
   manifest: GeneratedCharacterManifest,
   cropBoxes: CharacterCropBoxes
 ): Promise<CharacterPackAnchorManifest> {
   const views: Partial<Record<CharacterPackAnchorView, CharacterPackAnchorViewManifest>> = {};
+  const speciesId = resolveManifestSpeciesId(manifest);
+  const speciesProfile = resolveMascotSpeciesProfile(speciesId);
+  const speciesAnchorHeuristics = resolveMascotAnchorHeuristics(speciesId);
 
   for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
     const asset = manifest.views[view];
@@ -4031,6 +4120,7 @@ async function deriveAutoAnchorManifest(
     }
 
     const raster = await loadImageRaster(asset.file_path);
+    const viewHeuristics = speciesAnchorHeuristics.byView[view];
     const bodyBounds = measureForegroundBounds(raster) ?? boundsFromCropBox(FULL_IMAGE_CROP, 0);
     const torsoCrop = cropBoxes.torso[view];
     const headCrop = cropBoxes.head[view];
@@ -4046,10 +4136,34 @@ async function deriveAutoAnchorManifest(
       provisionalMouthCandidates.sort((a, b) => b.centerY - a.centerY || b.pixelCount - a.pixelCount)[0] ??
       provisionalEyeCandidates.sort((a, b) => b.pixelCount - a.pixelCount)[0];
     const facingSign = view === "front" ? 1 : directionSource ? (directionSource.centerX >= headBounds.centerX ? 1 : -1) : 1;
-    const nearRelativeX = facingSign >= 0 ? 0.64 : 0.36;
-    const farRelativeX = facingSign >= 0 ? 0.36 : 0.64;
-    const earNearRelativeX = facingSign >= 0 ? 0.8 : 0.2;
-    const earFarRelativeX = facingSign >= 0 ? 0.2 : 0.8;
+    const nearRelativeX = directionalAnchorX(view, facingSign, {
+      defaultPositiveX: 0.64,
+      defaultNegativeX: 0.36,
+      profilePositiveX: 0.7,
+      profileNegativeX: 0.3,
+      biasX: viewHeuristics.eyeNearBiasX
+    });
+    const farRelativeX = directionalAnchorX(view, facingSign, {
+      defaultPositiveX: 0.36,
+      defaultNegativeX: 0.64,
+      profilePositiveX: 0.3,
+      profileNegativeX: 0.7,
+      biasX: viewHeuristics.eyeFarBiasX
+    });
+    const earNearRelativeX = directionalAnchorX(view, facingSign, {
+      defaultPositiveX: 0.8,
+      defaultNegativeX: 0.2,
+      profilePositiveX: 0.82,
+      profileNegativeX: 0.18,
+      biasX: viewHeuristics.earNearBiasX
+    });
+    const earFarRelativeX = directionalAnchorX(view, facingSign, {
+      defaultPositiveX: 0.2,
+      defaultNegativeX: 0.8,
+      profilePositiveX: 0.18,
+      profileNegativeX: 0.82,
+      biasX: viewHeuristics.earFarBiasX
+    });
 
     const frontEyeFarCenter = view === "front" ? measureDarkFeatureCenter(raster, cropBoxes.eyes.left) : null;
     const frontEyeNearCenter = view === "front" ? measureDarkFeatureCenter(raster, cropBoxes.eyes.right) : null;
@@ -4077,34 +4191,52 @@ async function deriveAutoAnchorManifest(
       view === "front"
         ? cropBoxes.mouth
         : cropBoxWithinCrop(headCrop, {
-            cx: facingSign >= 0 ? (view === "profile" ? 0.68 : 0.62) : view === "profile" ? 0.32 : 0.38,
+            cx: directionalAnchorX(view, facingSign, {
+              defaultPositiveX: 0.62,
+              defaultNegativeX: 0.38,
+              profilePositiveX: 0.68,
+              profileNegativeX: 0.32,
+              biasX: viewHeuristics.mouthBiasX
+            }),
             cy: 0.72,
-            w: view === "profile" ? 0.24 : 0.28,
-            h: 0.18
+            w: (view === "profile" ? 0.24 : 0.28) * viewHeuristics.mouthWidthScale,
+            h: 0.18 * viewHeuristics.mouthHeightScale
           });
     const earNearSearch = cropBoxWithinCrop(headCrop, {
       cx: earNearRelativeX,
-      cy: view === "profile" ? 0.14 : 0.18,
-      w: view === "profile" ? 0.22 : 0.24,
-      h: view === "profile" ? 0.28 : 0.3
+      cy: clamp((view === "profile" ? 0.14 : 0.18) + viewHeuristics.earBiasY, 0.08, 0.28),
+      w: (view === "profile" ? 0.22 : 0.24) * viewHeuristics.earWidthScale,
+      h: (view === "profile" ? 0.28 : 0.3) * viewHeuristics.earHeightScale
     });
     const earFarSearch = cropBoxWithinCrop(headCrop, {
       cx: earFarRelativeX,
-      cy: 0.18,
-      w: view === "profile" ? 0.18 : 0.22,
-      h: view === "profile" ? 0.24 : 0.28
+      cy: clamp(0.18 + viewHeuristics.earBiasY, 0.08, 0.28),
+      w: (view === "profile" ? 0.18 : 0.22) * viewHeuristics.earWidthScale,
+      h: (view === "profile" ? 0.24 : 0.28) * viewHeuristics.earHeightScale
     });
     const pawSearch = cropBoxWithinBounds(bodyBounds, {
-      cx: facingSign >= 0 ? (view === "profile" ? 0.76 : 0.68) : view === "profile" ? 0.24 : 0.32,
-      cy: 0.77,
-      w: view === "profile" ? 0.18 : 0.24,
-      h: 0.24
+      cx: directionalAnchorX(view, facingSign, {
+        defaultPositiveX: 0.68,
+        defaultNegativeX: 0.32,
+        profilePositiveX: 0.76,
+        profileNegativeX: 0.24,
+        biasX: viewHeuristics.pawBiasX
+      }),
+      cy: clamp(0.77 + viewHeuristics.pawBiasY, 0.64, 0.86),
+      w: (view === "profile" ? 0.18 : 0.24) * viewHeuristics.pawWidthScale,
+      h: 0.24 * viewHeuristics.pawHeightScale
     });
     const tailSearch = cropBoxWithinBounds(bodyBounds, {
-      cx: facingSign >= 0 ? 0.22 : 0.78,
-      cy: 0.61,
-      w: 0.22,
-      h: 0.24
+      cx: directionalAnchorX(view, facingSign, {
+        defaultPositiveX: 0.22,
+        defaultNegativeX: 0.78,
+        profilePositiveX: 0.22,
+        profileNegativeX: 0.78,
+        biasX: viewHeuristics.tailBiasX
+      }),
+      cy: clamp(0.61 + viewHeuristics.tailBiasY, 0.46, 0.76),
+      w: 0.22 * viewHeuristics.tailWidthScale,
+      h: 0.24 * viewHeuristics.tailHeightScale
     });
 
     const eyeCandidates = headComponents.filter((component) => component.relativeCenterY >= 0.08 && component.relativeCenterY <= 0.52);
@@ -4139,27 +4271,36 @@ async function deriveAutoAnchorManifest(
       y: headBounds.centerY,
       confidence: boundsDetectionConfidence(headBounds, headSearch),
       status: "present",
-      notes: "head silhouette centroid"
+      notes: `${speciesId} ${view} head silhouette centroid`
     });
     const mouthCenterEntry = mouthCenter
       ? buildAnchorEntry({
           x: mouthCenter.x,
           y: mouthCenter.y,
-          confidence:
+          confidence: applyConfidenceBoost(
             view === "front"
-              ? clamp(0.5 + clamp((mouthCenter.density - MIN_FRONT_MOUTH_DENSITY) / (MAX_FRONT_MOUTH_DENSITY - MIN_FRONT_MOUTH_DENSITY), 0, 1) * 0.3, 0.38, 0.96)
+              ? clamp(
+                  0.5 +
+                    clamp((mouthCenter.density - MIN_FRONT_MOUTH_DENSITY) / (MAX_FRONT_MOUTH_DENSITY - MIN_FRONT_MOUTH_DENSITY), 0, 1) * 0.3,
+                  0.38,
+                  0.96
+                )
               : mouthComponent
                 ? componentDetectionConfidence(mouthComponent, mouthSearch)
                 : 0.44,
+            viewHeuristics.componentConfidenceBoost.mouth,
+            0.18,
+            0.96
+          ),
           status: "present",
-          notes: view === "front" ? "front mouth crop dark-feature center" : "side muzzle dark-feature center"
+          notes: view === "front" ? `${speciesId} front mouth crop dark-feature center` : `${speciesId} side muzzle dark-feature center`
         })
-      : buildAnchorEntry({
+      : buildFallbackAnchorByExpectation({
           x: mouthSearch.cx,
           y: mouthSearch.cy,
-          confidence: 0.22,
-          status: "present",
-          notes: "fallback to current-view mouth search center"
+          confidence: viewHeuristics.fallbackConfidence.mouth,
+          expectation: "present",
+          notes: `${speciesId} fallback to current-view mouth search center`
         });
 
     const eyeFarEntry =
@@ -4167,121 +4308,163 @@ async function deriveAutoAnchorManifest(
         ? buildAnchorEntry({
             x: frontEyeFarCenter.x,
             y: frontEyeFarCenter.y,
-            confidence: clamp(
-              0.5 +
-                clamp((frontEyeFarCenter.density - MIN_FRONT_EYE_DENSITY) / (MAX_FRONT_EYE_DENSITY - MIN_FRONT_EYE_DENSITY), 0, 1) * 0.28,
-              0.4,
+            confidence: applyConfidenceBoost(
+              clamp(
+                0.5 +
+                  clamp((frontEyeFarCenter.density - MIN_FRONT_EYE_DENSITY) / (MAX_FRONT_EYE_DENSITY - MIN_FRONT_EYE_DENSITY), 0, 1) * 0.28,
+                0.4,
+                0.96
+              ),
+              viewHeuristics.componentConfidenceBoost.eyeFar,
+              0.18,
               0.96
             ),
             status: "present",
-            notes: "front far-eye crop dark-feature center"
+            notes: `${speciesId} front far-eye crop dark-feature center`
           })
         : eyeFarComponent
           ? buildAnchorEntry({
               x: eyeFarComponent.centerX,
               y: eyeFarComponent.centerY,
-              confidence: componentDetectionConfidence(eyeFarComponent, eyeFarSearch),
+              confidence: applyConfidenceBoost(
+                componentDetectionConfidence(eyeFarComponent, eyeFarSearch),
+                viewHeuristics.componentConfidenceBoost.eyeFar
+              ),
               status: "present",
-              notes: "far-eye component localized in current view"
+              notes: `${speciesId} far-eye component localized in current view`
             })
-          : buildAnchorEntry({
+          : buildFallbackAnchorByExpectation({
               x: eyeFarSearch.cx,
               y: eyeFarSearch.cy,
-              confidence: view === "front" ? 0.28 : view === "profile" ? 0.28 : 0.34,
-              status: view === "front" ? "present" : "occluded",
-              notes: view === "front" ? "fallback to front far-eye crop center" : "far eye inferred from current-view head geometry"
+              confidence: viewHeuristics.fallbackConfidence.eyeFar,
+              expectation: view === "front" ? "present" : viewHeuristics.expectedVisibility.eyeFar,
+              notes:
+                view === "front"
+                  ? `${speciesId} fallback to front far-eye crop center`
+                  : `${speciesId} far eye inferred from current-view head geometry`
             });
     const eyeNearEntry =
       view === "front" && frontEyeNearCenter
         ? buildAnchorEntry({
             x: frontEyeNearCenter.x,
             y: frontEyeNearCenter.y,
-            confidence: clamp(
-              0.5 +
-                clamp((frontEyeNearCenter.density - MIN_FRONT_EYE_DENSITY) / (MAX_FRONT_EYE_DENSITY - MIN_FRONT_EYE_DENSITY), 0, 1) * 0.28,
-              0.4,
+            confidence: applyConfidenceBoost(
+              clamp(
+                0.5 +
+                  clamp((frontEyeNearCenter.density - MIN_FRONT_EYE_DENSITY) / (MAX_FRONT_EYE_DENSITY - MIN_FRONT_EYE_DENSITY), 0, 1) * 0.28,
+                0.4,
+                0.96
+              ),
+              viewHeuristics.componentConfidenceBoost.eyeNear,
+              0.18,
               0.96
             ),
             status: "present",
-            notes: "front near-eye crop dark-feature center"
+            notes: `${speciesId} front near-eye crop dark-feature center`
           })
         : eyeNearComponent
           ? buildAnchorEntry({
               x: eyeNearComponent.centerX,
               y: eyeNearComponent.centerY,
-              confidence: componentDetectionConfidence(eyeNearComponent, eyeNearSearch),
+              confidence: applyConfidenceBoost(
+                componentDetectionConfidence(eyeNearComponent, eyeNearSearch),
+                viewHeuristics.componentConfidenceBoost.eyeNear
+              ),
               status: "present",
-              notes: "near-eye component localized in current view"
+              notes: `${speciesId} near-eye component localized in current view`
             })
-          : buildAnchorEntry({
+          : buildFallbackAnchorByExpectation({
               x: eyeNearSearch.cx,
               y: eyeNearSearch.cy,
-              confidence: 0.22,
-              status: "present",
-              notes: "fallback to near-eye search center"
+              confidence: viewHeuristics.fallbackConfidence.eyeNear,
+              expectation: "present",
+              notes: `${speciesId} fallback to near-eye search center`
             });
 
     const earNearEntry = earNearTip
       ? buildAnchorEntry({
           x: earNearTip.x,
           y: earNearTip.y,
-          confidence: clamp(0.4 + clamp(earNearTip.density / 0.03, 0, 1) * 0.28, 0.28, 0.9),
+          confidence: applyConfidenceBoost(
+            clamp(0.4 + clamp(earNearTip.density / 0.03, 0, 1) * 0.28, 0.28, 0.9),
+            viewHeuristics.componentConfidenceBoost.earNear,
+            0.18,
+            0.92
+          ),
           status: "present",
-          notes: "near-ear top silhouette anchor"
+          notes: `${speciesId} near-ear top silhouette anchor`
         })
-      : buildAnchorEntry({
+      : buildFallbackAnchorByExpectation({
           x: earNearSearch.cx,
           y: earNearSearch.cy - earNearSearch.h * 0.22,
-          confidence: 0.24,
-          status: "present",
-          notes: "fallback to near-ear search apex"
+          confidence: viewHeuristics.fallbackConfidence.earNear,
+          expectation: "present",
+          notes: `${speciesId} fallback to near-ear search apex`
         });
     const earFarEntry = earFarTip
       ? buildAnchorEntry({
           x: earFarTip.x,
           y: earFarTip.y,
-          confidence: clamp(0.38 + clamp(earFarTip.density / 0.025, 0, 1) * 0.26, 0.26, 0.86),
+          confidence: applyConfidenceBoost(
+            clamp(0.38 + clamp(earFarTip.density / 0.025, 0, 1) * 0.26, 0.26, 0.86),
+            viewHeuristics.componentConfidenceBoost.earFar,
+            0.18,
+            0.9
+          ),
           status: "present",
-          notes: "far-ear top silhouette anchor"
+          notes: `${speciesId} far-ear top silhouette anchor`
         })
-      : buildAnchorEntry({
+      : buildFallbackAnchorByExpectation({
           x: earFarSearch.cx,
           y: earFarSearch.cy - earFarSearch.h * 0.2,
-          confidence: view === "profile" ? 0.3 : 0.34,
-          status: view === "front" ? "present" : "occluded",
-          notes: view === "front" ? "fallback to front far-ear search apex" : "far ear inferred from current-view head silhouette"
+          confidence: viewHeuristics.fallbackConfidence.earFar,
+          expectation: view === "front" ? "present" : viewHeuristics.expectedVisibility.earFar,
+          notes:
+            view === "front"
+              ? `${speciesId} fallback to front far-ear search apex`
+              : `${speciesId} far ear inferred from current-view head silhouette`
         });
 
     const pawAnchor = pawBounds
       ? buildAnchorEntry({
           x: facingSign >= 0 ? pawBounds.right - pawBounds.width * 0.12 : pawBounds.left + pawBounds.width * 0.12,
           y: pawBounds.bottom - pawBounds.height * 0.16,
-          confidence: clamp(0.36 + clamp(pawBounds.coverage / 0.18, 0, 1) * 0.28, 0.24, 0.86),
+          confidence: applyConfidenceBoost(
+            clamp(0.36 + clamp(pawBounds.coverage / 0.18, 0, 1) * 0.28, 0.24, 0.86),
+            viewHeuristics.componentConfidenceBoost.paw,
+            0.16,
+            0.9
+          ),
           status: "present",
-          notes: "near-paw foreground cluster anchor"
+          notes: `${speciesId} near-paw foreground cluster anchor`
         })
-      : buildAnchorEntry({
+      : buildFallbackAnchorByExpectation({
           x: torsoCrop.cx + facingSign * torsoCrop.w * 0.46,
           y: torsoCrop.cy + torsoCrop.h * 0.34,
-          confidence: 0.22,
-          status: "present",
-          notes: "fallback to near-paw torso anchor"
+          confidence: viewHeuristics.fallbackConfidence.paw,
+          expectation: viewHeuristics.expectedVisibility.pawAnchor,
+          notes: `${speciesId} fallback to near-paw torso anchor`
         });
 
     const tailRoot = tailBounds
       ? buildAnchorEntry({
           x: facingSign >= 0 ? tailBounds.right - tailBounds.width * 0.08 : tailBounds.left + tailBounds.width * 0.08,
           y: clamp((tailBounds.top + tailBounds.bottom) / 2, bodyBounds.top, bodyBounds.bottom),
-          confidence: clamp(0.34 + clamp(tailBounds.coverage / 0.16, 0, 1) * 0.26, 0.24, 0.82),
+          confidence: applyConfidenceBoost(
+            clamp(0.34 + clamp(tailBounds.coverage / 0.16, 0, 1) * 0.26, 0.24, 0.82),
+            viewHeuristics.componentConfidenceBoost.tail,
+            0.16,
+            0.88
+          ),
           status: "present",
-          notes: "tail-root back-body cluster anchor"
+          notes: `${speciesId} tail-root back-body cluster anchor`
         })
-      : buildAnchorEntry({
+      : buildFallbackAnchorByExpectation({
           x: torsoCrop.cx - facingSign * torsoCrop.w * 0.46,
           y: torsoCrop.cy + torsoCrop.h * 0.06,
-          confidence: 0.34,
-          status: "occluded",
-          notes: "tail root inferred from back torso edge"
+          confidence: viewHeuristics.fallbackConfidence.tail,
+          expectation: viewHeuristics.expectedVisibility.tailRoot,
+          notes: `${speciesId} tail root inferred from back torso edge`
         });
 
     views[view] = {
@@ -4296,7 +4479,10 @@ async function deriveAutoAnchorManifest(
     };
   }
 
-  return finalizeCharacterPackAnchorManifest(views, ["Heuristic anchors derived from foreground bounds, crop boxes, and view-local feature detection"]);
+  return finalizeCharacterPackAnchorManifest(views, [
+    `Species-aware heuristic anchors derived for ${speciesProfile.label.toLowerCase()}`,
+    "Foreground bounds, crop boxes, and view-local feature detection remain the primary signals"
+  ]);
 }
 
 function coerceCharacterPackAnchorManifest(value: unknown): CharacterPackAnchorManifest | null {
@@ -5093,6 +5279,7 @@ export async function runCharacterAnimationSafeQc(input: {
 }> {
   await synchronizeManifestCanvasToApprovedFront(input.characterId);
   const manifest = loadManifest(input.characterId);
+  const cropBoxes = applyCropBoxOverrides(input.characterId, await deriveAutoCropBoxes(manifest));
   const referenceBank = resolveManifestReferenceBankStatus(manifest);
   const animationQc = resolveAnimationQcThresholds(resolveManifestSpeciesId(manifest));
   const checks: CharacterPipelineQcReport["checks"] = [];
@@ -5707,6 +5894,8 @@ export async function runCharacterAnimationSafeQc(input: {
       );
 
       if (packAnchorManifest) {
+        const packAnchorSpeciesId = resolveManifestSpeciesId(manifest);
+        const packAnchorHeuristics = resolveMascotAnchorHeuristics(packAnchorSpeciesId);
         for (const view of CHARACTER_PACK_ANCHOR_VIEWS) {
           const viewManifest = packAnchorManifest.views?.[view];
           const missingAnchors = CHARACTER_PACK_ANCHOR_IDS.filter((anchorId) => {
@@ -5764,6 +5953,156 @@ export async function runCharacterAnimationSafeQc(input: {
               threshold: MIN_PACK_ANCHOR_VIEW_CONFIDENCE
             }
           );
+        }
+
+        for (const view of ["threeQuarter", "profile"] as const) {
+          const asset = manifest.views[view];
+          const raster = asset ? rasterMap.get(asset.asset_id) ?? null : null;
+          const viewAnchors = packAnchorManifest.views?.[view];
+          if (!asset || !raster || !viewAnchors) {
+            continue;
+          }
+
+          const qcPolicy = packAnchorHeuristics.byView[view].qc;
+          const headBoundsForQc =
+            measureForegroundBounds(raster, cropBoxes.head[view]) ??
+            measureForegroundBounds(raster) ??
+            boundsFromCropBox(cropBoxes.head[view], 0);
+          const headCenter = viewAnchors.head_center;
+          const mouthCenter = viewAnchors.mouth_center;
+          const facingSign =
+            typeof headCenter?.x === "number" && typeof mouthCenter?.x === "number"
+              ? mouthCenter.x >= headCenter.x
+                ? 1
+                : -1
+              : 1;
+
+          if (qcPolicy.muzzleProjection) {
+            const muzzleProjection = normalizedHorizontalDelta(headCenter, mouthCenter, headBoundsForQc, facingSign);
+            const passed =
+              typeof muzzleProjection === "number" &&
+              muzzleProjection >= qcPolicy.muzzleProjection.min &&
+              muzzleProjection <= qcPolicy.muzzleProjection.max;
+            pushCheck(
+              `PACK_MUZZLE_PROJECTION_${view.toUpperCase()}`,
+              strictGeneratedChecks ? passed : true,
+              strictGeneratedChecks
+                ? passed
+                  ? `${packAnchorSpeciesId} ${view} muzzle projection stays inside the species-aware window.`
+                  : `Expected ${packAnchorSpeciesId} ${view} muzzle projection inside ${qcPolicy.muzzleProjection.min.toFixed(2)}-${qcPolicy.muzzleProjection.max.toFixed(2)}, got ${typeof muzzleProjection === "number" ? muzzleProjection.toFixed(3) : "n/a"}.`
+                : `Synthetic smoke fixture: ${view} muzzle projection check skipped.`,
+              strictGeneratedChecks ? (passed ? "INFO" : "WARN") : "INFO",
+              {
+                asset_paths: [asset.file_path],
+                metric: Number((muzzleProjection ?? 0).toFixed(3)),
+                threshold: qcPolicy.muzzleProjection.max
+              }
+            );
+          }
+
+          if (qcPolicy.earHeight) {
+            const earHeight = normalizedEarHeight(headCenter, viewAnchors.ear_near, headBoundsForQc);
+            const passed =
+              typeof earHeight === "number" &&
+              earHeight >= qcPolicy.earHeight.min &&
+              earHeight <= qcPolicy.earHeight.max;
+            pushCheck(
+              `PACK_EAR_GEOMETRY_${view.toUpperCase()}`,
+              strictGeneratedChecks ? passed : true,
+              strictGeneratedChecks
+                ? passed
+                  ? `${packAnchorSpeciesId} ${view} ear height stays inside the species-aware window.`
+                  : `Expected ${packAnchorSpeciesId} ${view} ear height inside ${qcPolicy.earHeight.min.toFixed(2)}-${qcPolicy.earHeight.max.toFixed(2)}, got ${typeof earHeight === "number" ? earHeight.toFixed(3) : "n/a"}.`
+                : `Synthetic smoke fixture: ${view} ear geometry check skipped.`,
+              strictGeneratedChecks ? (passed ? "INFO" : "WARN") : "INFO",
+              {
+                asset_paths: [asset.file_path],
+                metric: Number((earHeight ?? 0).toFixed(3)),
+                threshold: qcPolicy.earHeight.max
+              }
+            );
+          }
+
+          const expectedEyeFar = packAnchorHeuristics.byView[view].expectedVisibility.eyeFar;
+          const expectedEarFar = packAnchorHeuristics.byView[view].expectedVisibility.earFar;
+          pushCheck(
+            `PACK_EYE_OCCLUSION_POLICY_${view.toUpperCase()}`,
+            strictGeneratedChecks ? anchorStatusMatchesExpectation(viewAnchors.eye_far?.status, expectedEyeFar) : true,
+            strictGeneratedChecks
+              ? anchorStatusMatchesExpectation(viewAnchors.eye_far?.status, expectedEyeFar)
+                ? `${packAnchorSpeciesId} ${view} far-eye visibility follows the species-aware occlusion policy.`
+                : `Expected ${packAnchorSpeciesId} ${view} far eye to read as ${expectedEyeFar}, got ${viewAnchors.eye_far?.status ?? "missing"}.`
+              : `Synthetic smoke fixture: ${view} far-eye occlusion policy check skipped.`,
+            strictGeneratedChecks
+              ? anchorStatusMatchesExpectation(viewAnchors.eye_far?.status, expectedEyeFar)
+                ? "INFO"
+                : "WARN"
+              : "INFO",
+            {
+              asset_paths: [asset.file_path]
+            }
+          );
+          pushCheck(
+            `PACK_EAR_OCCLUSION_POLICY_${view.toUpperCase()}`,
+            strictGeneratedChecks ? anchorStatusMatchesExpectation(viewAnchors.ear_far?.status, expectedEarFar) : true,
+            strictGeneratedChecks
+              ? anchorStatusMatchesExpectation(viewAnchors.ear_far?.status, expectedEarFar)
+                ? `${packAnchorSpeciesId} ${view} far-ear visibility follows the species-aware occlusion policy.`
+                : `Expected ${packAnchorSpeciesId} ${view} far ear to read as ${expectedEarFar}, got ${viewAnchors.ear_far?.status ?? "missing"}.`
+              : `Synthetic smoke fixture: ${view} far-ear occlusion policy check skipped.`,
+            strictGeneratedChecks
+              ? anchorStatusMatchesExpectation(viewAnchors.ear_far?.status, expectedEarFar)
+                ? "INFO"
+                : "WARN"
+              : "INFO",
+            {
+              asset_paths: [asset.file_path]
+            }
+          );
+
+          if (qcPolicy.requirePawReadable) {
+            const pawReadable =
+              viewAnchors.paw_anchor?.status === "present" &&
+              typeof viewAnchors.paw_anchor?.confidence === "number" &&
+              viewAnchors.paw_anchor.confidence >= MIN_PACK_ANCHOR_CONFIDENCE;
+            pushCheck(
+              `PACK_PAW_READABILITY_${view.toUpperCase()}`,
+              strictGeneratedChecks ? pawReadable : true,
+              strictGeneratedChecks
+                ? pawReadable
+                  ? `${packAnchorSpeciesId} ${view} keeps the near paw readable.`
+                  : `${packAnchorSpeciesId} ${view} near paw is not readable enough for the current repair policy.`
+                : `Synthetic smoke fixture: ${view} paw readability check skipped.`,
+              strictGeneratedChecks ? (pawReadable ? "INFO" : "WARN") : "INFO",
+              {
+                asset_paths: [asset.file_path],
+                metric: Number((viewAnchors.paw_anchor?.confidence ?? 0).toFixed(3)),
+                threshold: MIN_PACK_ANCHOR_CONFIDENCE
+              }
+            );
+          }
+
+          if (qcPolicy.requireTailVisible) {
+            const tailVisible =
+              viewAnchors.tail_root?.status === "present" &&
+              typeof viewAnchors.tail_root?.confidence === "number" &&
+              viewAnchors.tail_root.confidence >= MIN_PACK_ANCHOR_CONFIDENCE - 0.08;
+            pushCheck(
+              `PACK_TAIL_VISIBILITY_${view.toUpperCase()}`,
+              strictGeneratedChecks ? tailVisible : true,
+              strictGeneratedChecks
+                ? tailVisible
+                  ? `${packAnchorSpeciesId} ${view} keeps the tail root visible enough for the species silhouette.`
+                  : `${packAnchorSpeciesId} ${view} tail root is too weak for the expected species silhouette.`
+                : `Synthetic smoke fixture: ${view} tail visibility check skipped.`,
+              strictGeneratedChecks ? (tailVisible ? "INFO" : "WARN") : "INFO",
+              {
+                asset_paths: [asset.file_path],
+                metric: Number((viewAnchors.tail_root?.confidence ?? 0).toFixed(3)),
+                threshold: MIN_PACK_ANCHOR_CONFIDENCE - 0.08
+              }
+            );
+          }
         }
 
         const overallAnchorConfidence = packAnchorManifest.confidence_summary?.overall ?? 0;

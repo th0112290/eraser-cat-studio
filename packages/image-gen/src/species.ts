@@ -1,4 +1,4 @@
-import type { MascotSpeciesId, MascotSpeciesProfile } from "./types";
+import type { CharacterView, MascotSpeciesId, MascotSpeciesProfile } from "./types";
 
 const DEFAULT_SPECIES_ID: MascotSpeciesId = "cat";
 const BASE_FAMILY_ID = "compact_doodle_mascot_v2";
@@ -124,6 +124,124 @@ const BASE_QC_THRESHOLDS: MascotSpeciesProfile["qcThresholds"] = {
   maxSilhouetteCueSpread: 0.24
 };
 
+const BASE_COMPONENT_CONFIDENCE_BOOST = Object.freeze({
+  mouth: 0,
+  eyeNear: 0,
+  eyeFar: 0,
+  earNear: 0,
+  earFar: 0,
+  paw: 0,
+  tail: 0
+});
+
+const BASE_FALLBACK_CONFIDENCE = Object.freeze({
+  mouth: 0.24,
+  eyeNear: 0.22,
+  eyeFar: 0.24,
+  earNear: 0.24,
+  earFar: 0.24,
+  paw: 0.22,
+  tail: 0.28
+});
+
+const BASE_ANCHOR_EXTRACTOR_HEURISTICS: MascotSpeciesAnchorHeuristics = Object.freeze({
+  byView: {
+    front: {
+      mouthBiasX: 0,
+      eyeNearBiasX: 0,
+      eyeFarBiasX: 0,
+      earNearBiasX: 0,
+      earFarBiasX: 0,
+      earBiasY: 0,
+      pawBiasX: 0,
+      pawBiasY: 0,
+      tailBiasX: 0,
+      tailBiasY: 0,
+      mouthWidthScale: 1,
+      mouthHeightScale: 1,
+      earWidthScale: 1,
+      earHeightScale: 1,
+      pawWidthScale: 1,
+      pawHeightScale: 1,
+      tailWidthScale: 1,
+      tailHeightScale: 1,
+      componentConfidenceBoost: { ...BASE_COMPONENT_CONFIDENCE_BOOST },
+      fallbackConfidence: { ...BASE_FALLBACK_CONFIDENCE, mouth: 0.22, eyeFar: 0.28, earFar: 0.3 },
+      expectedVisibility: {
+        eyeFar: "present",
+        earFar: "present",
+        pawAnchor: "present",
+        tailRoot: "present"
+      },
+      qc: {}
+    },
+    threeQuarter: {
+      mouthBiasX: 0,
+      eyeNearBiasX: 0,
+      eyeFarBiasX: 0,
+      earNearBiasX: 0,
+      earFarBiasX: 0,
+      earBiasY: 0,
+      pawBiasX: 0,
+      pawBiasY: 0,
+      tailBiasX: 0,
+      tailBiasY: 0,
+      mouthWidthScale: 1,
+      mouthHeightScale: 1,
+      earWidthScale: 1,
+      earHeightScale: 1,
+      pawWidthScale: 1,
+      pawHeightScale: 1,
+      tailWidthScale: 1,
+      tailHeightScale: 1,
+      componentConfidenceBoost: { ...BASE_COMPONENT_CONFIDENCE_BOOST },
+      fallbackConfidence: { ...BASE_FALLBACK_CONFIDENCE, eyeFar: 0.32, earFar: 0.32, tail: 0.3 },
+      expectedVisibility: {
+        eyeFar: "present",
+        earFar: "present",
+        pawAnchor: "present",
+        tailRoot: "occluded"
+      },
+      qc: {
+        muzzleProjection: { min: 0.08, max: 0.26 },
+        earHeight: { min: 0.1, max: 0.36 }
+      }
+    },
+    profile: {
+      mouthBiasX: 0,
+      eyeNearBiasX: 0,
+      eyeFarBiasX: 0,
+      earNearBiasX: 0,
+      earFarBiasX: 0,
+      earBiasY: 0,
+      pawBiasX: 0,
+      pawBiasY: 0,
+      tailBiasX: 0,
+      tailBiasY: 0,
+      mouthWidthScale: 1,
+      mouthHeightScale: 1,
+      earWidthScale: 1,
+      earHeightScale: 1,
+      pawWidthScale: 1,
+      pawHeightScale: 1,
+      tailWidthScale: 1,
+      tailHeightScale: 1,
+      componentConfidenceBoost: { ...BASE_COMPONENT_CONFIDENCE_BOOST },
+      fallbackConfidence: { ...BASE_FALLBACK_CONFIDENCE, eyeFar: 0.18, earFar: 0.18, tail: 0.26 },
+      expectedVisibility: {
+        eyeFar: "not_applicable",
+        earFar: "not_applicable",
+        pawAnchor: "present",
+        tailRoot: "occluded"
+      },
+      qc: {
+        muzzleProjection: { min: 0.12, max: 0.3 },
+        earHeight: { min: 0.12, max: 0.4 }
+      }
+    }
+  }
+});
+
 type SpeciesOverride = {
   label: string;
   referenceBankId: string;
@@ -137,6 +255,72 @@ type SpeciesOverride = {
   rejectTraits: string[];
   animationQc?: Partial<MascotSpeciesProfile["animationQc"]>;
   qcThresholds?: Partial<MascotSpeciesProfile["qcThresholds"]>;
+};
+
+export type MascotAnchorExpectation = "present" | "occluded" | "not_applicable";
+
+export type MascotAnchorQcWindow = {
+  min: number;
+  max: number;
+};
+
+export type MascotSpeciesAnchorExtractorViewProfile = {
+  mouthBiasX: number;
+  eyeNearBiasX: number;
+  eyeFarBiasX: number;
+  earNearBiasX: number;
+  earFarBiasX: number;
+  earBiasY: number;
+  pawBiasX: number;
+  pawBiasY: number;
+  tailBiasX: number;
+  tailBiasY: number;
+  mouthWidthScale: number;
+  mouthHeightScale: number;
+  earWidthScale: number;
+  earHeightScale: number;
+  pawWidthScale: number;
+  pawHeightScale: number;
+  tailWidthScale: number;
+  tailHeightScale: number;
+  componentConfidenceBoost: {
+    mouth: number;
+    eyeNear: number;
+    eyeFar: number;
+    earNear: number;
+    earFar: number;
+    paw: number;
+    tail: number;
+  };
+  fallbackConfidence: {
+    mouth: number;
+    eyeNear: number;
+    eyeFar: number;
+    earNear: number;
+    earFar: number;
+    paw: number;
+    tail: number;
+  };
+  expectedVisibility: {
+    eyeFar: MascotAnchorExpectation;
+    earFar: MascotAnchorExpectation;
+    pawAnchor: MascotAnchorExpectation;
+    tailRoot: MascotAnchorExpectation;
+  };
+  qc: {
+    muzzleProjection?: MascotAnchorQcWindow;
+    earHeight?: MascotAnchorQcWindow;
+    requirePawReadable?: boolean;
+    requireTailVisible?: boolean;
+  };
+};
+
+export type MascotSpeciesAnchorHeuristics = {
+  byView: Record<CharacterView, MascotSpeciesAnchorExtractorViewProfile>;
+};
+
+type SpeciesAnchorHeuristicOverride = {
+  byView?: Partial<Record<CharacterView, Partial<MascotSpeciesAnchorExtractorViewProfile>>>;
 };
 
 const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freeze({
@@ -364,6 +548,166 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
   }
 });
 
+const SPECIES_ANCHOR_HEURISTIC_OVERRIDES: Record<MascotSpeciesId, SpeciesAnchorHeuristicOverride> = Object.freeze({
+  cat: {
+    byView: {
+      front: {
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: -0.02,
+          earNear: 0.02,
+          earFar: 0.01
+        }
+      },
+      threeQuarter: {
+        mouthBiasX: -0.035,
+        earBiasY: -0.018,
+        earWidthScale: 0.96,
+        earHeightScale: 1.08,
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: -0.02,
+          earNear: 0.04,
+          earFar: 0.02
+        },
+        qc: {
+          muzzleProjection: { min: 0.06, max: 0.2 },
+          earHeight: { min: 0.16, max: 0.42 }
+        }
+      },
+      profile: {
+        mouthBiasX: -0.075,
+        earBiasY: -0.02,
+        earWidthScale: 0.92,
+        earHeightScale: 1.1,
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: -0.03,
+          earNear: 0.05
+        },
+        expectedVisibility: {
+          eyeFar: "not_applicable",
+          earFar: "not_applicable",
+          pawAnchor: "occluded",
+          tailRoot: "occluded"
+        },
+        qc: {
+          muzzleProjection: { min: 0.08, max: 0.22 },
+          earHeight: { min: 0.18, max: 0.46 }
+        }
+      }
+    }
+  },
+  dog: {
+    byView: {
+      front: {
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: 0.03,
+          paw: 0.04
+        }
+      },
+      threeQuarter: {
+        mouthBiasX: 0.02,
+        earBiasY: 0.018,
+        earWidthScale: 1.08,
+        earHeightScale: 0.9,
+        pawBiasX: 0.04,
+        pawWidthScale: 1.08,
+        pawHeightScale: 1.04,
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: 0.03,
+          paw: 0.08
+        },
+        qc: {
+          muzzleProjection: { min: 0.1, max: 0.28 },
+          earHeight: { min: 0.08, max: 0.26 },
+          requirePawReadable: true
+        }
+      },
+      profile: {
+        mouthBiasX: 0.045,
+        earBiasY: 0.024,
+        earWidthScale: 1.12,
+        earHeightScale: 0.84,
+        pawBiasX: 0.06,
+        pawWidthScale: 1.12,
+        pawHeightScale: 1.06,
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: 0.04,
+          paw: 0.1
+        },
+        expectedVisibility: {
+          eyeFar: "not_applicable",
+          earFar: "not_applicable",
+          pawAnchor: "present",
+          tailRoot: "occluded"
+        },
+        qc: {
+          muzzleProjection: { min: 0.14, max: 0.3 },
+          earHeight: { min: 0.06, max: 0.22 },
+          requirePawReadable: true
+        }
+      }
+    }
+  },
+  wolf: {
+    byView: {
+      front: {
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: 0.02,
+          earNear: 0.05,
+          earFar: 0.04
+        }
+      },
+      threeQuarter: {
+        mouthBiasX: 0.04,
+        earBiasY: -0.026,
+        earWidthScale: 0.94,
+        earHeightScale: 1.14,
+        tailBiasX: -0.02,
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: 0.03,
+          earNear: 0.08,
+          earFar: 0.06
+        },
+        qc: {
+          muzzleProjection: { min: 0.13, max: 0.32 },
+          earHeight: { min: 0.18, max: 0.42 },
+          requireTailVisible: true
+        }
+      },
+      profile: {
+        mouthBiasX: 0.07,
+        earBiasY: -0.03,
+        earWidthScale: 0.9,
+        earHeightScale: 1.18,
+        tailBiasX: -0.02,
+        componentConfidenceBoost: {
+          ...BASE_COMPONENT_CONFIDENCE_BOOST,
+          mouth: 0.04,
+          earNear: 0.1
+        },
+        expectedVisibility: {
+          eyeFar: "not_applicable",
+          earFar: "not_applicable",
+          pawAnchor: "occluded",
+          tailRoot: "occluded"
+        },
+        qc: {
+          muzzleProjection: { min: 0.16, max: 0.34 },
+          earHeight: { min: 0.2, max: 0.48 },
+          requireTailVisible: true
+        }
+      }
+    }
+  }
+});
+
 function mergeQcThresholds(
   overrides: Partial<MascotSpeciesProfile["qcThresholds"]> | undefined
 ): MascotSpeciesProfile["qcThresholds"] {
@@ -391,6 +735,32 @@ function mergeAnimationQc(
   return {
     ...BASE_ANIMATION_QC,
     ...(overrides ?? {})
+  };
+}
+
+function mergeAnchorExtractorViewProfile(
+  base: MascotSpeciesAnchorExtractorViewProfile,
+  overrides: Partial<MascotSpeciesAnchorExtractorViewProfile> | undefined
+): MascotSpeciesAnchorExtractorViewProfile {
+  return {
+    ...base,
+    ...(overrides ?? {}),
+    componentConfidenceBoost: {
+      ...base.componentConfidenceBoost,
+      ...(overrides?.componentConfidenceBoost ?? {})
+    },
+    fallbackConfidence: {
+      ...base.fallbackConfidence,
+      ...(overrides?.fallbackConfidence ?? {})
+    },
+    expectedVisibility: {
+      ...base.expectedVisibility,
+      ...(overrides?.expectedVisibility ?? {})
+    },
+    qc: {
+      ...base.qc,
+      ...(overrides?.qc ?? {})
+    }
   };
 }
 
@@ -435,4 +805,19 @@ export function resolveMascotSpeciesProfile(id?: string): MascotSpeciesProfile {
     return composeSpeciesProfile(normalized);
   }
   return composeSpeciesProfile(DEFAULT_SPECIES_ID);
+}
+
+export function resolveMascotAnchorHeuristics(id?: string): MascotSpeciesAnchorHeuristics {
+  const normalizedSpeciesId = resolveMascotSpeciesProfile(id).id;
+  const override = SPECIES_ANCHOR_HEURISTIC_OVERRIDES[normalizedSpeciesId];
+  return {
+    byView: {
+      front: mergeAnchorExtractorViewProfile(BASE_ANCHOR_EXTRACTOR_HEURISTICS.byView.front, override?.byView?.front),
+      threeQuarter: mergeAnchorExtractorViewProfile(
+        BASE_ANCHOR_EXTRACTOR_HEURISTICS.byView.threeQuarter,
+        override?.byView?.threeQuarter
+      ),
+      profile: mergeAnchorExtractorViewProfile(BASE_ANCHOR_EXTRACTOR_HEURISTICS.byView.profile, override?.byView?.profile)
+    }
+  };
 }
