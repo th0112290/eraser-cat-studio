@@ -617,6 +617,25 @@ type CharacterViewLineage = {
   repairHistory: string[];
 };
 
+type CharacterPackLineageAnchorViewSummary = {
+  presentAnchorIds: string[];
+  missingAnchorIds: string[];
+  notes: string | null;
+};
+
+type CharacterPackLineageRigSummary = {
+  reviewOnly: boolean | null;
+  reviewNotes: string[];
+  anchorConfidenceOverall: number | null;
+  anchorConfidenceByView: Partial<Record<CharacterGenerationView, number | null>>;
+  confidenceNotes: string | null;
+  coveredViews: CharacterGenerationView[];
+  missingViews: CharacterGenerationView[];
+  byView: Partial<Record<CharacterGenerationView, CharacterPackLineageAnchorViewSummary>>;
+  lowConfidenceAnchorIds: string[];
+  missingAnchorIds: string[];
+};
+
 type CharacterPackLineage = {
   sourceLabel: string;
   characterRoot: string;
@@ -644,6 +663,7 @@ type CharacterPackLineage = {
   repairOpenCount: number;
   repairTasks: CharacterLineageTask[];
   viewEntries: CharacterViewLineage[];
+  rigSummary: CharacterPackLineageRigSummary | null;
 };
 
 function computeManifestHashes(input: {
@@ -1218,6 +1238,116 @@ function summarizePackDefectSummary(packDefectSummary: GenerationManifestPackDef
     ? Object.values(packDefectSummary.persistentFamiliesByView).filter((families) => (families?.length ?? 0) > 0).length
     : 0;
   return `repeat=${repeated} / persistent=${persistentCount}`;
+}
+
+function humanizeToken(value: string): string {
+  return value
+    .split(/[_:-]+/)
+    .filter((entry) => entry.length > 0)
+    .map((entry) => entry[0]?.toUpperCase() + entry.slice(1))
+    .join(" ");
+}
+
+function describeRigFallbackReason(
+  reasonCode: string
+): { label: string; copy: string; tone: "ok" | "warn" | "bad" | "muted" } {
+  switch (reasonCode) {
+    case "review_only":
+      return {
+        label: "Review Only",
+        copy: "Keep this run in human review mode before approval or pack promotion.",
+        tone: "warn"
+      };
+    case "safe_front_expression":
+      return {
+        label: "Safe Front Expression",
+        copy: "Front expression stayed on a safer pose because front anchors were weak.",
+        tone: "warn"
+      };
+    case "suppress_aggressive_yaw":
+      return {
+        label: "Suppress Aggressive Yaw",
+        copy: "Side-view yaw was softened to protect landmark stability.",
+        tone: "warn"
+      };
+    case "lock_mouth_preset":
+      return {
+        label: "Lock Mouth Preset",
+        copy: "The mouth preset was locked because lip or muzzle anchors were unstable.",
+        tone: "warn"
+      };
+    case "manual_compare":
+      return {
+        label: "Manual Compare",
+        copy: "A person should compare candidates before building or approving the pack.",
+        tone: "warn"
+      };
+    case "recreate":
+      return {
+        label: "Recreate Pack",
+        copy: "A full pack recreate is safer than approving the current selection.",
+        tone: "bad"
+      };
+    default:
+      return {
+        label: humanizeToken(reasonCode),
+        copy: `Runtime fallback flag: ${reasonCode}`,
+        tone: "muted"
+      };
+  }
+}
+
+function summarizeRigFallbackReasonCodes(reasonCodes: string[] | undefined): string {
+  const labels = dedupeStrings((reasonCodes ?? []).map((reasonCode) => describeRigFallbackReason(reasonCode).label));
+  return labels.length > 0 ? labels.join(" / ") : "none";
+}
+
+function summarizeRigSeverity(
+  rigStability: GenerationManifestRigStability | null | undefined
+): { title: string; copy: string; tone: "ok" | "warn" | "bad" | "muted" } {
+  if (!rigStability || rigStability.severity === "none") {
+    return {
+      title: "Rig clear",
+      copy: "No rig block or review-only pressure was recorded for the current run.",
+      tone: "ok"
+    };
+  }
+  if (rigStability.severity === "block") {
+    return {
+      title: "Rig block",
+      copy:
+        "One or more views are unstable enough that regenerate or recreate should happen before approval.",
+      tone: "bad"
+    };
+  }
+  if (rigStability.reviewOnly) {
+    return {
+      title: "Rig review only",
+      copy: "Manual compare is required, but the run is not yet forcing a full recreate.",
+      tone: "warn"
+    };
+  }
+  return {
+    title: "Rig warning",
+    copy: "Rig signals are present and should be reviewed before approval.",
+    tone: "warn"
+  };
+}
+
+function summarizeRigViewState(
+  view: CharacterGenerationView,
+  rigStability: GenerationManifestRigStability | null | undefined
+): { label: string; tone: "ok" | "warn" | "bad" | "muted" } {
+  if (rigStability?.blockingViews?.includes(view)) {
+    return { label: "block", tone: "bad" };
+  }
+  if (rigStability?.warningViews?.includes(view)) {
+    return { label: "review", tone: "warn" };
+  }
+  if (!rigStability || rigStability.severity === "none") {
+    return { label: "clear", tone: "ok" };
+  }
+  return { label: "observe", tone: "muted" };
 }
 
 function summarizeWorkflowStages(stages: GenerationManifestWorkflowStage[] | undefined): string {
@@ -2205,6 +2335,91 @@ function readLineageTasks(repairTasksRaw: unknown): CharacterLineageTask[] {
     .filter((entry): entry is CharacterLineageTask => Boolean(entry));
 }
 
+function parseCharacterPackLineageAnchorViewSummary(
+  value: unknown
+): CharacterPackLineageAnchorViewSummary | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const presentAnchorIds = parseStringArray(value.present_anchor_ids);
+  const missingAnchorIds = parseStringArray(value.missing_anchor_ids);
+  const notes = typeof value.notes === "string" && value.notes.trim().length > 0 ? value.notes.trim() : null;
+  if (presentAnchorIds.length === 0 && missingAnchorIds.length === 0 && !notes) {
+    return undefined;
+  }
+  return {
+    presentAnchorIds,
+    missingAnchorIds,
+    notes
+  };
+}
+
+function parseCharacterPackLineageRigSummary(
+  manifestRaw: unknown,
+  packMetaRaw: unknown,
+  packJsonRaw: unknown
+): CharacterPackLineageRigSummary | null {
+  const manifest = isRecord(manifestRaw) ? manifestRaw : {};
+  const packMeta = isRecord(packMetaRaw) ? packMetaRaw : {};
+  const packJson = isRecord(packJsonRaw) ? packJsonRaw : {};
+  const packAnchors = isRecord(packJson.anchors) ? packJson.anchors : {};
+  const anchorSummary = isRecord(packAnchors.summary) ? packAnchors.summary : {};
+  const confidenceSummary =
+    (isRecord(packAnchors.confidence_summary) ? packAnchors.confidence_summary : null) ??
+    (isRecord(packMeta.anchor_confidence_summary) ? packMeta.anchor_confidence_summary : {});
+  const anchorReview = isRecord(packMeta.anchor_review) ? packMeta.anchor_review : {};
+  const byViewRoot = isRecord(anchorSummary.by_view) ? anchorSummary.by_view : {};
+  const byView: Partial<Record<CharacterGenerationView, CharacterPackLineageAnchorViewSummary>> = {};
+  for (const view of ["front", "threeQuarter", "profile"] as const) {
+    const parsed = parseCharacterPackLineageAnchorViewSummary(byViewRoot[view]);
+    if (parsed) {
+      byView[view] = parsed;
+    }
+  }
+
+  const reviewOnly = typeof packMeta.review_only === "boolean" ? packMeta.review_only : null;
+  const reviewNotes = parseStringArray(packMeta.review_notes);
+  const anchorConfidenceOverall = parseOptionalNullableNumber(confidenceSummary.overall) ?? null;
+  const anchorConfidenceByView = parseViewNullableNumberMap(confidenceSummary.by_view) ?? {};
+  const confidenceNotes =
+    typeof confidenceSummary.notes === "string" && confidenceSummary.notes.trim().length > 0
+      ? confidenceSummary.notes.trim()
+      : null;
+  const coveredViews = parseCharacterGenerationViewArray(anchorSummary.covered_views);
+  const missingViews = parseCharacterGenerationViewArray(anchorSummary.missing_views);
+  const lowConfidenceAnchorIds = parseStringArray(anchorReview.low_confidence_anchor_ids);
+  const missingAnchorIds = parseStringArray(anchorReview.missing_anchor_ids);
+
+  if (
+    reviewOnly === null &&
+    reviewNotes.length === 0 &&
+    anchorConfidenceOverall === null &&
+    Object.keys(anchorConfidenceByView).length === 0 &&
+    !confidenceNotes &&
+    coveredViews.length === 0 &&
+    missingViews.length === 0 &&
+    Object.keys(byView).length === 0 &&
+    lowConfidenceAnchorIds.length === 0 &&
+    missingAnchorIds.length === 0 &&
+    !isRecord(manifest.pack)
+  ) {
+    return null;
+  }
+
+  return {
+    reviewOnly,
+    reviewNotes,
+    anchorConfidenceOverall,
+    anchorConfidenceByView,
+    confidenceNotes,
+    coveredViews,
+    missingViews,
+    byView,
+    lowConfidenceAnchorIds,
+    missingAnchorIds
+  };
+}
+
 function readCharacterPackLineage(characterPackId: string): CharacterPackLineage | null {
   const resolvedRoot = resolveGeneratedCharacterRoot(characterPackId);
   if (!resolvedRoot) {
@@ -2228,6 +2443,7 @@ function readCharacterPackLineage(characterPackId: string): CharacterPackLineage
   const packJson = isRecord(packJsonRaw) ? packJsonRaw : {};
   const qcReport = isRecord(qcReportRaw) ? qcReportRaw : {};
   const repairTasks = readLineageTasks(repairTasksRaw);
+  const rigSummary = parseCharacterPackLineageRigSummary(manifestRaw, packMetaRaw, packJsonRaw);
   const viewRoot = isRecord(manifest.views) ? manifest.views : {};
   const viewEntries = (["front", "threeQuarter", "profile"] as CharacterGenerationView[]).map((view) => {
     const item = isRecord(viewRoot[view]) ? viewRoot[view] : {};
@@ -2305,7 +2521,8 @@ function readCharacterPackLineage(characterPackId: string): CharacterPackLineage
     qcTotalCount: qcChecks.length,
     repairOpenCount: repairTasks.filter((task) => task.status.toLowerCase() === "open").length,
     repairTasks,
-    viewEntries
+    viewEntries,
+    rigSummary
   };
 }
 
@@ -4315,6 +4532,49 @@ function buildCharacterPackLineageSection(input: {
   )}</span></p><p style="margin:6px 0 0;color:#516175">active pack: ${escHtml(input.activePackId ?? "-")}</p><p style="margin:6px 0 0;color:#516175">source image: ${escHtml(
     basenameOrDash(lineage.sourceImageRef)
   )}</p></div></div>`;
+  const rigSummary = lineage.rigSummary;
+  const rigReviewTone =
+    rigSummary?.reviewOnly === true
+      ? "warn"
+      : rigSummary
+        ? "ok"
+        : "muted";
+  const rigReviewLabel =
+    rigSummary?.reviewOnly === true
+      ? "review-only"
+      : rigSummary
+        ? "clear"
+        : "not recorded";
+  const rigViewRows = (["front", "threeQuarter", "profile"] as const)
+    .map((view) => {
+      const confidence = rigSummary?.anchorConfidenceByView?.[view];
+      const byView = rigSummary?.byView?.[view];
+      return `<tr><td>${escHtml(view)}</td><td>${escHtml(
+        formatMetric(confidence)
+      )}</td><td>${escHtml(byView?.presentAnchorIds.join(", ") || "none")}</td><td>${escHtml(
+        byView?.missingAnchorIds.join(", ") || "none"
+      )}</td><td>${escHtml(byView?.notes ?? "-")}</td></tr>`;
+    })
+    .join("");
+  const rigSection = rigSummary
+    ? `<section class="card" style="margin-top:16px"><h4>Rig / Anchor Surface</h4><p>Pack-level rig evidence stays above raw artifacts so a reviewer can decide whether this pack is clear, review-only, or should return to compare.</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"><div style="padding:14px;border:1px solid #d8e1ec;border-radius:12px;background:#f8fbff"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#5f7288">Fallback State</div><p style="margin:8px 0 0"><span class="badge ${rigReviewTone}">${escHtml(
+        rigReviewLabel
+      )}</span></p><p style="margin:6px 0 0;color:#516175">notes: ${escHtml(
+        rigSummary.reviewNotes.join(" / ") || "none"
+      )}</p></div><div style="padding:14px;border:1px solid #d8e1ec;border-radius:12px;background:#f8fbff"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#5f7288">Anchor Confidence</div><p style="margin:8px 0 0"><strong>${escHtml(
+        formatMetric(rigSummary.anchorConfidenceOverall)
+      )}</strong></p><p style="margin:6px 0 0;color:#516175">covered=${escHtml(
+        rigSummary.coveredViews.join(", ") || "none"
+      )} / missing=${escHtml(rigSummary.missingViews.join(", ") || "none")}</p><p style="margin:6px 0 0;color:#516175">${escHtml(
+        rigSummary.confidenceNotes ?? "confidence summary not recorded"
+      )}</p></div><div style="padding:14px;border:1px solid #d8e1ec;border-radius:12px;background:#f8fbff"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#5f7288">Anchor Review</div><p style="margin:8px 0 0;color:#516175">low confidence: ${escHtml(
+        rigSummary.lowConfidenceAnchorIds.slice(0, 4).join(", ") || "none"
+      )}</p><p style="margin:6px 0 0;color:#516175">missing anchors: ${escHtml(
+        rigSummary.missingAnchorIds.slice(0, 4).join(", ") || "none"
+      )}</p><p style="margin:6px 0 0;color:#516175">${
+        input.compareHref ? `Linked compare is available for this pack.` : "No linked compare route is active."
+      }</p></div></div><div class="asset-table-wrap" style="margin-top:12px"><table><thead><tr><th>View</th><th>Confidence</th><th>Present Anchors</th><th>Missing Anchors</th><th>Notes</th></tr></thead><tbody>${rigViewRows}</tbody></table></div></section>`
+    : `<section class="card" style="margin-top:16px"><h4>Rig / Anchor Surface</h4><div class="notice">No pack-level rig summary was recorded in manifest or pack metadata yet.</div></section>`;
 
   const viewCards = lineage.viewEntries
     .map((entry) => {
@@ -4360,7 +4620,7 @@ function buildCharacterPackLineageSection(input: {
     )
     .join("");
 
-  return `<section class="card"><h3>Pack Lineage / Provenance</h3><p>Lineage is the provenance layer behind preview, QC, compare, and repair decisions. Read it here to see which source image, manifest, and repair tasks produced the current pack without rerunning generation.</p>${actionLinks}${summaryCards}<section class="card" style="margin-top:16px"><h4>View Lineage</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">${viewCards || '<div class="notice">No view lineage entries.</div>'}</div></section><section class="card" style="margin-top:16px"><h4>Repair Tasks</h4>${
+  return `<section class="card"><h3>Pack Lineage / Provenance</h3><p>Lineage is the provenance layer behind preview, QC, compare, and repair decisions. Read it here to see which source image, manifest, and repair tasks produced the current pack without rerunning generation.</p>${actionLinks}${summaryCards}${rigSection}<section class="card" style="margin-top:16px"><h4>View Lineage</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">${viewCards || '<div class="notice">No view lineage entries.</div>'}</div></section><section class="card" style="margin-top:16px"><h4>Repair Tasks</h4>${
     repairRows
       ? `<table><thead><tr><th>#</th><th>Code</th><th>Severity</th><th>Action</th><th>Reason</th><th>Assets</th></tr></thead><tbody>${repairRows}</tbody></table>`
       : `<div class="notice">No open repair tasks were recorded for this pack.</div>`
@@ -6218,6 +6478,32 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const selectedContinuity = selectedManifest?.reference?.continuity;
     const selectedWorkflowRuntimeDiagnostics = resolveSelectedWorkflowRuntimeDiagnostics(selectedManifest);
     const selectedRecommendedActions = buildRecommendedActions(selectedManifest);
+    const selectedRigState = summarizeRigSeverity(selectedRigStability);
+    const selectedRigFallbackCards = dedupeStrings(selectedRigStability?.fallbackReasonCodes ?? [])
+      .map((reasonCode) => {
+        const detail = describeRigFallbackReason(reasonCode);
+        return `<article class="cg-signal-flag ${detail.tone}"><div class="cg-rig-kicker">${escHtml(
+          detail.label
+        )}</div><h4>${escHtml(detail.copy)}</h4><p>flag=${escHtml(reasonCode)}</p></article>`;
+      })
+      .join("");
+    const selectedRigViewRows = (["front", "threeQuarter", "profile"] as const)
+      .map((view) => {
+        const viewState = summarizeRigViewState(view, selectedRigStability);
+        const selectedSummary = selectedSelectionDiagnostics?.selectedCandidateSummaryByView?.[view];
+        return `<tr><td>${escHtml(view)}</td><td><span class="badge ${viewState.tone}">${escHtml(
+          viewState.label
+        )}</span></td><td>${escHtml(selectedSummary?.candidateId ?? "-")}</td><td>${escHtml(
+          formatMetric(selectedRigStability?.anchorConfidenceByView?.[view] ?? selectedSummary?.anchorConfidence)
+        )}</td><td>${escHtml(
+          formatMetric(selectedRigStability?.landmarkConsistencyByView?.[view] ?? selectedSummary?.landmarkConsistency)
+        )}</td><td>${escHtml(
+          summarizeRigFallbackReasonCodes(selectedSummary?.rigFallbackReasonCodes)
+        )}</td><td>${escHtml(selectedSummary?.warningCount ?? "-")}</td><td>${escHtml(
+          selectedSummary?.rejectionCount ?? "-"
+        )}</td></tr>`;
+      })
+      .join("");
     const selectedPackCoherenceSection = selectedManifest
       ? selectedPackCoherence
         ? `<div class="notice">pack coherence: <span class="badge ${coherenceBadge(
@@ -6253,15 +6539,17 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       selectedManifest && selectedRigStability
         ? `<div class="notice">rig stability: <span class="badge ${coherenceBadge(
             selectedRigStability.severity
-          )}">${escHtml(selectedRigStability.severity)}</span> / overallAnchor=${escHtml(
+          )}">${escHtml(selectedRigState.title)}</span> / action=${escHtml(
+            selectedRigStability.suggestedAction ?? "observe"
+          )} / overallAnchor=${escHtml(
             formatMetric(selectedRigStability.anchorConfidenceOverall)
-          )} / blocking=${escHtml(
+          )}</div><p>summary: ${escHtml(selectedRigStability.summary)}</p><p>blocking=${escHtml(
             selectedRigStability.blockingViews?.join(", ") || "none"
-          )} / warnings=${escHtml(
-            selectedRigStability.warningViews?.join(", ") || "none"
-          )}</div><p>fallbacks: ${escHtml(
-            selectedRigStability.fallbackReasonCodes.join(", ") || "none"
-          )}</p><p>summary: ${escHtml(selectedRigStability.summary)}</p>`
+          )} / warnings=${escHtml(selectedRigStability.warningViews?.join(", ") || "none")} / fallbacks=${escHtml(
+            summarizeRigFallbackReasonCodes(selectedRigStability.fallbackReasonCodes)
+          )}</p><div class="cg-signal-table" style="margin-top:10px"><table><thead><tr><th>View</th><th>State</th><th>Selected Candidate</th><th>Anchor</th><th>Landmark</th><th>Fallbacks</th><th>Warnings</th><th>Rejections</th></tr></thead><tbody>${selectedRigViewRows}</tbody></table></div>${
+            selectedRigFallbackCards ? `<div class="cg-signal-flag-grid" style="margin-top:10px">${selectedRigFallbackCards}</div>` : ""
+          }`
         : "";
     const selectedCandidateSummarySection =
       selectedManifest && selectedSelectionDiagnostics?.selectedCandidateSummaryByView
@@ -6726,6 +7014,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       if (!selectedManifest) {
         return "";
       }
+      const selectedSummary = selectedSelectionDiagnostics?.selectedCandidateSummaryByView?.[view];
+      const viewState = summarizeRigViewState(view, selectedRigStability);
       const cards = selectedManifest.candidates
         .filter((candidate) => candidate.view === view)
         .sort((left, right) => right.score - left.score)
@@ -6759,7 +7049,17 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         })
         .join("");
       return cards.length > 0
-        ? `<details class="card" style="margin-top:10px"><summary><strong>${escHtml(view)}</strong> candidate details</summary><div class="asset-table-wrap" style="margin-top:10px"><table><thead><tr><th>Candidate</th><th>Score</th><th>Consistency</th><th>Profile</th><th>Run</th><th>Post</th><th>Adapter</th><th>Workflow</th></tr></thead><tbody>${cards}</tbody></table></div></details>`
+        ? `<details class="card" style="margin-top:10px"><summary><strong>${escHtml(
+            view
+          )}</strong> candidate details / rig=${escHtml(viewState.label)} / anchor=${escHtml(
+            formatMetric(selectedRigStability?.anchorConfidenceByView?.[view] ?? selectedSummary?.anchorConfidence)
+          )}</summary><p style="margin:10px 0 0;color:#4f6270">Selected candidate=${escHtml(
+            selectedSummary?.candidateId ?? "-"
+          )} / landmark=${escHtml(
+            formatMetric(selectedRigStability?.landmarkConsistencyByView?.[view] ?? selectedSummary?.landmarkConsistency)
+          )} / fallbacks=${escHtml(
+            summarizeRigFallbackReasonCodes(selectedSummary?.rigFallbackReasonCodes)
+          )}</p><div class="asset-table-wrap" style="margin-top:10px"><table><thead><tr><th>Candidate</th><th>Score</th><th>Consistency</th><th>Profile</th><th>Run</th><th>Post</th><th>Adapter</th><th>Workflow</th></tr></thead><tbody>${cards}</tbody></table></div></details>`
         : "";
     };
 
@@ -6947,6 +7247,84 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         }
       );
     }
+    const selectedRigOverviewSection =
+      selectedManifest && selectedRigStability
+        ? `<section class="card cg-rig-surface" id="cg-rig-surface"><div class="cg-section-head"><div><div class="cg-section-kicker">Rig Surface</div><h3>Rig stability, anchor confidence, and fallback state</h3></div><p>Read this block before compare, approval, or rollback. Raw manifest JSON stays below as secondary evidence.</p></div><div class="cg-rig-grid"><article class="cg-rig-card ${selectedRigState.tone}"><div class="cg-rig-kicker">Current State</div><h3>${escHtml(
+            selectedRigState.title
+          )}</h3><p class="cg-rig-copy">${escHtml(selectedRigState.copy)}</p><div class="cg-rig-meta"><span class="badge ${coherenceBadge(
+            selectedRigStability.severity
+          )}">${escHtml(selectedRigStability.severity)}</span><span class="badge ${uiBadge(
+            selectedRigStability.suggestedAction === "recreate"
+              ? "FAILED"
+              : selectedRigStability.suggestedAction === "pick-manually"
+                ? "RUNNING"
+                : "READY"
+          )}">${escHtml(selectedRigStability.suggestedAction ?? "observe")}</span></div><p class="cg-rig-copy">blocking=${escHtml(
+            selectedRigStability.blockingViews?.join(", ") || "none"
+          )} / warnings=${escHtml(selectedRigStability.warningViews?.join(", ") || "none")}</p></article><article class="cg-rig-card ${selectedRigState.tone}"><div class="cg-rig-kicker">Anchor Confidence</div><h3>${escHtml(
+            formatMetric(selectedRigStability.anchorConfidenceOverall)
+          )}</h3><p class="cg-rig-copy">front=${escHtml(
+            formatMetric(selectedRigStability.anchorConfidenceByView?.front)
+          )} / threeQuarter=${escHtml(
+            formatMetric(selectedRigStability.anchorConfidenceByView?.threeQuarter)
+          )} / profile=${escHtml(formatMetric(selectedRigStability.anchorConfidenceByView?.profile))}</p><p class="cg-rig-copy">front landmarks=${escHtml(
+            formatMetric(selectedRigStability.landmarkConsistencyByView?.front)
+          )} / threeQuarter=${escHtml(
+            formatMetric(selectedRigStability.landmarkConsistencyByView?.threeQuarter)
+          )} / profile=${escHtml(formatMetric(selectedRigStability.landmarkConsistencyByView?.profile))}</p></article><article class="cg-rig-card muted"><div class="cg-rig-kicker">Fallback State</div><h3>${escHtml(
+            summarizeRigFallbackReasonCodes(selectedRigStability.fallbackReasonCodes)
+          )}</h3><p class="cg-rig-copy">${escHtml(selectedRigStability.summary)}</p><div class="cg-inline-links"><a href="#recommended-actions">Next safe actions</a><a href="#pick-candidates">Candidate compare</a>${
+            selectedCharactersHref ? `<a href="${escHtml(selectedCharactersHref)}">Characters</a>` : ""
+          }</div></article></div><div class="cg-signal-table"><table><thead><tr><th>View</th><th>State</th><th>Selected Candidate</th><th>Anchor</th><th>Landmark</th><th>Fallbacks</th><th>Warnings</th><th>Rejections</th></tr></thead><tbody>${selectedRigViewRows}</tbody></table></div>${
+            selectedRigFallbackCards ? `<div class="cg-signal-flag-grid">${selectedRigFallbackCards}</div>` : ""
+          }</section>`
+        : selectedManifest
+          ? `<section class="card cg-rig-surface" id="cg-rig-surface"><div class="cg-section-head"><div><div class="cg-section-kicker">Rig Surface</div><h3>Rig stability, anchor confidence, and fallback state</h3></div><p>No rig summary was recorded for this run yet. Continue with the route and decision evidence below.</p></div></section>`
+          : "";
+    const selectedRigActionBanner =
+      selectedManifest && selectedRigStability
+        ? `<div class="cg-action-banner ${selectedRigState.tone}"><strong>${escHtml(
+            selectedRigState.title
+          )}</strong><p>${escHtml(selectedRigState.copy)}</p><p>fallbacks=${escHtml(
+            summarizeRigFallbackReasonCodes(selectedRigStability.fallbackReasonCodes)
+          )} / blocking=${escHtml(
+            selectedRigStability.blockingViews?.join(", ") || "none"
+          )} / warnings=${escHtml(selectedRigStability.warningViews?.join(", ") || "none")}</p><div class="cg-inline-links"><a href="#cg-rig-surface">Rig surface</a><a href="#pick-candidates">Compare</a><a href="#recreate-pack">Recreate</a></div></div>`
+        : "";
+    const selectedRigCompareNotice =
+      selectedManifest && selectedRigStability
+        ? `<div class="notice">${
+            selectedRigStability.severity === "block"
+              ? `Rig block is active. Compare is evidence gathering only until blocked views are regenerated or the pack is recreated.`
+              : selectedRigStability.reviewOnly
+                ? `Rig review-only is active. Manual compare is required before approval.`
+                : `Rig signals are clear enough for compare.`
+          } front=${escHtml(
+            formatMetric(selectedRigStability.anchorConfidenceByView?.front)
+          )} / threeQuarter=${escHtml(
+            formatMetric(selectedRigStability.anchorConfidenceByView?.threeQuarter)
+          )} / profile=${escHtml(formatMetric(selectedRigStability.anchorConfidenceByView?.profile))}</div>`
+        : "";
+    const selectedRollbackNotice =
+      selectedManifest && selectedRigStability
+        ? `<div class="notice">${
+            selectedRigStability.severity === "block"
+              ? "Rollback does not clear the current rig block. Use it only to restore the active baseline while this run goes back through recreate or regenerate."
+              : selectedRigStability.reviewOnly
+                ? "Rollback is optional. The current run still needs a human rig review before approval."
+                : "Rollback is available if the current pack should not replace the active baseline."
+          }</div>`
+        : "";
+    const selectedApprovedCompareNotice =
+      selectedManifest && selectedRigStability
+        ? `<div class="notice">${
+            selectedRigStability.severity === "block"
+              ? "Use baseline compare to understand the gap, not to bypass the current rig block."
+              : selectedRigStability.reviewOnly
+                ? "Use baseline compare after reading the rig review-only state above."
+                : "Baseline compare is ready when you want a slower A/B review."
+          }</div>`
+        : "";
     const selectedDecisionEvidenceSection = selectedManifest
       ? `${selectedPackCoherenceSection}${selectedRigStabilitySection}${selectedDecisionOutcomeSection}${selectedFinalQualityFirewallSection}${selectedQualityEmbargoSection}${selectedPackDefectSummarySection}${selectedSelectionRiskSection}${selectedAutoRerouteSection}${selectedCandidateSummarySection}${selectedViewDecisionMatrixSection}`
       : `<div class="notice">Manifest not available yet for this job.</div>`;
@@ -6986,6 +7364,10 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           )} / stages=${selectedWorkflowStages.length}`
         )}</div><div class="cg-guardrail-grid" style="margin-top:12px"><div class="cg-guardrail"><strong>Pack Coherence</strong><span>${escHtml(
           summarizePackCoherence(selectedPackCoherence)
+        )}</span></div><div class="cg-guardrail"><strong>Rig Status</strong><span>${escHtml(
+          selectedRigStability
+            ? `${selectedRigState.title} / ${selectedRigStability.suggestedAction ?? "observe"} / anchor=${formatMetric(selectedRigStability.anchorConfidenceOverall)}`
+            : "not recorded"
         )}</span></div><div class="cg-guardrail"><strong>Decision Gate</strong><span>${escHtml(
           selectedDecisionOutcome
             ? `${selectedDecisionOutcome.status} / ${selectedDecisionOutcome.kind} / ${selectedDecisionOutcome.escalatedAction ?? "observe"}`
@@ -7002,7 +7384,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                 selectedContinuity.reason
               }`
             : "not recorded"
-        )}</span></div></div><div class="cg-context-grid" style="margin-top:12px"><article class="cg-context-card"><h3>Next safe action</h3><p><strong>${escHtml(
+        )}</span></div></div>${selectedRigOverviewSection}<div class="cg-context-grid" style="margin-top:12px"><article class="cg-context-card"><h3>Next safe action</h3><p><strong>${escHtml(
           selectedPrimaryActionTitle
         )}</strong></p><p>${escHtml(selectedPrimaryActionScope)}</p><p>${escHtml(selectedPrimaryActionDetail)}</p><p>reasons: ${escHtml(
           selectedPrimaryActionReasonSummary
@@ -7050,12 +7432,15 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   summarizePackDefectSummary(selectedPackDefectSummary)
                 )}</div>`
               : ""
-          }${
+          }${selectedRigActionBanner}${
             selectedRecommendedActions.length > 0
-              ? `<div class="cg-context-grid">${
+              ? `<div class="cg-action-cards">${
                   selectedRecommendedActions
                     .map((action) => {
-                      const reasonSummary = action.reasonCodes.length > 0 ? action.reasonCodes.join(", ") : "-";
+                      const reasonSummary =
+                        dedupeStrings(action.reasonCodes.map((reasonCode) => describeRigFallbackReason(reasonCode).label)).join(", ") ||
+                        "-";
+                      const actionTone = action.priority === "high" ? "bad" : action.priority === "medium" ? "warn" : "ok";
                       const objectScope =
                         action.action === "recreate"
                           ? "Character Pack object"
@@ -7106,7 +7491,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                                 action.label
                               )}</button></form>`
                             : `<a href="#${escHtml(action.anchorId ?? "pick-candidates")}">${escHtml(action.label)}</a>`;
-                      return `<article class="cg-context-card"><p><span class="badge ${recommendedPriorityBadge(
+                      return `<article class="cg-context-card cg-action-card ${actionTone}"><p><span class="badge ${recommendedPriorityBadge(
                         action.priority
                       )}">${escHtml(action.priority)}</span> ${escHtml(action.label)}</p><p><strong>${escHtml(
                         objectScope
@@ -7155,8 +7540,8 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
               selectedFinalQualityFirewall?.level === "block" || selectedDecisionOutcome?.status === "blocked";
             return `<section class="card" id="pick-candidates"><h2>Candidate Set / HITL compare</h2><p>candidate set을 직접 비교해서 Character Pack build 전에 수동으로 고릅니다. Compare 결과와 approval lane을 분리하지 않고 같은 surface 안에서 유지합니다.</p>${
               pickBlocked
-                ? `<div class="notice">Direct pick is blocked because the selected pack still fails the final gate. Use regenerate/recreate first, or replace blocked views.</div>`
-                : ""
+                ? `${selectedRigCompareNotice}<div class="notice">Direct pick is blocked because the selected pack still fails the final gate. Use regenerate/recreate first, or replace blocked views.</div>`
+                : selectedRigCompareNotice
             }<form method="post" action="/ui/character-generator/pick" class="grid two"><input type="hidden" name="generateJobId" value="${escHtml(
             selectedJob.id
           )}"/>${hiddenGeneratorSelfNavFields}<label>Front Candidate<select name="frontCandidateId">${candidateOptions("front")}</select></label><label>ThreeQuarter Candidate<select name="threeQuarterCandidateId">${candidateOptions(
@@ -7230,6 +7615,49 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             .join("")}</select></label><div class="actions" style="grid-column:1/-1"><button type="submit" class="secondary">Approved Pack A/B compare 열기</button></div></form></section>`
         : `<section class="card" id="compare-approved-packs"><h2>Character Pack / compare approved baselines</h2><div class="notice">At least two approved packs are required.</div></section>`;
 
+    const rollbackSurfaceSection =
+      selectedRollbackNotice && rollbackSection
+        ? rollbackSection.replace(
+            '<form method="post" action="/ui/character-generator/rollback-active" class="grid two">',
+            `${selectedRollbackNotice}<form method="post" action="/ui/character-generator/rollback-active" class="grid two">`
+          )
+        : rollbackSection;
+    const compareSurfaceSection =
+      selectedApprovedCompareNotice && compareSection
+        ? compareSection.replace(
+            '<form method="get" action="/ui/character-generator/compare" class="grid two">',
+            `${selectedApprovedCompareNotice}<form method="get" action="/ui/character-generator/compare" class="grid two">`
+          )
+        : compareSection;
+    const recommendedActionsSurfaceSection = recommendedActionsSection.replace(
+      /(<h2>Next Safe Actions<\/h2>)<p>[\s\S]*?<\/p>/,
+      "$1<p>Start with the current rig and decision state, then use regenerate, compare, or recreate from this lane. Approval and rollback stay here so the blocker is still visible when a human acts.</p>"
+    );
+    const regenerateSurfaceSection = regenerateSection.replace(
+      /(<h2>Candidate Set \/ regenerate one view<\/h2>)<p>[\s\S]*?<\/p>/,
+      "$1<p>Regenerate one view when the pack is mostly sound and only one angle needs a safer candidate set. This preserves compare context without recreating the full pack.</p>"
+    );
+    const recreateSurfaceSection = recreateSection.replace(
+      /(<h2>Character Pack \/ recreate from current run<\/h2>)<p>[\s\S]*?<\/p>/,
+      "$1<p>Recreate the full Character Pack when rig, coherence, or final gate pressure makes the current selection unsafe. This is the full reset path before compare and approval reopen.</p>"
+    );
+    const pickSurfaceSection = pickSection.replace(
+      /(<h2>Candidate Set \/ HITL compare<\/h2>)<p>[\s\S]*?<\/p>/,
+      "$1<p>Use manual compare to choose the front, threeQuarter, and profile candidates before the Character Pack handoff. This lane stays readable even when rig review-only or block pressure is active.</p>"
+    );
+    const previewSurfaceSection = previewSection.replace(
+      /(<h2>Character Pack object \/ handoff<\/h2>)<p>[\s\S]*?<\/p>/,
+      "$1<p>Once compare settles, hand the Character Pack object into preview, QC, lineage, and jobs review. Characters remains the slower inspection surface after this handoff.</p>"
+    );
+    const rollbackSurfaceCopySection = rollbackSurfaceSection.replace(
+      /(<h2>Character Pack \/ rollback active baseline<\/h2>)<p>[\s\S]*?<\/p>/,
+      "$1<p>Rollback restores one approved Character Pack as the active baseline. Use it when the current run should not replace the baseline, not as a way to bypass rig blockers on the new run.</p>"
+    );
+    const compareSurfaceCopySection = compareSurfaceSection.replace(
+      /(<h2>Character Pack \/ compare approved baselines<\/h2>)<p>[\s\S]*?<\/p>/,
+      "$1<p>Compare two approved Character Pack baselines when you need a slower A/B read across preview, QC, lineage, and jobs.</p>"
+    );
+
     const rows = recentJobs
       .map((job) => {
         const manifest = readGenerationManifest(getGenerationManifestPath(job.id));
@@ -7272,13 +7700,13 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const body = buildCharacterGeneratorPageBody({
       topSection,
       selectedSection,
-      recommendedActionsSection,
-      regenerateSection,
-      recreateSection,
-      pickSection,
-      previewSection,
-      rollbackSection,
-      compareSection,
+      recommendedActionsSection: recommendedActionsSurfaceSection,
+      regenerateSection: regenerateSurfaceSection,
+      recreateSection: recreateSurfaceSection,
+      pickSection: pickSurfaceSection,
+      previewSection: previewSurfaceSection,
+      rollbackSection: rollbackSurfaceCopySection,
+      compareSection: compareSurfaceCopySection,
       rows,
       statusScript: selectedJob ? buildCharacterGeneratorStatusScript() : ""
     });
@@ -7955,6 +8383,47 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             focus: "pack-compare-hero"
           })
         : null;
+    const selectedPackRigSummary = selectedGeneratedLineage?.rigSummary ?? null;
+    const selectedPackRigTone: "ok" | "warn" | "bad" | "muted" =
+      selectedPackRigSummary?.reviewOnly === true ? "warn" : selectedPackRigSummary ? "ok" : "muted";
+    const selectedPackRigStateTitle =
+      selectedPackRigSummary?.reviewOnly === true
+        ? "Rig review only"
+        : selectedPackRigSummary
+          ? "Rig clear"
+          : "Rig not recorded";
+    const selectedPackRigStateCopy =
+      selectedPackRigSummary?.reviewOnly === true
+        ? "Pack metadata kept this pack in review-only mode. Reopen compare before approval or promotion."
+        : selectedPackRigSummary
+          ? "Pack metadata recorded anchor confidence and fallback state for this review."
+          : "Pack metadata did not record anchor confidence or fallback state yet.";
+    const selectedPackRigFlags = dedupeStrings([
+      ...(selectedPackRigSummary?.reviewNotes ?? []).map((note) => `Review note: ${note}`),
+      ...(selectedPackRigSummary?.lowConfidenceAnchorIds ?? []).slice(0, 6).map((anchorId) => `Low confidence anchor: ${anchorId}`),
+      ...(selectedPackRigSummary?.missingAnchorIds ?? []).slice(0, 6).map((anchorId) => `Missing anchor: ${anchorId}`)
+    ])
+      .map((flag) => {
+        const tone = flag.startsWith("Missing anchor") ? "bad" : flag.startsWith("Low confidence anchor") ? "warn" : selectedPackRigTone;
+        return `<span class="pack-review-flag ${tone}">${escHtml(flag)}</span>`;
+      })
+      .join("");
+    const selectedPackRigViewRows = (["front", "threeQuarter", "profile"] as const)
+      .map((view) => {
+        const byView = selectedPackRigSummary?.byView?.[view];
+        const covered = selectedPackRigSummary?.coveredViews.includes(view) ?? false;
+        const missing = selectedPackRigSummary?.missingViews.includes(view) ?? false;
+        const stateLabel = missing ? "missing" : covered ? "covered" : "not recorded";
+        const stateTone = missing ? "bad" : covered ? "ok" : "muted";
+        return `<tr><td>${escHtml(view)}</td><td><span class="badge ${stateTone}">${escHtml(
+          stateLabel
+        )}</span></td><td>${escHtml(
+          formatMetric(selectedPackRigSummary?.anchorConfidenceByView?.[view])
+        )}</td><td>${escHtml(byView?.presentAnchorIds.join(", ") || "-")}</td><td>${escHtml(
+          byView?.missingAnchorIds.join(", ") || "-"
+        )}</td><td>${escHtml(byView?.notes ?? "-")}</td></tr>`;
+      })
+      .join("");
     const selectedLineageSection = selectedPack
       ? buildCharacterPackLineageSection({
           lineage: selectedGeneratedLineage,
@@ -7993,6 +8462,25 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           }
         )
       : null;
+    const selectedPackRigSection = selectedPack
+      ? selectedPackRigSummary
+        ? `<section class="card"><h3>Rig / Anchor review</h3><p>Current pack rig state is pulled from manifest and pack metadata so review can happen here before raw JSON.</p><div class="pack-review-rig-grid"><article class="pack-review-rig-card ${selectedPackRigTone}"><span>Fallback State</span><strong>${escHtml(
+            selectedPackRigStateTitle
+          )}</strong><p>${escHtml(selectedPackRigStateCopy)}</p></article><article class="pack-review-rig-card ${selectedPackRigTone}"><span>Anchor Confidence</span><strong>${escHtml(
+            formatMetric(selectedPackRigSummary.anchorConfidenceOverall)
+          )}</strong><p>front=${escHtml(
+            formatMetric(selectedPackRigSummary.anchorConfidenceByView.front)
+          )} / threeQuarter=${escHtml(
+            formatMetric(selectedPackRigSummary.anchorConfidenceByView.threeQuarter)
+          )} / profile=${escHtml(formatMetric(selectedPackRigSummary.anchorConfidenceByView.profile))}</p></article><article class="pack-review-rig-card ${selectedPackRigTone}"><span>View Coverage</span><strong>${escHtml(
+            selectedPackRigSummary.coveredViews.join(", ") || "none"
+          )}</strong><p>missing=${escHtml(selectedPackRigSummary.missingViews.join(", ") || "none")}</p></article></div><div class="pack-review-actions"><a class="pack-review-link" href="${escHtml(
+            charactersGeneratorHref
+          )}">generator approval lane</a>${compareHref ? `<a class="pack-review-link" href="${escHtml(compareHref)}">linked compare</a>` : ""}<a class="pack-review-link" href="#pack-review-lineage">lineage evidence</a></div><div class="pack-review-signal-table"><table><thead><tr><th>View</th><th>State</th><th>Anchor confidence</th><th>Present anchors</th><th>Missing anchors</th><th>Notes</th></tr></thead><tbody>${selectedPackRigViewRows}</tbody></table></div>${
+            selectedPackRigFlags ? `<div class="pack-review-flag-list">${selectedPackRigFlags}</div>` : ""
+          }</section>`
+        : `<section class="card"><h3>Rig / Anchor review</h3><div class="notice">This pack does not record a pack-level anchor confidence or fallback summary yet. Raw JSON remains available below as secondary evidence.</div></section>`
+      : "";
     const charactersCreateNavFields = renderCreationNavHiddenFields({
       returnTo: currentPageReturnTo,
       currentObject: selectedPack ? `pack:${selectedPack.id}` : creationNav.currentObject,
@@ -8031,10 +8519,26 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       .pack-review-actions{display:flex;gap:8px;flex-wrap:wrap}
       .pack-review-link{appearance:none;cursor:pointer;display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700;text-decoration:none}
       .pack-review-link:hover{text-decoration:none;box-shadow:0 8px 20px rgba(18,87,199,.08)}
-      .pack-review-summary{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px}
+      .pack-review-summary{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:14px}
       .pack-review-card{padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
       .pack-review-card span{display:block;margin-bottom:6px;color:#5b6b82;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
       .pack-review-card strong{display:block;font-size:14px;line-height:1.45}
+      .pack-review-rig-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:14px 0}
+      .pack-review-rig-card{padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
+      .pack-review-rig-card.ok{border-color:#b8e2c7;background:linear-gradient(180deg,#fbfffc,#f3fbf5)}
+      .pack-review-rig-card.warn{border-color:#f1d39b;background:linear-gradient(180deg,#fffdf8,#fff7e6)}
+      .pack-review-rig-card.bad{border-color:#e4b1b5;background:linear-gradient(180deg,#fffafb,#fff1f2)}
+      .pack-review-rig-card.muted{border-color:#d6e0ef;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
+      .pack-review-rig-card span{display:block;margin-bottom:6px;color:#5b6b82;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+      .pack-review-rig-card strong{display:block;font-size:14px;line-height:1.45}
+      .pack-review-signal-table{overflow:auto;margin-top:14px}
+      .pack-review-signal-table table{margin:0}
+      .pack-review-flag-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+      .pack-review-flag{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #d6e0ef;background:#fff;color:#142033;font-size:12px;font-weight:700}
+      .pack-review-flag.ok{border-color:#b8e2c7;background:#f3fbf5}
+      .pack-review-flag.warn{border-color:#f1d39b;background:#fff7e6}
+      .pack-review-flag.bad{border-color:#e4b1b5;background:#fff1f2}
+      .pack-review-flag.muted{border-color:#d6e0ef;background:#f7fafe}
       .pack-review-flow{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));margin:14px 0}
       .pack-review-flow-item{display:grid;gap:6px;padding:12px;border:1px solid #d6e0ef;border-radius:14px;background:linear-gradient(180deg,#fcfdff,#f7fafe)}
       .pack-review-flow-item strong{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#245372}
@@ -8072,11 +8576,17 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           selectedPack.episodes[0] ? `${selectedPack.episodes[0].id} / ${selectedPack.episodes[0].topic ?? "-"}` : "No episode yet"
         )}</strong><p>active compare: ${escHtml(compareHref ? "available" : "none")}</p></article><article class="pack-review-card"><span>Preview / QC</span><strong>preview=${escHtml(
           selectedPreviewExists ? "exists" : "missing"
-        )} / qc=${escHtml(selectedQcExists ? "exists" : "missing")}</strong><p>issues=${escHtml(String(selectedQcIssues.length))}</p></article><article class="pack-review-card"><span>Lineage / Jobs</span><strong>${escHtml(
+        )} / qc=${escHtml(selectedQcExists ? "exists" : "missing")}</strong><p>issues=${escHtml(String(selectedQcIssues.length))}</p></article><article class="pack-review-card"><span>Rig / Anchor</span><strong>${escHtml(
+          selectedPackRigStateTitle
+        )}</strong><p>anchor=${escHtml(
+          formatMetric(selectedPackRigSummary?.anchorConfidenceOverall)
+        )} / compare=${escHtml(compareHref ? "available" : "none")}</p></article><article class="pack-review-card"><span>Lineage / Jobs</span><strong>${escHtml(
           selectedGeneratedLineage?.acceptanceStatus ?? "unknown"
         )} / jobs=${escHtml(String(selectedPack.episodes[0]?.jobs.length ?? 0))}</strong><p>repair=${escHtml(
           selectedGeneratedLineage ? String(selectedGeneratedLineage.repairOpenCount) : "-"
         )}</p></article></div><div class="pack-review-flow"><article class="pack-review-flow-item"><strong>Preview</strong><span>Confirm the visual handoff before you leave for compare or approval.</span></article><article class="pack-review-flow-item"><strong>QC</strong><span>Read severity and details before a pack moves forward.</span></article><article class="pack-review-flow-item"><strong>Lineage</strong><span>Use provenance to understand where this pack came from and what repair pressure remains.</span></article><article class="pack-review-flow-item"><strong>Jobs</strong><span>Keep the latest episode and jobs visible while the review stays open.</span></article></div>${
+          selectedPackRigSection
+        }${
           selectedPreviewExists && selectedPreviewUrl
             ? `<section class="card"><h3>Preview Player</h3><video controls preload="metadata" style="width:100%;max-width:960px;background:#000;border-radius:8px" src="${escHtml(
                 selectedPreviewUrl

@@ -30,6 +30,7 @@ assertIncludes(html, "Recent Generation Runs", "jobs section heading");
 const statusScript = buildCharacterGeneratorStatusScript();
 assertIncludes(statusScript, "coherence=", "coherence status fragment");
 assertIncludes(statusScript, "reroute=", "auto reroute status fragment");
+assertIncludes(statusScript, "rig=", "rig status fragment");
 assertIncludes(statusScript, "selection-risk=", "selection risk status fragment");
 assertIncludes(statusScript, "quality-embargo=", "quality embargo status fragment");
 assertIncludes(statusScript, "final-firewall=", "final quality firewall status fragment");
