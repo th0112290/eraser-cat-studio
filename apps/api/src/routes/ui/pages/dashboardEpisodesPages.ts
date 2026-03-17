@@ -30,6 +30,28 @@ type EpisodesPageBodyInput = {
   autoRefreshScript: string;
 };
 
+const DASHBOARD_RIG_QUEUE_HREF = "/ui/benchmarks?filter-benchmark-regression-table=rig#benchmark-regressions";
+const DASHBOARD_LOW_ANCHOR_HREF = "/ui/benchmarks?filter-benchmark-regression-table=anchor#benchmark-regressions";
+const DASHBOARD_RECREATE_RECOMMENDED_HREF = "/ui/benchmarks?filter-benchmark-regression-table=recreate#benchmark-regressions";
+const DASHBOARD_RIG_ROLLOUTS_HREF = "/ui/rollouts?filter-rollouts-table=rig#rollout-signal-table";
+const DASHBOARD_GENERATOR_COMPARE_HREF = "/ui/character-generator?focus=pick-candidates#pick-candidates";
+const DASHBOARD_GENERATOR_RECREATE_HREF = "/ui/character-generator?focus=recreate-pack#recreate-pack";
+const DASHBOARD_REPAIR_EXPLORER_HREF = "/ui/benchmarks/repair-acceptance?repair=rig#repair-acceptance-table";
+const DASHBOARD_LOW_ANCHOR_REPAIR_HREF = "/ui/benchmarks/repair-acceptance?q=anchor#repair-acceptance-table";
+const DASHBOARD_RECREATE_REPAIR_HREF = "/ui/benchmarks/repair-acceptance?q=recreate#repair-acceptance-table";
+
+function buildEpisodeGeneratorCompareHref(episodeId: string): string {
+  return `/ui/character-generator?currentObject=${encodeURIComponent(`episode:${episodeId}`)}&focus=pick-candidates#pick-candidates`;
+}
+
+function buildEpisodeBenchmarkHref(episodeId: string): string {
+  return `/ui/benchmarks?filter-benchmark-regression-table=${encodeURIComponent(episodeId)}#benchmark-regressions`;
+}
+
+function buildEpisodeRepairExplorerHref(episodeId: string): string {
+  return `/ui/benchmarks/repair-acceptance?q=${encodeURIComponent(episodeId)}#repair-acceptance-table`;
+}
+
 const OPERATOR_PATTERN_STYLE = `<style>
 :root{--ops-density-gap:10px;--ops-density-card-padding:12px;--ops-density-cell-y:10px;--ops-density-cell-x:12px}
 body[data-shell-density="compact"],body[data-density="compact"],body[data-ui-density="compact"],body[class*="density-compact"]{--ops-density-gap:8px;--ops-density-card-padding:10px;--ops-density-cell-y:8px;--ops-density-cell-x:10px}
@@ -198,6 +220,9 @@ function renderPoweredEpisodeRows(rowsHtml: string): string {
         rowActions.push({ kind: "link", label: "Approve", href: `/ui/publish?episodeId=${encodeURIComponent(episodeId)}` });
       }
       rowActions.push({ kind: "link", label: "Open artifacts", href: `/ui/artifacts?episodeId=${encodeURIComponent(episodeId)}` });
+      rowActions.push({ kind: "link", label: "Generator", href: buildEpisodeGeneratorCompareHref(episodeId) });
+      rowActions.push({ kind: "link", label: "Benchmarks", href: buildEpisodeBenchmarkHref(episodeId) });
+      rowActions.push({ kind: "link", label: "Repair", href: buildEpisodeRepairExplorerHref(episodeId) });
       rowActions.push({ kind: "copy", label: "Copy ID/path", value: episodeId });
 
       return `<tr data-list-row="1" data-episode-row="${episodeId}" data-list-status="${statusText.toUpperCase()}" data-list-created-at="${createdText}" data-list-tags="${episodeRowTags(
@@ -478,7 +503,7 @@ ${renderOpsStyle()}
       <h1>대시보드</h1>
       <p class="section-intro">오늘의 blocker, 다음 안전 액션, 최근 오브젝트를 위에서 먼저 읽고 detail과 recover로 내려가는 surface입니다.</p>
     </div>
-    <div class="quick-links"><a href="/ui/episodes">에피소드</a><a href="/ui/jobs">작업</a><a href="/ui/hitl">HITL</a><a href="/ui/health">상태</a></div>
+    <div class="quick-links"><a href="/ui/episodes">Episodes</a><a href="${DASHBOARD_GENERATOR_COMPARE_HREF}">Generator compare</a><a href="${DASHBOARD_RIG_QUEUE_HREF}">Rig queue</a><a href="${DASHBOARD_REPAIR_EXPLORER_HREF}">Repair explorer</a></div>
   </div>
   <div class="ops-kpi-grid">
     ${renderMetricCard("Overall", input.overall, "전체 상태를 먼저 보고 그 아래 action rail로 내려갑니다.")}
@@ -588,8 +613,38 @@ ${renderRailSection({
 
 ${renderRailSection({
   title: "Saved view launchpad",
-  intro: "Use the dashboard as the entry point for URL-backed list views. Jobs and episodes apply the full local saved-view contract, while benchmark and rollout presets deep-link into the shell search contract that already exists.",
+  intro: "Use the dashboard as the operator launchpad. Rig review, low anchor confidence, and recreate handoff should sit next to queue and runtime signals instead of hiding behind deeper evidence pages.",
   cards: [
+    {
+      title: UI_TEXT.common.rigReviewQueue,
+      intro: "Start here when rig stability, review-only handling, or runtime fallback pressure begins to stack across benchmark bundles.",
+      tone: "bad",
+      items: [
+        { label: "queue first", detail: "The regression queue stays above raw evidence so rig backlog is visible from the first screen." },
+        { label: "handoff second", detail: "Jump straight into Character Generator compare or Repair Explorer without rebuilding context." }
+      ],
+      linksHtml: `<a href="${DASHBOARD_RIG_QUEUE_HREF}">Benchmarks</a><a href="${DASHBOARD_REPAIR_EXPLORER_HREF}">Repair explorer</a><a href="${DASHBOARD_GENERATOR_COMPARE_HREF}">Generator compare</a>`
+    },
+    {
+      title: UI_TEXT.common.lowAnchorConfidence,
+      intro: "Anchor confidence drift should open a safer review route before it turns into ad hoc retry or runtime breakage.",
+      tone: "warn",
+      items: [
+        { label: "anchor filter", detail: "Open benchmark rows already filtered toward anchor-related warnings or rig reasons." },
+        { label: "safe next action", detail: "Manual compare and repair review stay ahead of recreate or deeper artifact reading." }
+      ],
+      linksHtml: `<a href="${DASHBOARD_LOW_ANCHOR_HREF}">Benchmarks</a><a href="${DASHBOARD_LOW_ANCHOR_REPAIR_HREF}">Repair explorer</a><a href="${DASHBOARD_GENERATOR_COMPARE_HREF}">Generator compare</a>`
+    },
+    {
+      title: UI_TEXT.common.recreateRecommended,
+      intro: "When rig instability compounds, surface recreate as a deliberate handoff instead of making operators hunt through rollout detail first.",
+      tone: "warn",
+      items: [
+        { label: "recreate queue", detail: "Use benchmark or repair review to confirm recreate pressure is systemic, not just one noisy row." },
+        { label: "wide reset", detail: "Pack recreate stays one click away from the same launch rail." }
+      ],
+      linksHtml: `<a href="${DASHBOARD_RECREATE_RECOMMENDED_HREF}">Benchmarks</a><a href="${DASHBOARD_RECREATE_REPAIR_HREF}">Repair explorer</a><a href="${DASHBOARD_GENERATOR_RECREATE_HREF}">Pack recreate</a>`
+    },
     {
       title: "Failed jobs",
       intro: "Open the jobs list with the failed-job preset and keep retry, recover, and publish handoff in one URL.",
@@ -606,40 +661,30 @@ ${renderRailSection({
       tone: "warn",
       items: [
         { label: "saved view", detail: "episodesView=stale-episodes keeps stale active rows pinned without changing the global queue." },
-        { label: "deep links", detail: "Row actions still hand off to detail, A/B compare, rollback, artifacts, and publish." }
+        { label: "deep links", detail: "Row actions now keep Generator compare, Benchmarks, Repair Explorer, detail, rollback, artifacts, and publish adjacent." }
       ],
       linksHtml: '<a href="/ui/episodes?episodesView=stale-episodes">View</a><a href="/ui/episodes?episodesView=stale-episodes#episodes-list-power">Compare</a>'
     },
     {
-      title: "Benchmark regressions",
-      intro: "This route is still rendered in uiRoutes.ts, so the dashboard exposes a URL-backed regression deep link instead of an in-file saved-view implementation.",
-      tone: "warn",
-      items: [
-        { label: "shell contract", detail: "The shell search field already hydrates from filter-benchmark-regression-table." },
-        { label: "handoff", detail: "Use the benchmark regression section before candidate compare or rollout detail." }
-      ],
-      linksHtml: '<a href="/ui/benchmarks?filter-benchmark-regression-table=blocked#benchmark-regressions">View</a>'
-    },
-    {
-      title: "Rollout blocked only",
-      intro: "Rollouts also stay owned by uiRoutes.ts today, so the dashboard uses the existing shell search param to launch blocked-only review.",
+      title: "Rollout rig drift",
+      intro: "When runtime or review pressure looks rig-driven, open the rollout queue on the same filter contract instead of dropping into artifact detail first.",
       tone: "bad",
       items: [
-        { label: "shell contract", detail: "The rollout queue search already mirrors its filter into the URL." },
-        { label: "handoff", detail: "Review blocked signals before compare-before-promote or artifact detail." }
+        { label: "shell contract", detail: "The rollout shell search hydrates from filter-rollouts-table on the queue surface." },
+        { label: "linked review", detail: "Use rollouts to confirm queue-level spread, then jump into benchmarks or repair review." }
       ],
-      linksHtml: '<a href="/ui/rollouts?filter=blocked#rollout-signal-table">View</a>'
+      linksHtml: `<a href="${DASHBOARD_RIG_ROLLOUTS_HREF}">Rollouts</a><a href="${DASHBOARD_RIG_QUEUE_HREF}">Benchmarks</a><a href="${DASHBOARD_REPAIR_EXPLORER_HREF}">Repair explorer</a>`
     },
     {
       title: "Board help",
-      intro: "Use the dashboard to choose a next action and reopen recent objects, not to do deep evidence review.",
+      intro: "Use the dashboard to choose the next safe action and linked review surface first, not to do deep evidence review here.",
       tone: "muted",
       items: [
-        { label: "Today, then detail", detail: "Read blockers and next actions here, then move into the owned list or detail surface." },
+        { label: "Today, then review surface", detail: "Read blockers and next actions here, then move into Generator compare, Benchmarks, Repair Explorer, or the owned list surface." },
         { label: "Recent objects", detail: "Reopen episodes or jobs from the recent cards when you need continuity without rebuilding context." },
-        { label: "Saved-view launchpad", detail: "Use the launchpad to reopen jobs, episodes, benchmarks, or rollouts with URL-backed state." }
+        { label: "Saved-view launchpad", detail: "Use the launchpad to reopen jobs, episodes, rig review queues, or rollouts with URL-backed state." }
       ],
-      linksHtml: '<a href="/ui/jobs">Jobs</a><a href="/ui/episodes">Episodes</a><a href="/ui/rollouts">Rollouts</a>'
+      linksHtml: `<a href="/ui/jobs">Jobs</a><a href="${DASHBOARD_GENERATOR_COMPARE_HREF}">Generator compare</a><a href="${DASHBOARD_REPAIR_EXPLORER_HREF}">Repair explorer</a>`
     }
   ]
 })}
@@ -680,7 +725,7 @@ ${listPowerSurface}
       <h1>${t.title}</h1>
       <p class="section-intro">list 화면에서 object, live state, next action을 먼저 읽고 detail과 recover로 내려가는 흐름을 맞춥니다.</p>
     </div>
-    <div class="quick-links"><a href="/ui/jobs">${t.quickLinksJobs}</a><a href="/ui/artifacts">${t.quickLinksArtifacts}</a><a href="/ui/publish">퍼블리시</a></div>
+    <div class="quick-links"><a href="/ui/jobs">${t.quickLinksJobs}</a><a href="${DASHBOARD_GENERATOR_COMPARE_HREF}">Generator compare</a><a href="${DASHBOARD_RIG_QUEUE_HREF}">Rig queue</a><a href="${DASHBOARD_REPAIR_EXPLORER_HREF}">Repair explorer</a></div>
   </div>
   <div class="ops-kpi-grid">
     ${renderMetricCard("오브젝트", "<strong>topic, channel, duration</strong>", "row마다 같은 object grammar로 읽습니다.")}

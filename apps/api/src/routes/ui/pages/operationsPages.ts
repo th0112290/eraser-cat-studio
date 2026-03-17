@@ -140,6 +140,16 @@ function renderOpsStyle(): string {
   return OPERATOR_PATTERN_STYLE + renderListPowerStyle();
 }
 
+const OPS_GENERATOR_COMPARE_HREF = "/ui/character-generator?focus=pick-candidates#pick-candidates";
+const OPS_GENERATOR_RECREATE_HREF = "/ui/character-generator?focus=recreate-pack#recreate-pack";
+const OPS_RIG_BENCHMARK_QUEUE_HREF = "/ui/benchmarks?benchmarkRegressionFilter=rig#benchmark-regression-table";
+const OPS_ANCHOR_BENCHMARK_QUEUE_HREF = "/ui/benchmarks?benchmarkRegressionFilter=anchor#benchmark-regression-table";
+const OPS_RECREATE_BENCHMARK_QUEUE_HREF = "/ui/benchmarks?benchmarkRegressionFilter=recreate#benchmark-regression-table";
+const OPS_RIG_ROLLOUT_QUEUE_HREF = "/ui/rollouts?rolloutFilter=rig#rollouts-table";
+const OPS_REPAIR_RIG_HREF = "/ui/benchmarks/repair-acceptance?repair=rig#repair-acceptance-table";
+const OPS_REPAIR_ANCHOR_HREF = "/ui/benchmarks/repair-acceptance?q=anchor#repair-acceptance-table";
+const OPS_REPAIR_RECREATE_HREF = "/ui/benchmarks/repair-acceptance?q=recreate#repair-acceptance-table";
+
 function renderMetricCard(label: string, value: string, hint: string): string {
   return `<div class="ops-kpi"><span class="ops-kpi-label">${label}</span><div class="ops-kpi-value">${value}</div><div class="caption">${hint}</div></div>`;
 }
@@ -1961,9 +1971,9 @@ ${renderOpsStyle()}
     <div class="ops-titleblock">
       <span class="eyebrow">decision surface</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Read rollout and compare signals as a decision surface rather than raw JSON. Keep judgement, recovery, and linked evidence on the same level.</p>
+      <p class="section-intro">Read rollout signals as a queue for quality, runtime, and rig stability together. Put the next safe action and linked review surface ahead of raw evidence.</p>
     </div>
-    <div class="quick-links"><a href="/ui/benchmarks">Benchmarks</a><a href="/ui/health">${t.openHealth}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+    <div class="quick-links"><a href="${OPS_RIG_BENCHMARK_QUEUE_HREF}">Rig queue</a><a href="${OPS_GENERATOR_COMPARE_HREF}">${t.openGeneratorCompare}</a><a href="${OPS_REPAIR_RIG_HREF}">${t.openRepairExplorer}</a><a href="/ui/health">${t.openHealth}</a></div>
   </div>
   ${input.flash}
   <div class="summary-grid">${input.summaryCards}</div>
@@ -1971,51 +1981,52 @@ ${renderOpsStyle()}
 
 ${renderRailSection({
   title: "Next safe action",
-  intro: "Fix the filter, compare read order, and recovery anchor before making the decision.",
+  intro: "Start with rig review and linked handoff. Quality and runtime evidence stay adjacent, but rig stability should read as the same class of operator signal.",
   cards: [
     {
-      title: "Signal filter",
-      intro: "Read signal, status, verdict, reason, and source in the same order.",
+      title: UI_TEXT.common.rigReviewQueue,
+      intro: "Open rig-tagged rollout pressure before you fall into one-off artifact detail.",
       tone: "muted",
       bodyHtml: renderSearchCluster({
         id: "rollouts-filter",
         targetId: "rollouts-table",
         label: "Rollout signal filter",
         placeholder: t.filterPlaceholder,
-        hint: "Search signal name, state, verdict, and reason together."
+        urlParam: "rolloutFilter",
+        hint: "Search rig, anchor, recreate, verdict, and reason together."
       })
     },
     {
-      title: "Compare read order",
-      intro: "Read status and verdict first, then move into compare action.",
+      title: "Rig stability handoff",
+      intro: "When the queue smells like rig drift, open the safest linked review surface first.",
       tone: "warn",
       items: [
-        { label: "status", detail: "Read blocked and below-min signals first." },
-        { label: "verdict / reason", detail: "Keep verdict and reason legible on the same line." },
-        { label: "compare action", detail: "Choose the next compare action before opening raw JSON." }
+        { label: "rig queue", detail: "Keep rig-tagged rollout rows visible before general healthy queue noise." },
+        { label: "generator compare", detail: "Manual compare is the safest first handoff when anchor confidence or review-only handling appears." },
+        { label: "repair explorer", detail: "Open repair review before deciding that recreate is truly systemic." }
       ]
     },
     {
       title: "Recovery / linked evidence",
-      intro: "Keep the path from rollout signal into benchmarks, artifacts, and health visible together.",
+      intro: "Keep the path from rollout signal into benchmarks, generator compare, and repair review visible together.",
       tone: "ok",
       items: [
-        { label: "Benchmark compare", detail: "Inspect the matching upstream benchmark first." },
-        { label: "Artifacts handoff", detail: "After a rollout verdict, drop only into linked outputs." },
-        { label: "Health check", detail: "Confirm whether platform health influenced the signal." }
+        { label: "Benchmark queue", detail: "Inspect the matching upstream benchmark queue first." },
+        { label: "Generator compare", detail: "Jump straight into candidate compare when the rollout queue points at rig instability." },
+        { label: "Repair explorer", detail: "Use repair review to decide whether the next safe action is compare, repair, or recreate." }
       ],
-      linksHtml: '<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/artifacts">Artifacts</a><a href="/ui/health">Health</a>'
+      linksHtml: `<a href="${OPS_RIG_BENCHMARK_QUEUE_HREF}">Rig queue</a><a href="${OPS_GENERATOR_COMPARE_HREF}">${t.openGeneratorCompare}</a><a href="${OPS_REPAIR_RIG_HREF}">${t.openRepairExplorer}</a>`
     },
     {
       title: "Rollout help",
-      intro: "Treat rollout rows as decision signals first, and only drop into raw evidence when the signal still looks ambiguous.",
+      intro: "Treat rollout rows as decision signals first, and only drop into raw evidence when rig, quality, and runtime context still feels ambiguous.",
       tone: "muted",
       items: [
-        { label: "Read order", detail: "Status, verdict, and reason should answer most decisions before you inspect the source payloads." },
-        { label: "Blocked-first review", detail: "Keep blocked or below-min rows above healthy rollout noise so compare work stays focused." },
-        { label: "Secondary evidence", detail: "Use linked benchmarks, artifacts, or health only when the row itself cannot explain the signal." }
+        { label: "Read order", detail: "Status, verdict, and reason should answer most rig review decisions before you inspect the source payloads." },
+        { label: "Blocked-first review", detail: "Keep blocked or rig-tagged rows above healthy rollout noise so compare work stays focused." },
+        { label: "Secondary evidence", detail: "Use linked benchmarks, repair review, or health only when the row itself cannot explain the signal." }
       ],
-      linksHtml: '<a href="/ui/benchmarks">Benchmarks</a><a href="/ui/health">Health</a>'
+      linksHtml: `<a href="${OPS_GENERATOR_COMPARE_HREF}">${t.openGeneratorCompare}</a><a href="${OPS_REPAIR_RIG_HREF}">${t.openRepairExplorer}</a><a href="/ui/health">Health</a>`
     }
   ]
 })}
@@ -2024,7 +2035,7 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.tableTitle}</h2>
-      <p class="section-intro">Read each signal as signal -> verdict -> reason -> next compare action.</p>
+      <p class="section-intro">Read each signal as signal -> verdict -> rig or runtime reason -> next safe action.</p>
     </div>
   </div>
   <div class="table-wrap"><table id="rollouts-table" aria-label="Rollout signal table">${renderSrOnlyCaption("Rollout signal table with object, decision state, reason, and source links.")}<thead><tr><th>Object / compare action</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th><th>Created at</th><th>Source</th></tr></thead><tbody>${
@@ -2053,9 +2064,9 @@ ${renderOpsStyle()}
     <div class="ops-titleblock">
       <span class="eyebrow">compare surface</span>
       <h1>${t.title}</h1>
-      <p class="section-intro">Benchmarks combine scenario compare with regression recovery. Put compare judgement and next action above heavy evidence.</p>
+      <p class="section-intro">Benchmarks now carry rig stability alongside runtime and quality. Put the next safe action and linked review surface above heavy evidence.</p>
     </div>
-    <div class="quick-links"><a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
+    <div class="quick-links"><a href="${OPS_RIG_ROLLOUT_QUEUE_HREF}">Rig rollouts</a><a href="${OPS_GENERATOR_COMPARE_HREF}">${t.openGeneratorCompare}</a><a href="${OPS_REPAIR_RIG_HREF}">${t.openRepairExplorer}</a><a href="/ui/artifacts">${t.openArtifacts}</a></div>
   </div>
   ${input.flash}
   <div class="summary-grid">${input.summaryCards}</div>
@@ -2063,49 +2074,50 @@ ${renderOpsStyle()}
 
 ${renderRailSection({
   title: "Next safe action",
-  intro: "Read the backend matrix and regression queue with the same compare grammar, and push sources to the end.",
+  intro: "Read the backend matrix and regression queue with the same compare grammar, but let rig review and linked handoff lead the page.",
   cards: [
     {
-      title: "backend matrix read order",
-      intro: "Read the scenario state, latency, failure rate, and notes before deciding whether a backend is still safe enough for current work.",
+      title: UI_TEXT.common.rigReviewQueue,
+      intro: "Use the regression queue to make rig pressure visible before you spread attention across backend summaries.",
       tone: "muted",
       items: [
-        { label: "state", detail: "Confirm first whether the scenario is still usable." },
-        { label: "latency + failure rate", detail: "Read cost and reliability together before escalating the issue." },
-        { label: "linked outputs", detail: "Open smoke or plan artifacts only when the benchmark row needs more evidence." }
+        { label: "rig first", detail: "Filter rig, anchor, or recreate language before treating the page as a generic regression queue." },
+        { label: "safe route", detail: "Open Character Generator compare or Repair Explorer before you commit to a wider recreate path." },
+        { label: "backend second", detail: "Latency and reliability still matter, but only after you know whether rig instability is the main driver." }
       ]
     },
     {
-      title: "Regression queue read order",
-      intro: "Read warnings and errors first, then attach drift and issues behind them.",
+      title: UI_TEXT.common.lowAnchorConfidence,
+      intro: "Low anchor confidence should read as a first-class regression reason, not a hidden note behind drift text.",
       tone: "warn",
       items: [
-        { label: "warning / error", detail: "Inspect risk signals first." },
-        { label: "Drift review", detail: "Read how far the compare result moved only after risk is clear." },
-        { label: "Issue separation", detail: "Choose the next action before dropping into raw evidence." }
-      ]
+        { label: "anchor warnings", detail: "Read anchor-related warnings before broader drift or issue summaries." },
+        { label: "manual compare", detail: "Use Generator compare as the default safe action when anchor confidence looks weak." },
+        { label: "repair review", detail: "Keep repair review adjacent so anchor drift does not collapse into raw evidence reading." }
+      ],
+      linksHtml: `<a href="${OPS_ANCHOR_BENCHMARK_QUEUE_HREF}">Anchor queue</a><a href="${OPS_GENERATOR_COMPARE_HREF}">${t.openGeneratorCompare}</a><a href="${OPS_REPAIR_ANCHOR_HREF}">${t.openRepairExplorer}</a>`
     },
     {
-      title: "linked compare flow",
-      intro: "Connect benchmark findings to rollouts and artifacts only after you know which benchmark row is driving the decision.",
+      title: UI_TEXT.common.recreateRecommended,
+      intro: "When recreate is surfacing repeatedly, keep that handoff explicit and adjacent to the benchmark row.",
       tone: "ok",
       items: [
-        { label: "hand off to rollouts", detail: "Jump to the rollout decision surface with the same candidate in mind." },
-        { label: "check artifacts sparingly", detail: "Open linked outputs only when the benchmark row still looks ambiguous." },
-        { label: "sources stay last", detail: "Treat raw source rows as secondary evidence after the compare decision is mostly clear." }
+        { label: "recreate pressure", detail: "Confirm whether recreate is isolated or queue-wide before taking the wider reset path." },
+        { label: "rollout check", detail: "Use rollout review to see whether rig instability is spreading beyond one benchmark row." },
+        { label: "pack recreate", detail: "Keep the Character Generator recreate lane one click away from the queue." }
       ],
-      linksHtml: `<a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a>`
+      linksHtml: `<a href="${OPS_RECREATE_BENCHMARK_QUEUE_HREF}">Recreate queue</a><a href="${OPS_GENERATOR_RECREATE_HREF}">Pack recreate</a><a href="${OPS_REPAIR_RECREATE_HREF}">${t.openRepairExplorer}</a><a href="${OPS_RIG_ROLLOUT_QUEUE_HREF}">Rig rollouts</a>`
     },
     {
       title: "Benchmark help",
       intro: "Use the backend matrix and regression queue to decide what changed before you open linked sources or rollout surfaces.",
       tone: "muted",
       items: [
-        { label: "Backend matrix first", detail: "Latency, success rate, and notes should tell you whether a backend is still safe enough for current work." },
-        { label: "Regression queue second", detail: "Warnings and errors deserve attention before you scan the long source evidence rows." },
-        { label: "Compare handoff", detail: "Jump to rollouts or artifacts only after you know which benchmark row is actually driving the decision." }
+        { label: "Rig alongside runtime", detail: "Rig stability should be read at the same level as runtime and quality, not after them." },
+        { label: "Regression queue second", detail: "Warnings and errors still deserve attention before you scan the long source evidence rows." },
+        { label: "Compare handoff", detail: "Jump to Generator compare, Repair Explorer, or rollouts only after you know which benchmark row is actually driving the decision." }
       ],
-      linksHtml: `<a href="/ui/rollouts">${t.openRollouts}</a><a href="/ui/artifacts">${t.openArtifacts}</a>`
+      linksHtml: `<a href="${OPS_GENERATOR_COMPARE_HREF}">${t.openGeneratorCompare}</a><a href="${OPS_REPAIR_RIG_HREF}">${t.openRepairExplorer}</a><a href="${OPS_RIG_ROLLOUT_QUEUE_HREF}">Rig rollouts</a>`
     }
   ]
 })}
@@ -2127,7 +2139,7 @@ ${renderRailSection({
   <div class="ops-table-meta">
     <div>
       <h2>${t.regressionTitle}</h2>
-      <p class="section-intro">Regression queue is the first entry point. Read warnings and errors first, then drift and issues after them.</p>
+      <p class="section-intro">Regression queue is the first entry point. Read rig, anchor, and recreate signals before you descend into drift or raw evidence.</p>
     </div>
     <input id="benchmark-regression-filter" type="search" data-table-filter="benchmark-regression-table" data-url-param="benchmarkRegressionFilter" aria-label="Regression report filter" aria-controls="benchmark-regression-table" placeholder="${t.regressionFilterPlaceholder}"/>
   </div>
