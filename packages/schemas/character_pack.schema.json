@@ -4,6 +4,141 @@
   "title": "CharacterPack",
   "type": "object",
   "required": ["schema_version", "pack_id", "meta", "canvas", "assets", "skeleton", "slots", "visemes", "expressions", "clips", "ik_chains"],
+  "$defs": {
+    "anchor_id": {
+      "type": "string",
+      "enum": [
+        "head_center",
+        "mouth_center",
+        "eye_near",
+        "eye_far",
+        "ear_near",
+        "ear_far",
+        "paw_anchor",
+        "tail_root"
+      ]
+    },
+    "anchor_view": {
+      "type": "string",
+      "enum": ["front", "threeQuarter", "profile"]
+    },
+    "anchor_entry": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "status": { "type": "string", "enum": ["present", "occluded", "missing", "not_applicable"] },
+        "notes": { "type": "string" }
+      },
+      "dependentRequired": {
+        "x": ["y"],
+        "y": ["x"]
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["status"],
+            "properties": {
+              "status": { "const": "present" }
+            }
+          },
+          "then": {
+            "required": ["x", "y"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "anchor_view_manifest": {
+      "type": "object",
+      "properties": {
+        "head_center": { "$ref": "#/$defs/anchor_entry" },
+        "mouth_center": { "$ref": "#/$defs/anchor_entry" },
+        "eye_near": { "$ref": "#/$defs/anchor_entry" },
+        "eye_far": { "$ref": "#/$defs/anchor_entry" },
+        "ear_near": { "$ref": "#/$defs/anchor_entry" },
+        "ear_far": { "$ref": "#/$defs/anchor_entry" },
+        "paw_anchor": { "$ref": "#/$defs/anchor_entry" },
+        "tail_root": { "$ref": "#/$defs/anchor_entry" }
+      },
+      "additionalProperties": false
+    },
+    "anchor_view_summary": {
+      "type": "object",
+      "properties": {
+        "present_anchor_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor_id" }
+        },
+        "missing_anchor_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor_id" }
+        },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "anchor_summary": {
+      "type": "object",
+      "properties": {
+        "covered_views": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor_view" }
+        },
+        "missing_views": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor_view" }
+        },
+        "by_view": {
+          "type": "object",
+          "properties": {
+            "front": { "$ref": "#/$defs/anchor_view_summary" },
+            "threeQuarter": { "$ref": "#/$defs/anchor_view_summary" },
+            "profile": { "$ref": "#/$defs/anchor_view_summary" }
+          },
+          "additionalProperties": false
+        },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "anchor_confidence_summary": {
+      "type": "object",
+      "properties": {
+        "overall": { "type": "number", "minimum": 0, "maximum": 1 },
+        "by_view": {
+          "type": "object",
+          "properties": {
+            "front": { "type": "number", "minimum": 0, "maximum": 1 },
+            "threeQuarter": { "type": "number", "minimum": 0, "maximum": 1 },
+            "profile": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "additionalProperties": false
+        },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "anchor_manifest": {
+      "type": "object",
+      "properties": {
+        "views": {
+          "type": "object",
+          "properties": {
+            "front": { "$ref": "#/$defs/anchor_view_manifest" },
+            "threeQuarter": { "$ref": "#/$defs/anchor_view_manifest" },
+            "profile": { "$ref": "#/$defs/anchor_view_manifest" }
+          },
+          "additionalProperties": false
+        },
+        "summary": { "$ref": "#/$defs/anchor_summary" },
+        "confidence_summary": { "$ref": "#/$defs/anchor_confidence_summary" }
+      },
+      "additionalProperties": false
+    }
+  },
   "properties": {
     "schema_version": { "type": "string", "enum": ["1.0"] },
     "pack_id": { "type": "string" },
@@ -35,6 +170,11 @@
       "properties": {
         "images": { "type": "object", "additionalProperties": { "type": "string" } }
       }
+    },
+
+    "anchors": {
+      "description": "Explicit landmark/anchor manifest shared by runtime and QC.",
+      "$ref": "#/$defs/anchor_manifest"
     },
 
     "slots": {
