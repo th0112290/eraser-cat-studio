@@ -75,6 +75,8 @@ export const UI_TEXT = {
     subtitle: "로컬, 사이드카, 메인 레포의 out/ 루트 전반에서 벤치마크와 롤아웃 JSON 산출물을 확인합니다.",
     openHealth: "상태 열기",
     openArtifacts: "산출물 열기",
+    openGeneratorCompare: "Generator compare",
+    openRepairExplorer: "Repair explorer",
     sourcesTitle: "산출물 소스",
     sourcesHint: "보드는 우선순위 순서대로 후보 out/ 루트를 스캔하며, 일부 데이터가 없어도 동작합니다.",
     tableTitle: "롤아웃 신호",
@@ -86,6 +88,8 @@ export const UI_TEXT = {
     subtitle: "로컬, 사이드카, 메인 레포의 out/ 루트 전반에서 백엔드 벤치마크 매트릭스와 에피소드 회귀 리포트를 확인합니다.",
     openRollouts: "롤아웃 열기",
     openArtifacts: "산출물 열기",
+    openGeneratorCompare: "Generator compare",
+    openRepairExplorer: "Repair explorer",
     sourcesTitle: "벤치마크 소스",
     sourcesHint: "뷰어는 공유 out/ 루트를 스캔하며 누락된 JSON 산출물도 허용합니다.",
     backendTitle: "백엔드 벤치마크 매트릭스",
@@ -98,7 +102,10 @@ export const UI_TEXT = {
   common: {
     searchPlaceholder: "검색",
     details: "상세",
-    open: "열기"
+    open: "열기",
+    rigReviewQueue: "Rig review queue",
+    lowAnchorConfidence: "Low anchor confidence",
+    recreateRecommended: "Recreate recommended"
   }
 } as const;
 
