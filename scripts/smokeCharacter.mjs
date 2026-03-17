@@ -3,7 +3,6 @@ import path from "node:path";
 
 const API_BASE_URL = process.env.API_BASE_URL?.trim() || "http://localhost:3000";
 const POLL_INTERVAL_MS = Number.parseInt(process.env.SMOKE_POLL_MS ?? "1200", 10);
-const POLL_TIMEOUT_MS = Number.parseInt(process.env.SMOKE_TIMEOUT_MS ?? "1200000", 10);
 const REQUIRE_CONTINUITY = process.env.SMOKE_REQUIRE_CONTINUITY === "1";
 const REQUESTED_PROVIDER = process.env.SMOKE_CHARACTER_PROVIDER?.trim() || "comfyui";
 const REQUESTED_CANDIDATE_COUNT = Number.parseInt(process.env.SMOKE_CHARACTER_CANDIDATE_COUNT ?? "4", 10);
@@ -11,6 +10,24 @@ const REQUESTED_MAX_ATTEMPTS = Number.parseInt(process.env.SMOKE_CHARACTER_MAX_A
 const REQUESTED_RETRY_BACKOFF_MS = Number.parseInt(process.env.SMOKE_CHARACTER_RETRY_BACKOFF_MS ?? "1000", 10);
 const REQUESTED_SPECIES = (process.env.SMOKE_CHARACTER_SPECIES?.trim().toLowerCase() || "cat");
 const STOP_AFTER_GENERATE = process.env.SMOKE_CHARACTER_STOP_AFTER_GENERATE === "1";
+
+function resolvePollTimeoutMs() {
+  const explicit = Number.parseInt(process.env.SMOKE_TIMEOUT_MS ?? "", 10);
+  if (Number.isInteger(explicit) && explicit > 0) {
+    return explicit;
+  }
+
+  const provider = REQUESTED_PROVIDER.trim().toLowerCase();
+  if (provider === "comfyui") {
+    // Real-provider character generation can legitimately exceed 30 minutes once
+    // front retries, side-view reroutes, and refine passes stack up.
+    return STOP_AFTER_GENERATE ? 5_400_000 : 7_200_000;
+  }
+
+  return 1_200_000;
+}
+
+const POLL_TIMEOUT_MS = resolvePollTimeoutMs();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -523,6 +540,8 @@ async function main() {
   console.log(`[smoke:character] requireContinuity=${REQUIRE_CONTINUITY ? "1" : "0"}`);
   console.log(`[smoke:character] species=${REQUESTED_SPECIES}`);
   console.log(`[smoke:character] stopAfterGenerate=${STOP_AFTER_GENERATE ? "1" : "0"}`);
+  console.log(`[smoke:character] provider=${REQUESTED_PROVIDER}`);
+  console.log(`[smoke:character] timeoutMs=${POLL_TIMEOUT_MS}`);
 
   const seed = Number.parseInt(process.env.SMOKE_CHARACTER_SEED ?? "4242", 10);
   const topic = `Smoke Character Session ${new Date().toISOString()}`;
