@@ -37,16 +37,16 @@ function run(): void {
     const diagnostics = resolveMascotReferenceBankDiagnostics(speciesId);
     const reviewPlan = buildMascotReferenceBankReviewPlan(diagnostics);
     const requirementStatuses = resolveMascotReferenceRequirementStatuses(speciesId);
-    assert.equal(diagnostics.status, "scaffold_only", `${speciesId} bank should stay scaffold_only`);
-    assert.equal(diagnostics.declaredStatus, "scaffold_only", `${speciesId} bank should declare scaffold_only`);
-    assert.equal(diagnostics.statusMismatch, false, `${speciesId} should not have a readiness mismatch while scaffold_only`);
-    assert.equal(diagnostics.styleCount, 0, `${speciesId} bank should not have style refs yet`);
-    assert.equal(diagnostics.heroCount, 0, `${speciesId} bank should not have hero refs yet`);
-    assert.ok(diagnostics.requiredAssetCount >= 5, `${speciesId} bank should declare required intake assets`);
+    assert.equal(diagnostics.status, "species_ready", `${speciesId} bank should now resolve species_ready`);
+    assert.equal(diagnostics.declaredStatus, "species_ready", `${speciesId} bank should declare species_ready`);
+    assert.equal(diagnostics.statusMismatch, false, `${speciesId} should not have a readiness mismatch while species_ready`);
+    assert.ok(diagnostics.styleCount > 0, `${speciesId} bank should now include style refs`);
+    assert.ok(diagnostics.heroCount > 0, `${speciesId} bank should now include hero refs`);
+    assert.ok(diagnostics.requiredAssetCount >= 5, `${speciesId} bank should still declare required intake assets`);
     assert.equal(
       diagnostics.unsatisfiedRequiredAssetCount,
-      diagnostics.requiredAssetCount,
-      `${speciesId} should have all intake slots unsatisfied before assets land`
+      0,
+      `${speciesId} should satisfy all required intake slots now`
     );
     assert.ok(diagnostics.requiredAssetSlots.includes("style.front.primary"), `${speciesId} should require style front asset`);
     assert.ok(
@@ -54,14 +54,15 @@ function run(): void {
       `${speciesId} should require three-quarter family composition asset`
     );
     assert.ok(diagnostics.requiredAssetSlots.includes("hero.front.primary"), `${speciesId} should require hero front asset`);
-    assert.ok(requirementStatuses.every((entry) => entry.satisfied === false), `${speciesId} requirement statuses should start unsatisfied`);
-    assert.ok(diagnostics.missingRoles.includes("style"), `${speciesId} bank should report missing style role`);
-    assert.ok(diagnostics.missingRoles.includes("hero"), `${speciesId} bank should report missing hero role`);
-    assert.equal(reviewPlan.reviewOnly, true, `${speciesId} bank should force review-only proposal mode`);
-    assert.ok(reviewPlan.requiredManualSlots.includes("head_front_neutral"), `${speciesId} should review front head slot`);
-    assert.ok(reviewPlan.requiredManualSlots.includes("torso_profile_neutral"), `${speciesId} should review profile torso slot`);
-    assert.ok(reviewPlan.requiredManualSlots.includes("mouth_round_o"), `${speciesId} should review viseme slots`);
-    assert.equal(resolveMascotStyleReferenceAsset(speciesId), null, `${speciesId} style reference should not resolve`);
+    assert.ok(requirementStatuses.every((entry) => entry.satisfied === true), `${speciesId} requirement statuses should now be satisfied`);
+    assert.deepEqual(diagnostics.missingRoles, [], `${speciesId} bank should not report missing roles now`);
+    assert.equal(reviewPlan.reviewOnly, false, `${speciesId} bank should no longer force review-only proposal mode`);
+    assert.deepEqual(reviewPlan.requiredManualSlots, [], `${speciesId} bank should not require manual pack slots now`);
+    assert.ok(
+      diagnostics.notes.some((entry) => entry.includes("temporary")),
+      `${speciesId} bank notes should still flag the temporary bootstrap provenance`
+    );
+    assert.ok(resolveMascotStyleReferenceAsset(speciesId), `${speciesId} style reference should resolve`);
     expectCompositionAcrossViews(speciesId);
 
     const manifest = resolveMascotReferenceBankManifest(speciesId);

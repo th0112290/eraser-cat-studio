@@ -509,8 +509,21 @@ async function main() {
   }>(pack.metaPath);
   const proposal = readJson<{
     reference_bank?: { status?: string };
-    auto_proposal?: { review_only?: boolean; required_manual_slots?: string[]; notes?: string[] };
+    auto_proposal?: {
+      review_only?: boolean;
+      required_manual_slots?: string[];
+      notes?: string[];
+      anchor_confidence_summary?: { overall?: number };
+      anchor_review?: { missing_anchor_ids?: string[] };
+      anchors?: { views?: { front?: { head_center?: { status?: string } } } };
+    };
   }>(pack.proposalPath);
+  const packDoc = readJson<{
+    anchors?: {
+      confidence_summary?: { overall?: number };
+      views?: { front?: { head_center?: { status?: string } } };
+    };
+  }>(pack.packPath);
   assert.equal(report.reference_bank?.status, "species_ready", "qc report should include species_ready reference bank status");
   assert.equal(packMeta.reference_bank?.status, "species_ready", "pack meta should include species_ready reference bank status");
   assert.equal(proposal.reference_bank?.status, "species_ready", "proposal should include species_ready reference bank status");
@@ -531,6 +544,28 @@ async function main() {
     report.checks?.some((entry) => entry.code === "REFERENCE_BANK_READINESS" && entry.passed === true),
     true,
     "qc report should record REFERENCE_BANK_READINESS"
+  );
+  assert.equal(
+    report.checks?.some((entry) => entry.code === "PACK_ANCHOR_MANIFEST" && entry.passed === true),
+    true,
+    "qc report should record PACK_ANCHOR_MANIFEST"
+  );
+  assert.equal(typeof packDoc.anchors?.confidence_summary?.overall, "number", "pack should include anchor confidence summary");
+  assert.equal(packDoc.anchors?.views?.front?.head_center?.status, "present", "pack should include front head anchor");
+  assert.equal(
+    typeof proposal.auto_proposal?.anchor_confidence_summary?.overall,
+    "number",
+    "proposal should include anchor confidence summary"
+  );
+  assert.deepEqual(
+    proposal.auto_proposal?.anchor_review?.missing_anchor_ids ?? [],
+    [],
+    "smoke proposal should not report missing anchors"
+  );
+  assert.equal(
+    proposal.auto_proposal?.anchors?.views?.front?.head_center?.status,
+    "present",
+    "proposal should embed anchor manifest"
   );
   const shotsPath = buildSmokeShotsPath();
   const outputPath = path.join(OUTPUT_ROOT, shouldRender ? "smoke-generated-character.mp4" : "smoke-generated-character.dryrun.mp4");
