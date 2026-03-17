@@ -5,6 +5,7 @@ import {
   countJudgeIssues,
   createJudgeCheck,
   createJudgeIssue,
+  deriveSidecarFallbackSignal,
   resolveAdaptiveBestOfPolicy,
   type AdaptiveBestOfPolicyAudit,
   type AdaptiveBestOfPolicyConfig,
@@ -44,19 +45,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function firstNumber(record: Record<string, unknown> | undefined, keys: string[]): number | null {
-  if (!record) {
-    return null;
-  }
-  for (const key of keys) {
-    const candidate = record[key];
-    if (typeof candidate === "number" && Number.isFinite(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
 function uniqueStrings(values: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -71,84 +59,6 @@ function uniqueStrings(values: string[]): string[] {
   return out;
 }
 
-function signalFallback(candidate: SidecarJudgeCandidateInput, signal: SidecarSignalKey): SidecarJudgeSignalHint {
-  const metadata = candidate.metadata;
-  if (signal === "motion") {
-    const metadataScore = firstNumber(metadata, ["motion_score", "motionScore", "motion_coherence_score"]);
-    if (metadataScore !== null) {
-      return {
-        score: metadataScore,
-        confidence: 0.66,
-        reasons: ["metadata_motion_fallback"],
-        evidence: {
-          source: "metadata"
-        }
-      };
-    }
-    return {
-      score: 62,
-      confidence: 0.55,
-      reasons: ["default_motion_fallback"],
-      evidence: {}
-    };
-  }
-  if (signal === "subtitle") {
-    const metadataScore = firstNumber(metadata, ["subtitle_score", "subtitleScore", "subtitle_safe_score"]);
-    if (metadataScore !== null) {
-      return {
-        score: metadataScore,
-        confidence: 0.66,
-        reasons: ["metadata_subtitle_fallback"],
-        evidence: {
-          source: "metadata"
-        }
-      };
-    }
-    return {
-      score: candidate.subtitlesExpected ? 68 : 78,
-      confidence: 0.55,
-      reasons: [candidate.subtitlesExpected ? "subtitle_expected_default" : "subtitle_not_expected_default"],
-      evidence: {}
-    };
-  }
-  if (signal === "chart") {
-    const metadataScore = firstNumber(metadata, ["chart_score", "chartScore", "chart_safe_score"]);
-    if (metadataScore !== null) {
-      return {
-        score: metadataScore,
-        confidence: 0.66,
-        reasons: ["metadata_chart_fallback"],
-        evidence: {
-          source: "metadata"
-        }
-      };
-    }
-    return {
-      score: candidate.chartExpected ? 68 : 76,
-      confidence: 0.55,
-      reasons: [candidate.chartExpected ? "chart_expected_default" : "chart_not_expected_default"],
-      evidence: {}
-    };
-  }
-  const metadataScore = firstNumber(metadata, ["identity_score", "identityScore", "mascot_identity_preservation_score"]);
-  if (metadataScore !== null) {
-    return {
-      score: metadataScore,
-      confidence: 0.66,
-      reasons: ["metadata_identity_fallback"],
-      evidence: {
-        source: "metadata"
-      }
-    };
-  }
-  return {
-    score: candidate.referenceImagePath ? 72 : 58,
-    confidence: 0.58,
-    reasons: [candidate.referenceImagePath ? "reference_anchor_present_default" : "reference_anchor_missing_default"],
-    evidence: {}
-  };
-}
-
 function resolveSignalHint(
   candidate: SidecarJudgeCandidateInput,
   providerResult: SidecarJudgeProviderResult,
@@ -156,10 +66,16 @@ function resolveSignalHint(
 ): SidecarJudgeSignalHint {
   const providerSignal = providerResult.signals[signal];
   const candidateHint = candidate.signalHints?.[signal];
-  const fallback = signalFallback(candidate, signal);
+  const fallback = deriveSidecarFallbackSignal(candidate, signal, "judge");
   const providerEvidence = isRecord(providerSignal?.evidence) ? providerSignal.evidence : {};
   const candidateEvidence = isRecord(candidateHint?.evidence) ? candidateHint.evidence : {};
   const fallbackEvidence = isRecord(fallback.evidence) ? fallback.evidence : {};
+  const primarySource =
+    typeof providerSignal?.score === "number"
+      ? providerEvidence.source ?? "provider"
+      : typeof candidateHint?.score === "number"
+        ? candidateEvidence.source ?? "candidate_hint"
+        : fallbackEvidence.source ?? "heuristic";
 
   return {
     score: providerSignal?.score ?? candidateHint?.score ?? fallback.score ?? 0,
@@ -170,7 +86,8 @@ function resolveSignalHint(
       ...fallbackEvidence,
       ...candidateEvidence,
       ...providerEvidence,
-      candidate_id: candidate.candidateId
+      candidate_id: candidate.candidateId,
+      source: primarySource
     }
   };
 }
@@ -268,12 +185,14 @@ function buildRunIssues(input: {
     const standardized = selected.scorecard.signals[signal];
     if (standardized.status === "fail") {
       issues.push(
-        createJudgeIssue(`selected_${signal}_below_threshold`, "ERROR", `Selected candidate ${signal} score is below the policy threshold.`, input.shotId, {
+      createJudgeIssue(`selected_${signal}_below_threshold`, "ERROR", `Selected candidate ${signal} score is below the policy threshold.`, input.shotId, {
           candidate_id: selected.candidate.candidateId,
           signal,
           score: standardized.score,
           threshold: standardized.threshold,
-          confidence: standardized.confidence
+          confidence: standardized.confidence,
+          source: standardized.evidence.source ?? null,
+          anchor_confidence_summary: standardized.evidence.anchor_confidence_summary ?? null
         })
       );
       continue;
@@ -285,7 +204,9 @@ function buildRunIssues(input: {
           signal,
           score: standardized.score,
           threshold: standardized.threshold,
-          confidence: standardized.confidence
+          confidence: standardized.confidence,
+          source: standardized.evidence.source ?? null,
+          anchor_confidence_summary: standardized.evidence.anchor_confidence_summary ?? null
         })
       );
     }
@@ -338,7 +259,7 @@ function buildRun(input: {
         "provider_signal_coverage",
         coveragePassed,
         "ERROR",
-        coveragePassed ? "All candidates have standardized motion/subtitle/chart/identity scores." : "Missing signal scores."
+        coveragePassed ? "All candidates have standardized sidecar signal scores." : "Missing signal scores."
       ),
       createJudgeCheck(
         "selected_candidate_thresholds",

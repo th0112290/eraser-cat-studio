@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import {
   SIDECAR_SIGNAL_KEYS,
+  deriveSidecarFallbackSignal,
   type SidecarJudgeCandidateInput,
   type SidecarJudgeProviderDescriptor,
   type SidecarJudgeSignalHint,
@@ -104,19 +105,6 @@ function uniqueStrings(values: string[]): string[] {
     out.push(normalized);
   }
   return out;
-}
-
-function firstNumber(record: Record<string, unknown> | undefined, keys: string[]): number | null {
-  if (!record) {
-    return null;
-  }
-  for (const key of keys) {
-    const candidate = asFiniteNumber(record[key]);
-    if (candidate !== null) {
-      return candidate;
-    }
-  }
-  return null;
 }
 
 function firstStringArray(record: Record<string, unknown> | undefined, keys: string[]): string[] {
@@ -226,113 +214,6 @@ export function createProcessLocalVlmTransport(input: {
     });
 }
 
-function deriveHeuristicSignal(candidate: SidecarJudgeCandidateInput, signal: SidecarSignalKey): SidecarJudgeSignalHint {
-  const metadata = candidate.metadata;
-  const durationRatio =
-    typeof candidate.outputDurationSeconds === "number" &&
-    Number.isFinite(candidate.outputDurationSeconds) &&
-    candidate.expectedDurationSeconds > 0
-      ? candidate.outputDurationSeconds / candidate.expectedDurationSeconds
-      : null;
-
-  if (signal === "motion") {
-    const metadataScore = firstNumber(metadata, ["motion_score", "motionScore", "motion_coherence_score"]);
-    if (metadataScore !== null) {
-      return {
-        score: clamp(metadataScore, 0, 100),
-        confidence: 0.72,
-        reasons: ["derived_from_motion_metadata"],
-        evidence: {
-          source: "metadata"
-        }
-      };
-    }
-    const score =
-      durationRatio === null
-        ? 62
-        : durationRatio >= 0.94 && durationRatio <= 1.08
-          ? 76
-          : durationRatio >= 0.9 && durationRatio <= 1.12
-            ? 68
-            : 54;
-    return {
-      score,
-      confidence: 0.62,
-      reasons: [durationRatio === null ? "duration_ratio_missing" : "duration_ratio_heuristic"],
-      evidence: {
-        duration_ratio: durationRatio
-      }
-    };
-  }
-
-  if (signal === "subtitle") {
-    const metadataScore = firstNumber(metadata, ["subtitle_score", "subtitleScore", "subtitle_safe_score"]);
-    if (metadataScore !== null) {
-      return {
-        score: clamp(metadataScore, 0, 100),
-        confidence: 0.72,
-        reasons: ["derived_from_subtitle_metadata"],
-        evidence: {
-          source: "metadata"
-        }
-      };
-    }
-    return {
-      score: candidate.subtitlesExpected ? 68 : 80,
-      confidence: 0.58,
-      reasons: [candidate.subtitlesExpected ? "subtitle_expected_without_vlm" : "subtitle_not_expected"],
-      evidence: {
-        subtitle_text_present: Boolean(candidate.subtitleText)
-      }
-    };
-  }
-
-  if (signal === "chart") {
-    const metadataScore = firstNumber(metadata, ["chart_score", "chartScore", "chart_safe_score"]);
-    if (metadataScore !== null) {
-      return {
-        score: clamp(metadataScore, 0, 100),
-        confidence: 0.72,
-        reasons: ["derived_from_chart_metadata"],
-        evidence: {
-          source: "metadata"
-        }
-      };
-    }
-    return {
-      score: candidate.chartExpected ? 68 : 78,
-      confidence: 0.58,
-      reasons: [candidate.chartExpected ? "chart_expected_without_vlm" : "chart_not_expected"],
-      evidence: {
-        chart_expected: candidate.chartExpected ?? false
-      }
-    };
-  }
-
-  const metadataScore = firstNumber(metadata, [
-    "identity_score",
-    "identityScore",
-    "mascot_identity_preservation_score"
-  ]);
-  if (metadataScore !== null) {
-    return {
-      score: clamp(metadataScore, 0, 100),
-      confidence: 0.72,
-      reasons: ["derived_from_identity_metadata"],
-      evidence: {
-        source: "metadata"
-      }
-    };
-  }
-  return {
-    score: candidate.referenceImagePath ? 74 : 60,
-    confidence: 0.64,
-    reasons: [candidate.referenceImagePath ? "reference_identity_anchor_present" : "reference_identity_anchor_missing"],
-    evidence: {
-      reference_image_path: candidate.referenceImagePath ?? null
-    }
-  };
-}
 
 export function createHeuristicLocalVlmTransport(): LocalVlmJudgeTransport {
   return async (request) => {
@@ -351,7 +232,7 @@ export function createHeuristicLocalVlmTransport(): LocalVlmJudgeTransport {
     };
 
     const signals = Object.fromEntries(
-      SIDECAR_SIGNAL_KEYS.map((signal) => [signal, deriveHeuristicSignal(candidate, signal)])
+      SIDECAR_SIGNAL_KEYS.map((signal) => [signal, deriveSidecarFallbackSignal(candidate, signal, "provider")])
     ) as Record<SidecarSignalKey, SidecarJudgeSignalHint>;
 
     const confidence =
@@ -359,7 +240,7 @@ export function createHeuristicLocalVlmTransport(): LocalVlmJudgeTransport {
       SIDECAR_SIGNAL_KEYS.length;
 
     return {
-      summary: "Heuristic local VLM fallback completed without an external model process.",
+      summary: "Heuristic local VLM fallback computed rig-aware sidecar signals without an external model process.",
       confidence: round(confidence, 3),
       signals,
       metadata: {
@@ -376,11 +257,17 @@ function mergeSignal(
 ): SidecarJudgeSignalHint {
   const responseSignal = response.signals?.[signal];
   const hint = candidate.signalHints?.[signal];
-  const heuristic = deriveHeuristicSignal(candidate, signal);
+  const heuristic = deriveSidecarFallbackSignal(candidate, signal, "provider");
   const responseRecord = isRecord(responseSignal?.evidence) ? responseSignal?.evidence : {};
   const hintRecord = isRecord(hint?.evidence) ? hint?.evidence : {};
   const heuristicRecord = isRecord(heuristic.evidence) ? heuristic.evidence : {};
   const responseMetadata = isRecord(response.metadata) ? response.metadata : {};
+  const primarySource =
+    typeof responseSignal?.score === "number"
+      ? responseRecord.source ?? responseMetadata.transport ?? "local_vlm"
+      : typeof hint?.score === "number"
+        ? hintRecord.source ?? "candidate_hint"
+        : heuristicRecord.source ?? responseMetadata.transport ?? "heuristic";
 
   return {
     score: clamp(responseSignal?.score ?? hint?.score ?? heuristic.score ?? 0, 0, 100),
@@ -402,7 +289,8 @@ function mergeSignal(
       ...heuristicRecord,
       ...hintRecord,
       ...responseRecord,
-      source: responseMetadata.transport ?? "local_vlm"
+      candidate_id: candidate.candidateId,
+      source: primarySource
     }
   };
 }
@@ -436,7 +324,20 @@ export function createLocalVlmJudgeProvider(
     descriptor,
     async evaluateCandidate(candidate) {
       const request = buildRequest(candidate, promptVersion);
-      const response = await transport(request);
+      let response: LocalVlmJudgeResponse = {};
+      let transportError: Error | null = null;
+      try {
+        response = await transport(request);
+      } catch (error) {
+        transportError = error instanceof Error ? error : new Error(String(error));
+        response = {
+          summary: "Local VLM unavailable; using rig-aware metadata fallback.",
+          metadata: {
+            transport: "heuristic_fallback",
+            transport_error: transportError.message
+          }
+        };
+      }
       const signals = Object.fromEntries(
         SIDECAR_SIGNAL_KEYS.map((signal) => [signal, mergeSignal(candidate, response, signal)])
       ) as Record<SidecarSignalKey, SidecarJudgeSignalHint>;
@@ -447,18 +348,22 @@ export function createLocalVlmJudgeProvider(
       return {
         candidate_id: candidate.candidateId,
         provider: descriptor,
-        summary: asString(response.summary) ?? "Local VLM judge evaluated the sidecar candidate.",
+        summary:
+          asString(response.summary) ??
+          (transportError ? "Local VLM unavailable; rig-aware metadata fallback used." : "Local VLM judge evaluated the sidecar candidate."),
         confidence: round(confidence, 3),
         signals,
         metadata: {
           ...(isRecord(response.metadata) ? response.metadata : {}),
-          transport_mode: descriptor.mode
+          transport_mode: descriptor.mode,
+          ...(transportError ? { transport_error: transportError.message } : {})
         },
         raw_response: {
           summary: response.summary ?? null,
           confidence: response.confidence ?? null,
           signals: response.signals ?? {},
-          metadata: response.metadata ?? {}
+          metadata: response.metadata ?? {},
+          transport_error: transportError?.message ?? null
         }
       };
     }
