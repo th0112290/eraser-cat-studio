@@ -86,6 +86,15 @@ type BenchmarkScenarioView = {
   failureRate: string;
   generatedAt: string;
   notes: string;
+  speciesId: string | null;
+  selectedView: string | null;
+  repairable: boolean | null;
+  recreateRecommended: boolean;
+  rigReasonFamilies: string[];
+  repairLineageSummary: string[];
+  directiveFamilySummary: string[];
+  anchorOverridePresent: boolean | null;
+  cropOverridePresent: boolean | null;
   sourceLabel: string;
   sourcePath: string;
   matrixArtifactPath: string;
@@ -159,11 +168,21 @@ type RigReviewState = {
   reviewOnly: boolean;
   lowAnchorConfidence: boolean;
   recreateRecommended: boolean;
+  repairable: boolean | null;
   rigBlocked: boolean;
   rigReasonCodes: string[];
+  rigReasonFamilies: string[];
   fallbackReasonCodes: string[];
   issueCodes: string[];
   evidenceSources: string[];
+  speciesId: string | null;
+  selectedView: string | null;
+  requiredManualSlots: string[];
+  repairSourceCandidateIds: string[];
+  repairLineageSummary: string[];
+  directiveFamilySummary: string[];
+  anchorOverridePresent: boolean | null;
+  cropOverridePresent: boolean | null;
   suggestedAction: string | null;
 };
 
@@ -1316,8 +1335,43 @@ function buildBackendBenchmarkViews(source: RolloutArtifactSource): BenchmarkSce
       const candidateCompareItems = planArtifactPath
         ? findCandidateCompareItems(source, path.dirname(planArtifactPath))
         : [];
+      const speciesId = str(rawScenario.species_id) ?? str(rawScenario.speciesId);
+      const selectedView =
+        str(rawScenario.selected_view) ??
+        str(rawScenario.selectedView) ??
+        str(rawScenario.reference_view) ??
+        str(rawScenario.referenceView);
+      const repairable = readBooleanOrNull(rawScenario.repairable);
+      const recreateRecommended =
+        readBooleanOrNull(rawScenario.recreate_recommended) === true ||
+        readBooleanOrNull(rawScenario.recreateRecommended) === true;
+      const rigReasonFamilies = uniqueStrings([
+        ...(Array.isArray(rawScenario.rig_reason_families) ? rawScenario.rig_reason_families : []).map((item) => str(item))
+      ]);
+      const repairLineageSummary = uniqueStrings([
+        ...(Array.isArray(rawScenario.repair_lineage_summary) ? rawScenario.repair_lineage_summary : []).map((item) => str(item))
+      ]);
+      const directiveFamilySummary = uniqueStrings([
+        ...(Array.isArray(rawScenario.directive_family_summary) ? rawScenario.directive_family_summary : []).map((item) => str(item))
+      ]);
+      const anchorOverridePresent =
+        readBooleanOrNull(rawScenario.anchor_override_present) ??
+        readBooleanOrNull(rawScenario.anchorOverridePresent);
+      const cropOverridePresent =
+        readBooleanOrNull(rawScenario.crop_override_present) ??
+        readBooleanOrNull(rawScenario.cropOverridePresent);
       const note = compact([
         str(rawScenario.sidecar_status),
+        compact([
+          speciesId ? `species ${speciesId}` : null,
+          selectedView ? `view ${selectedView}` : null,
+          repairable === true ? "repairable" : recreateRecommended ? "recreate_required" : null
+        ]),
+        rigReasonFamilies.length > 0 ? `families ${summarizeValues(rigReasonFamilies, 3)}` : null,
+        repairLineageSummary.length > 0 ? `lineage ${summarizeValues(repairLineageSummary, 2)}` : null,
+        directiveFamilySummary.length > 0 ? `directives ${summarizeValues(directiveFamilySummary, 2)}` : null,
+        anchorOverridePresent === true ? "anchor override" : null,
+        cropOverridePresent === true ? "crop override" : null,
         firstMeaningfulLine(rawScenario.stderr_tail) ?? firstMeaningfulLine(rawScenario.stdout_tail)
       ]);
       rows.push({
@@ -1332,6 +1386,15 @@ function buildBackendBenchmarkViews(source: RolloutArtifactSource): BenchmarkSce
         failureRate: formatPercent(rawScenario.render_failure_rate),
         generatedAt,
         notes: note || "-",
+        speciesId,
+        selectedView,
+        repairable,
+        recreateRecommended,
+        rigReasonFamilies,
+        repairLineageSummary,
+        directiveFamilySummary,
+        anchorOverridePresent,
+        cropOverridePresent,
         sourceLabel: source.label,
         sourcePath: source.outRoot,
         matrixArtifactPath: matrixPath,
@@ -2276,11 +2339,21 @@ function createEmptyRigReviewState(): RigReviewState {
     reviewOnly: false,
     lowAnchorConfidence: false,
     recreateRecommended: false,
+    repairable: null,
     rigBlocked: false,
     rigReasonCodes: [],
+    rigReasonFamilies: [],
     fallbackReasonCodes: [],
     issueCodes: [],
     evidenceSources: [],
+    speciesId: null,
+    selectedView: null,
+    requiredManualSlots: [],
+    repairSourceCandidateIds: [],
+    repairLineageSummary: [],
+    directiveFamilySummary: [],
+    anchorOverridePresent: null,
+    cropOverridePresent: null,
     suggestedAction: null
   };
 }
@@ -2317,11 +2390,37 @@ function mergeRigReviewStates(...states: RigReviewState[]): RigReviewState {
     merged.missingAnchorIds = uniqueStrings([...merged.missingAnchorIds, ...state.missingAnchorIds]);
     merged.reviewOnly = merged.reviewOnly || state.reviewOnly;
     merged.recreateRecommended = merged.recreateRecommended || state.recreateRecommended;
+    if (merged.repairable === null && state.repairable !== null) {
+      merged.repairable = state.repairable;
+    } else if (state.repairable === true) {
+      merged.repairable = true;
+    }
     merged.rigBlocked = merged.rigBlocked || state.rigBlocked;
     merged.rigReasonCodes = uniqueStrings([...merged.rigReasonCodes, ...state.rigReasonCodes]);
+    merged.rigReasonFamilies = uniqueStrings([...merged.rigReasonFamilies, ...state.rigReasonFamilies]);
     merged.fallbackReasonCodes = uniqueStrings([...merged.fallbackReasonCodes, ...state.fallbackReasonCodes]);
     merged.issueCodes = uniqueStrings([...merged.issueCodes, ...state.issueCodes]);
     merged.evidenceSources = uniqueStrings([...merged.evidenceSources, ...state.evidenceSources]);
+    if (merged.speciesId === null && state.speciesId) {
+      merged.speciesId = state.speciesId;
+    }
+    if (merged.selectedView === null && state.selectedView) {
+      merged.selectedView = state.selectedView;
+    }
+    merged.requiredManualSlots = uniqueStrings([...merged.requiredManualSlots, ...state.requiredManualSlots]);
+    merged.repairSourceCandidateIds = uniqueStrings([...merged.repairSourceCandidateIds, ...state.repairSourceCandidateIds]);
+    merged.repairLineageSummary = uniqueStrings([...merged.repairLineageSummary, ...state.repairLineageSummary]);
+    merged.directiveFamilySummary = uniqueStrings([...merged.directiveFamilySummary, ...state.directiveFamilySummary]);
+    if (merged.anchorOverridePresent === null && state.anchorOverridePresent !== null) {
+      merged.anchorOverridePresent = state.anchorOverridePresent;
+    } else if (state.anchorOverridePresent === true) {
+      merged.anchorOverridePresent = true;
+    }
+    if (merged.cropOverridePresent === null && state.cropOverridePresent !== null) {
+      merged.cropOverridePresent = state.cropOverridePresent;
+    } else if (state.cropOverridePresent === true) {
+      merged.cropOverridePresent = true;
+    }
     if (merged.suggestedAction === null && state.suggestedAction) {
       merged.suggestedAction = state.suggestedAction;
     }
@@ -2349,6 +2448,7 @@ function mergeRigReviewStates(...states: RigReviewState[]): RigReviewState {
   merged.fallbackReasonCodes = uniqueStrings([...merged.fallbackReasonCodes, ...derivedFallbackCodes]);
   merged.rigReasonCodes = uniqueStrings([
     ...merged.rigReasonCodes,
+    ...(merged.repairable === true ? ["repairable"] : []),
     ...(merged.reviewOnly ? ["review_only"] : []),
     ...(merged.lowAnchorConfidence ? ["low_anchor_confidence"] : []),
     ...(merged.lowConfidenceAnchorIds.length > 0 ? ["anchor_low_confidence"] : []),
@@ -2361,6 +2461,19 @@ function mergeRigReviewStates(...states: RigReviewState[]): RigReviewState {
     merged.suggestedAction === "recreate" ||
     merged.fallbackReasonCodes.some((code) => code.toLowerCase().includes("recreate")) ||
     (merged.reviewOnly && (merged.lowAnchorConfidence || signalFailures.length >= 2));
+  if (merged.repairable === null) {
+    merged.repairable =
+      !merged.recreateRecommended &&
+      (
+        merged.reviewOnly ||
+        merged.requiredManualSlots.length > 0 ||
+        merged.repairSourceCandidateIds.length > 0 ||
+        merged.repairLineageSummary.length > 0 ||
+        merged.directiveFamilySummary.length > 0
+      );
+  } else if (merged.recreateRecommended) {
+    merged.repairable = false;
+  }
   merged.rigBlocked =
     merged.rigBlocked ||
     signalFailures.length > 0 ||
@@ -2532,6 +2645,127 @@ function extractRigReviewState(doc: unknown, candidateId: string | null = null):
         ["proposal", "auto_proposal", "recreate_recommended"],
         ["proposal", "auto_proposal", "recreateRecommended"]
       ]) === true;
+    if (state.repairable === null) {
+      state.repairable = firstBooleanAtPaths(scope, [
+        ["repairable"],
+        ["proposal", "auto_proposal", "repairable"]
+      ]);
+    }
+    if (state.speciesId === null) {
+      state.speciesId = firstStringAtPaths(scope, [
+        ["species_id"],
+        ["speciesId"],
+        ["reference_bundle", "species_id"],
+        ["reference_bundle", "speciesId"],
+        ["proposal", "auto_proposal", "species_id"],
+        ["proposal", "auto_proposal", "speciesId"]
+      ]);
+    }
+    if (state.selectedView === null) {
+      state.selectedView = firstStringAtPaths(scope, [
+        ["selected_view"],
+        ["selectedView"],
+        ["requested_reference_view"],
+        ["requestedReferenceView"],
+        ["reference_view"],
+        ["referenceView"],
+        ["proposal", "auto_proposal", "selected_view"],
+        ["proposal", "auto_proposal", "selectedView"],
+        ["proposal", "auto_proposal", "requested_reference_view"],
+        ["proposal", "auto_proposal", "requestedReferenceView"]
+      ]);
+    }
+    state.requiredManualSlots = uniqueStrings([
+      ...state.requiredManualSlots,
+      ...flattenStringArraysAtPaths(scope, [
+        ["required_manual_slots"],
+        ["requiredManualSlots"],
+        ["proposal", "auto_proposal", "required_manual_slots"],
+        ["proposal", "auto_proposal", "requiredManualSlots"]
+      ])
+    ]);
+    state.repairSourceCandidateIds = uniqueStrings([
+      ...state.repairSourceCandidateIds,
+      ...flattenStringArraysAtPaths(scope, [
+        ["repair_source_candidate_ids"],
+        ["repairSourceCandidateIds"],
+        ["repair_from_candidate_ids"],
+        ["repairFromCandidateIds"],
+        ["proposal", "auto_proposal", "repair_source_candidate_ids"],
+        ["proposal", "auto_proposal", "repairSourceCandidateIds"],
+        ["proposal", "auto_proposal", "repair_from_candidate_ids"],
+        ["proposal", "auto_proposal", "repairFromCandidateIds"]
+      ])
+    ]);
+    state.repairLineageSummary = uniqueStrings([
+      ...state.repairLineageSummary,
+      ...flattenStringArraysAtPaths(scope, [
+        ["repair_lineage_summary"],
+        ["repairLineageSummary"],
+        ["proposal", "auto_proposal", "repair_lineage_summary"],
+        ["proposal", "auto_proposal", "repairLineageSummary"]
+      ])
+    ]);
+    state.directiveFamilySummary = uniqueStrings([
+      ...state.directiveFamilySummary,
+      ...flattenStringArraysAtPaths(scope, [
+        ["directive_family_summary"],
+        ["directiveFamilySummary"],
+        ["proposal", "auto_proposal", "directive_family_summary"],
+        ["proposal", "auto_proposal", "directiveFamilySummary"]
+      ])
+    ]);
+    state.rigReasonFamilies = uniqueStrings([
+      ...state.rigReasonFamilies,
+      ...flattenStringArraysAtPaths(scope, [
+        ["rig_reason_families"],
+        ["rigReasonFamilies"],
+        ["proposal", "auto_proposal", "rig_reason_families"],
+        ["proposal", "auto_proposal", "rigReasonFamilies"]
+      ])
+    ]);
+    if (state.anchorOverridePresent === null) {
+      state.anchorOverridePresent = firstBooleanAtPaths(scope, [
+        ["anchor_override_present"],
+        ["anchorOverridePresent"],
+        ["proposal", "auto_proposal", "anchor_override_present"],
+        ["proposal", "auto_proposal", "anchorOverridePresent"]
+      ]);
+    } else if (
+      firstBooleanAtPaths(scope, [
+        ["anchor_override_present"],
+        ["anchorOverridePresent"],
+        ["proposal", "auto_proposal", "anchor_override_present"],
+        ["proposal", "auto_proposal", "anchorOverridePresent"]
+      ]) === true
+    ) {
+      state.anchorOverridePresent = true;
+    }
+    if (state.cropOverridePresent === null) {
+      state.cropOverridePresent = firstBooleanAtPaths(scope, [
+        ["crop_override_present"],
+        ["cropOverridePresent"],
+        ["crop_boxes_override_present"],
+        ["cropBoxesOverridePresent"],
+        ["proposal", "auto_proposal", "crop_override_present"],
+        ["proposal", "auto_proposal", "cropOverridePresent"],
+        ["proposal", "auto_proposal", "crop_boxes_override_present"],
+        ["proposal", "auto_proposal", "cropBoxesOverridePresent"]
+      ]);
+    } else if (
+      firstBooleanAtPaths(scope, [
+        ["crop_override_present"],
+        ["cropOverridePresent"],
+        ["crop_boxes_override_present"],
+        ["cropBoxesOverridePresent"],
+        ["proposal", "auto_proposal", "crop_override_present"],
+        ["proposal", "auto_proposal", "cropOverridePresent"],
+        ["proposal", "auto_proposal", "crop_boxes_override_present"],
+        ["proposal", "auto_proposal", "cropBoxesOverridePresent"]
+      ]) === true
+    ) {
+      state.cropOverridePresent = true;
+    }
     state.rigReasonCodes = uniqueStrings([
       ...state.rigReasonCodes,
       ...flattenStringArraysAtPaths(scope, [
@@ -2565,6 +2799,25 @@ function extractRigReviewState(doc: unknown, candidateId: string | null = null):
     }
   }
 
+  if (state.rigReasonFamilies.length === 0) {
+    state.rigReasonFamilies = uniqueStrings(
+      [...state.rigReasonCodes, ...state.fallbackReasonCodes].map((value) => {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) return null;
+        if (normalized.includes("anchor")) return "anchor";
+        if (normalized.includes("mouth")) return "mouth";
+        if (normalized.includes("eye")) return "eye";
+        if (normalized.includes("head")) return "head_pose";
+        if (normalized.includes("repair")) return "repair";
+        if (normalized.includes("manual")) return "manual_slots";
+        if (normalized.includes("recreate")) return "recreate";
+        if (normalized.includes("override")) return "override";
+        if (normalized.includes("review")) return "review";
+        return normalized.split(/[:_]/)[0] ?? null;
+      })
+    );
+  }
+
   const scorecardSource = resolveSidecarScorecardSource(doc, candidateId);
   if (scorecardSource) {
     for (const signal of RIG_SIGNAL_KEYS) {
@@ -2592,10 +2845,20 @@ function extractRigReviewState(doc: unknown, candidateId: string | null = null):
       state.missingAnchorIds = mergedEvidence.missingAnchorIds;
       state.reviewOnly = mergedEvidence.reviewOnly;
       state.recreateRecommended = mergedEvidence.recreateRecommended;
+      state.repairable = mergedEvidence.repairable;
       state.rigReasonCodes = mergedEvidence.rigReasonCodes;
+      state.rigReasonFamilies = mergedEvidence.rigReasonFamilies;
       state.fallbackReasonCodes = mergedEvidence.fallbackReasonCodes;
       state.issueCodes = mergedEvidence.issueCodes;
       state.evidenceSources = mergedEvidence.evidenceSources;
+      state.speciesId = mergedEvidence.speciesId;
+      state.selectedView = mergedEvidence.selectedView;
+      state.requiredManualSlots = mergedEvidence.requiredManualSlots;
+      state.repairSourceCandidateIds = mergedEvidence.repairSourceCandidateIds;
+      state.repairLineageSummary = mergedEvidence.repairLineageSummary;
+      state.directiveFamilySummary = mergedEvidence.directiveFamilySummary;
+      state.anchorOverridePresent = mergedEvidence.anchorOverridePresent;
+      state.cropOverridePresent = mergedEvidence.cropOverridePresent;
       state.suggestedAction = state.suggestedAction ?? mergedEvidence.suggestedAction;
     }
 
@@ -2708,6 +2971,28 @@ function summarizeRigSignals(state: RigReviewState): string {
     return score === null ? null : `${humanizeOpsLabel(signal)} ${formatNumber(score)}`;
   }).filter((value): value is string => Boolean(value));
   return parts.length > 0 ? parts.join(" | ") : "-";
+}
+
+function summarizeRigContext(state: RigReviewState): string {
+  const parts = compact([
+    state.speciesId ? `species ${state.speciesId}` : null,
+    state.selectedView ? `view ${state.selectedView}` : null,
+    state.repairable === true ? "repairable" : state.recreateRecommended ? "recreate_required" : null,
+    state.anchorOverridePresent === true ? "anchor override" : null,
+    state.cropOverridePresent === true ? "crop override" : null
+  ]);
+  return parts || "-";
+}
+
+function summarizeRigLineage(state: RigReviewState): string {
+  const parts = compact([
+    state.requiredManualSlots.length > 0 ? `manual ${summarizeValues(state.requiredManualSlots, 3)}` : null,
+    state.repairLineageSummary.length > 0 ? `lineage ${summarizeValues(state.repairLineageSummary, 2)}` : null,
+    state.directiveFamilySummary.length > 0 ? `directives ${summarizeValues(state.directiveFamilySummary, 2)}` : null,
+    state.rigReasonFamilies.length > 0 ? `families ${summarizeValues(state.rigReasonFamilies, 3)}` : null,
+    state.repairSourceCandidateIds.length > 0 ? `repair from ${summarizeValues(state.repairSourceCandidateIds, 2)}` : null
+  ]);
+  return parts || "-";
 }
 
 function renderRigDiffChip(label: string, left: number | null, right: number | null): string {
@@ -8489,6 +8774,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      values.some((value) => benchmarkFocusValue === decisionToken(value));
 	    const { sources, backendScenarios, regressions } = collectBenchmarkViewerData();
       const benchmarkRigRows = collectRepairAcceptanceRows();
+      const rigAttentionRows = benchmarkRigRows.filter(
+        (row) => row.rig.rigBlocked || row.rig.reviewOnly || row.rig.lowAnchorConfidence || row.rig.recreateRecommended
+      );
 	    const backendReady = backendScenarios.filter((row) => normalizeRolloutStatus(row.status) === "ready").length;
 	    const regressionBlocked = regressions.filter((row) => normalizeRolloutStatus(row.status) === "blocked").length;
 	    const regressionWarn = regressions.filter((row) => normalizeRolloutStatus(row.status) === "warn").length;
@@ -8496,6 +8784,10 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       const rigBlockedCount = benchmarkRigRows.filter((row) => row.rig.rigBlocked).length;
       const reviewOnlyCount = benchmarkRigRows.filter((row) => row.rig.reviewOnly).length;
       const lowAnchorCount = benchmarkRigRows.filter((row) => row.rig.lowAnchorConfidence).length;
+      const repairableCount = benchmarkRigRows.filter((row) => row.rig.repairable === true).length;
+      const recreateCount = benchmarkRigRows.filter((row) => row.rig.recreateRecommended).length;
+      const rigSpeciesSummary = summarizeCounts(rigAttentionRows.map((row) => row.rig.speciesId), 2);
+      const rigViewSummary = summarizeCounts(rigAttentionRows.map((row) => row.rig.selectedView), 2);
 	    const availableSources = sources.filter((source) => source.exists).length;
 	    const benchmarkCompareLinks =
 	      backendScenarios.reduce((sum, row) => sum + row.candidateCompareItems.length, 0) +
@@ -8556,7 +8848,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      { label: "Render Drift", value: String(mismatchTotal), hint: "stored vs recommended render-mode mismatches", tone: mismatchTotal > 0 ? "warn" : "ok" },
         { label: "Rig Blocked", value: String(rigBlockedCount), hint: "selected winners with fail-level rig signals", tone: rigBlockedCount > 0 ? "bad" : "ok" },
         { label: "Review Only", value: String(reviewOnlyCount), hint: "anchor-backed rows still marked review_only", tone: reviewOnlyCount > 0 ? "warn" : "ok" },
-        { label: "Low Anchor", value: String(lowAnchorCount), hint: "rows with low anchor confidence or low-confidence anchors", tone: lowAnchorCount > 0 ? "warn" : "ok" }
+        { label: "Low Anchor", value: String(lowAnchorCount), hint: "rows with low anchor confidence or low-confidence anchors", tone: lowAnchorCount > 0 ? "warn" : "ok" },
+        { label: "Repairable Rig", value: String(repairableCount), hint: rigSpeciesSummary === "-" ? "repair-first candidates in queue" : rigSpeciesSummary, tone: repairableCount > 0 ? "warn" : "ok" },
+        { label: "Recreate Needed", value: String(recreateCount), hint: rigViewSummary === "-" ? "recreate-required rig rows" : rigViewSummary, tone: recreateCount > 0 ? "bad" : "ok" }
 	    ];
 
 	    const sourceRows = sources
@@ -8622,12 +8916,12 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	          })}">${esc(item.label)}</a>`)
 	          .join("");
 	        return `<tr id="${rowId}" class="decision-focus-row${isBenchmarkFocused(row.backend, row.renderer, row.benchmarkKind, row.artifactRelativePath) ? " is-focused" : ""}">
-	          <td><div class="table-note"><strong>${esc(row.backend)}</strong><span class="muted-text">${esc(`${row.benchmarkKind} / ${row.renderer}`)}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Decision Detail</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.detailArtifactPath)}">Copy path</button></div></div></td>
+	          <td><div class="table-note"><strong>${esc(row.backend)}</strong><span class="muted-text">${esc(`${row.benchmarkKind} / ${row.renderer}`)}</span><span class="muted-text">${esc(compact([row.speciesId ? `species ${row.speciesId}` : null, row.selectedView ? `view ${row.selectedView}` : null, row.repairable === true ? "repairable" : row.recreateRecommended ? "recreate_required" : null]) || "-")}</span><span class="mono">${esc(row.artifactRelativePath)}</span><div class="inline-actions"><a href="${detailHref}">Decision Detail</a>${smokeHref ? `<a href="${smokeHref}">Smoke</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${candidateLinks}<button type="button" class="secondary" data-copy="${esc(row.detailArtifactPath)}">Copy path</button></div></div></td>
 	          <td><span class="badge ${row.tone}">${esc(rolloutStatusLabel(row.status))}</span></td>
 	          <td>${esc(row.latencyMs)}</td>
 	          <td>${esc(row.acceptanceRate)}</td>
           <td>${esc(row.failureRate)}</td>
-          <td>${esc(row.notes)}</td>
+          <td><div class="table-note"><strong>${esc(row.notes)}</strong><span class="muted-text">${esc(row.rigReasonFamilies.length > 0 ? `families ${summarizeValues(row.rigReasonFamilies, 3)}` : "-")}</span><span class="muted-text">${esc(row.repairLineageSummary.length > 0 ? `lineage ${summarizeValues(row.repairLineageSummary, 2)}` : row.directiveFamilySummary.length > 0 ? `directives ${summarizeValues(row.directiveFamilySummary, 2)}` : "-")}</span></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
       })
@@ -8928,11 +9222,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const backendFilter = (q(request.query, "backend") ?? "").toLowerCase();
     const bundleFilter = (q(request.query, "bundle") ?? "").toLowerCase();
     const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const speciesFilter = (q(request.query, "species") ?? "").toLowerCase();
+    const viewFilter = (q(request.query, "view") ?? "").toLowerCase();
     const rigFilter = (q(request.query, "rig") ?? "").toLowerCase();
     const fallbackFilter = (q(request.query, "fallback") ?? "").toLowerCase();
     const reviewOnlyFilter = q(request.query, "reviewOnly") === "1";
     const lowAnchorFilter = q(request.query, "lowAnchor") === "1";
     const recreateFilter = q(request.query, "recreate") === "1";
+    const repairableFilter = q(request.query, "repairable") === "1";
     const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
     const decisionState = readDecisionLinkState(request.query);
     const repairFocusValue = decisionToken(decisionState.focus);
@@ -8953,11 +9250,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       if (backendFilter && ![row.backend, row.renderer, row.providerSummary].some((value) => value.toLowerCase().includes(backendFilter))) return false;
       if (bundleFilter && ![row.bundle, row.scenario].some((value) => value.toLowerCase().includes(bundleFilter))) return false;
       if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (speciesFilter && !(row.rig.speciesId ?? "").toLowerCase().includes(speciesFilter)) return false;
+      if (viewFilter && !(row.rig.selectedView ?? "").toLowerCase().includes(viewFilter)) return false;
       if (rigFilter && !row.rig.rigReasonCodes.some((value) => value.toLowerCase().includes(rigFilter))) return false;
       if (fallbackFilter && !row.rig.fallbackReasonCodes.some((value) => value.toLowerCase().includes(fallbackFilter))) return false;
       if (reviewOnlyFilter && !row.rig.reviewOnly) return false;
       if (lowAnchorFilter && !row.rig.lowAnchorConfidence) return false;
       if (recreateFilter && !row.rig.recreateRecommended) return false;
+      if (repairableFilter && row.rig.repairable !== true) return false;
       if (
         queryFilter &&
         ![
@@ -8970,6 +9270,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           row.repairSummary,
           row.policySummary,
           row.selectedCandidateId,
+          row.rig.speciesId ?? "",
+          row.rig.selectedView ?? "",
+          ...row.rig.rigReasonFamilies,
+          ...row.rig.requiredManualSlots,
+          ...row.rig.repairLineageSummary,
           ...row.rig.rigReasonCodes,
           ...row.rig.fallbackReasonCodes
         ].some((value) => value.toLowerCase().includes(queryFilter))
@@ -8985,7 +9290,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "QC Failed", value: String(rows.filter((row) => row.qcTone === "bad").length), tone: "bad" as UiBadgeTone, hint: "qc reasons need operator review" },
       { label: "Rig Blocked", value: String(rows.filter((row) => row.rig.rigBlocked).length), tone: "bad" as UiBadgeTone, hint: "selected candidates with fail-level rig signals" },
       { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "rows still tagged review_only" },
-      { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence or low-confidence anchors" }
+      { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence or low-confidence anchors" },
+      { label: "Repairable", value: String(rows.filter((row) => row.rig.repairable === true).length), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.rig.speciesId), 2) },
+      { label: "Recreate", value: String(rows.filter((row) => row.rig.recreateRecommended).length), tone: "bad" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.rig.selectedView), 2) }
     ]
       .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
       .join("");
@@ -8996,11 +9303,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backend: backendFilter || null,
         bundle: bundleFilter || null,
         source: sourceFilter || null,
+        species: speciesFilter || null,
+        view: viewFilter || null,
         rig: rigFilter || null,
         fallback: fallbackFilter || null,
         reviewOnly: reviewOnlyFilter ? "1" : null,
         lowAnchor: lowAnchorFilter ? "1" : null,
         recreate: recreateFilter ? "1" : null,
+        repairable: repairableFilter ? "1" : null,
         q: queryFilter || null,
         ...decisionStateParams(decisionState)
       },
@@ -9048,11 +9358,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div class="field"><label for="repair-backend">Backend / renderer</label><input id="repair-backend" name="backend" value="${esc(backendFilter)}" placeholder="wan, hunyuan..."/></div>
     <div class="field"><label for="repair-bundle">Bundle / scenario</label><input id="repair-bundle" name="bundle" value="${esc(bundleFilter)}" placeholder="economy, convergence..."/></div>
     <div class="field"><label for="repair-source">Source root</label><input id="repair-source" name="source" value="${esc(sourceFilter)}" placeholder="local worktree..."/></div>
+    <div class="field"><label for="repair-species">Species</label><input id="repair-species" name="species" value="${esc(speciesFilter)}" placeholder="cat, dog, wolf..."/></div>
+    <div class="field"><label for="repair-view">View</label><input id="repair-view" name="view" value="${esc(viewFilter)}" placeholder="front, threeQuarter, profile..."/></div>
     <div class="field"><label for="repair-rig">Rig reason code</label><input id="repair-rig" name="rig" value="${esc(rigFilter)}" placeholder="head_pose_below_threshold, review_only..."/></div>
     <div class="field"><label for="repair-fallback">Fallback reason code</label><input id="repair-fallback" name="fallback" value="${esc(fallbackFilter)}" placeholder="metadata_head_pose_fallback, anchor_manifest..."/></div>
     <div class="field"><label><input type="checkbox" name="reviewOnly" value="1"${reviewOnlyFilter ? " checked" : ""}/> review_only only</label></div>
     <div class="field"><label><input type="checkbox" name="lowAnchor" value="1"${lowAnchorFilter ? " checked" : ""}/> low anchor only</label></div>
     <div class="field"><label><input type="checkbox" name="recreate" value="1"${recreateFilter ? " checked" : ""}/> recreate recommended</label></div>
+    <div class="field"><label><input type="checkbox" name="repairable" value="1"${repairableFilter ? " checked" : ""}/> repairable only</label></div>
     <div class="field"><label for="repair-q">Free text</label><input id="repair-q" name="q" value="${esc(queryFilter)}" placeholder="episode id, shot id, failure, qc reason..."/></div>
   </div>
   ${renderDecisionStateHiddenInputs(decisionState)}
@@ -9146,11 +9459,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           : "";
         const finalLabel = row.finalPassed === null ? "unknown" : row.finalPassed ? "passed" : "failed";
         return `<tr id="${rowId}" class="ops-review-table-row${isRepairFocused(row.episodeId, row.shotId, row.selectedCandidateId, row.bundle, row.artifactRelativePath) ? " is-focused" : ""}">
-          <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">provider ${esc(row.providerSummary)}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">provider ${esc(row.providerSummary)}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span><span class="muted-text">${esc(summarizeRigContext(row.rig))}</span></div></td>
           <td><div class="table-note"><span class="badge ${row.acceptanceTone}">${esc(humanizeOpsLabel(row.acceptanceStatus))}</span><span class="muted-text">final ${esc(finalLabel)} / ${esc(row.finalStage ?? "-")}</span><span class="mono">${esc(row.selectedCandidateId)}</span></div></td>
           <td><div class="table-note"><span class="badge ${row.qcTone}">${esc(humanizeOpsLabel(row.qcStatus))}</span><span class="muted-text">${esc(row.qcSummary)}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">${esc(row.fallbackSummary === "-" ? "no fallback steps" : `fallback ${row.fallbackSummary}`)}</span></div></td>
-          <td><div class="table-note"><strong>${esc(row.policySummary)}</strong><span class="muted-text">${esc(row.repairSummary)}</span><span class="muted-text">rig ${esc(summarizeRigSignals(row.rig))}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span></div></td>
-          <td><div class="table-note"><strong>${esc(row.judgeSummary || "-")}</strong><span class="muted-text">${esc(row.failureSummary)}</span><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.policySummary)}</strong><span class="muted-text">${esc(row.repairSummary)}</span><span class="muted-text">rig ${esc(summarizeRigSignals(row.rig))}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span><span class="muted-text">${esc(summarizeRigLineage(row.rig))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.judgeSummary || "-")}</strong><span class="muted-text">${esc(row.failureSummary)}</span><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">families ${esc(summarizeValues(row.rig.rigReasonFamilies, 3))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
           <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.artifactRelativePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
@@ -9163,11 +9476,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backendFilter ? `backend ${backendFilter}` : null,
         bundleFilter ? `bundle ${bundleFilter}` : null,
         sourceFilter ? `source ${sourceFilter}` : null,
+        speciesFilter ? `species ${speciesFilter}` : null,
+        viewFilter ? `view ${viewFilter}` : null,
         rigFilter ? `rig ${rigFilter}` : null,
         fallbackFilter ? `fallback ${fallbackFilter}` : null,
         reviewOnlyFilter ? "review_only" : null,
         lowAnchorFilter ? "low_anchor" : null,
         recreateFilter ? "recreate" : null,
+        repairableFilter ? "repairable" : null,
         queryFilter ? `q ${queryFilter}` : null
       ],
       " | "
@@ -9314,11 +9630,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const backendFilter = (q(request.query, "backend") ?? "").toLowerCase();
     const bundleFilter = (q(request.query, "bundle") ?? "").toLowerCase();
     const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const speciesFilter = (q(request.query, "species") ?? "").toLowerCase();
+    const viewFilter = (q(request.query, "view") ?? "").toLowerCase();
     const rigFilter = (q(request.query, "rig") ?? "").toLowerCase();
     const fallbackFilter = (q(request.query, "fallback") ?? "").toLowerCase();
     const reviewOnlyFilter = q(request.query, "reviewOnly") === "1";
     const lowAnchorFilter = q(request.query, "lowAnchor") === "1";
     const recreateFilter = q(request.query, "recreate") === "1";
+    const repairableFilter = q(request.query, "repairable") === "1";
     const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
     const decisionState = readDecisionLinkState(request.query);
     const routeFocusValue = decisionToken(decisionState.focus);
@@ -9339,11 +9658,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       if (backendFilter && ![row.backend, row.providerSummary].some((value) => value.toLowerCase().includes(backendFilter))) return false;
       if (bundleFilter && ![row.bundle, row.scenario].some((value) => value.toLowerCase().includes(bundleFilter))) return false;
       if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (speciesFilter && !(row.rig.speciesId ?? "").toLowerCase().includes(speciesFilter)) return false;
+      if (viewFilter && !(row.rig.selectedView ?? "").toLowerCase().includes(viewFilter)) return false;
       if (rigFilter && !row.rig.rigReasonCodes.some((value) => value.toLowerCase().includes(rigFilter))) return false;
       if (fallbackFilter && !row.rig.fallbackReasonCodes.some((value) => value.toLowerCase().includes(fallbackFilter))) return false;
       if (reviewOnlyFilter && !row.rig.reviewOnly) return false;
       if (lowAnchorFilter && !row.rig.lowAnchorConfidence) return false;
       if (recreateFilter && !row.rig.recreateRecommended) return false;
+      if (repairableFilter && row.rig.repairable !== true) return false;
       if (
         queryFilter &&
         ![
@@ -9356,6 +9678,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           row.fallbackSummary,
           row.policySummary,
           row.selectedCandidateId,
+          row.rig.speciesId ?? "",
+          row.rig.selectedView ?? "",
+          ...row.rig.rigReasonFamilies,
           ...row.rig.rigReasonCodes,
           ...row.rig.fallbackReasonCodes
         ].some((value) => value.toLowerCase().includes(queryFilter))
@@ -9371,7 +9696,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "Accepted", value: String(rows.filter((row) => row.acceptanceTone === "ok").length), tone: "ok" as UiBadgeTone, hint: "accepted / resolved routed shots" },
       { label: "Render Drift", value: String(mismatchedCount), tone: mismatchedCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone), hint: "stored vs recommended render-mode mismatches" },
       { label: "Rig Blocked", value: String(rows.filter((row) => row.rig.rigBlocked).length), tone: "bad" as UiBadgeTone, hint: "selected candidates with fail-level rig signals" },
-      { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "route rows still tagged review_only" }
+      { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "route rows still tagged review_only" },
+      { label: "Repairable", value: String(rows.filter((row) => row.rig.repairable === true).length), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.rig.speciesId), 2) },
+      { label: "Recreate", value: String(rows.filter((row) => row.rig.recreateRecommended).length), tone: "bad" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.rig.selectedView), 2) }
     ]
       .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
       .join("");
@@ -9382,11 +9709,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backend: backendFilter || null,
         bundle: bundleFilter || null,
         source: sourceFilter || null,
+        species: speciesFilter || null,
+        view: viewFilter || null,
         rig: rigFilter || null,
         fallback: fallbackFilter || null,
         reviewOnly: reviewOnlyFilter ? "1" : null,
         lowAnchor: lowAnchorFilter ? "1" : null,
         recreate: recreateFilter ? "1" : null,
+        repairable: repairableFilter ? "1" : null,
         q: queryFilter || null,
         ...decisionStateParams(decisionState)
       },
@@ -9434,11 +9764,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div class="field"><label for="route-backend-filter">Backend</label><input id="route-backend-filter" name="backend" value="${esc(backendFilter)}" placeholder="wan, hunyuan..."/></div>
     <div class="field"><label for="route-bundle-filter">Bundle / scenario</label><input id="route-bundle-filter" name="bundle" value="${esc(bundleFilter)}" placeholder="economy, convergence..."/></div>
     <div class="field"><label for="route-source-filter">Source root</label><input id="route-source-filter" name="source" value="${esc(sourceFilter)}" placeholder="main repo..."/></div>
+    <div class="field"><label for="route-species-filter">Species</label><input id="route-species-filter" name="species" value="${esc(speciesFilter)}" placeholder="cat, dog, wolf..."/></div>
+    <div class="field"><label for="route-view-filter">View</label><input id="route-view-filter" name="view" value="${esc(viewFilter)}" placeholder="front, threeQuarter, profile..."/></div>
     <div class="field"><label for="route-rig-filter">Rig reason code</label><input id="route-rig-filter" name="rig" value="${esc(rigFilter)}" placeholder="head_pose_near_threshold, review_only..."/></div>
     <div class="field"><label for="route-fallback-filter">Fallback reason code</label><input id="route-fallback-filter" name="fallback" value="${esc(fallbackFilter)}" placeholder="anchor_manifest_eye_drift, metadata..."/></div>
     <div class="field"><label><input type="checkbox" name="reviewOnly" value="1"${reviewOnlyFilter ? " checked" : ""}/> review_only only</label></div>
     <div class="field"><label><input type="checkbox" name="lowAnchor" value="1"${lowAnchorFilter ? " checked" : ""}/> low anchor only</label></div>
     <div class="field"><label><input type="checkbox" name="recreate" value="1"${recreateFilter ? " checked" : ""}/> recreate recommended</label></div>
+    <div class="field"><label><input type="checkbox" name="repairable" value="1"${repairableFilter ? " checked" : ""}/> repairable only</label></div>
     <div class="field"><label for="route-q-filter">Free text</label><input id="route-q-filter" name="q" value="${esc(queryFilter)}" placeholder="episode id, shot id, blocker, qc reason..."/></div>
   </div>
   ${renderDecisionStateHiddenInputs(decisionState)}
@@ -9556,11 +9889,11 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           : "";
         const finalLabel = row.finalPassed === null ? "unknown" : row.finalPassed ? "passed" : "failed";
         return `<tr id="${rowId}" class="ops-review-table-row${isRouteFocused(row.episodeId, row.shotId, row.routeReason, row.selectedCandidateId, row.bundle, row.artifactRelativePath) ? " is-focused" : ""}">
-          <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span><span class="muted-text">${esc(summarizeRigContext(row.rig))}</span></div></td>
           <td><div class="table-note"><strong>${esc(row.routeReasonLabel)}</strong><span class="mono">${esc(row.routeReason)}</span><span class="muted-text">candidate ${esc(row.selectedCandidateId)}</span></div></td>
-          <td><div class="table-note"><strong>${esc(row.renderModeSummary)}</strong><span class="muted-text">${esc(row.providerSummary)}</span><span class="muted-text">${esc(row.policySummary)}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(row.renderModeSummary)}</strong><span class="muted-text">${esc(row.providerSummary)}</span><span class="muted-text">${esc(row.policySummary)}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span><span class="muted-text">${esc(summarizeRigLineage(row.rig))}</span></div></td>
           <td><div class="table-note"><span class="badge ${row.acceptanceTone}">${esc(humanizeOpsLabel(row.acceptanceStatus))}</span><span class="muted-text">final ${esc(finalLabel)} / ${esc(row.finalStage ?? "-")}</span></div></td>
-          <td><div class="table-note"><span class="muted-text">${esc(compact([row.qcSummary !== "-" ? row.qcSummary : null, row.repairSummary !== "-" ? row.repairSummary : null], " | ") || "-")}</span><span class="muted-text">rig ${esc(summarizeRigSignals(row.rig))}</span><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
+          <td><div class="table-note"><span class="muted-text">${esc(compact([row.qcSummary !== "-" ? row.qcSummary : null, row.repairSummary !== "-" ? row.repairSummary : null], " | ") || "-")}</span><span class="muted-text">rig ${esc(summarizeRigSignals(row.rig))}</span><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">families ${esc(summarizeValues(row.rig.rigReasonFamilies, 3))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
           <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${runtimeHref ? `<a href="${runtimeHref}">Runtime Shots</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.artifactRelativePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
@@ -9573,11 +9906,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         backendFilter ? `backend ${backendFilter}` : null,
         bundleFilter ? `bundle ${bundleFilter}` : null,
         sourceFilter ? `source ${sourceFilter}` : null,
+        speciesFilter ? `species ${speciesFilter}` : null,
+        viewFilter ? `view ${viewFilter}` : null,
         rigFilter ? `rig ${rigFilter}` : null,
         fallbackFilter ? `fallback ${fallbackFilter}` : null,
         reviewOnlyFilter ? "review_only" : null,
         lowAnchorFilter ? "low_anchor" : null,
         recreateFilter ? "recreate" : null,
+        repairableFilter ? "repairable" : null,
         queryFilter ? `q ${queryFilter}` : null
       ],
       " | "
@@ -9720,11 +10056,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const datasetFilter = (q(request.query, "dataset") ?? "").toLowerCase();
     const packFilter = (q(request.query, "pack") ?? "").toLowerCase();
     const sourceFilter = (q(request.query, "source") ?? "").toLowerCase();
+    const speciesFilter = (q(request.query, "species") ?? "").toLowerCase();
+    const viewFilter = (q(request.query, "view") ?? "").toLowerCase();
     const rigFilter = (q(request.query, "rig") ?? "").toLowerCase();
     const fallbackFilter = (q(request.query, "fallback") ?? "").toLowerCase();
     const reviewOnlyFilter = q(request.query, "reviewOnly") === "1";
     const lowAnchorFilter = q(request.query, "lowAnchor") === "1";
     const recreateFilter = q(request.query, "recreate") === "1";
+    const repairableFilter = q(request.query, "repairable") === "1";
     const queryFilter = (q(request.query, "q") ?? "").toLowerCase();
     const decisionState = readDecisionLinkState(request.query);
     const lineageFocusValue = decisionToken(decisionState.focus);
@@ -9744,11 +10083,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       if (datasetFilter && !row.datasetIds.some((value) => value.toLowerCase().includes(datasetFilter))) return false;
       if (packFilter && !row.packIds.some((value) => value.toLowerCase().includes(packFilter))) return false;
       if (sourceFilter && ![row.sourceLabel, row.sourcePath].some((value) => value.toLowerCase().includes(sourceFilter))) return false;
+      if (speciesFilter && !(row.rig.speciesId ?? "").toLowerCase().includes(speciesFilter)) return false;
+      if (viewFilter && !(row.rig.selectedView ?? "").toLowerCase().includes(viewFilter)) return false;
       if (rigFilter && !row.rig.rigReasonCodes.some((value) => value.toLowerCase().includes(rigFilter))) return false;
       if (fallbackFilter && !row.rig.fallbackReasonCodes.some((value) => value.toLowerCase().includes(fallbackFilter))) return false;
       if (reviewOnlyFilter && !row.rig.reviewOnly) return false;
       if (lowAnchorFilter && !row.rig.lowAnchorConfidence) return false;
       if (recreateFilter && !row.rig.recreateRecommended) return false;
+      if (repairableFilter && row.rig.repairable !== true) return false;
       if (
         queryFilter &&
         ![
@@ -9758,6 +10100,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           row.packIds.join(" "),
           row.routeReasons.join(" "),
           row.schemaGaps.join(" "),
+          row.rig.speciesId ?? "",
+          row.rig.selectedView ?? "",
+          row.rig.rigReasonFamilies.join(" "),
           row.rig.rigReasonCodes.join(" "),
           row.rig.fallbackReasonCodes.join(" ")
         ]
@@ -9774,7 +10119,9 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       { label: "Bible Refs", value: String(new Set(rows.map((row) => row.bibleRef).filter((value) => value !== "-")).size), tone: "muted" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.bibleRef), 1) },
       { label: "Schema Gaps", value: String(rows.filter((row) => row.schemaGaps.length > 0).length), tone: "bad" as UiBadgeTone, hint: "rows missing lossless dataset versioning" },
       { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "manifest or request lineage still tagged review_only" },
-      { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence across lineage inputs" }
+      { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence across lineage inputs" },
+      { label: "Repairable", value: String(rows.filter((row) => row.rig.repairable === true).length), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.rig.speciesId), 2) },
+      { label: "Recreate", value: String(rows.filter((row) => row.rig.recreateRecommended).length), tone: "bad" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.rig.selectedView), 2) }
     ]
       .map((card) => `<div class="summary-card"><span class="badge ${card.tone}">${esc(card.label)}</span><div class="metric">${esc(card.value)}</div><div class="caption">${esc(card.hint)}</div></div>`)
       .join("");
@@ -9784,11 +10131,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         dataset: datasetFilter || null,
         pack: packFilter || null,
         source: sourceFilter || null,
+        species: speciesFilter || null,
+        view: viewFilter || null,
         rig: rigFilter || null,
         fallback: fallbackFilter || null,
         reviewOnly: reviewOnlyFilter ? "1" : null,
         lowAnchor: lowAnchorFilter ? "1" : null,
         recreate: recreateFilter ? "1" : null,
+        repairable: repairableFilter ? "1" : null,
         q: queryFilter || null,
         ...decisionStateParams(decisionState)
       },
@@ -9835,11 +10185,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     <div class="field"><label for="lineage-dataset-filter">dataset_id</label><input id="lineage-dataset-filter" name="dataset" value="${esc(datasetFilter)}" placeholder="transit_ridership..."/></div>
     <div class="field"><label for="lineage-pack-filter">character pack</label><input id="lineage-pack-filter" name="pack" value="${esc(packFilter)}" placeholder="smoke-generated-rig..."/></div>
     <div class="field"><label for="lineage-source-filter">Source root</label><input id="lineage-source-filter" name="source" value="${esc(sourceFilter)}" placeholder="main repo..."/></div>
+    <div class="field"><label for="lineage-species-filter">Species</label><input id="lineage-species-filter" name="species" value="${esc(speciesFilter)}" placeholder="cat, dog, wolf..."/></div>
+    <div class="field"><label for="lineage-view-filter">View</label><input id="lineage-view-filter" name="view" value="${esc(viewFilter)}" placeholder="front, threeQuarter, profile..."/></div>
     <div class="field"><label for="lineage-rig-filter">Rig reason code</label><input id="lineage-rig-filter" name="rig" value="${esc(rigFilter)}" placeholder="review_only, low_anchor_confidence..."/></div>
     <div class="field"><label for="lineage-fallback-filter">Fallback reason code</label><input id="lineage-fallback-filter" name="fallback" value="${esc(fallbackFilter)}" placeholder="anchor_manifest, metadata..."/></div>
     <div class="field"><label><input type="checkbox" name="reviewOnly" value="1"${reviewOnlyFilter ? " checked" : ""}/> review_only only</label></div>
     <div class="field"><label><input type="checkbox" name="lowAnchor" value="1"${lowAnchorFilter ? " checked" : ""}/> low anchor only</label></div>
     <div class="field"><label><input type="checkbox" name="recreate" value="1"${recreateFilter ? " checked" : ""}/> recreate recommended</label></div>
+    <div class="field"><label><input type="checkbox" name="repairable" value="1"${repairableFilter ? " checked" : ""}/> repairable only</label></div>
     <div class="field"><label for="lineage-q-filter">Free text</label><input id="lineage-q-filter" name="q" value="${esc(queryFilter)}" placeholder="bible ref, route_reason, schema gap..."/></div>
   </div>
   ${renderDecisionStateHiddenInputs(decisionState)}
@@ -9925,10 +10278,10 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         return `<tr id="${rowId}" class="ops-review-table-row${isLineageFocused(row.episodeId, row.bundle, row.artifactRelativePath, ...row.datasetIds, ...row.packIds) ? " is-focused" : ""}">
           <td><div class="table-note"><strong>${esc(row.bundle)}</strong><span class="muted-text">${esc(row.scenario)}</span><span class="mono">${esc(row.artifactRelativePath)}</span></div></td>
           <td><div class="table-note"><strong>${esc(row.episodeId)}</strong><span class="muted-text">bible ${esc(row.bibleRef)}</span><span class="muted-text">beats ${esc(String(row.beatCount))} / route reasons ${esc(summarizeValues(row.routeReasons, 2))}</span></div></td>
-          <td><div class="table-note"><strong>${esc(summarizeValues(row.datasetIds, 3))}</strong><span class="muted-text">packs ${esc(summarizeValues(row.packIds, 3))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(summarizeValues(row.datasetIds, 3))}</strong><span class="muted-text">packs ${esc(summarizeValues(row.packIds, 3))}</span><span class="muted-text">${esc(summarizeRigContext(row.rig))}</span></div></td>
           <td><div class="inline-actions">${artifactLinks}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div><div class="muted-text">${esc(compact([row.inputShotsPath, row.runtimeShotsPath], " -> ") || "-")}</div></td>
-          <td><div class="table-note"><strong>${esc(summarizeValues(row.manifestPaths, 2))}</strong><span class="muted-text">${esc(summarizeValues(row.selectedImagePaths, 2))}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span></div></td>
-          <td><div class="table-note"><strong>${esc(summarizeValues(row.schemaGaps, 3))}</strong><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(summarizeValues(row.manifestPaths, 2))}</strong><span class="muted-text">${esc(summarizeValues(row.selectedImagePaths, 2))}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span><span class="muted-text">${esc(summarizeRigLineage(row.rig))}</span></div></td>
+          <td><div class="table-note"><strong>${esc(summarizeValues(row.schemaGaps, 3))}</strong><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">families ${esc(summarizeValues(row.rig.rigReasonFamilies, 3))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
       })
@@ -9939,11 +10292,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         datasetFilter ? `dataset ${datasetFilter}` : null,
         packFilter ? `pack ${packFilter}` : null,
         sourceFilter ? `source ${sourceFilter}` : null,
+        speciesFilter ? `species ${speciesFilter}` : null,
+        viewFilter ? `view ${viewFilter}` : null,
         rigFilter ? `rig ${rigFilter}` : null,
         fallbackFilter ? `fallback ${fallbackFilter}` : null,
         reviewOnlyFilter ? "review_only" : null,
         lowAnchorFilter ? "low_anchor" : null,
         recreateFilter ? "recreate" : null,
+        repairableFilter ? "repairable" : null,
         queryFilter ? `q ${queryFilter}` : null
       ],
       " | "
@@ -10541,6 +10897,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      { label: "Actual Winner", value: humanizeOpsLabel(actualWinner), hint: "actual-side chosen candidate" },
 	      { label: "Promotion Gate", value: comparisonVerdict, hint: comparisonNextDecision },
 	      { label: "Rig Review", value: selectedRigCardValue, hint: `${actualRigSignals} | anchor ${actualRigAnchorSummary}` },
+	      { label: "Rig Context", value: summarizeRigContext(actualRigState), hint: summarizeRigLineage(actualRigState) },
 	      { label: "Rollback Point", value: humanizeOpsLabel(promptWinner), hint: "prompt winner remains the safest rollback anchor" },
 	      { label: "Fallback Reasons", value: selectedRigFallbackSummary, hint: "metadata or anchor-derived fallback context" }
 	    ];
