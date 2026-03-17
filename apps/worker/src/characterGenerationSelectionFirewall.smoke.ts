@@ -373,6 +373,44 @@ const cleanFirewall = assessFinalQualityFirewall({
 assert.equal(cleanFirewall.level, "none");
 assert.deepEqual(cleanPackDefectSummary.repeatedFamilies, []);
 
+const rigBlockedFirewall = assessFinalQualityFirewall({
+  selectedByView: cleanSelectedByView,
+  targetStyle: "mascot",
+  acceptedScoreThreshold: 0.58,
+  rigStability: {
+    severity: "block",
+    summary: "block:front anchor and profile landmarks unstable",
+    reasonCodes: ["rig-anchor-block:front", "rig-landmark-block:profile"],
+    fallbackReasonCodes: ["review_only", "safe_front_expression", "lock_mouth_preset", "recreate"],
+    warningViews: ["threeQuarter"],
+    blockingViews: ["front", "profile"],
+    reviewOnly: true,
+    safeFrontExpression: true,
+    suppressAggressiveYaw: true,
+    lockMouthPreset: true,
+    anchorConfidenceOverall: 0.54,
+    anchorConfidenceByView: {
+      front: 0.48,
+      threeQuarter: 0.62,
+      profile: 0.53
+    },
+    landmarkConsistencyByView: {
+      threeQuarter: 0.56,
+      profile: 0.42
+    },
+    suggestedAction: "recreate"
+  },
+  packDefectSummary: cleanPackDefectSummary
+});
+
+assert.equal(rigBlockedFirewall.level, "block");
+assert.equal(rigBlockedFirewall.suggestedAction, "recreate");
+assert.ok(rigBlockedFirewall.blockingViews?.includes("front"));
+assert.ok(rigBlockedFirewall.blockingViews?.includes("profile"));
+assert.ok(rigBlockedFirewall.reasonCodes.includes("rig-firewall:front"));
+assert.ok(rigBlockedFirewall.reasonCodes.includes("rig-firewall:profile"));
+assert.ok(rigBlockedFirewall.reasonCodes.includes("rig_stability_compounded"));
+
 const cleanSelectionCandidate = makeCandidate("threeQuarter", {
   candidateId: "threeQuarter_clean_selection",
   score: 0.76,

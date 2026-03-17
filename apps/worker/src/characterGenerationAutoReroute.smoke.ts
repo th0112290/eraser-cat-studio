@@ -273,6 +273,50 @@ assert.equal(runtimeFrontRebuild?.strategy, "full_pack_rebuild");
 assert.ok(runtimeFrontRebuild?.triggers.includes("runtime_degraded_views"));
 assert.deepEqual(runtimeFrontRebuild?.targetViews, ["front", "threeQuarter", "profile"]);
 
+const rigReviewReroute = decideAutoReroute({
+  config: defaultConfig,
+  generationViewToGenerate: undefined,
+  providerName: "comfyui",
+  requestedViews: ["front", "threeQuarter", "profile"],
+  packCoherence: undefined,
+  rigStability: {
+    severity: "review",
+    summary: "review:profile landmark drift",
+    reasonCodes: ["rig-landmark-review:profile"],
+    fallbackReasonCodes: ["review_only", "suppress_aggressive_yaw", "manual_compare"],
+    warningViews: ["profile"],
+    blockingViews: [],
+    reviewOnly: true,
+    safeFrontExpression: false,
+    suppressAggressiveYaw: true,
+    lockMouthPreset: false,
+    anchorConfidenceOverall: 0.64,
+    anchorConfidenceByView: {
+      front: 0.73,
+      threeQuarter: 0.66,
+      profile: 0.57
+    },
+    landmarkConsistencyByView: {
+      profile: 0.45
+    },
+    suggestedAction: "pick-manually"
+  },
+  missingGeneratedViews: [],
+  lowQualityGeneratedViews: [],
+  frontStrong: true,
+  continuity: {
+    enabled: true,
+    attempted: true,
+    applied: true,
+    reason: "reused"
+  }
+});
+
+assert.ok(rigReviewReroute);
+assert.equal(rigReviewReroute?.strategy, "targeted_view_retry");
+assert.ok(rigReviewReroute?.triggers.includes("rig_instability_review"));
+assert.deepEqual(rigReviewReroute?.targetViews, ["profile"]);
+
 const reviewRisk = assessAutoSelectionRisk({
   selectedByView: {
     front: makeCandidate("front"),
@@ -404,6 +448,73 @@ assert.equal(runtimeBlockedRisk.level, "block");
 assert.equal(runtimeBlockedRisk.suggestedAction, "recreate");
 assert.ok(runtimeBlockedRisk.reasonCodes.includes("runtime_quality_compounded"));
 assert.ok(runtimeBlockedRisk.reasonCodes.includes("runtime_fallback_selected"));
+
+const rigBlockedRisk = assessAutoSelectionRisk({
+  selectedByView: {
+    front: makeCandidate("front", {
+      score: 0.64,
+      frontSymmetryScore: 0.49,
+      headSquarenessScore: 0.2,
+      speciesScore: 0.33,
+      targetStyleScore: 0.45
+    }),
+    threeQuarter: makeCandidate("threeQuarter", {
+      consistencyScore: 0.46
+    }),
+    profile: makeCandidate("profile", {
+      consistencyScore: 0.44
+    })
+  },
+  packCoherence: {
+    issues: ["profile_consistency_floor_low"],
+    severity: "review",
+    score: 0.74,
+    blockingViews: [],
+    warningViews: ["profile"],
+    metrics: {
+      frontAnchorScore: 0.68,
+      frontStyleScore: 0.45,
+      frontSpeciesScore: 0.34,
+      threeQuarterConsistency: 0.46,
+      profileConsistency: 0.44,
+      speciesSpread: 0.08,
+      styleSpread: 0.08,
+      headRatioSpread: 0.05,
+      monochromeSpread: 0.03
+    }
+  },
+  rigStability: {
+    severity: "block",
+    summary: "block:front anchor and side landmarks unstable",
+    reasonCodes: ["rig-anchor-block:front", "rig-landmark-block:profile"],
+    fallbackReasonCodes: ["review_only", "safe_front_expression", "lock_mouth_preset", "recreate"],
+    warningViews: ["threeQuarter"],
+    blockingViews: ["front", "profile"],
+    reviewOnly: true,
+    safeFrontExpression: true,
+    suppressAggressiveYaw: true,
+    lockMouthPreset: true,
+    anchorConfidenceOverall: 0.55,
+    anchorConfidenceByView: {
+      front: 0.49,
+      threeQuarter: 0.61,
+      profile: 0.54
+    },
+    landmarkConsistencyByView: {
+      threeQuarter: 0.46,
+      profile: 0.41
+    },
+    suggestedAction: "recreate"
+  },
+  targetStyle: "mascot",
+  acceptedScoreThreshold: 0.58
+});
+
+assert.equal(rigBlockedRisk.level, "block");
+assert.equal(rigBlockedRisk.suggestedAction, "recreate");
+assert.ok(rigBlockedRisk.reasonCodes.includes("rig_review_only"));
+assert.ok(rigBlockedRisk.reasonCodes.includes("rig_anchor_confidence_soft"));
+assert.ok(rigBlockedRisk.reasonCodes.includes("rig_landmark_consistency_soft"));
 
 const reviewEmbargo = assessQualityEmbargo({
   selectedByView: {
