@@ -639,8 +639,23 @@ type CharacterPackLineageRigSummary = {
 type CharacterPackLineageOverrideSummary = {
   anchorsPath: string | null;
   anchorsUrl: string | null;
+  anchorsText: string | null;
   cropBoxesPath: string | null;
   cropBoxesUrl: string | null;
+  cropBoxesText: string | null;
+};
+
+type CharacterOverrideKind = "anchors" | "cropBoxes";
+
+type CharacterGenerationOverrideTarget = {
+  generateJobId: string;
+  manifest: GenerationManifest;
+  manifestPath: string;
+  characterPackId: string;
+  lineage: CharacterPackLineage;
+  anchorsOverridePath: string;
+  cropBoxesOverridePath: string;
+  selectedByView: CharacterGenerationSelection | null;
 };
 
 type CharacterPackLineage = {
@@ -980,6 +995,194 @@ function readJsonFileSafe(filePath: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function readTextFileSafe(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+const CHARACTER_OVERRIDE_VIEWS = ["front", "threeQuarter", "profile"] as const satisfies readonly CharacterGenerationView[];
+const CHARACTER_ANCHOR_OVERRIDE_IDS = [
+  "head_center",
+  "mouth_center",
+  "eye_near",
+  "eye_far",
+  "ear_near",
+  "ear_far",
+  "paw_anchor",
+  "tail_root"
+] as const;
+const CHARACTER_ANCHOR_OVERRIDE_STATUSES = ["present", "occluded", "missing", "not_applicable"] as const;
+
+function defaultAnchorOverrideText(): string {
+  return `${JSON.stringify(
+    {
+      views: {
+        front: {},
+        threeQuarter: {},
+        profile: {}
+      }
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function defaultCropBoxOverrideText(): string {
+  return `${JSON.stringify(
+    {
+      torso: {},
+      head: {},
+      eyes: {},
+      mouth: {}
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function sanitizeAnchorOverridePayload(raw: unknown): JsonRecord {
+  if (!isRecord(raw)) {
+    throw createHttpError(400, "anchors override must be a JSON object");
+  }
+  const viewRoot = isRecord(raw.views) ? raw.views : raw;
+  const sanitizedViews: JsonRecord = {};
+
+  for (const view of CHARACTER_OVERRIDE_VIEWS) {
+    const rawView = isRecord(viewRoot[view]) ? viewRoot[view] : null;
+    if (!rawView) {
+      continue;
+    }
+    const sanitizedView: JsonRecord = {};
+    for (const anchorId of CHARACTER_ANCHOR_OVERRIDE_IDS) {
+      const rawEntry = rawView[anchorId];
+      if (!isRecord(rawEntry)) {
+        continue;
+      }
+      const sanitizedEntry: JsonRecord = {};
+      const x = readFiniteNumber(rawEntry.x);
+      const y = readFiniteNumber(rawEntry.y);
+      const confidence = readFiniteNumber(rawEntry.confidence);
+      const status = typeof rawEntry.status === "string" ? rawEntry.status.trim() : "";
+      const notes = typeof rawEntry.notes === "string" ? rawEntry.notes.trim() : "";
+      if (x !== undefined) {
+        sanitizedEntry.x = x;
+      }
+      if (y !== undefined) {
+        sanitizedEntry.y = y;
+      }
+      if (confidence !== undefined) {
+        sanitizedEntry.confidence = confidence;
+      }
+      if ((CHARACTER_ANCHOR_OVERRIDE_STATUSES as readonly string[]).includes(status)) {
+        sanitizedEntry.status = status;
+      }
+      if (notes.length > 0) {
+        sanitizedEntry.notes = notes;
+      }
+      if (Object.keys(sanitizedEntry).length > 0) {
+        sanitizedView[anchorId] = sanitizedEntry;
+      }
+    }
+    if (Object.keys(sanitizedView).length > 0) {
+      sanitizedViews[view] = sanitizedView;
+    }
+  }
+
+  if (Object.keys(sanitizedViews).length === 0) {
+    throw createHttpError(400, "anchors override did not include any valid anchor entries");
+  }
+
+  return { views: sanitizedViews };
+}
+
+function sanitizeCropBoxPayload(rawBox: unknown): JsonRecord | null {
+  if (!isRecord(rawBox)) {
+    return null;
+  }
+  const sanitized: JsonRecord = {};
+  const cx = readFiniteNumber(rawBox.cx);
+  const cy = readFiniteNumber(rawBox.cy);
+  const w = readFiniteNumber(rawBox.w);
+  const h = readFiniteNumber(rawBox.h);
+  if (cx !== undefined) {
+    sanitized.cx = cx;
+  }
+  if (cy !== undefined) {
+    sanitized.cy = cy;
+  }
+  if (w !== undefined) {
+    sanitized.w = w;
+  }
+  if (h !== undefined) {
+    sanitized.h = h;
+  }
+  return Object.keys(sanitized).length > 0 ? sanitized : null;
+}
+
+function sanitizeCropBoxOverridePayload(raw: unknown): JsonRecord {
+  if (!isRecord(raw)) {
+    throw createHttpError(400, "crop-boxes override must be a JSON object");
+  }
+
+  const sanitized: JsonRecord = {};
+  const torsoRoot = isRecord(raw.torso) ? raw.torso : null;
+  const headRoot = isRecord(raw.head) ? raw.head : null;
+  const eyesRoot = isRecord(raw.eyes) ? raw.eyes : null;
+
+  const torso: JsonRecord = {};
+  const head: JsonRecord = {};
+  for (const view of CHARACTER_OVERRIDE_VIEWS) {
+    const torsoBox = sanitizeCropBoxPayload(torsoRoot?.[view]);
+    const headBox = sanitizeCropBoxPayload(headRoot?.[view]);
+    if (torsoBox) {
+      torso[view] = torsoBox;
+    }
+    if (headBox) {
+      head[view] = headBox;
+    }
+  }
+  if (Object.keys(torso).length > 0) {
+    sanitized.torso = torso;
+  }
+  if (Object.keys(head).length > 0) {
+    sanitized.head = head;
+  }
+
+  const eyes: JsonRecord = {};
+  const leftEye = sanitizeCropBoxPayload(eyesRoot?.left);
+  const rightEye = sanitizeCropBoxPayload(eyesRoot?.right);
+  if (leftEye) {
+    eyes.left = leftEye;
+  }
+  if (rightEye) {
+    eyes.right = rightEye;
+  }
+  if (Object.keys(eyes).length > 0) {
+    sanitized.eyes = eyes;
+  }
+
+  const mouth = sanitizeCropBoxPayload(raw.mouth);
+  if (mouth) {
+    sanitized.mouth = mouth;
+  }
+
+  if (Object.keys(sanitized).length === 0) {
+    throw createHttpError(400, "crop-boxes override did not include any valid crop boxes");
+  }
+
+  return sanitized;
 }
 
 function getGeneratedCharacterArtifactSources(): CharacterArtifactSource[] {
@@ -2638,9 +2841,210 @@ function readCharacterPackLineage(characterPackId: string): CharacterPackLineage
     overrides: {
       anchorsPath: fs.existsSync(anchorsOverridePath) ? anchorsOverridePath : null,
       anchorsUrl: toGeneratedCharacterFileUrl(anchorsOverridePath),
+      anchorsText: readTextFileSafe(anchorsOverridePath),
       cropBoxesPath: fs.existsSync(cropBoxesOverridePath) ? cropBoxesOverridePath : null,
-      cropBoxesUrl: toGeneratedCharacterFileUrl(cropBoxesOverridePath)
+      cropBoxesUrl: toGeneratedCharacterFileUrl(cropBoxesOverridePath),
+      cropBoxesText: readTextFileSafe(cropBoxesOverridePath)
     }
+  };
+}
+
+function readSelectedByViewSelection(manifest: GenerationManifest): CharacterGenerationSelection | null {
+  const front = manifest.selectedByView?.front?.candidateId;
+  const threeQuarter = manifest.selectedByView?.threeQuarter?.candidateId;
+  const profile = manifest.selectedByView?.profile?.candidateId;
+  if (
+    typeof front === "string" &&
+    front.trim().length > 0 &&
+    typeof threeQuarter === "string" &&
+    threeQuarter.trim().length > 0 &&
+    typeof profile === "string" &&
+    profile.trim().length > 0
+  ) {
+    return {
+      front: front.trim(),
+      threeQuarter: threeQuarter.trim(),
+      profile: profile.trim()
+    };
+  }
+  return null;
+}
+
+function normalizePrettyJsonDocument(value: unknown): string {
+  const normalized = JSON.parse(stableStringify(value));
+  return `${JSON.stringify(normalized, null, 2)}\n`;
+}
+
+function buildEmptyManualOverrideDocument(kind: CharacterOverrideKind): JsonRecord {
+  if (kind === "anchors") {
+    return {
+      views: {
+        front: {},
+        threeQuarter: {},
+        profile: {}
+      }
+    };
+  }
+  return {
+    torso: {},
+    head: {},
+    eyes: {},
+    mouth: {}
+  };
+}
+
+function readManualOverrideSeed(input: {
+  overridePath: string | null;
+  proposalPath: string | null;
+  kind: CharacterOverrideKind;
+}): { text: string; source: "override" | "proposal" | "empty" } {
+  const overrideRaw =
+    input.overridePath && fs.existsSync(input.overridePath) ? readJsonFileSafe(input.overridePath) : null;
+  if (overrideRaw !== null) {
+    return {
+      text: normalizePrettyJsonDocument(overrideRaw),
+      source: "override"
+    };
+  }
+
+  const proposalRaw =
+    input.proposalPath && fs.existsSync(input.proposalPath) ? readJsonFileSafe(input.proposalPath) : null;
+  const proposal = isRecord(proposalRaw) ? proposalRaw : null;
+  const autoProposal = proposal && isRecord(proposal.auto_proposal) ? proposal.auto_proposal : null;
+  const proposalSeed =
+    input.kind === "anchors"
+      ? autoProposal && isRecord(autoProposal.anchors)
+        ? autoProposal.anchors
+        : null
+      : autoProposal && isRecord(autoProposal.crop_boxes)
+        ? autoProposal.crop_boxes
+        : null;
+  if (proposalSeed) {
+    return {
+      text: normalizePrettyJsonDocument(proposalSeed),
+      source: "proposal"
+    };
+  }
+
+  return {
+    text: normalizePrettyJsonDocument(buildEmptyManualOverrideDocument(input.kind)),
+    source: "empty"
+  };
+}
+
+function normalizeManualOverrideText(rawText: string, kind: CharacterOverrideKind): string {
+  const trimmed = rawText.trim();
+  if (trimmed.length === 0) {
+    throw createHttpError(400, `${kind === "anchors" ? "anchors" : "crop boxes"} override JSON is required`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw createHttpError(400, `Invalid ${kind === "anchors" ? "anchors" : "crop boxes"} override JSON: ${message}`);
+  }
+  if (!isRecord(parsed)) {
+    throw createHttpError(400, `${kind === "anchors" ? "anchors" : "crop boxes"} override must be a JSON object`);
+  }
+  return normalizePrettyJsonDocument(
+    kind === "anchors" ? sanitizeAnchorOverridePayload(parsed) : sanitizeCropBoxOverridePayload(parsed)
+  );
+}
+
+function resolveManualOverrideFilePath(characterRoot: string, kind: CharacterOverrideKind): string {
+  return path.join(characterRoot, "pack", "overrides", kind === "anchors" ? "anchors.json" : "crop-boxes.json");
+}
+
+async function resolveCharacterGenerationOverrideContext(
+  prisma: PrismaClient,
+  generateJobId: string
+): Promise<CharacterGenerationOverrideTarget> {
+  const sourceGenerateJob = await prisma.job.findUnique({
+    where: { id: generateJobId },
+    include: {
+      episode: {
+        select: {
+          id: true,
+          characterPackId: true,
+          characterPackVersion: true
+        }
+      }
+    }
+  });
+
+  if (!sourceGenerateJob) {
+    throw createHttpError(404, "generate job not found");
+  }
+  if (sourceGenerateJob.type !== GENERATE_CHARACTER_ASSETS_JOB_NAME) {
+    throw createHttpError(400, "job is not GENERATE_CHARACTER_ASSETS");
+  }
+
+  const manifestPath = getGenerationManifestPath(sourceGenerateJob.id);
+  const manifest = readGenerationManifest(manifestPath);
+  if (!manifest) {
+    throw createHttpError(404, `generation manifest not found: ${manifestPath}`);
+  }
+
+  const characterPackId =
+    typeof manifest.characterPackId === "string" && manifest.characterPackId.trim().length > 0
+      ? manifest.characterPackId.trim()
+      : sourceGenerateJob.episode.characterPackId;
+  if (!characterPackId) {
+    throw createHttpError(400, "generation run does not have a character pack yet");
+  }
+
+  const lineage = readCharacterPackLineage(characterPackId);
+  if (!lineage) {
+    throw createHttpError(404, `character lineage not found: ${characterPackId}`);
+  }
+
+  return {
+    generateJobId,
+    manifest,
+    manifestPath,
+    characterPackId,
+    lineage,
+    anchorsOverridePath: resolveManualOverrideFilePath(lineage.characterRoot, "anchors"),
+    cropBoxesOverridePath: resolveManualOverrideFilePath(lineage.characterRoot, "cropBoxes"),
+    selectedByView: readSelectedByViewSelection(manifest)
+  };
+}
+
+function readSelectedCandidateSelectionFromManifest(manifest: GenerationManifest): CharacterGenerationSelection {
+  const selection = readSelectedByViewSelection(manifest);
+  if (!selection) {
+    throw createHttpError(400, "current run does not record a full selected candidate set yet");
+  }
+  return selection;
+}
+
+async function createCharacterGenerationRebuildSelected(
+  prisma: PrismaClient,
+  queue: Queue<EpisodeJobPayload>,
+  queueName: string,
+  input: {
+    generateJobId: string;
+  }
+): Promise<{
+  sessionId: string;
+  episodeId: string;
+  generateJobId: string;
+  buildJobId: string;
+  previewJobId: string;
+  bullmqJobId: string;
+  manifestPath: string;
+  selection: CharacterGenerationSelection;
+}> {
+  const context = await resolveCharacterGenerationOverrideContext(prisma, input.generateJobId);
+  const selection = readSelectedCandidateSelectionFromManifest(context.manifest);
+  const rebuilt = await createCharacterGenerationPick(prisma, queue, queueName, {
+    generateJobId: input.generateJobId,
+    selection
+  });
+  return {
+    ...rebuilt,
+    selection
   };
 }
 
@@ -6420,6 +6824,80 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     });
   });
 
+  app.post("/api/character-generator/rebuild-selected", async (request, reply) => {
+    const body = requireBodyObject(request.body);
+    const generateJobId = optionalString(body, "generateJobId");
+    if (!generateJobId) {
+      throw createHttpError(400, "generateJobId is required");
+    }
+
+    const created = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
+      generateJobId
+    });
+
+    return reply.code(201).send({
+      data: created
+    });
+  });
+
+  app.post("/api/character-generator/overrides/save", async (request, reply) => {
+    const body = requireBodyObject(request.body);
+    const generateJobId = optionalString(body, "generateJobId");
+    const kindRaw = optionalString(body, "kind");
+    const rawJson = optionalString(body, "overrideJson");
+    if (!generateJobId) {
+      throw createHttpError(400, "generateJobId is required");
+    }
+    if (kindRaw !== "anchors" && kindRaw !== "cropBoxes") {
+      throw createHttpError(400, "kind must be anchors or cropBoxes");
+    }
+    if (!rawJson) {
+      throw createHttpError(400, "overrideJson is required");
+    }
+
+    const normalized = normalizeManualOverrideText(rawJson, kindRaw);
+    const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
+    const overridePath = resolveManualOverrideFilePath(context.lineage.characterRoot, kindRaw);
+    fs.mkdirSync(path.dirname(overridePath), { recursive: true });
+    fs.writeFileSync(overridePath, normalized, "utf8");
+
+    return reply.code(201).send({
+      data: {
+        kind: kindRaw,
+        characterPackId: context.characterPackId,
+        overridePath
+      }
+    });
+  });
+
+  app.post("/api/character-generator/overrides/clear", async (request, reply) => {
+    const body = requireBodyObject(request.body);
+    const generateJobId = optionalString(body, "generateJobId");
+    const kindRaw = optionalString(body, "kind");
+    if (!generateJobId) {
+      throw createHttpError(400, "generateJobId is required");
+    }
+    if (kindRaw !== "anchors" && kindRaw !== "cropBoxes") {
+      throw createHttpError(400, "kind must be anchors or cropBoxes");
+    }
+
+    const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
+    const overridePath = resolveManualOverrideFilePath(context.lineage.characterRoot, kindRaw);
+    const removed = fs.existsSync(overridePath);
+    if (removed) {
+      fs.unlinkSync(overridePath);
+    }
+
+    return reply.send({
+      data: {
+        kind: kindRaw,
+        characterPackId: context.characterPackId,
+        removed,
+        overridePath
+      }
+    });
+  });
+
   app.get("/ui/studio", async (request, reply) => {
     const query = isRecord(request.query) ? request.query : {};
     const message = optionalString(query, "message");
@@ -6677,6 +7155,30 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const selectedGeneratedLineage =
       selectedManifest?.characterPackId ? readCharacterPackLineage(selectedManifest.characterPackId) : null;
     const selectedPackRigSummary = selectedGeneratedLineage?.rigSummary ?? null;
+    const selectedAnchorsOverrideSeed = selectedGeneratedLineage
+      ? readManualOverrideSeed({
+          overridePath: selectedGeneratedLineage.overrides.anchorsPath,
+          proposalPath: selectedGeneratedLineage.proposalPath,
+          kind: "anchors"
+        })
+      : null;
+    const selectedCropBoxesOverrideSeed = selectedGeneratedLineage
+      ? readManualOverrideSeed({
+          overridePath: selectedGeneratedLineage.overrides.cropBoxesPath,
+          proposalPath: selectedGeneratedLineage.proposalPath,
+          kind: "cropBoxes"
+        })
+      : null;
+    const selectedHasRebuildSelection = Boolean(
+      selectedManifest?.selectedByView?.front?.candidateId &&
+        selectedManifest?.selectedByView?.threeQuarter?.candidateId &&
+        selectedManifest?.selectedByView?.profile?.candidateId
+    );
+    const selectedRebuildSelectionSummary = selectedHasRebuildSelection
+      ? `front=${selectedManifest?.selectedByView?.front?.candidateId ?? "-"} / threeQuarter=${
+          selectedManifest?.selectedByView?.threeQuarter?.candidateId ?? "-"
+        } / profile=${selectedManifest?.selectedByView?.profile?.candidateId ?? "-"}`
+      : "Current run has not materialized a full selected candidate set yet.";
     const selectedWorkflowRuntimeDiagnostics = resolveSelectedWorkflowRuntimeDiagnostics(selectedManifest);
     const selectedRecommendedActions = buildRecommendedActions(selectedManifest);
     const selectedRigState = summarizeRigSeverity(selectedRigStability);
@@ -6787,7 +7289,61 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             selectedGeneratedLineage
               ? `${selectedGeneratedLineage.qcFailedCount}/${selectedGeneratedLineage.qcTotalCount} QC checks failed. Approval status=${selectedGeneratedLineage.acceptanceStatus ?? "-"}`
               : "Repair tasks and pack-level QC appear only after pack artifacts are materialized."
-          )}</p></article></div><div class="cg-signal-table" style="margin-top:12px"><table><thead><tr><th>View</th><th>State</th><th>Anchor diagnosis</th><th>Metrics</th><th>Repair triage</th><th>Repair acceptance</th><th>Directive</th><th>Defects</th><th>Suggested path</th><th>Evidence</th></tr></thead><tbody>${selectedRigRepairRows}</tbody></table></div>`
+          )}</p></article></div><div class="cg-signal-table" style="margin-top:12px"><table><thead><tr><th>View</th><th>State</th><th>Anchor diagnosis</th><th>Metrics</th><th>Repair triage</th><th>Repair acceptance</th><th>Directive</th><th>Defects</th><th>Suggested path</th><th>Evidence</th></tr></thead><tbody>${selectedRigRepairRows}</tbody></table></div>${
+            selectedJob && selectedGeneratedLineage && selectedAnchorsOverrideSeed && selectedCropBoxesOverrideSeed
+              ? `<section class="cg-override-console" id="cg-manual-overrides"><div class="cg-section-head"><div><div class="cg-section-kicker">Manual Repair / Override</div><h3>Save override files and rebuild the current pack without a full recreate</h3></div><p>Use this lane only after the repair console has narrowed the fault to anchors or crop boxes. Save the override file, then rebuild the current selected candidates to refresh pack evidence, preview, and compare.</p></div><div class="cg-override-grid"><article class="cg-override-editor"><div class="cg-rig-kicker">anchors.json</div><h4>Per-view anchor override</h4><p>Seeded from ${escHtml(
+                  selectedAnchorsOverrideSeed.source === "override"
+                    ? "the current override file"
+                    : selectedAnchorsOverrideSeed.source === "proposal"
+                      ? "the current proposal anchor manifest"
+                      : "an empty anchor scaffold"
+                )}. Edit only the anchors that need manual correction. Valid status values are present, occluded, missing, and not_applicable.</p><p class="cg-override-meta">${
+                  selectedGeneratedLineage.overrides.anchorsUrl
+                    ? `raw file: <a href="${escHtml(selectedGeneratedLineage.overrides.anchorsUrl)}">anchors.json</a>`
+                    : "No anchors.json override file has been saved yet."
+                }</p><form method="post" action="/ui/character-generator/overrides/save">${renderCreationNavHiddenFields(
+                  creationNav
+                )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="anchors"/><textarea name="overrideJson" rows="16">${escHtml(
+                  selectedAnchorsOverrideSeed.text
+                )}</textarea><div class="cg-override-actions"><button type="submit" name="afterSave" value="save">Save anchors.json</button><button type="submit" name="afterSave" value="rebuild" class="secondary"${
+                  selectedHasRebuildSelection ? "" : " disabled"
+                }>Save + rebuild current selection</button></div></form><div class="cg-override-actions"><form method="post" action="/ui/character-generator/overrides/clear">${renderCreationNavHiddenFields(
+                  creationNav
+                )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="anchors"/><button type="submit" name="afterClear" value="clear" class="secondary">Clear anchors.json</button><button type="submit" name="afterClear" value="rebuild" class="secondary"${
+                  selectedHasRebuildSelection ? "" : " disabled"
+                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor"><div class="cg-rig-kicker">crop-boxes.json</div><h4>Crop box override</h4><p>Seeded from ${escHtml(
+                  selectedCropBoxesOverrideSeed.source === "override"
+                    ? "the current override file"
+                    : selectedCropBoxesOverrideSeed.source === "proposal"
+                      ? "the current proposal crop boxes"
+                      : "an empty crop-box scaffold"
+                )}. Use this when head, torso, eye, or mouth crop regions are stable but need a narrower manual frame before the next pack rebuild.</p><p class="cg-override-meta">${
+                  selectedGeneratedLineage.overrides.cropBoxesUrl
+                    ? `raw file: <a href="${escHtml(selectedGeneratedLineage.overrides.cropBoxesUrl)}">crop-boxes.json</a>`
+                    : "No crop-boxes.json override file has been saved yet."
+                }</p><form method="post" action="/ui/character-generator/overrides/save">${renderCreationNavHiddenFields(
+                  creationNav
+                )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="cropBoxes"/><textarea name="overrideJson" rows="16">${escHtml(
+                  selectedCropBoxesOverrideSeed.text
+                )}</textarea><div class="cg-override-actions"><button type="submit" name="afterSave" value="save">Save crop-boxes.json</button><button type="submit" name="afterSave" value="rebuild" class="secondary"${
+                  selectedHasRebuildSelection ? "" : " disabled"
+                }>Save + rebuild current selection</button></div></form><div class="cg-override-actions"><form method="post" action="/ui/character-generator/overrides/clear">${renderCreationNavHiddenFields(
+                  creationNav
+                )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="cropBoxes"/><button type="submit" name="afterClear" value="clear" class="secondary">Clear crop-boxes.json</button><button type="submit" name="afterClear" value="rebuild" class="secondary"${
+                  selectedHasRebuildSelection ? "" : " disabled"
+                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor"><div class="cg-rig-kicker">Current Selection Rebuild</div><h4>Rebuild the Character Pack with current selected candidates</h4><p>This path keeps the current selected candidate ids and reruns pack assembly / preview. Use it after saving anchors.json or crop-boxes.json so compare reads the updated rig evidence without a fresh full recreate.</p><p class="cg-override-meta">${escHtml(
+                  selectedRebuildSelectionSummary
+                )}</p><div class="notice">${
+                  selectedHasRebuildSelection
+                    ? "The current run has a complete selected candidate set. Rebuild is available now."
+                    : "Current run does not yet record front, threeQuarter, and profile selections. Save overrides first, then rebuild after compare or pick has materialized the selected set."
+                }</div><div class="cg-override-actions"><form method="post" action="/ui/character-generator/rebuild-selected">${renderCreationNavHiddenFields(
+                  creationNav
+                )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><button type="submit"${
+                  selectedHasRebuildSelection ? "" : ' class="secondary" disabled'
+                }>Rebuild current selection</button></form></div><p class="cg-override-meta">Prefer this narrow rebuild before view regenerate or full pack recreate whenever the current images are good and only rig/crop interpretation needs manual correction.</p></article></div></section>`
+              : ""
+          }`
         : "";
     const selectedPackCoherenceSection = selectedManifest
       ? selectedPackCoherence
@@ -7495,6 +8051,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const selectedLinkedRoutes: Array<{ href: string; label: string }> = [
       { href: "#pick-candidates", label: "Candidate compare" },
       { href: "#recommended-actions", label: "Next safe actions" },
+      { href: "#cg-manual-overrides", label: "Manual overrides" },
       { href: "#regenerate-view", label: "Candidate regenerate" },
       { href: "#recreate-pack", label: "Pack recreate" },
       { href: "#compare-approved-packs", label: "Approved compare" },
@@ -7562,7 +8119,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             summarizeRigFallbackReasonCodes(selectedRigStability.fallbackReasonCodes)
           )}</h3><p class="cg-rig-copy">${escHtml(selectedRigStability.summary)}</p><p class="cg-rig-copy">override files=${escHtml(
             selectedRigOverrideLinks ? "present" : "not recorded"
-          )} / pack anchor evidence=${escHtml(selectedPackRigSummary ? "present" : "not materialized")}</p><div class="cg-inline-links"><a href="#recommended-actions">Next safe actions</a><a href="#pick-candidates">Candidate compare</a>${
+          )} / pack anchor evidence=${escHtml(selectedPackRigSummary ? "present" : "not materialized")}</p><div class="cg-inline-links"><a href="#recommended-actions">Next safe actions</a><a href="#cg-manual-overrides">Manual overrides</a><a href="#pick-candidates">Candidate compare</a>${
             selectedCharactersHref ? `<a href="${escHtml(selectedCharactersHref)}">Characters</a>` : ""
           }</div></article></div><div class="cg-signal-table"><table><thead><tr><th>View</th><th>State</th><th>Selected Candidate</th><th>Anchor</th><th>Landmark</th><th>Fallbacks</th><th>Warnings</th><th>Rejections</th></tr></thead><tbody>${selectedRigViewRows}</tbody></table></div>${
             selectedRigFallbackCards ? `<div class="cg-signal-flag-grid">${selectedRigFallbackCards}</div>` : ""
@@ -7580,7 +8137,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             selectedRigStability.blockingViews?.join(", ") || "none"
           )} / warnings=${escHtml(
             selectedRigStability.warningViews?.join(", ") || "none"
-          )}</p><p>Use regenerate when the fault is isolated to one view. Escalate to recreate only when the same reason family keeps hitting multiple views or pack-level gates.</p><div class="cg-inline-links"><a href="#cg-rig-surface">Rig console</a><a href="#regenerate-view">Regenerate one view</a><a href="#pick-candidates">Manual compare</a><a href="#recreate-pack">Recreate pack</a></div></div>`
+          )}</p><p>Use regenerate when the fault is isolated to one view. Escalate to recreate only when the same reason family keeps hitting multiple views or pack-level gates.</p><div class="cg-inline-links"><a href="#cg-rig-surface">Rig console</a><a href="#cg-manual-overrides">Manual overrides</a><a href="#regenerate-view">Regenerate one view</a><a href="#pick-candidates">Manual compare</a><a href="#recreate-pack">Recreate pack</a></div></div>`
         : "";
     const selectedRigCompareNotice =
       selectedManifest && selectedRigStability
@@ -8231,6 +8788,186 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           {
             ...creationNav,
             focus: creationNav.focus ?? "recreate-pack"
+          }
+        )
+      );
+    }
+  });
+
+  app.post("/ui/character-generator/overrides/save", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
+    const fallbackJobId = optionalString(body, "generateJobId") ?? creationNav.jobId;
+    try {
+      const generateJobId = optionalString(body, "generateJobId");
+      if (!generateJobId) {
+        throw createHttpError(400, "generateJobId is required");
+      }
+      const overrideKind = optionalString(body, "overrideKind");
+      if (overrideKind !== "anchors" && overrideKind !== "cropBoxes") {
+        throw createHttpError(400, "overrideKind must be anchors or cropBoxes");
+      }
+      const overrideJson = optionalString(body, "overrideJson");
+      const afterSave = optionalString(body, "afterSave");
+      const normalized = normalizeManualOverrideText(overrideJson ?? "", overrideKind);
+      const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
+      const targetPath = resolveManualOverrideFilePath(context.lineage.characterRoot, overrideKind);
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, normalized, "utf8");
+
+      if (afterSave === "rebuild") {
+        const rebuilt = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
+          generateJobId
+        });
+        return reply.redirect(
+          hrefWithCreationNav(
+            "/ui/character-generator",
+            {
+              jobId: rebuilt.generateJobId,
+              message: `Saved ${overrideKind === "anchors" ? "anchors.json" : "crop-boxes.json"} override and queued current-selection rebuild.`
+            },
+            {
+              ...creationNav,
+              currentObject: `run:${rebuilt.generateJobId}`,
+              focus: "cg-manual-overrides"
+            }
+          )
+        );
+      }
+
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: generateJobId,
+            message: `Saved ${overrideKind === "anchors" ? "anchors.json" : "crop-boxes.json"} override. Rebuild current selection when you want the new pack evidence.`
+          },
+          {
+            ...creationNav,
+            currentObject: creationNav.currentObject ?? `run:${generateJobId}`,
+            focus: "cg-manual-overrides"
+          }
+        )
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(fallbackJobId ? { jobId: fallbackJobId } : {}) },
+          {
+            ...creationNav,
+            focus: "cg-manual-overrides"
+          }
+        )
+      );
+    }
+  });
+
+  app.post("/ui/character-generator/overrides/clear", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
+    const fallbackJobId = optionalString(body, "generateJobId") ?? creationNav.jobId;
+    try {
+      const generateJobId = optionalString(body, "generateJobId");
+      if (!generateJobId) {
+        throw createHttpError(400, "generateJobId is required");
+      }
+      const overrideKind = optionalString(body, "overrideKind");
+      if (overrideKind !== "anchors" && overrideKind !== "cropBoxes") {
+        throw createHttpError(400, "overrideKind must be anchors or cropBoxes");
+      }
+      const afterClear = optionalString(body, "afterClear");
+      const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
+      const targetPath = resolveManualOverrideFilePath(context.lineage.characterRoot, overrideKind);
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+      }
+
+      if (afterClear === "rebuild") {
+        const rebuilt = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
+          generateJobId
+        });
+        return reply.redirect(
+          hrefWithCreationNav(
+            "/ui/character-generator",
+            {
+              jobId: rebuilt.generateJobId,
+              message: `Cleared ${overrideKind === "anchors" ? "anchors.json" : "crop-boxes.json"} override and queued current-selection rebuild.`
+            },
+            {
+              ...creationNav,
+              currentObject: `run:${rebuilt.generateJobId}`,
+              focus: "cg-manual-overrides"
+            }
+          )
+        );
+      }
+
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: generateJobId,
+            message: `Cleared ${overrideKind === "anchors" ? "anchors.json" : "crop-boxes.json"} override. Proposal defaults will be used on the next rebuild.`
+          },
+          {
+            ...creationNav,
+            currentObject: creationNav.currentObject ?? `run:${generateJobId}`,
+            focus: "cg-manual-overrides"
+          }
+        )
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(fallbackJobId ? { jobId: fallbackJobId } : {}) },
+          {
+            ...creationNav,
+            focus: "cg-manual-overrides"
+          }
+        )
+      );
+    }
+  });
+
+  app.post("/ui/character-generator/rebuild-selected", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
+    const fallbackJobId = optionalString(body, "generateJobId") ?? creationNav.jobId;
+    try {
+      const generateJobId = optionalString(body, "generateJobId");
+      if (!generateJobId) {
+        throw createHttpError(400, "generateJobId is required");
+      }
+      const rebuilt = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
+        generateJobId
+      });
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: rebuilt.generateJobId,
+            message: "Current selection rebuild queued. The same selected candidates will rebuild the Character Pack with your latest override files."
+          },
+          {
+            ...creationNav,
+            currentObject: `run:${rebuilt.generateJobId}`,
+            focus: "cg-manual-overrides"
+          }
+        )
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(fallbackJobId ? { jobId: fallbackJobId } : {}) },
+          {
+            ...creationNav,
+            focus: "cg-manual-overrides"
           }
         )
       );

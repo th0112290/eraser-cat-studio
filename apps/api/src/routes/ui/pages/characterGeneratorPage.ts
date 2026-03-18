@@ -54,7 +54,7 @@ function buildCharacterGeneratorPageStyles(): string {
 .cg-link-list a,.cg-link-list button,.cg-inline-links a,.cg-inline-links button{display:inline-flex;align-items:center;padding:7px 11px;border-radius:999px;border:1px solid #bed5dd;background:#fff;color:#0f4e6a;font-size:12px;font-weight:800}
 .cg-link-list button,.cg-inline-links button{appearance:none;cursor:pointer}
 .cg-link-list a:hover,.cg-link-list button:hover,.cg-inline-links a:hover,.cg-inline-links button:hover{text-decoration:none;background:#eef7ff}
-.cg-link-list a:focus-visible,.cg-link-list button:focus-visible,.cg-inline-links a:focus-visible,.cg-inline-links button:focus-visible,.cg-form-shell button:focus-visible,.cg-form-shell input:focus-visible,.cg-form-shell select:focus-visible,.cg-form-shell textarea:focus-visible,.cg-advanced-shell summary:focus-visible{outline:2px solid #0f766e;outline-offset:2px}
+.cg-link-list a:focus-visible,.cg-link-list button:focus-visible,.cg-inline-links a:focus-visible,.cg-inline-links button:focus-visible,.cg-form-shell button:focus-visible,.cg-form-shell input:focus-visible,.cg-form-shell select:focus-visible,.cg-form-shell textarea:focus-visible,.cg-advanced-shell summary:focus-visible,.cg-override-editor textarea:focus-visible,.cg-override-editor button:focus-visible{outline:2px solid #0f766e;outline-offset:2px}
 .cg-form-shell{display:grid;gap:14px;padding:0 24px 24px}
 .cg-form-block{display:grid;gap:14px;padding:18px;border:1px solid #d3e2e7;border-radius:18px;background:linear-gradient(180deg,#ffffffeb,#f7fbfb)}
 .cg-form-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
@@ -95,6 +95,16 @@ function buildCharacterGeneratorPageStyles(): string {
 .cg-diagnostic-card h4{margin:0;font-size:15px}
 .cg-diagnostic-card p{margin:0;color:#4f6270;font-size:13px;line-height:1.55}
 .cg-diagnostic-card a{font-weight:800}
+.cg-override-console{display:grid;gap:14px}
+.cg-override-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.cg-override-editor{display:grid;gap:10px;padding:15px 16px;border:1px solid #d6e4ea;border-radius:16px;background:linear-gradient(180deg,#ffffff,#f5fafc)}
+.cg-override-editor h4{margin:0;font-size:15px}
+.cg-override-editor p{margin:0;color:#4f6270;font-size:13px;line-height:1.55}
+.cg-override-meta{font-size:12px;color:#506473;line-height:1.55}
+.cg-override-editor textarea{min-height:240px;width:100%;box-sizing:border-box;background:#fff;border:1px solid #c7d7df;border-radius:12px;padding:10px 12px;color:#142033;font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace;resize:vertical}
+.cg-override-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cg-override-actions form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0}
+.cg-override-console .notice{margin:0}
 .cg-signal-table{overflow:auto;border:1px solid #d4e1ea;border-radius:14px;background:#fff}
 .cg-signal-table table{margin:0;border:none;border-radius:0;min-width:760px}
 .cg-signal-table th{position:sticky;top:0;z-index:1}
