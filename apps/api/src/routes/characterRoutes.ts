@@ -2849,6 +2849,78 @@ function readCharacterPackLineage(characterPackId: string): CharacterPackLineage
   };
 }
 
+function buildProvisionalCharacterPackLineage(
+  characterPackId: string,
+  sourceManifestPath: string | null = null
+): CharacterPackLineage {
+  const source = getGeneratedCharacterArtifactSources()[0] ?? {
+    label: "local worktree",
+    root: path.join(getRepoRoot(), "assets", "generated", "characters")
+  };
+  const characterRoot = path.join(source.root, characterPackId);
+  const manifestPath = path.join(characterRoot, "manifest.json");
+  const packMetaPath = path.join(characterRoot, "pack", "character.pack.meta.json");
+  const packJsonPath = path.join(characterRoot, "pack", "character.pack.json");
+  const proposalPath = path.join(characterRoot, "pack", "proposal.json");
+  const anchorsOverridePath = path.join(characterRoot, "pack", "overrides", "anchors.json");
+  const cropBoxesOverridePath = path.join(characterRoot, "pack", "overrides", "crop-boxes.json");
+  const qcReportPath = path.join(characterRoot, "qc", "qc_report.json");
+  const repairTasksPath = path.join(characterRoot, "qc", "repair_tasks.json");
+
+  return {
+    sourceLabel: `${source.label} (predicted)`,
+    characterRoot,
+    manifestPath,
+    manifestUrl: toGeneratedCharacterFileUrl(manifestPath),
+    packMetaPath: fs.existsSync(packMetaPath) ? packMetaPath : null,
+    packMetaUrl: toGeneratedCharacterFileUrl(packMetaPath),
+    packJsonPath: fs.existsSync(packJsonPath) ? packJsonPath : null,
+    packJsonUrl: toGeneratedCharacterFileUrl(packJsonPath),
+    proposalPath: fs.existsSync(proposalPath) ? proposalPath : null,
+    proposalUrl: toGeneratedCharacterFileUrl(proposalPath),
+    qcReportPath: fs.existsSync(qcReportPath) ? qcReportPath : null,
+    qcReportUrl: toGeneratedCharacterFileUrl(qcReportPath),
+    repairTasksPath: fs.existsSync(repairTasksPath) ? repairTasksPath : null,
+    repairTasksUrl: toGeneratedCharacterFileUrl(repairTasksPath),
+    builtAt: null,
+    sourceManifestPath,
+    sourceManifestUrl: toGeneratedCharacterFileUrl(sourceManifestPath),
+    sourceImageRef: null,
+    sourceImageUrl: null,
+    acceptanceStatus: null,
+    approvedFrontMasterPresent: null,
+    qcFailedCount: 0,
+    qcTotalCount: 0,
+    repairOpenCount: 0,
+    repairTasks: [],
+    viewEntries: (["front", "threeQuarter", "profile"] as CharacterGenerationView[]).map((view) => ({
+      view,
+      assetId: null,
+      approved: null,
+      workflow: null,
+      workflowVersion: null,
+      createdAt: null,
+      filePath: null,
+      fileUrl: null,
+      metadataPath: null,
+      metadataUrl: null,
+      parentAssetId: null,
+      parentAssetPath: null,
+      parentAssetUrl: null,
+      repairHistory: []
+    })),
+    rigSummary: null,
+    overrides: {
+      anchorsPath: fs.existsSync(anchorsOverridePath) ? anchorsOverridePath : null,
+      anchorsUrl: toGeneratedCharacterFileUrl(anchorsOverridePath),
+      anchorsText: readTextFileSafe(anchorsOverridePath),
+      cropBoxesPath: fs.existsSync(cropBoxesOverridePath) ? cropBoxesOverridePath : null,
+      cropBoxesUrl: toGeneratedCharacterFileUrl(cropBoxesOverridePath),
+      cropBoxesText: readTextFileSafe(cropBoxesOverridePath)
+    }
+  };
+}
+
 function readSelectedByViewSelection(manifest: GenerationManifest): CharacterGenerationSelection | null {
   const front = manifest.selectedByView?.front?.candidateId;
   const threeQuarter = manifest.selectedByView?.threeQuarter?.candidateId;
@@ -2873,6 +2945,53 @@ function readSelectedByViewSelection(manifest: GenerationManifest): CharacterGen
 function normalizePrettyJsonDocument(value: unknown): string {
   const normalized = JSON.parse(stableStringify(value));
   return `${JSON.stringify(normalized, null, 2)}\n`;
+}
+
+function persistSelectedByViewToManifest(
+  manifestPath: string,
+  manifest: GenerationManifest,
+  selection: CharacterGenerationSelection
+): void {
+  const nextManifest: GenerationManifest = {
+    ...manifest,
+    status: "HITL_SELECTED",
+    selectedByView: {
+      ...manifest.selectedByView,
+      front: {
+        ...(manifest.selectedByView.front ?? {}),
+        candidateId: selection.front
+      },
+      threeQuarter: {
+        ...(manifest.selectedByView.threeQuarter ?? {}),
+        candidateId: selection.threeQuarter
+      },
+      profile: {
+        ...(manifest.selectedByView.profile ?? {}),
+        candidateId: selection.profile
+      }
+    }
+  };
+  const hashes = computeManifestHashes({
+    episodeId: nextManifest.episodeId,
+    characterPackId: nextManifest.characterPackId,
+    mode: nextManifest.mode,
+    promptPreset: nextManifest.promptPreset,
+    ...(nextManifest.species ? { species: nextManifest.species } : {}),
+    positivePrompt: nextManifest.positivePrompt,
+    negativePrompt: nextManifest.negativePrompt,
+    workflowHash: nextManifest.workflowHash,
+    provider: nextManifest.provider,
+    candidates: nextManifest.candidates
+  });
+  fs.writeFileSync(
+    manifestPath,
+    normalizePrettyJsonDocument({
+      ...nextManifest,
+      inputHash: hashes.inputHash,
+      manifestHash: hashes.manifestHash
+    }),
+    "utf8"
+  );
 }
 
 function buildEmptyManualOverrideDocument(kind: CharacterOverrideKind): JsonRecord {
@@ -2980,10 +3099,10 @@ async function resolveCharacterGenerationOverrideContext(
     throw createHttpError(400, "job is not GENERATE_CHARACTER_ASSETS");
   }
 
-  const manifestPath = getGenerationManifestPath(sourceGenerateJob.id);
-  const manifest = readGenerationManifest(manifestPath);
+  const sourceManifestPath = getGenerationManifestPath(sourceGenerateJob.id);
+  const manifest = readGenerationManifest(sourceManifestPath);
   if (!manifest) {
-    throw createHttpError(404, `generation manifest not found: ${manifestPath}`);
+    throw createHttpError(404, `generation manifest not found: ${sourceManifestPath}`);
   }
 
   const characterPackId =
@@ -2994,15 +3113,13 @@ async function resolveCharacterGenerationOverrideContext(
     throw createHttpError(400, "generation run does not have a character pack yet");
   }
 
-  const lineage = readCharacterPackLineage(characterPackId);
-  if (!lineage) {
-    throw createHttpError(404, `character lineage not found: ${characterPackId}`);
-  }
+  const lineage =
+    readCharacterPackLineage(characterPackId) ?? buildProvisionalCharacterPackLineage(characterPackId, sourceManifestPath);
 
   return {
     generateJobId,
     manifest,
-    manifestPath,
+    manifestPath: sourceManifestPath,
     characterPackId,
     lineage,
     anchorsOverridePath: resolveManualOverrideFilePath(lineage.characterRoot, "anchors"),
@@ -5698,10 +5815,10 @@ async function createCharacterGenerationPick(
     throw createHttpError(400, "episode does not have characterPack metadata");
   }
 
-  const manifestPath = getGenerationManifestPath(sourceGenerateJob.id);
-  const manifest = readGenerationManifest(manifestPath);
+  const sourceManifestPath = getGenerationManifestPath(sourceGenerateJob.id);
+  const manifest = readGenerationManifest(sourceManifestPath);
   if (!manifest) {
-    throw createHttpError(404, `generation manifest not found: ${manifestPath}`);
+    throw createHttpError(404, `generation manifest not found: ${sourceManifestPath}`);
   }
 
   const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
@@ -5737,7 +5854,7 @@ async function createCharacterGenerationPick(
   for (const candidate of [front, threeQuarter, profile]) {
     const absPath = path.isAbsolute(candidate.filePath)
       ? candidate.filePath
-      : path.resolve(path.dirname(manifestPath), candidate.filePath);
+      : path.resolve(path.dirname(sourceManifestPath), candidate.filePath);
     if (!fs.existsSync(absPath)) {
       throw createHttpError(400, `selected candidate file not found: ${absPath}`);
     }
@@ -5789,7 +5906,7 @@ async function createCharacterGenerationPick(
           details: toPrismaJson({
             source: "api:character-generator:pick",
             queueName,
-            manifestPath,
+            manifestPath: sourceManifestPath,
             selection: input.selection
           })
         },
@@ -5844,7 +5961,8 @@ async function createCharacterGenerationPick(
         requireHitlPick: false,
         seed: front.seed,
         candidateCount: 3,
-        manifestPath,
+        manifestPath: getGenerationManifestPath(tx.generateJobId),
+        sourceManifestPath,
         selectedCandidateIds: input.selection
       }
     }
@@ -5862,6 +5980,7 @@ async function createCharacterGenerationPick(
   });
 
   const bullmqJobId = String(enqueueResult.job.id);
+  persistSelectedByViewToManifest(sourceManifestPath, manifest, input.selection);
 
   await prisma.$transaction(async (trx) => {
     await trx.job.update({
@@ -5883,7 +6002,8 @@ async function createCharacterGenerationPick(
           source: "api:character-generator:pick",
           queueName,
           bullmqJobId,
-          manifestPath,
+          manifestPath: getGenerationManifestPath(tx.generateJobId),
+          sourceManifestPath,
           selection: input.selection,
           enqueueMode: enqueueResult.mode,
           enqueueAttemptCount: enqueueResult.attemptCount,
@@ -5911,7 +6031,7 @@ async function createCharacterGenerationPick(
     buildJobId: tx.buildJobId,
     previewJobId: tx.previewJobId,
     bullmqJobId,
-    manifestPath
+    manifestPath: getGenerationManifestPath(tx.generateJobId)
   };
 }
 
