@@ -5591,16 +5591,19 @@ export function deriveRetryAdjustmentForCandidate(input: {
     extraNegativeTokens.add("level frontal cat ears");
     extraNegativeTokens.add("centered cat muzzle");
     extraNegativeTokens.add("flat cat cheek silhouette");
+    extraNegativeTokens.add("same-size cat ears");
+    extraNegativeTokens.add("same-size cat eyes");
     viewPromptHints.add(
-      "strict cat three-quarter turn, near ear visibly larger than the far ear, far ear still peeking behind the head, short cat muzzle rotated off center, near cheek broader than the far cheek, and torso following the same turn as the head"
+      "strict cat three-quarter turn around 35 to 45 degrees, near ear visibly larger than the far ear, far ear still peeking behind the head, near eye slightly larger than the far eye, short cat muzzle rotated off center with slight forward projection, near cheek broader than the far cheek, and torso and hips following the same turn as the head"
     );
-    addDelta("composition", 0.06);
-    addDelta("view_starter", 0.08);
-    addDelta("style", 0.03);
+    addDelta("composition", 0.08);
+    addDelta("view_starter", 0.12);
+    addDelta("style", 0.04);
+    addDelta("subject", 0.14);
     addDelta("front_master", -0.08);
-    addDelta("hero", -0.04);
+    addDelta("hero", 0.12);
     enforceSideTurnBalance = true;
-    notes.push("reinforced cat three-quarter ear and muzzle offset");
+    notes.push("reinforced cat three-quarter yaw silhouette");
   }
 
   if (defect.head || reasons.has("head_shape_not_square_enough")) {
@@ -5641,7 +5644,11 @@ export function deriveRetryAdjustmentForCandidate(input: {
           ? input.view === "front"
             ? "preserve wolf muzzle length and wolf ear silhouette, wolf first not fox, keep the head broad and upright, keep the face high and readable, and keep both short arms attached"
             : "preserve wolf muzzle length and wolf ear silhouette, wolf first not fox, keep a turned wolf wedge muzzle and no front-facing symmetry"
-          : "preserve cat ear silhouette and short feline muzzle";
+        : input.view === "threeQuarter"
+          ? "preserve cat ear silhouette and short feline muzzle, keep the near ear larger than the far ear, keep both ears attached, keep the near cheek broader than the far cheek, and avoid a front-facing cat chest or centered muzzle"
+          : input.view === "profile"
+            ? "preserve cat ear silhouette and short feline muzzle, keep a clear side-turn contour, one dominant near eye, and no front-facing cat chest"
+            : "preserve cat ear silhouette and short feline muzzle";
     viewPromptHints.add(speciesHint);
     addDelta("front_master", 0.06);
     addDelta("style", 0.04);
