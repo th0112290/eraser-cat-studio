@@ -5141,6 +5141,29 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function withAsyncOperationTimeout<T>(
+  label: string,
+  timeoutMs: number,
+  run: () => Promise<T>
+): Promise<T> {
+  const boundedTimeoutMs = Math.max(1_000, timeoutMs);
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      run(),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${boundedTimeoutMs}ms`));
+        }, boundedTimeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function clamp01(value: number): number {
   if (value <= 0) {
     return 0;
@@ -13049,6 +13072,16 @@ export async function handleGenerateCharacterAssetsJob(input: {
     qualityConfig.lowQualityFallbackToMock && !isMascotTargetStyle(promptBundle.qualityProfile.targetStyle);
   const strictRealProvider =
     isMascotTargetStyle(promptBundle.qualityProfile.targetStyle) && requestedProvider === "comfyui";
+  const providerRequestTimeoutMs = toPositiveInt(process.env.COMFY_ADAPTER_TIMEOUT_MS, 360_000);
+  const providerStageTimeoutOverrideMs = toPositiveInt(process.env.CHARACTER_PROVIDER_STAGE_TIMEOUT_MS, 0);
+  const candidatePostprocessTimeoutMs = toPositiveInt(
+    process.env.CHARACTER_CANDIDATE_POSTPROCESS_TIMEOUT_MS,
+    120_000
+  );
+  const candidateAnalysisTimeoutMs = toPositiveInt(
+    process.env.CHARACTER_CANDIDATE_ANALYSIS_TIMEOUT_MS,
+    120_000
+  );
   const speciesRetryBonus = promptBundle.speciesId === "wolf" ? 1 : 0;
   const autoRetryRounds =
     Math.max(qualityConfig.autoRetryRounds, promptBundle.selectionHints.autoRetryRounds ?? 0) + speciesRetryBonus;
@@ -13845,6 +13878,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
         sharedReferenceBank: adjustedReferenceBank,
         referenceBankByView
       });
+      const providerStageTimeoutMs =
+        providerStageTimeoutOverrideMs > 0
+          ? providerStageTimeoutOverrideMs
+          : providerRequestTimeoutMs * Math.max(1, executionViews.length) + 120_000;
       const poseGuideMimeTypeByView = Object.fromEntries(
         Object.entries(input.poseGuidesByView ?? {})
           .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
@@ -13854,7 +13891,10 @@ export async function handleGenerateCharacterAssetsJob(input: {
           )
           .map(([view, guide]) => [view, guide.referenceMimeType ?? "image/png"])
       ) as Partial<Record<CharacterView, string>>;
-      const generatedCandidates = await runProviderGenerate({
+      const generatedCandidates = await withAsyncOperationTimeout(
+        `character provider.generate stage=${input.stage} round=${round + 1} pass=${input.passLabel ?? input.origin ?? "direct"} views=${executionViews.join(",")}`,
+        providerStageTimeoutMs,
+        () => runProviderGenerate({
         mode: generation.mode,
         views: executionViews,
         candidateCount: stageCandidatePlan.candidateCount,
@@ -13976,18 +14016,28 @@ export async function handleGenerateCharacterAssetsJob(input: {
               structureControlsByView
             }
           : {})
-      });
+        })
+      );
 
       for (const candidate of generatedCandidates) {
         if (!executionViews.includes(candidate.view)) {
           continue;
         }
 
-        const postprocessedCandidate = await postprocessCandidateForProduction({
-          candidate,
-          qualityProfile: promptBundle.qualityProfile
-        });
-        const analysis = await analyzeImage(postprocessedCandidate.data);
+        const postprocessedCandidate = await withAsyncOperationTimeout(
+          `character postprocess stage=${input.stage} round=${round + 1} view=${candidate.view} candidate=${candidate.id}`,
+          candidatePostprocessTimeoutMs,
+          () =>
+            postprocessCandidateForProduction({
+              candidate,
+              qualityProfile: promptBundle.qualityProfile
+            })
+        );
+        const analysis = await withAsyncOperationTimeout(
+          `character analyze stage=${input.stage} round=${round + 1} view=${postprocessedCandidate.view} candidate=${postprocessedCandidate.id}`,
+          candidateAnalysisTimeoutMs,
+          () => analyzeImage(postprocessedCandidate.data)
+        );
         const scoredCandidate = scoreCandidate({
           candidate: postprocessedCandidate,
           analysis,
