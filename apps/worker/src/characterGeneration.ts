@@ -11079,6 +11079,11 @@ export function resolveManifestReadPath(
 }
 
 function getComfyUiUrl(): string | undefined {
+  const adapter = process.env.COMFY_ADAPTER_URL?.trim();
+  if (adapter && adapter.length > 0) {
+    return adapter;
+  }
+
   const base = process.env.COMFYUI_BASE_URL?.trim();
   if (base && base.length > 0) {
     return base;
@@ -12918,12 +12923,18 @@ export async function handleGenerateCharacterAssetsJob(input: {
   }
 
   if (requestedProvider === "comfyui" && !comfyUiUrl && remoteApiConfig.baseUrl) {
-    providerWarning = [providerWarning, "COMFYUI_BASE_URL is not configured. Falling back to remoteApi provider."]
+    providerWarning = [
+      providerWarning,
+      "COMFY_ADAPTER_URL/COMFYUI_BASE_URL is not configured. Falling back to remoteApi provider."
+    ]
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .join(" | ");
   } else if (requestedProvider === "comfyui" && !comfyUiUrl) {
     providerName = "mock";
-    providerWarning = [providerWarning, "COMFYUI_BASE_URL is not configured. Falling back to mock provider."]
+    providerWarning = [
+      providerWarning,
+      "COMFY_ADAPTER_URL/COMFYUI_BASE_URL is not configured. Falling back to mock provider."
+    ]
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .join(" | ");
   } else if (requestedProvider === "remoteApi" && !remoteApiConfig.baseUrl) {
