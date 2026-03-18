@@ -5580,6 +5580,29 @@ export function deriveRetryAdjustmentForCandidate(input: {
     notes.push("reinforced three-quarter torso yaw");
   }
 
+  if (
+    input.view === "threeQuarter" &&
+    normalizeGenerationSpecies(input.speciesId) === "cat" &&
+    (reasons.has("threequarter_front_collapse") ||
+      reasons.has("inconsistent_with_front_baseline") ||
+      reasons.has("consistency_shape_drift"))
+  ) {
+    extraNegativeTokens.add("front-facing cat chest");
+    extraNegativeTokens.add("level frontal cat ears");
+    extraNegativeTokens.add("centered cat muzzle");
+    extraNegativeTokens.add("flat cat cheek silhouette");
+    viewPromptHints.add(
+      "strict cat three-quarter turn, near ear visibly larger than the far ear, far ear still peeking behind the head, short cat muzzle rotated off center, near cheek broader than the far cheek, and torso following the same turn as the head"
+    );
+    addDelta("composition", 0.06);
+    addDelta("view_starter", 0.08);
+    addDelta("style", 0.03);
+    addDelta("front_master", -0.08);
+    addDelta("hero", -0.04);
+    enforceSideTurnBalance = true;
+    notes.push("reinforced cat three-quarter ear and muzzle offset");
+  }
+
   if (defect.head || reasons.has("head_shape_not_square_enough")) {
     extraNegativeTokens.add("small head");
     extraNegativeTokens.add("narrow head");
