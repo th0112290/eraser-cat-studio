@@ -14246,6 +14246,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         continue;
       }
 
+      const starterReference = loadMascotStarterReference(promptBundle.speciesId, view);
       refineReferenceInputByView[view] = inlineReferenceFromCandidate(candidate.candidate);
       const refineDirective = buildRepairDirectiveProfile({
         stage: "refine",
@@ -14265,7 +14266,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         stage: "refine",
         targetView: view,
         familyReferencesByView: mascotFamilyReferencesByView,
-        hasStarter: false,
+        hasStarter: Boolean(starterReference),
         directiveFamilies: refineDirective?.families,
         directiveSeverity: refineDirective?.severity,
         preferMultiReference: promptBundle.selectionHints.preferMultiReference,
@@ -14283,7 +14284,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
             stage: "refine",
             role: "composition",
             targetView: view,
-            hasStarter: false,
+            hasStarter: Boolean(starterReference),
             directiveFamilies: refineDirective?.families,
             directiveSeverity: refineDirective?.severity
           }) - (hasFamilyCompositionEntry ? 0.24 : 0)
@@ -14298,7 +14299,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
             stage: "refine",
             role: "front_master",
             targetView: view,
-            hasStarter: false,
+            hasStarter: Boolean(starterReference),
             directiveFamilies: refineDirective?.families,
             directiveSeverity: refineDirective?.severity
           }),
@@ -14306,6 +14307,25 @@ export async function handleGenerateCharacterAssetsJob(input: {
           image: frontReferenceInput
         })
       ];
+      if (starterReference) {
+        bank.push(
+          createReferenceBankEntry({
+            id: `${view}_refine_view_starter`,
+            role: "view_starter",
+            view,
+            weight: resolveAdaptiveReferenceWeight({
+              stage: "refine",
+              role: "view_starter",
+              targetView: view,
+              hasStarter: true,
+              directiveFamilies: refineDirective?.families,
+              directiveSeverity: refineDirective?.severity
+            }),
+            note: starterReference.sourcePath,
+            image: starterReference
+          })
+        );
+      }
       bank.push(...familyReferenceEntries);
       bank.push(
         createReferenceBankEntry({
@@ -14456,6 +14476,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         continue;
       }
 
+      const starterReference = loadMascotStarterReference(promptBundle.speciesId, view);
       lockReferenceInputByView[view] = inlineReferenceFromCandidate(candidate.candidate);
       const lockDirective = buildRepairDirectiveProfile({
         stage: "lock",
@@ -14475,7 +14496,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         stage: "lock",
         targetView: view,
         familyReferencesByView: mascotFamilyReferencesByView,
-        hasStarter: false,
+        hasStarter: Boolean(starterReference),
         directiveFamilies: lockDirective?.families,
         directiveSeverity: lockDirective?.severity,
         preferMultiReference: promptBundle.selectionHints.preferMultiReference,
@@ -14493,7 +14514,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
             stage: "lock",
             role: "composition",
             targetView: view,
-            hasStarter: false,
+            hasStarter: Boolean(starterReference),
             directiveFamilies: lockDirective?.families,
             directiveSeverity: lockDirective?.severity
           }) - (hasFamilyCompositionEntry ? 0.28 : 0)
@@ -14508,7 +14529,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
             stage: "lock",
             role: "front_master",
             targetView: view,
-            hasStarter: false,
+            hasStarter: Boolean(starterReference),
             directiveFamilies: lockDirective?.families,
             directiveSeverity: lockDirective?.severity
           }),
@@ -14516,6 +14537,25 @@ export async function handleGenerateCharacterAssetsJob(input: {
           image: frontReferenceInput
         })
       ];
+      if (starterReference) {
+        bank.push(
+          createReferenceBankEntry({
+            id: `${view}_identity_lock_view_starter`,
+            role: "view_starter",
+            view,
+            weight: resolveAdaptiveReferenceWeight({
+              stage: "lock",
+              role: "view_starter",
+              targetView: view,
+              hasStarter: true,
+              directiveFamilies: lockDirective?.families,
+              directiveSeverity: lockDirective?.severity
+            }),
+            note: starterReference.sourcePath,
+            image: starterReference
+          })
+        );
+      }
       bank.push(...familyReferenceEntries);
       bank.push(
         createReferenceBankEntry({
