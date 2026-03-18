@@ -3615,6 +3615,50 @@ export function buildPreferredSideReferenceInputByView(input: {
   return loaded;
 }
 
+export function selectRetryInlineReferenceInput(input: {
+  view: CharacterView;
+  speciesId?: string;
+  explicitReference?: InlineImageReference;
+  enforceSideTurnBalance?: boolean;
+  viewReferenceBank?: CharacterReferenceBankEntry[];
+  adjustedReferenceBank?: CharacterReferenceBankEntry[];
+  sharedReferenceInput?: InlineImageReference;
+}): InlineImageReference | undefined {
+  const explicitReference = input.explicitReference;
+  if (
+    typeof explicitReference?.referenceImageBase64 === "string" &&
+    explicitReference.referenceImageBase64.length > 0
+  ) {
+    return explicitReference;
+  }
+
+  if (input.enforceSideTurnBalance) {
+    const sideStarterReference =
+      pickReferenceImageFromBankRole(input.viewReferenceBank, "view_starter") ??
+      pickReferenceImageFromBankRole(input.adjustedReferenceBank, "view_starter");
+    const compositionReference =
+      pickReferenceImageFromBankRole(input.viewReferenceBank, "composition") ??
+      pickReferenceImageFromBankRole(input.adjustedReferenceBank, "composition");
+    const preferCompositionReference =
+      input.view === "threeQuarter" && normalizeGenerationSpecies(input.speciesId) === "cat";
+    const preferredReference = preferCompositionReference
+      ? compositionReference ?? sideStarterReference
+      : sideStarterReference ?? compositionReference;
+    if (preferredReference) {
+      return preferredReference;
+    }
+  }
+
+  if (
+    typeof input.sharedReferenceInput?.referenceImageBase64 === "string" &&
+    input.sharedReferenceInput.referenceImageBase64.length > 0
+  ) {
+    return input.sharedReferenceInput;
+  }
+
+  return undefined;
+}
+
 function normalizeMascotReferenceSpeciesId(speciesId?: string): "cat" | "dog" | "wolf" {
   if (speciesId === "dog" || speciesId === "wolf" || speciesId === "cat") {
     return speciesId;
@@ -13900,32 +13944,17 @@ export async function handleGenerateCharacterAssetsJob(input: {
         : undefined;
       const effectiveReferenceInputByView = Object.fromEntries(
         executionViews.flatMap((view) => {
-          const explicitReference = input.referenceInputByView?.[view];
-          if (
-            typeof explicitReference?.referenceImageBase64 === "string" &&
-            explicitReference.referenceImageBase64.length > 0
-          ) {
-            return [[view, explicitReference]];
-          }
-          if (activeRetryAdjustments[view]?.enforceSideTurnBalance) {
-            const sideStarterReference =
-              pickReferenceImageFromBankRole(referenceBankByView[view], "view_starter") ??
-              pickReferenceImageFromBankRole(adjustedReferenceBank, "view_starter");
-            const compositionReference =
-              pickReferenceImageFromBankRole(referenceBankByView[view], "composition") ??
-              pickReferenceImageFromBankRole(adjustedReferenceBank, "composition");
-            if (sideStarterReference || compositionReference) {
-              return [[view, sideStarterReference ?? compositionReference]];
-            }
-          }
-          if (
-            Object.keys(activeRetryAdjustments).length > 0 &&
-            typeof input.referenceInput?.referenceImageBase64 === "string" &&
-            input.referenceInput.referenceImageBase64.length > 0
-          ) {
-            return [[view, input.referenceInput]];
-          }
-          return [];
+          const selectedReference = selectRetryInlineReferenceInput({
+            view,
+            speciesId: promptBundle.speciesId,
+            explicitReference: input.referenceInputByView?.[view],
+            enforceSideTurnBalance: activeRetryAdjustments[view]?.enforceSideTurnBalance,
+            viewReferenceBank: referenceBankByView[view],
+            adjustedReferenceBank,
+            sharedReferenceInput:
+              Object.keys(activeRetryAdjustments).length > 0 ? input.referenceInput : undefined
+          });
+          return selectedReference ? [[view, selectedReference]] : [];
         })
       ) as Partial<Record<CharacterView, InlineImageReference>>;
       const referenceBase64ByView = Object.fromEntries(

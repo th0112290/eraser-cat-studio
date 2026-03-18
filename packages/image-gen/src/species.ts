@@ -354,7 +354,7 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       front:
         "front view should read as cat first, with pointed ears, minimal muzzle, a compact blocky head, exactly two short whisker strokes per side, full body visible, a single centered subject, a face sitting high in the upper head, and no duplicate foreground fragments",
       threeQuarter:
-        "three-quarter cat should stay compact and cute, show both ears attached, keep both eyes visible, and avoid extra muzzle projection",
+        "three-quarter cat should stay compact and cute while clearly turning about 35 to 45 degrees, with a larger near ear, a smaller but still attached far ear, a slightly larger near eye, a muzzle rotated off center, a broader near cheek, and a torso and chest angled with the head instead of drifting back to front symmetry",
       profile:
         "profile cat should keep a very short feline muzzle, one eye only, a clear compact head silhouette, and short cheek whisker strokes"
     },

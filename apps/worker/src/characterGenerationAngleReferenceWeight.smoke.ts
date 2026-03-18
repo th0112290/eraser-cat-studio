@@ -4,7 +4,8 @@ import {
   deriveRetryAdjustmentForCandidate,
   rebalanceReferenceBankForRetry,
   resolveAdaptiveReferenceWeight,
-  resolveStageInputMinimumReferenceWeights
+  resolveStageInputMinimumReferenceWeights,
+  selectRetryInlineReferenceInput
 } from "./characterGeneration";
 
 const preferredSideReferences = buildPreferredSideReferenceInputByView({
@@ -134,6 +135,24 @@ const rebalanced = rebalanceReferenceBankForRetry({
 assert.equal(rebalanced?.find((entry) => entry.role === "front_master")?.weight, 0.6);
 assert.equal(rebalanced?.find((entry) => entry.role === "composition")?.weight, 0.82);
 assert.equal(rebalanced?.find((entry) => entry.role === "view_starter")?.weight, 0.66);
+
+const catRetryReference = selectRetryInlineReferenceInput({
+  view: "threeQuarter",
+  speciesId: "cat",
+  enforceSideTurnBalance: true,
+  viewReferenceBank: [{ role: "view_starter", imageBase64: "starter-cat" } as any],
+  adjustedReferenceBank: [{ role: "composition", imageBase64: "composition-cat" } as any]
+});
+assert.equal(catRetryReference?.referenceImageBase64, "composition-cat");
+
+const dogRetryReference = selectRetryInlineReferenceInput({
+  view: "threeQuarter",
+  speciesId: "dog",
+  enforceSideTurnBalance: true,
+  viewReferenceBank: [{ role: "view_starter", imageBase64: "starter-dog" } as any],
+  adjustedReferenceBank: [{ role: "composition", imageBase64: "composition-dog" } as any]
+});
+assert.equal(dogRetryReference?.referenceImageBase64, "starter-dog");
 
 console.log("[characterGenerationAngleReferenceWeight.smoke] PASS");
 process.exit(0);
