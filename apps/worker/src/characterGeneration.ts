@@ -15116,6 +15116,24 @@ export async function handleGenerateCharacterAssetsJob(input: {
           : {}),
         repairFromCandidateIds: {
           front: frontRescueCandidate.candidate.id
+        },
+        repairLineageByView: {
+          front: {
+            repairFromCandidateId: frontRescueCandidate.candidate.id,
+            ...(resolveCandidateWorkflowStage(frontRescueCandidate)
+              ? { repairFromStage: resolveCandidateWorkflowStage(frontRescueCandidate) }
+              : {}),
+            ...(resolveCandidatePassLabel(frontRescueCandidate)
+              ? { sourcePassLabel: resolveCandidatePassLabel(frontRescueCandidate) }
+              : {}),
+            referenceLineage: dedupeStrings(
+              [
+                resolveCandidateWorkflowStage(frontRescueCandidate),
+                frontRescueDirective?.severity ? `directive:${frontRescueDirective.severity}` : "",
+                ...(frontRescueDirective?.families ?? []).map((family) => `family:${family}`)
+              ].filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+            )
+          }
         }
       });
       applyConsistencyScoring(
