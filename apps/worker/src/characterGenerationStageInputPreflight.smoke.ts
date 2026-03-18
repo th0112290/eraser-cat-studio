@@ -63,7 +63,7 @@ const healthySideBase = assessStageInputPreflight({
   referenceBankByView: {
     threeQuarter: [
       makeReferenceEntry("front_master", 0.94, "front"),
-      makeReferenceEntry("composition", 0.32, "threeQuarter"),
+      makeReferenceEntry("composition", 0.52, "threeQuarter"),
       makeReferenceEntry("style", 0.24, "front")
     ]
   },
@@ -356,6 +356,73 @@ assert.equal(repairWrongDepthSource.status, "block");
 assert.ok(
   repairWrongDepthSource.diagnosticsByView.profile?.reasonCodes.includes(
     "non_primary_structure_source_role:depth:composition"
+  )
+);
+
+const repairSparseSideGuides = assessStageInputPreflight({
+  stage: "repair",
+  views: ["threeQuarter"],
+  targetStyle: "eraser cat mascot",
+  referenceBankByView: {
+    threeQuarter: [
+      makeReferenceEntry("front_master", 0.91, "front"),
+      makeReferenceEntry("repair_base", 0.89, "threeQuarter"),
+      makeReferenceEntry("composition", 0.44, "threeQuarter")
+    ]
+  },
+  referenceAnalysisByView: {
+    threeQuarter: {
+      alphaCoverage: 0.35,
+      monochromeScore: 0.9
+    }
+  } as any,
+  structureGuideMetricsByView: {
+    threeQuarter: {
+      lineart: makeStructureMetric("lineart", {
+        score: 0.16,
+        status: "block",
+        signalCoverage: 0.005,
+        stdDev: 0.0706,
+        reasonCodes: ["guide_too_sparse", "guide_signal_soft"]
+      }),
+      canny: makeStructureMetric("canny", {
+        score: 0.58,
+        status: "review",
+        signalCoverage: 0.0097,
+        stdDev: 0.0746,
+        reasonCodes: ["guide_sparse", "guide_signal_soft"]
+      }),
+      depth: makeStructureMetric("depth", {
+        score: 1,
+        status: "ok",
+        signalCoverage: 0.7729,
+        dynamicRange: 1,
+        stdDev: 0.4376
+      })
+    }
+  },
+  structureControlsByView: {
+    threeQuarter: {
+      lineart: makeStructureControlImage("composition", "composition_threeQuarter", "threeQuarter"),
+      canny: makeStructureControlImage("composition", "composition_threeQuarter", "threeQuarter"),
+      depth: makeStructureControlImage("repair_base", "repair_base_threeQuarter", "threeQuarter")
+    }
+  }
+});
+
+assert.equal(repairSparseSideGuides.status, "review");
+assert.deepEqual(repairSparseSideGuides.blockedViews, []);
+assert.deepEqual(repairSparseSideGuides.warningViews, ["threeQuarter"]);
+assert.ok(
+  repairSparseSideGuides.diagnosticsByView.threeQuarter?.reasonCodes.includes("soft_structure:lineart")
+);
+assert.ok(
+  !repairSparseSideGuides.diagnosticsByView.threeQuarter?.reasonCodes.includes("weak_structure:lineart")
+);
+assert.equal(repairSparseSideGuides.diagnosticsByView.threeQuarter?.structureGuideMetrics?.lineart?.status, "review");
+assert.ok(
+  repairSparseSideGuides.diagnosticsByView.threeQuarter?.structureGuideMetrics?.lineart?.reasonCodes.includes(
+    "repair_sparse_guide_softened"
   )
 );
 

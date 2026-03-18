@@ -1297,6 +1297,48 @@ async function analyzeStructureGuideImage(input: {
   };
 }
 
+function normalizeStructureGuideMetricsForPreflight(input: {
+  stage: GenerationStageKey;
+  view: CharacterView;
+  metrics: Partial<Record<CharacterStructureControlKind, StructureGuideQualityMetrics>>;
+}): Partial<Record<CharacterStructureControlKind, StructureGuideQualityMetrics>> {
+  if (input.stage !== "repair" || input.view === "front") {
+    return input.metrics;
+  }
+
+  const depth = input.metrics.depth;
+  const depthStrong =
+    depth?.status === "ok" &&
+    (depth.score ?? 0) >= 0.9 &&
+    (depth.signalCoverage ?? 0) >= 0.2 &&
+    (depth.dynamicRange ?? 0) >= 0.14;
+  if (!depthStrong) {
+    return input.metrics;
+  }
+
+  const softSparseReasons = new Set(["guide_too_sparse", "guide_sparse", "guide_signal_soft"]);
+  const next: Partial<Record<CharacterStructureControlKind, StructureGuideQualityMetrics>> = {
+    ...input.metrics
+  };
+  for (const kind of ["lineart", "canny"] as const) {
+    const metric = input.metrics[kind];
+    if (!metric || metric.status === "ok") {
+      continue;
+    }
+    const reasonCodes = Array.isArray(metric.reasonCodes) ? metric.reasonCodes : [];
+    if (reasonCodes.length === 0 || !reasonCodes.every((reason) => softSparseReasons.has(reason))) {
+      continue;
+    }
+    next[kind] = {
+      ...metric,
+      score: roundPreflightMetric(Math.max(metric.score, 0.58)),
+      status: "review",
+      reasonCodes: dedupeStrings([...reasonCodes, "repair_sparse_guide_softened"])
+    };
+  }
+  return next;
+}
+
 export function assessStageInputPreflight(input: {
   stage: GenerationStageKey;
   views: CharacterView[];
@@ -1343,7 +1385,11 @@ export function assessStageInputPreflight(input: {
       return (referenceRoleWeights[role] ?? 0) < minimum;
     });
     const viewStructureControls = input.structureControlsByView?.[view] ?? {};
-    const viewStructureMetrics = input.structureGuideMetricsByView?.[view] ?? {};
+    const viewStructureMetrics = normalizeStructureGuideMetricsForPreflight({
+      stage: input.stage,
+      view,
+      metrics: input.structureGuideMetricsByView?.[view] ?? {}
+    });
     const suppliedStructureKinds = Object.keys(viewStructureMetrics) as CharacterStructureControlKind[];
     const missingStructureKinds = requiredStructureKinds.filter((kind) => !suppliedStructureKinds.includes(kind));
     const weakStructureKinds = requiredStructureKinds.filter((kind) => {
