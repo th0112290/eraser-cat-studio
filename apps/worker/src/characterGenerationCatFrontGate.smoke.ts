@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import {
   deriveRetryAdjustmentForCandidate,
   scoreCandidate,
-  shouldDowngradeCatFrontFragmentationRisk
+  shouldDowngradeCatFrontFragmentationRisk,
+  shouldDowngradeCatFrontHeadShapeBreakdownRisk
 } from "./characterGeneration";
 
 assert.equal(
@@ -63,6 +64,50 @@ assert.equal(
   }),
   true,
   "sparse but clearly single-subject cat fronts with up to six components should downgrade fragmentation risk"
+);
+
+assert.equal(
+  shouldDowngradeCatFrontHeadShapeBreakdownRisk({
+    speciesId: "cat",
+    view: "front",
+    subjectFillRatio: 0.3073,
+    subjectIsolationScore: 0.7699,
+    largestComponentShare: 0.8178,
+    significantComponentCount: 4,
+    speciesScore: 0.6416,
+    speciesEarScore: 0.6218,
+    speciesMuzzleScore: 0.5067,
+    speciesHeadShapeScore: 0.9639,
+    speciesSilhouetteScore: 0.5772,
+    targetStyleScore: 0.6519,
+    frontSymmetryScore: 0.9964,
+    headSquarenessScore: 0.1251,
+    handRegionDensityScore: 0.2846
+  }),
+  true,
+  "cat front candidates with strong subject/species cues should downgrade head-shape hard rejects into warnings"
+);
+
+assert.equal(
+  shouldDowngradeCatFrontHeadShapeBreakdownRisk({
+    speciesId: "cat",
+    view: "front",
+    subjectFillRatio: 0.09,
+    subjectIsolationScore: 0.31,
+    largestComponentShare: 0.22,
+    significantComponentCount: 7,
+    speciesScore: 0.44,
+    speciesEarScore: 0.14,
+    speciesMuzzleScore: 0.28,
+    speciesHeadShapeScore: 0.33,
+    speciesSilhouetteScore: 0.24,
+    targetStyleScore: 0.47,
+    frontSymmetryScore: 0.69,
+    headSquarenessScore: 0.11,
+    handRegionDensityScore: 0.12
+  }),
+  false,
+  "weak cat fronts should keep head-shape breakdown as a hard reject"
 );
 
 const retryAdjustment = deriveRetryAdjustmentForCandidate({

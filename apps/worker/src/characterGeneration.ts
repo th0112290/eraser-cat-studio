@@ -7365,6 +7365,46 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
   );
 }
 
+export function shouldDowngradeCatFrontHeadShapeBreakdownRisk(input: {
+  speciesId?: string;
+  view: CharacterView;
+  subjectFillRatio?: number;
+  subjectIsolationScore?: number;
+  largestComponentShare?: number;
+  significantComponentCount?: number;
+  speciesScore?: number;
+  speciesEarScore?: number;
+  speciesMuzzleScore?: number;
+  speciesHeadShapeScore?: number;
+  speciesSilhouetteScore?: number;
+  targetStyleScore?: number;
+  frontSymmetryScore?: number;
+  headSquarenessScore?: number;
+  handRegionDensityScore?: number;
+}): boolean {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (species !== "cat" || input.view !== "front") {
+    return false;
+  }
+
+  const profileThresholds = resolveMascotQcThresholds(species);
+  return (
+    (input.subjectFillRatio ?? 0) >= 0.14 &&
+    (input.subjectIsolationScore ?? 0) >= Math.max(0.58, profileThresholds.minSubjectIsolationFront + 0.08) &&
+    (input.largestComponentShare ?? 0) >= 0.72 &&
+    (input.significantComponentCount ?? Number.POSITIVE_INFINITY) <= 6 &&
+    (input.speciesScore ?? 0) >= 0.56 &&
+    (input.speciesEarScore ?? 0) >= 0.42 &&
+    (input.speciesMuzzleScore ?? 0) >= 0.42 &&
+    (input.speciesHeadShapeScore ?? 0) >= 0.72 &&
+    (input.speciesSilhouetteScore ?? 0) >= 0.46 &&
+    (input.targetStyleScore ?? 0) >= 0.62 &&
+    (input.frontSymmetryScore ?? 0) >= 0.92 &&
+    (input.headSquarenessScore ?? 0) >= Math.max(0.1, profileThresholds.frontMasterMinHeadSquarenessScore - 0.16) &&
+    (input.handRegionDensityScore ?? 0) >= 0.18
+  );
+}
+
 function computeMascotGeometryCue(candidate: ScoredCandidate | undefined): number | null {
   if (!candidate) {
     return null;
@@ -10392,6 +10432,33 @@ export function scoreCandidate(input: {
       removeReason(rejections, "fragmented_or_multi_object_front");
       if (!warnings.includes("subject_isolation_low")) {
         warnings.push("subject_isolation_low");
+      }
+    }
+
+    if (
+      mascotFrontView &&
+      rejections.includes("head_shape_breakdown") &&
+      shouldDowngradeCatFrontHeadShapeBreakdownRisk({
+        speciesId: input.speciesId,
+        view: input.candidate.view,
+        subjectFillRatio,
+        subjectIsolationScore,
+        largestComponentShare: input.analysis.largestComponentShare,
+        significantComponentCount: input.analysis.significantComponentCount,
+        speciesScore,
+        speciesEarScore,
+        speciesMuzzleScore,
+        speciesHeadShapeScore,
+        speciesSilhouetteScore,
+        targetStyleScore,
+        frontSymmetryScore,
+        headSquarenessScore,
+        handRegionDensityScore
+      })
+    ) {
+      removeReason(rejections, "head_shape_breakdown");
+      if (!warnings.includes("head_shape_not_square_enough")) {
+        warnings.push("head_shape_not_square_enough");
       }
     }
 
