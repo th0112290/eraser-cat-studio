@@ -4129,7 +4129,7 @@ export function resolveAdaptiveReferenceWeight(input: {
         }
       }
       if (input.role === "front_master") {
-        const cap =
+        const baseCap =
           input.stage === "angles"
             ? input.hasStarter === true
               ? input.targetView === "profile"
@@ -4158,9 +4158,15 @@ export function resolveAdaptiveReferenceWeight(input: {
                   ? input.targetView === "profile"
                     ? 0.68
                     : 0.7
-                  : input.targetView === "profile"
+                : input.targetView === "profile"
                     ? 0.72
                     : 0.74;
+        const minimumFrontMasterWeight =
+          resolveStageInputMinimumReferenceWeights(input.stage, input.targetView).front_master ?? 0;
+        const cap =
+          input.stage === "angles"
+            ? baseCap
+            : Math.max(baseCap, Number((minimumFrontMasterWeight + 0.04).toFixed(3)));
         weight = Math.min(weight, cap);
       } else if (input.role === "hero") {
         const cap =
@@ -5281,7 +5287,8 @@ export function rebalanceReferenceBankForRetry(input: {
     return input.entries;
   }
 
-  const frontMasterCap =
+  const frontMasterMinimum = resolveStageInputMinimumReferenceWeights(input.stage, input.view).front_master ?? 0;
+  const baseFrontMasterCap =
     input.stage === "lock"
       ? input.view === "profile"
         ? 0.56
@@ -5291,8 +5298,14 @@ export function rebalanceReferenceBankForRetry(input: {
           ? 0.58
           : 0.6
         : input.view === "profile"
-          ? 0.58
-          : 0.6;
+        ? 0.58
+        : 0.6;
+  const frontMasterCap =
+    input.stage === "lock"
+      ? Math.max(baseFrontMasterCap, Number((frontMasterMinimum + 0.04).toFixed(3)))
+      : input.stage === "refine"
+        ? Math.max(baseFrontMasterCap, Number((frontMasterMinimum + 0.04).toFixed(3)))
+        : baseFrontMasterCap;
   const subjectCap =
     input.stage === "lock"
       ? input.view === "profile"
@@ -5573,7 +5586,10 @@ export function deriveRetryAdjustmentForCandidate(input: {
     );
     addDelta("composition", 0.17);
     addDelta("view_starter", 0.12);
-    addDelta("front_master", -0.18);
+    addDelta(
+      "front_master",
+      input.stage === "angles" ? -0.18 : input.stage === "refine" ? -0.08 : 0.02
+    );
     addDelta("subject", -0.1);
     addDelta("hero", -0.08);
     enforceSideTurnBalance = true;
@@ -5600,7 +5616,10 @@ export function deriveRetryAdjustmentForCandidate(input: {
     addDelta("view_starter", 0.12);
     addDelta("style", 0.04);
     addDelta("subject", 0.14);
-    addDelta("front_master", -0.08);
+    addDelta(
+      "front_master",
+      input.stage === "angles" ? -0.08 : input.stage === "refine" ? 0.04 : 0.08
+    );
     addDelta("hero", 0.12);
     enforceSideTurnBalance = true;
     notes.push("reinforced cat three-quarter yaw silhouette");

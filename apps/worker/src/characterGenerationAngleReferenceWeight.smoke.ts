@@ -87,8 +87,27 @@ const retryAdjustment = deriveRetryAdjustmentForCandidate({
   view: "threeQuarter",
   speciesId: "dog",
   candidate: {
+    candidate: {
+      id: "threequarter-angle-weight-stub",
+      view: "threeQuarter"
+    },
+    analysis: {},
+    score: 0.64,
+    styleScore: 0.62,
+    referenceSimilarity: null,
+    consistencyScore: 0.48,
     warnings: ["consistency_shape_drift"],
-    rejections: ["threequarter_front_collapse", "inconsistent_with_front_baseline"]
+    rejections: ["threequarter_front_collapse", "inconsistent_with_front_baseline"],
+    breakdown: {
+      speciesEarScore: 0.52,
+      speciesMuzzleScore: 0.58,
+      speciesHeadShapeScore: 0.56,
+      speciesSilhouetteScore: 0.6,
+      speciesScore: 0.61,
+      targetStyleScore: 0.74,
+      frontSymmetryScore: 0.72,
+      headSquarenessScore: 0.48
+    }
   } as any
 });
 
