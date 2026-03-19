@@ -7494,6 +7494,19 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
     (input.headSquarenessScore ?? 0) >= Math.max(0.22, profileThresholds.frontMasterMinHeadSquarenessScore - 0.04) &&
     (input.handRegionDensityScore ?? 0) >= 0.18
   );
+  const structuredSparseRescue =
+    (input.subjectFillRatio ?? 0) >= 0.06 &&
+    (input.subjectFillRatio ?? 0) <= 0.1 &&
+    subjectIsolationScore >= 0.48 &&
+    largestComponentShare >= 0.35 &&
+    largestComponentShare <= 0.7 &&
+    significantComponentCount <= 4 &&
+    (input.speciesScore ?? 0) >= 0.5 &&
+    Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.78 &&
+    (input.targetStyleScore ?? 0) >= 0.58 &&
+    (input.frontSymmetryScore ?? 0) >= 0.995 &&
+    (input.headSquarenessScore ?? 0) >= Math.max(0.18, profileThresholds.frontMasterMinHeadSquarenessScore - 0.08) &&
+    (input.handRegionDensityScore ?? 0) >= 0.18;
   const ultraSparseOutlineDowngrade =
     (input.subjectFillRatio ?? 0) >= 0.08 &&
     subjectIsolationScore >= 0.14 &&
@@ -7507,7 +7520,7 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
     (input.frontSymmetryScore ?? 0) >= 0.95 &&
     (input.headSquarenessScore ?? 0) >= Math.max(0.18, profileThresholds.frontMasterMinHeadSquarenessScore - 0.08) &&
     (input.handRegionDensityScore ?? 0) >= 0.28;
-  return standardDowngrade || ultraSparseOutlineDowngrade;
+  return standardDowngrade || structuredSparseRescue || ultraSparseOutlineDowngrade;
 }
 
 export function shouldDowngradeCatFrontHeadShapeBreakdownRisk(input: {

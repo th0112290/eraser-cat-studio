@@ -110,6 +110,48 @@ assert.equal(
 );
 
 assert.equal(
+  shouldDowngradeCatFrontFragmentationRisk({
+    speciesId: "cat",
+    view: "front",
+    subjectFillRatio: 0.0715,
+    subjectIsolationScore: 0.503,
+    largestComponentShare: 0.4192,
+    significantComponentCount: 3,
+    speciesScore: 0.5185,
+    speciesEarScore: 0.165,
+    speciesMuzzleScore: 0.8042,
+    speciesSilhouetteScore: 0.8322,
+    targetStyleScore: 0.5865,
+    frontSymmetryScore: 0.9986,
+    headSquarenessScore: 0.1909,
+    handRegionDensityScore: 0.2112
+  }),
+  true,
+  "structured sparse cat fronts with strong muzzle and silhouette cues should downgrade fragmentation hard rejects into warnings"
+);
+
+assert.equal(
+  shouldDowngradeCatFrontFragmentationRisk({
+    speciesId: "cat",
+    view: "front",
+    subjectFillRatio: 0.079,
+    subjectIsolationScore: 0.24,
+    largestComponentShare: 0.17,
+    significantComponentCount: 6,
+    speciesScore: 0.39,
+    speciesEarScore: 0.11,
+    speciesMuzzleScore: 0.42,
+    speciesSilhouetteScore: 0.36,
+    targetStyleScore: 0.5,
+    frontSymmetryScore: 0.997,
+    headSquarenessScore: 0.19,
+    handRegionDensityScore: 0.19
+  }),
+  false,
+  "symmetry alone should not rescue genuinely fragmented cat fronts with weak subject and species signals"
+);
+
+assert.equal(
   shouldDowngradeCatFrontHeadShapeBreakdownRisk({
     speciesId: "cat",
     view: "front",
