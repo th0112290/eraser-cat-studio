@@ -7464,6 +7464,7 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
   speciesScore?: number;
   speciesEarScore?: number;
   speciesMuzzleScore?: number;
+  speciesSilhouetteScore?: number;
   targetStyleScore?: number;
   frontSymmetryScore?: number;
   headSquarenessScore?: number;
@@ -7480,7 +7481,7 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
   const significantComponentCount = input.significantComponentCount ?? Number.POSITIVE_INFINITY;
   const sparseSingleSubjectCat =
     subjectIsolationScore >= 0.4 && largestComponentShare >= 0.35 && significantComponentCount <= 6;
-  return (
+  const standardDowngrade = (
     (input.subjectFillRatio ?? 0) >= 0.05 &&
     subjectIsolationScore >= Math.max(0.28, profileThresholds.minSubjectIsolationFront - 0.18) &&
     largestComponentShare >= 0.14 &&
@@ -7493,6 +7494,20 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
     (input.headSquarenessScore ?? 0) >= Math.max(0.22, profileThresholds.frontMasterMinHeadSquarenessScore - 0.04) &&
     (input.handRegionDensityScore ?? 0) >= 0.18
   );
+  const ultraSparseOutlineDowngrade =
+    (input.subjectFillRatio ?? 0) >= 0.08 &&
+    subjectIsolationScore >= 0.14 &&
+    largestComponentShare >= 0.18 &&
+    significantComponentCount <= 8 &&
+    (input.speciesScore ?? 0) >= 0.48 &&
+    (input.speciesEarScore ?? 0) >= 0.24 &&
+    (input.speciesMuzzleScore ?? 0) >= 0.6 &&
+    (input.speciesSilhouetteScore ?? 0) >= 0.68 &&
+    (input.targetStyleScore ?? 0) >= 0.56 &&
+    (input.frontSymmetryScore ?? 0) >= 0.95 &&
+    (input.headSquarenessScore ?? 0) >= Math.max(0.18, profileThresholds.frontMasterMinHeadSquarenessScore - 0.08) &&
+    (input.handRegionDensityScore ?? 0) >= 0.28;
+  return standardDowngrade || ultraSparseOutlineDowngrade;
 }
 
 export function shouldDowngradeCatFrontHeadShapeBreakdownRisk(input: {
@@ -10553,6 +10568,7 @@ export function scoreCandidate(input: {
         speciesScore,
         speciesEarScore,
         speciesMuzzleScore,
+        speciesSilhouetteScore,
         targetStyleScore,
         frontSymmetryScore,
         headSquarenessScore,

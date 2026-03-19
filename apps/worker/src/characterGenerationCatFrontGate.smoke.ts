@@ -67,6 +67,27 @@ assert.equal(
 );
 
 assert.equal(
+  shouldDowngradeCatFrontFragmentationRisk({
+    speciesId: "cat",
+    view: "front",
+    subjectFillRatio: 0.1021,
+    subjectIsolationScore: 0.1547,
+    largestComponentShare: 0.1983,
+    significantComponentCount: 7,
+    speciesScore: 0.5168,
+    speciesEarScore: 0.2916,
+    speciesMuzzleScore: 0.6667,
+    speciesSilhouetteScore: 0.7143,
+    targetStyleScore: 0.5855,
+    frontSymmetryScore: 0.9979,
+    headSquarenessScore: 0.2049,
+    handRegionDensityScore: 0.5386
+  }),
+  true,
+  "ultra sparse but symmetric cat outline fronts should downgrade fragmentation hard rejects into warnings"
+);
+
+assert.equal(
   shouldDowngradeCatFrontHeadShapeBreakdownRisk({
     speciesId: "cat",
     view: "front",
