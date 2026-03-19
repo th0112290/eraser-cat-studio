@@ -8356,6 +8356,18 @@ export function isStrongFrontMasterCandidate(
           Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.34
         )
       ));
+  const catSparseOutlineFrontStrong =
+    mascotSpecies === "cat" &&
+    (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.99 &&
+    (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+    (candidate.breakdown.targetStyleScore ?? 0) >= 0.6 &&
+    Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.66 &&
+    (candidate.breakdown.headSquarenessScore ?? 0) >= 0.2 &&
+    (candidate.breakdown.handRegionDensityScore ?? 0) >= 0.45 &&
+    (candidate.breakdown.subjectFillRatio ?? 0) >= 0.09 &&
+    (candidate.breakdown.subjectIsolationScore ?? 0) >= 0.14 &&
+    (candidate.breakdown.largestComponentShare ?? 0) >= 0.18 &&
+    (candidate.breakdown.significantComponentCount ?? Number.POSITIVE_INFINITY) <= 8;
   const catFrontHeadSquarenessFloor =
     mascotSpecies === "cat" &&
     (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.98 &&
@@ -8365,6 +8377,8 @@ export function isStrongFrontMasterCandidate(
     (candidate.breakdown.speciesMuzzleScore ?? 0) >= 0.68 &&
     (candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.72
       ? Math.max(0.25, profileThresholds.frontMasterMinHeadSquarenessScore - 0.01)
+      : catSparseOutlineFrontStrong
+        ? Math.max(0.2, profileThresholds.frontMasterMinHeadSquarenessScore - 0.06)
       : profileThresholds.frontMasterMinHeadSquarenessScore;
 
   return (

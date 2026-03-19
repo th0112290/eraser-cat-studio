@@ -211,6 +211,35 @@ assert.equal(
   "cat front strong gate should accept highly symmetric fronts that miss the square-head floor by a rounding margin when species/style cues are otherwise strong"
 );
 
+assert.equal(
+  isStrongFrontMasterCandidate(
+    {
+      candidate: { view: "front" },
+      rejections: [],
+      score: 0.767,
+      breakdown: {
+        frontSymmetryScore: 0.9979,
+        headSquarenessScore: 0.2049,
+        speciesScore: 0.531,
+        targetStyleScore: 0.6,
+        speciesEarScore: 0.3114,
+        speciesMuzzleScore: 0.6667,
+        speciesSilhouetteScore: 0.7143,
+        handRegionDensityScore: 0.5657,
+        subjectFillRatio: 0.1057,
+        subjectIsolationScore: 0.1595,
+        largestComponentShare: 0.2045,
+        significantComponentCount: 7
+      }
+    } as any,
+    "eraser-cat-mascot-production",
+    0.62,
+    "cat"
+  ),
+  true,
+  "cat sparse-outline fronts with strong symmetry and identity cues should still count as a strong front baseline"
+);
+
 const duplicateFrontGateCandidate = scoreCandidate({
   candidate: {
     id: "cat-front-duplicate-risk",
