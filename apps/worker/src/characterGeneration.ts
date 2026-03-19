@@ -2032,6 +2032,60 @@ export function buildRepairTriageGate(input: {
       runtimeBucket.level === "degraded" ||
       runtimeBucket.level === "compound" ||
       candidate.warnings.some((reason) => reason.startsWith("runtime_"));
+    const packCoherenceIssueSet = new Set<string>(input.packCoherence?.issues ?? []);
+    const localPackCoherenceIssues =
+      view === "front"
+        ? new Set<string>([
+            "front_master_not_strong_enough",
+            "front_symmetry_floor_low",
+            "front_head_shape_floor_low",
+            "front_style_floor_low",
+            "front_species_floor_low"
+          ])
+        : new Set<string>([
+            `${view}_consistency_floor_low`,
+            `${view}_geometry_floor_low`,
+            `${view}_shape_drift`,
+            `${view}_style_drift`
+          ]);
+    const spreadDrivenPackCoherenceIssue =
+      packCoherenceIssueSet.has("species_score_spread_too_wide") ||
+      packCoherenceIssueSet.has("style_score_spread_too_wide") ||
+      packCoherenceIssueSet.has("head_ratio_spread_too_wide") ||
+      packCoherenceIssueSet.has("monochrome_spread_too_wide") ||
+      packCoherenceIssueSet.has("ear_cue_spread_too_wide") ||
+      packCoherenceIssueSet.has("muzzle_cue_spread_too_wide") ||
+      packCoherenceIssueSet.has("head_shape_cue_spread_too_wide") ||
+      packCoherenceIssueSet.has("silhouette_cue_spread_too_wide");
+    const localConsistencyFloor = resolveMascotQcThresholds(input.speciesId).minConsistencyByView[view] ??
+      (view === "profile" ? 0.4 : view === "front" ? 0.52 : 0.48);
+    const localGeometryCue = view === "front" ? null : computeMascotGeometryCue(candidate);
+    const localGeometryFloor =
+      view === "front"
+        ? null
+        : resolveMascotQcThresholds(input.speciesId).minGeometryCueByView[view] ?? (view === "profile" ? 0.34 : 0.4);
+    const localPackCoherenceWeakness =
+      view === "front"
+        ? !isStrongFrontMasterCandidate(
+            candidate,
+            input.targetStyle,
+            input.frontAnchorAcceptedScoreThreshold,
+            input.speciesId
+          )
+        : ((typeof candidate.consistencyScore === "number" && candidate.consistencyScore < localConsistencyFloor) ||
+            (typeof localGeometryCue === "number" &&
+              typeof localGeometryFloor === "number" &&
+              localGeometryCue < localGeometryFloor) ||
+            candidate.warnings.includes("consistency_shape_drift") ||
+            candidate.warnings.includes("consistency_style_drift") ||
+            candidate.rejections.length > 0);
+    const packCoherenceTriggered =
+      ((input.packCoherence?.blockingViews?.includes(view) ?? false) ||
+        (input.packCoherence?.warningViews?.includes(view) ?? false)) &&
+      (
+        [...localPackCoherenceIssues].some((issue) => packCoherenceIssueSet.has(issue)) ||
+        (spreadDrivenPackCoherenceIssue && localPackCoherenceWeakness)
+      );
     const rigRepairSignal =
       input.rigStability?.blockingViews.includes(view) ||
       input.rigStability?.warningViews.includes(view) ||
@@ -2149,9 +2203,6 @@ export function buildRepairTriageGate(input: {
         profileThresholds.minConsistencyByView[view] ?? (view === "profile" ? 0.4 : view === "front" ? 0.52 : 0.48);
       const consistencyNeedsRepair =
         typeof candidate.consistencyScore === "number" && candidate.consistencyScore < repairConsistencyFloor;
-      const packCoherenceTriggered =
-        (input.packCoherence?.blockingViews?.includes(view) ?? false) ||
-        (input.packCoherence?.warningViews?.includes(view) ?? false);
       if (consistencyNeedsRepair) {
         decision = directive?.severity === "high" ? "full_repair" : "targeted_repair";
         priority = "medium";
