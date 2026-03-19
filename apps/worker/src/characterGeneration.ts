@@ -2091,6 +2091,17 @@ export function buildRepairTriageGate(input: {
       input.rigStability?.warningViews.includes(view) ||
       rigSnapshot.lowAnchorConfidence ||
       rigSnapshot.lowLandmarkConsistency;
+    const blockingConsistencyRecoveryIssue = hasBlockingConsistencyRecoveryIssue(candidate, input.speciesId);
+    const consistencyRecoveryNeedsRepair =
+      view === "profile" ? blockingConsistencyRecoveryIssue : hasConsistencyRecoveryIssue(candidate);
+    const strongProfileStyleDriftSkipRepair = shouldSkipStrongProfileStyleDriftRepair(candidate);
+    const strongProfileScoreFloorSkipRepair = shouldSkipStrongProfileScoreFloorRepair({
+      candidate,
+      acceptedScoreThreshold: input.acceptedScoreThreshold,
+      speciesId: input.speciesId,
+      packCoherenceTriggered,
+      rigRepairSignal
+    });
     const directive = buildRepairDirectiveProfile({
       stage: "repair",
       view,
@@ -2158,6 +2169,16 @@ export function buildRepairTriageGate(input: {
       }
       repairViews.push(view);
       repairBaseByView[view] = candidate;
+    } else if (strongProfileStyleDriftSkipRepair) {
+      decision = "skip_repair";
+      priority = "low";
+      reasonCodes.push("strong_profile_style_drift_accepted");
+      acceptedViews.push(view);
+    } else if (strongProfileScoreFloorSkipRepair) {
+      decision = "skip_repair";
+      priority = "low";
+      reasonCodes.push("strong_profile_score_floor_accepted");
+      acceptedViews.push(view);
     } else if (rigRepairSignal) {
       decision = view === "front" ? "full_repair" : "targeted_repair";
       priority = view === "front" ? "high" : "medium";
@@ -2187,12 +2208,12 @@ export function buildRepairTriageGate(input: {
       reasonCodes.push("front_anchor_weak");
       repairViews.push(view);
       repairBaseByView[view] = candidate;
-    } else if (candidate.rejections.length > 0 || hasConsistencyRecoveryIssue(candidate)) {
+    } else if (candidate.rejections.length > 0 || consistencyRecoveryNeedsRepair) {
       decision = directive?.severity === "high" ? "full_repair" : "targeted_repair";
       priority = directive?.severity === "high" ? "high" : "medium";
       reasonCodes.push(
         ...dedupeStrings(
-          candidate.rejections.concat(hasConsistencyRecoveryIssue(candidate) ? ["consistency_recovery_issue"] : [])
+          candidate.rejections.concat(consistencyRecoveryNeedsRepair ? ["consistency_recovery_issue"] : [])
         )
       );
       repairViews.push(view);
@@ -7718,6 +7739,82 @@ export function shouldDowngradeHighScoreProfileConsistencyDrift(input: {
   );
 }
 
+function shouldSkipStrongProfileStyleDriftRepair(candidate: ScoredCandidate | undefined): boolean {
+  if (!candidate || candidate.candidate.view !== "profile" || candidate.rejections.length > 0) {
+    return false;
+  }
+
+  const reasons = new Set<string>([...candidate.warnings, ...candidate.rejections]);
+  if (
+    !reasons.has("consistency_style_drift") ||
+    reasons.has("inconsistent_with_front_baseline") ||
+    reasons.has("consistency_low") ||
+    reasons.has("consistency_shape_drift")
+  ) {
+    return false;
+  }
+
+  const allowedWarnings = new Set<string>([
+    "consistency_style_drift",
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "finger_spikes_detected",
+    "paw_shape_failure"
+  ]);
+  if ([...candidate.warnings].some((warning) => !allowedWarnings.has(warning))) {
+    return false;
+  }
+
+  return (
+    candidate.score >= 0.8 &&
+    (candidate.consistencyScore ?? 0) >= 0.4 &&
+    (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+    Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.74 &&
+    (candidate.breakdown.targetStyleScore ?? 0) >= 0.84 &&
+    (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.9 &&
+    (candidate.breakdown.headSquarenessScore ?? 0) >= 0.7
+  );
+}
+
+function shouldSkipStrongProfileScoreFloorRepair(input: {
+  candidate: ScoredCandidate | undefined;
+  acceptedScoreThreshold: number;
+  speciesId?: string;
+  packCoherenceTriggered: boolean;
+  rigRepairSignal: boolean;
+}): boolean {
+  const { candidate, acceptedScoreThreshold, speciesId, packCoherenceTriggered, rigRepairSignal } = input;
+  if (!candidate || candidate.candidate.view !== "profile" || candidate.rejections.length > 0) {
+    return false;
+  }
+  if (packCoherenceTriggered || rigRepairSignal || hasBlockingConsistencyRecoveryIssue(candidate, speciesId)) {
+    return false;
+  }
+
+  const allowedWarnings = new Set<string>([
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "finger_spikes_detected",
+    "paw_shape_failure"
+  ]);
+  if ([...candidate.warnings].some((warning) => !allowedWarnings.has(warning))) {
+    return false;
+  }
+
+  const profileConsistencyFloor = resolveMascotQcThresholds(speciesId).minConsistencyByView.profile ?? 0.4;
+  const scoreFloor = Math.max(0.58, acceptedScoreThreshold - 0.03);
+  const consistencyFloor = Math.max(0.32, profileConsistencyFloor - 0.08);
+  return (
+    candidate.score >= scoreFloor &&
+    (candidate.consistencyScore ?? 0) >= consistencyFloor &&
+    (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+    Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.74 &&
+    (candidate.breakdown.targetStyleScore ?? 0) >= 0.84 &&
+    (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.9 &&
+    (candidate.breakdown.headSquarenessScore ?? 0) >= 0.7
+  );
+}
+
 function computeMascotGeometryCue(candidate: ScoredCandidate | undefined): number | null {
   if (!candidate) {
     return null;
@@ -11107,6 +11204,48 @@ export function hasBlockingConsistencyRecoveryIssue(
     !reasons.has("consistency_low") &&
     !reasons.has("consistency_shape_drift") &&
     reasons.has("consistency_style_drift");
+  const repairRefineProfileStyleDriftOnly =
+    onlyStyleDriftRecoveryIssue &&
+    candidate.candidate.view === "profile" &&
+    resolveCandidateWorkflowStage(candidate) === "repair_refine";
+  if (repairRefineProfileStyleDriftOnly) {
+    return !(
+      candidate.rejections.length === 0 &&
+      candidate.score >= 0.62 &&
+      (candidate.consistencyScore ?? 0) >= 0.3 &&
+      (candidate.breakdown.targetStyleScore ?? 0) >= 0.84 &&
+      (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+      Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >=
+        0.74 &&
+      (candidate.breakdown.subjectIsolationScore ?? 0) >= 0.84 &&
+      (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.9 &&
+      (candidate.breakdown.headSquarenessScore ?? 0) >= 0.7
+    );
+  }
+  const catProfileStyleDriftOnly =
+    normalizeGenerationSpecies(speciesId) === "cat" &&
+    candidate.candidate.view === "profile" &&
+    candidate.rejections.length === 0 &&
+    onlyStyleDriftRecoveryIssue;
+  const catProfileLowIsolationOverride =
+    catProfileStyleDriftOnly && (candidate.breakdown.subjectIsolationScore ?? 0) < 0.8;
+  if (catProfileLowIsolationOverride) {
+    const silhouetteOrMuzzle = Math.max(
+      candidate.breakdown.speciesMuzzleScore ?? 0,
+      candidate.breakdown.speciesSilhouetteScore ?? 0
+    );
+    const subjectIsolationScore = candidate.breakdown.subjectIsolationScore ?? 0;
+    return !(
+      candidate.score >= 0.84 &&
+      (candidate.consistencyScore ?? 0) >= 0.42 &&
+      (candidate.breakdown.targetStyleScore ?? 0) >= 0.86 &&
+      (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+      silhouetteOrMuzzle >= 0.72 &&
+      (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.9 &&
+      (candidate.breakdown.headSquarenessScore ?? 0) >= 0.88 &&
+      (subjectIsolationScore >= 0.5 || (candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.95)
+    );
+  }
   if (onlyStyleDriftRecoveryIssue) {
     return !(
       candidate.candidate.view === "profile" &&

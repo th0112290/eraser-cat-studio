@@ -109,6 +109,57 @@ assert.equal(
   "high-score profile candidates with style-drift-only recovery issues should not stay blocked"
 );
 
+const catProfileStyleDriftLowIsolationButStrongSilhouette = {
+  candidate: { view: "profile" },
+  score: 0.8532,
+  consistencyScore: 0.43,
+  warnings: ["text_or_watermark_suspected", "text_or_watermark_high_risk", "consistency_style_drift"],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.8976,
+    speciesScore: 0.5267,
+    speciesMuzzleScore: 0.7348,
+    speciesSilhouetteScore: 0.9931,
+    subjectIsolationScore: 0.554,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.9412
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(catProfileStyleDriftLowIsolationButStrongSilhouette, "cat"),
+  false,
+  "cat profile candidates with style-drift-only warnings should remain recoverable when silhouette and muzzle cues stay strong"
+);
+
+const repairRefineProfileStyleDriftOnly = {
+  candidate: {
+    view: "profile",
+    providerMeta: {
+      workflowStage: "repair_refine"
+    }
+  },
+  score: 0.6362,
+  consistencyScore: 0.31,
+  warnings: ["text_or_watermark_suspected", "finger_spikes_detected", "consistency_style_drift"],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.8684,
+    speciesScore: 0.5388,
+    speciesMuzzleScore: 0.7689,
+    speciesSilhouetteScore: 0.9618,
+    subjectIsolationScore: 0.8585,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.991
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(repairRefineProfileStyleDriftOnly, "cat"),
+  false,
+  "repair refine profile candidates with style-drift-only warnings should not stay blocked when identity cues remain strong"
+);
+
 const highScoreCatThreeQuarterMixedDriftOnly = {
   candidate: { view: "threeQuarter" },
   score: 0.7651,

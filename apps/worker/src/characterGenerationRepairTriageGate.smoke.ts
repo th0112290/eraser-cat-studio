@@ -140,6 +140,85 @@ const repairConsistency = buildRepairTriageGate({
 assert.deepEqual(repairConsistency.repairViews, ["profile"]);
 assert.equal(repairConsistency.repairTriageByView.profile?.decision, "targeted_repair");
 
+const skipStrongProfileStyleDriftRepair = buildRepairTriageGate({
+  targetViews: ["profile"],
+  candidateByView: {
+    profile: makeCandidate("profile", "identity_lock_refine", {
+      id: "profile_strong_style_drift",
+      score: 0.83,
+      consistencyScore: 0.46,
+      warnings: ["consistency_style_drift", "text_or_watermark_suspected", "finger_spikes_detected"],
+      speciesScore: 0.54,
+      speciesMuzzleScore: 0.78,
+      speciesSilhouetteScore: 0.96,
+      targetStyleScore: 0.87,
+      frontSymmetryScore: 0.91,
+      headSquarenessScore: 0.99,
+      subjectIsolationScore: 0.93
+    })
+  },
+  gateDecisionsByView: {
+    profile: {
+      decision: "promote_lock",
+      chosenCandidateId: "profile_strong_style_drift",
+      chosenStage: "identity_lock_refine",
+      reasons: ["lock:kept_after_identity_lock"]
+    }
+  },
+  acceptedScoreThreshold: 0.58,
+  repairScoreFloor: 0.42,
+  frontAnchorAcceptedScoreThreshold: 0.64,
+  targetStyle: "eraser cat mascot",
+  speciesId: "cat"
+});
+
+assert.deepEqual(skipStrongProfileStyleDriftRepair.repairViews, []);
+assert.equal(skipStrongProfileStyleDriftRepair.repairTriageByView.profile?.decision, "skip_repair");
+assert.ok(
+  (skipStrongProfileStyleDriftRepair.repairTriageByView.profile?.reasonCodes ?? []).includes(
+    "strong_profile_style_drift_accepted"
+  )
+);
+
+const skipStrongProfileScoreFloorRepair = buildRepairTriageGate({
+  targetViews: ["profile"],
+  candidateByView: {
+    profile: makeCandidate("profile", "identity_lock_refine", {
+      id: "profile_clean_score_floor",
+      score: 0.6,
+      consistencyScore: 0.5,
+      warnings: [],
+      speciesScore: 0.54,
+      speciesMuzzleScore: 0.78,
+      speciesSilhouetteScore: 0.96,
+      targetStyleScore: 0.87,
+      frontSymmetryScore: 0.91,
+      headSquarenessScore: 0.99
+    })
+  },
+  gateDecisionsByView: {
+    profile: {
+      decision: "promote_lock",
+      chosenCandidateId: "profile_clean_score_floor",
+      chosenStage: "identity_lock_refine",
+      reasons: ["lock:kept_after_identity_lock"]
+    }
+  },
+  acceptedScoreThreshold: 0.61,
+  repairScoreFloor: 0.42,
+  frontAnchorAcceptedScoreThreshold: 0.64,
+  targetStyle: "eraser cat mascot",
+  speciesId: "cat"
+});
+
+assert.deepEqual(skipStrongProfileScoreFloorRepair.repairViews, []);
+assert.equal(skipStrongProfileScoreFloorRepair.repairTriageByView.profile?.decision, "skip_repair");
+assert.ok(
+  (skipStrongProfileScoreFloorRepair.repairTriageByView.profile?.reasonCodes ?? []).includes(
+    "strong_profile_score_floor_accepted"
+  )
+);
+
 const embargoUnrecoverable = buildRepairTriageGate({
   targetViews: ["front"],
   candidateByView: {
