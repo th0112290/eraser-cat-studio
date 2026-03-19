@@ -195,6 +195,36 @@ assert.equal(
   "high-score cat three-quarter candidates with warning-only consistency low + shape drift should remain recoverable"
 );
 
+const highScoreCatThreeQuarterLowMixedDrift = {
+  candidate: { view: "threeQuarter" },
+  score: 0.7686,
+  consistencyScore: 0.31,
+  warnings: [
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "consistency_low",
+    "consistency_shape_drift",
+    "consistency_style_drift"
+  ],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.7156,
+    speciesScore: 0.5169,
+    speciesMuzzleScore: 0.2854,
+    speciesSilhouetteScore: 0.4238,
+    subjectIsolationScore: 1,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.2745,
+    handRegionDensityScore: 0.6052
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(highScoreCatThreeQuarterLowMixedDrift, "cat"),
+  false,
+  "high-score cat three-quarter candidates with consistency low + mixed drift warnings should remain recoverable"
+);
+
 const highScoreProfileWarningOnlyShapeDrift = {
   candidate: { view: "profile" },
   score: 0.8472,

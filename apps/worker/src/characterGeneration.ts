@@ -11040,14 +11040,14 @@ export function hasBlockingConsistencyRecoveryIssue(
       headSquarenessScore: candidate.breakdown.headSquarenessScore
     });
   }
-  const catThreeQuarterMixedDriftOnly =
+  const catThreeQuarterRecoverableDriftOnly =
     normalizeGenerationSpecies(speciesId) === "cat" &&
     candidate.candidate.view === "threeQuarter" &&
+    candidate.rejections.length === 0 &&
     !reasons.has("inconsistent_with_front_baseline") &&
-    !reasons.has("consistency_low") &&
     reasons.has("consistency_shape_drift") &&
-    reasons.has("consistency_style_drift");
-  if (catThreeQuarterMixedDriftOnly) {
+    (reasons.has("consistency_style_drift") || reasons.has("consistency_low"));
+  if (catThreeQuarterRecoverableDriftOnly) {
     return !shouldDowngradeCatThreeQuarterConsistencyDrift({
       speciesId,
       view: candidate.candidate.view,
