@@ -228,6 +228,42 @@ assert.ok(
   retryAdjustment.viewPromptHints.some((hint) => hint.includes("single centered full-body cat mascot")),
   "cat front retry adjustment should strengthen centered single-subject guidance"
 );
+assert.ok(
+  (retryAdjustment.referenceWeightDeltas.composition ?? 0) >= 0.09,
+  "cat front retry adjustment should preserve composition anchor under fragmentation/isolation pressure"
+);
+
+const fragmentedStyleRetryAdjustment = deriveRetryAdjustmentForCandidate({
+  stage: "front",
+  view: "front",
+  speciesId: "cat",
+  candidate: {
+    candidate: {
+      id: "cat-front-fragmented-style-stub",
+      view: "front"
+    },
+    analysis: {},
+    score: 0.5871,
+    styleScore: 0.5723,
+    referenceSimilarity: null,
+    consistencyScore: 0.41,
+    warnings: [
+      "too_colorful_for_mascot",
+      "palette_too_complex_for_mascot",
+      "head_shape_not_square_enough",
+      "paw_symmetry_low",
+      "cat_ear_silhouette_too_flat",
+      "subject_isolation_low"
+    ],
+    rejections: ["fragmented_or_multi_object_front"],
+    breakdown: {}
+  } as any
+});
+
+assert.ok(
+  (fragmentedStyleRetryAdjustment.referenceWeightDeltas.composition ?? 0) >= 0.1,
+  "style reinforcement should not suppress composition anchor during cat front fragmentation recovery"
+);
 
 assert.equal(
   isStrongFrontMasterCandidate(

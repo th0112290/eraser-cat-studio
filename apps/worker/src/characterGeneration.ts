@@ -5906,6 +5906,13 @@ export function deriveRetryAdjustmentForCandidate(input: {
     notes.push("reinforced mascot head proportion");
   }
 
+  const preserveCompositionAnchor =
+    input.view === "front" &&
+    (reasons.has("fragmented_or_multi_object_front") ||
+      reasons.has("subject_isolation_low") ||
+      reasons.has("cat_ear_silhouette_too_flat") ||
+      reasons.has("face_or_eyes_region_unstable"));
+
   if (defect.style) {
     extraNegativeTokens.add("rendered shading");
     extraNegativeTokens.add("palette drift");
@@ -5913,7 +5920,7 @@ export function deriveRetryAdjustmentForCandidate(input: {
     viewPromptHints.add("match the approved monochrome line weight, flat sticker-like shading, and simple mascot palette");
     addDelta("style", 0.08);
     addDelta("front_master", 0.03);
-    addDelta("composition", -0.02);
+    addDelta("composition", preserveCompositionAnchor ? 0.01 : -0.02);
     notes.push("reinforced style lock");
   }
 
@@ -5973,7 +5980,7 @@ export function deriveRetryAdjustmentForCandidate(input: {
     );
     addDelta("front_master", 0.08);
     addDelta("subject", 0.06);
-    addDelta("composition", 0.06);
+    addDelta("composition", preserveCompositionAnchor ? 0.1 : 0.06);
     notes.push("reinforced cat front anchor and silhouette");
   }
 
