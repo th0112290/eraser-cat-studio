@@ -7637,6 +7637,35 @@ export function shouldDowngradeCatThreeQuarterConsistencyDrift(input: {
   );
 }
 
+export function shouldDowngradeHighScoreProfileConsistencyDrift(input: {
+  speciesId?: string;
+  view: CharacterView;
+  score?: number;
+  consistencyScore?: number | null;
+  subjectIsolationScore?: number;
+  speciesScore?: number;
+  speciesMuzzleScore?: number;
+  speciesSilhouetteScore?: number;
+  targetStyleScore?: number;
+  frontSymmetryScore?: number;
+  headSquarenessScore?: number;
+}): boolean {
+  if (input.view !== "profile") {
+    return false;
+  }
+
+  return (
+    (input.score ?? 0) >= 0.82 &&
+    (input.consistencyScore ?? 0) >= 0.3 &&
+    (input.subjectIsolationScore ?? 0) >= 0.9 &&
+    (input.speciesScore ?? 0) >= 0.5 &&
+    Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.74 &&
+    (input.targetStyleScore ?? 0) >= 0.82 &&
+    (input.frontSymmetryScore ?? 0) >= 0.9 &&
+    (input.headSquarenessScore ?? 0) >= 0.7
+  );
+}
+
 function computeMascotGeometryCue(candidate: ScoredCandidate | undefined): number | null {
   if (!candidate) {
     return null;
@@ -10990,6 +11019,27 @@ export function hasBlockingConsistencyRecoveryIssue(
       (candidate.breakdown.subjectIsolationScore ?? 0) >= 0.8
     );
   }
+  const profileMixedDriftOnly =
+    candidate.candidate.view === "profile" &&
+    !reasons.has("inconsistent_with_front_baseline") &&
+    !reasons.has("consistency_low") &&
+    reasons.has("consistency_shape_drift") &&
+    reasons.has("consistency_style_drift");
+  if (profileMixedDriftOnly) {
+    return !shouldDowngradeHighScoreProfileConsistencyDrift({
+      speciesId,
+      view: candidate.candidate.view,
+      score: candidate.score,
+      consistencyScore: candidate.consistencyScore,
+      subjectIsolationScore: candidate.breakdown.subjectIsolationScore,
+      speciesScore: candidate.breakdown.speciesScore,
+      speciesMuzzleScore: candidate.breakdown.speciesMuzzleScore,
+      speciesSilhouetteScore: candidate.breakdown.speciesSilhouetteScore,
+      targetStyleScore: candidate.breakdown.targetStyleScore,
+      frontSymmetryScore: candidate.breakdown.frontSymmetryScore,
+      headSquarenessScore: candidate.breakdown.headSquarenessScore
+    });
+  }
   const catThreeQuarterMixedDriftOnly =
     normalizeGenerationSpecies(speciesId) === "cat" &&
     candidate.candidate.view === "threeQuarter" &&
@@ -11145,9 +11195,25 @@ function applyConsistencyScoring(
         headSquarenessScore: entry.breakdown.headSquarenessScore,
         handRegionDensityScore: entry.breakdown.handRegionDensityScore
       });
+    const downgradeHighScoreProfileConsistencyDrift =
+      mascotTarget &&
+      shouldDowngradeHighScoreProfileConsistencyDrift({
+        speciesId,
+        view: entry.candidate.view,
+        score: entry.score,
+        consistencyScore: consistency.score,
+        subjectIsolationScore: entry.breakdown.subjectIsolationScore,
+        speciesScore: entry.breakdown.speciesScore,
+        speciesMuzzleScore: entry.breakdown.speciesMuzzleScore,
+        speciesSilhouetteScore: entry.breakdown.speciesSilhouetteScore,
+        targetStyleScore: entry.breakdown.targetStyleScore,
+        frontSymmetryScore: entry.breakdown.frontSymmetryScore,
+        headSquarenessScore: entry.breakdown.headSquarenessScore
+      });
 
     if (
       !downgradeCatThreeQuarterConsistencyDrift &&
+      !downgradeHighScoreProfileConsistencyDrift &&
       (consistency.score < rejectThreshold || (criticalShapeDrift && !downgradeCanineSideCriticalShapeDrift))
     ) {
       if (!entry.rejections.includes("inconsistent_with_front_baseline")) {
@@ -11156,7 +11222,11 @@ function applyConsistencyScoring(
       if (criticalShapeDrift && !entry.warnings.includes("consistency_shape_drift")) {
         entry.warnings.push("consistency_shape_drift");
       }
-    } else if (consistency.score < warningThreshold || downgradeCatThreeQuarterConsistencyDrift) {
+    } else if (
+      consistency.score < warningThreshold ||
+      downgradeCatThreeQuarterConsistencyDrift ||
+      downgradeHighScoreProfileConsistencyDrift
+    ) {
       if (!entry.warnings.includes("consistency_low")) {
         entry.warnings.push("consistency_low");
       }

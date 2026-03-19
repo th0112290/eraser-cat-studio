@@ -138,5 +138,33 @@ assert.equal(
   "high-score cat three-quarter candidates with mixed drift warnings should not stay blocked when side silhouette cues remain strong"
 );
 
+const highScoreProfileMixedDriftOnly = {
+  candidate: { view: "profile" },
+  score: 0.8305,
+  consistencyScore: 0.31,
+  warnings: [
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "consistency_shape_drift",
+    "consistency_style_drift"
+  ],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.8564,
+    speciesScore: 0.5211,
+    speciesMuzzleScore: 0.7816,
+    speciesSilhouetteScore: 0.9502,
+    subjectIsolationScore: 0.9727,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.9093
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(highScoreProfileMixedDriftOnly, "cat"),
+  false,
+  "high-score profile candidates with mixed drift warnings should not stay blocked when profile identity and style cues remain strong"
+);
+
 console.log("[characterGenerationSequentialStageGate.smoke] PASS");
 process.exit(0);
