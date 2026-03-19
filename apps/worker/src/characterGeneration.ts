@@ -7550,6 +7550,36 @@ export function shouldDowngradeCatFrontHeadShapeBreakdownRisk(input: {
   );
 }
 
+export function shouldDowngradeCatThreeQuarterFrontCollapseRisk(input: {
+  speciesId?: string;
+  view: CharacterView;
+  subjectIsolationScore?: number;
+  speciesScore?: number;
+  speciesMuzzleScore?: number;
+  speciesHeadShapeScore?: number;
+  speciesSilhouetteScore?: number;
+  targetStyleScore?: number;
+  headSquarenessScore?: number;
+  handRegionDensityScore?: number;
+  pawStabilityScore?: number;
+}): boolean {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (species !== "cat" || input.view !== "threeQuarter") {
+    return false;
+  }
+
+  return (
+    (input.subjectIsolationScore ?? 0) >= 0.6 &&
+    (input.speciesScore ?? 0) >= 0.4 &&
+    Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.48 &&
+    (input.speciesHeadShapeScore ?? 0) >= 0.18 &&
+    (input.targetStyleScore ?? 0) >= 0.68 &&
+    (input.headSquarenessScore ?? 0) >= 0.36 &&
+    (input.handRegionDensityScore ?? 0) >= 0.38 &&
+    (input.pawStabilityScore ?? 0) >= 0.32
+  );
+}
+
 function computeMascotGeometryCue(candidate: ScoredCandidate | undefined): number | null {
   if (!candidate) {
     return null;
@@ -10545,6 +10575,29 @@ export function scoreCandidate(input: {
     }
 
     if (
+      input.candidate.view === "threeQuarter" &&
+      rejections.includes("threequarter_front_collapse") &&
+      shouldDowngradeCatThreeQuarterFrontCollapseRisk({
+        speciesId: input.speciesId,
+        view: input.candidate.view,
+        subjectIsolationScore,
+        speciesScore,
+        speciesMuzzleScore,
+        speciesHeadShapeScore,
+        speciesSilhouetteScore,
+        targetStyleScore,
+        headSquarenessScore,
+        handRegionDensityScore,
+        pawStabilityScore
+      })
+    ) {
+      removeReason(rejections, "threequarter_front_collapse");
+      if (!warnings.includes("threequarter_frontality_risk")) {
+        warnings.push("threequarter_frontality_risk");
+      }
+    }
+
+    if (
       mascotFrontView &&
       (subjectIsolationScore < Math.max(0.28, mascotQcThresholds.minSubjectIsolationFront - 0.18) ||
         input.analysis.significantComponentCount > 5)
@@ -10862,6 +10915,23 @@ export function hasBlockingConsistencyRecoveryIssue(
     return false;
   }
   const reasons = new Set<string>([...candidate.rejections, ...candidate.warnings]);
+  const onlyStyleDriftRecoveryIssue =
+    !reasons.has("inconsistent_with_front_baseline") &&
+    !reasons.has("consistency_low") &&
+    !reasons.has("consistency_shape_drift") &&
+    reasons.has("consistency_style_drift");
+  if (onlyStyleDriftRecoveryIssue) {
+    return !(
+      candidate.candidate.view === "profile" &&
+      candidate.rejections.length === 0 &&
+      candidate.score >= 0.82 &&
+      (candidate.consistencyScore ?? 0) >= 0.44 &&
+      (candidate.breakdown.targetStyleScore ?? 0) >= 0.82 &&
+      (candidate.breakdown.speciesScore ?? 0) >= 0.46 &&
+      Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.74 &&
+      (candidate.breakdown.subjectIsolationScore ?? 0) >= 0.8
+    );
+  }
   const onlyShapeDriftRecoveryIssue =
     !reasons.has("inconsistent_with_front_baseline") &&
     !reasons.has("consistency_low") &&

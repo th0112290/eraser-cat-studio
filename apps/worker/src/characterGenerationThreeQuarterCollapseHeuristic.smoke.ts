@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { deriveRetryAdjustmentForCandidate, isThreeQuarterFrontCollapseRisk } from "./characterGeneration";
+import {
+  deriveRetryAdjustmentForCandidate,
+  isThreeQuarterFrontCollapseRisk,
+  shouldDowngradeCatThreeQuarterFrontCollapseRisk
+} from "./characterGeneration";
 
 assert.equal(
   isThreeQuarterFrontCollapseRisk({
@@ -114,6 +118,24 @@ assert.ok(
   liveLikeAnglesInitialRetryAdjustment.extraNegativeTokens.includes("same-size cat ears") &&
     liveLikeAnglesInitialRetryAdjustment.extraNegativeTokens.includes("centered cat muzzle"),
   "live cat angles.initial collapse should suppress frontal feline cues on retry"
+);
+
+assert.equal(
+  shouldDowngradeCatThreeQuarterFrontCollapseRisk({
+    speciesId: "cat",
+    view: "threeQuarter",
+    subjectIsolationScore: 0.9867,
+    speciesScore: 0.4217,
+    speciesMuzzleScore: 0.656,
+    speciesHeadShapeScore: 0.2577,
+    speciesSilhouetteScore: 0.5596,
+    targetStyleScore: 0.6986,
+    headSquarenessScore: 0.5203,
+    handRegionDensityScore: 0.4494,
+    pawStabilityScore: 0.6
+  }),
+  true,
+  "cat three-quarter candidates with strong side geometry and isolation should downgrade collapse false positives"
 );
 
 console.log("[characterGenerationThreeQuarterCollapseHeuristic.smoke] PASS");
