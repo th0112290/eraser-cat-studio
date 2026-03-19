@@ -8575,7 +8575,7 @@ function evaluatePackCoherenceIssues(input: {
   return buildPackCoherenceDiagnostics(input).issues;
 }
 
-function buildPackCoherenceDiagnostics(input: {
+export function buildPackCoherenceDiagnostics(input: {
   selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
   targetStyle?: string;
   acceptedScoreThreshold: number;
@@ -8678,6 +8678,55 @@ function buildPackCoherenceDiagnostics(input: {
     threeQuarter?.breakdown.monochromeScore,
     profile?.breakdown.monochromeScore
   ]);
+  const getSideConsistencyFloor = (view: "threeQuarter" | "profile") =>
+    profileThresholds.minConsistencyByView[view] ?? (view === "profile" ? 0.4 : 0.48);
+  const getSideGeometryFloor = (view: "threeQuarter" | "profile") =>
+    profileThresholds.minGeometryCueByView[view] ?? (view === "profile" ? 0.34 : 0.4);
+  const getSideGeometryCue = (view: "threeQuarter" | "profile") =>
+    view === "profile" ? profileGeometryCue : threeQuarterGeometryCue;
+  const presentSideViews = (["threeQuarter", "profile"] as const).filter(
+    (view): view is "threeQuarter" | "profile" => Boolean(input.selectedByView[view])
+  );
+  const sideWeakViews = presentSideViews.filter((view) => {
+    const candidate = input.selectedByView[view];
+    if (!candidate) {
+      return false;
+    }
+    const reasons = new Set<string>([...candidate.rejections, ...candidate.warnings]);
+    const geometryCue = getSideGeometryCue(view);
+    return (
+      (typeof geometryCue === "number" && geometryCue < getSideGeometryFloor(view)) ||
+      (candidate.consistencyScore ?? 1) < getSideConsistencyFloor(view) ||
+      reasons.has("inconsistent_with_front_baseline") ||
+      reasons.has("consistency_shape_drift") ||
+      reasons.has("consistency_style_drift")
+    );
+  });
+  const sideStrongViews = presentSideViews.filter((view) => {
+    const candidate = input.selectedByView[view];
+    if (!candidate) {
+      return false;
+    }
+    const reasons = new Set<string>([...candidate.rejections, ...candidate.warnings]);
+    const geometryCue = getSideGeometryCue(view);
+    return (
+      candidate.rejections.length === 0 &&
+      (typeof geometryCue !== "number" || geometryCue >= getSideGeometryFloor(view)) &&
+      (candidate.consistencyScore ?? 1) >= getSideConsistencyFloor(view) &&
+      !reasons.has("inconsistent_with_front_baseline") &&
+      !reasons.has("consistency_shape_drift") &&
+      !reasons.has("consistency_style_drift") &&
+      candidate.score >= Math.max(input.acceptedScoreThreshold, view === "profile" ? 0.76 : 0.74)
+    );
+  });
+  const localizeCatSideSpreadIssues =
+    normalizeGenerationSpecies(input.speciesId) === "cat" &&
+    isStrongFrontMasterCandidate(front, input.targetStyle, input.acceptedScoreThreshold, input.speciesId) &&
+    presentSideViews.length === 2 &&
+    sideWeakViews.length === 1 &&
+    sideStrongViews.length === 1;
+  const resolveCueSpreadTargetViews = () =>
+    localizeCatSideSpreadIssues ? dedupeCharacterViews([...sideWeakViews]) : [...presentSideViews];
   const earCueSpread = computeMetricSpread([
     front?.breakdown.speciesEarScore,
     threeQuarter?.breakdown.speciesEarScore,
@@ -8737,13 +8786,13 @@ function buildPackCoherenceDiagnostics(input: {
   for (const [view, candidate] of [
     ["threeQuarter", threeQuarter],
     ["profile", profile]
-  ] as Array<[CharacterView, ScoredCandidate | undefined]>) {
+  ] as Array<[ "threeQuarter" | "profile", ScoredCandidate | undefined]>) {
     if (!candidate) {
       continue;
     }
-    const consistencyFloor = profileThresholds.minConsistencyByView[view] ?? (view === "profile" ? 0.4 : 0.48);
-    const geometryFloor = profileThresholds.minGeometryCueByView[view] ?? (view === "profile" ? 0.34 : 0.4);
-    const geometryCue = view === "profile" ? profileGeometryCue : threeQuarterGeometryCue;
+    const consistencyFloor = getSideConsistencyFloor(view);
+    const geometryFloor = getSideGeometryFloor(view);
+    const geometryCue = getSideGeometryCue(view);
     if ((candidate.consistencyScore ?? 0) < consistencyFloor) {
       addIssue(`${view}_consistency_floor_low`, {
         ...(candidate.consistencyScore !== null && candidate.consistencyScore < consistencyFloor - 0.08
@@ -8787,12 +8836,11 @@ function buildPackCoherenceDiagnostics(input: {
       ...(monochromeSpread > profileThresholds.maxMonochromeSpread + 0.06 ? { blockView: "front" } : { warnView: "front" })
     });
   }
-  const presentSideViews = (["threeQuarter", "profile"] as const).filter((view) => Boolean(input.selectedByView[view]));
 
   if (earCueSpread !== null && earCueSpread > profileThresholds.maxEarCueSpread) {
     addIssueForViews(
       "ear_cue_spread_too_wide",
-      [...presentSideViews],
+      resolveCueSpreadTargetViews(),
       earCueSpread > profileThresholds.maxEarCueSpread + 0.06 ? "block" : "warn"
     );
   }
@@ -8800,7 +8848,7 @@ function buildPackCoherenceDiagnostics(input: {
   if (muzzleCueSpread !== null && muzzleCueSpread > profileThresholds.maxMuzzleCueSpread) {
     addIssueForViews(
       "muzzle_cue_spread_too_wide",
-      [...presentSideViews],
+      resolveCueSpreadTargetViews(),
       muzzleCueSpread > profileThresholds.maxMuzzleCueSpread + 0.06 ? "block" : "warn"
     );
   }
@@ -8808,7 +8856,7 @@ function buildPackCoherenceDiagnostics(input: {
   if (headShapeCueSpread !== null && headShapeCueSpread > profileThresholds.maxHeadShapeCueSpread) {
     addIssueForViews(
       "head_shape_cue_spread_too_wide",
-      [...presentSideViews],
+      resolveCueSpreadTargetViews(),
       headShapeCueSpread > profileThresholds.maxHeadShapeCueSpread + 0.06 ? "block" : "warn"
     );
   }
@@ -8816,7 +8864,7 @@ function buildPackCoherenceDiagnostics(input: {
   if (silhouetteCueSpread !== null && silhouetteCueSpread > profileThresholds.maxSilhouetteCueSpread) {
     addIssueForViews(
       "silhouette_cue_spread_too_wide",
-      [...presentSideViews],
+      resolveCueSpreadTargetViews(),
       silhouetteCueSpread > profileThresholds.maxSilhouetteCueSpread + 0.06 ? "block" : "warn"
     );
   }

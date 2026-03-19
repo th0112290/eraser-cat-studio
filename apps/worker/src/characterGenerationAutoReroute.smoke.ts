@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   assessQualityEmbargo,
   assessAutoSelectionRisk,
+  buildPackCoherenceDiagnostics,
   classifyCandidateRuntimeBucket,
   decideAutoReroute,
   isRuntimeBucketLowQuality,
@@ -42,6 +43,10 @@ function makeCandidate(
     headSquarenessScore?: number;
     speciesScore?: number;
     targetStyleScore?: number;
+    speciesEarScore?: number;
+    speciesMuzzleScore?: number;
+    speciesHeadShapeScore?: number;
+    speciesSilhouetteScore?: number;
     providerMeta?: Record<string, unknown>;
   } = {}
 ): any {
@@ -62,7 +67,11 @@ function makeCandidate(
       frontSymmetryScore: overrides.frontSymmetryScore ?? 0.74,
       headSquarenessScore: overrides.headSquarenessScore ?? 0.41,
       speciesScore: overrides.speciesScore ?? 0.52,
-      targetStyleScore: overrides.targetStyleScore ?? 0.63
+      targetStyleScore: overrides.targetStyleScore ?? 0.63,
+      speciesEarScore: overrides.speciesEarScore ?? 0.66,
+      speciesMuzzleScore: overrides.speciesMuzzleScore ?? 0.7,
+      speciesHeadShapeScore: overrides.speciesHeadShapeScore ?? 0.56,
+      speciesSilhouetteScore: overrides.speciesSilhouetteScore ?? 0.68
     }
   };
 }
@@ -213,6 +222,72 @@ const reviewTriggered = decideAutoReroute({
 assert.ok(reviewTriggered);
 assert.equal(reviewTriggered?.strategy, "targeted_view_retry");
 assert.deepEqual(reviewTriggered?.targetViews, ["profile"]);
+
+const localizedCatSpreadPackCoherence = buildPackCoherenceDiagnostics({
+  selectedByView: {
+    front: makeCandidate("front", {
+      score: 0.9,
+      frontSymmetryScore: 0.9932,
+      headSquarenessScore: 0.3668,
+      speciesScore: 0.6332,
+      targetStyleScore: 0.7956,
+      speciesEarScore: 0.75,
+      speciesMuzzleScore: 0.7874,
+      speciesHeadShapeScore: 0.58,
+      speciesSilhouetteScore: 0.6072
+    }),
+    threeQuarter: makeCandidate("threeQuarter", {
+      score: 0.8147,
+      consistencyScore: 0.6621,
+      warnings: ["consistency_shape_drift"],
+      speciesScore: 0.57,
+      targetStyleScore: 0.75,
+      speciesEarScore: 0.2994,
+      speciesMuzzleScore: 0.18,
+      speciesHeadShapeScore: 0.5365,
+      speciesSilhouetteScore: 0.15
+    }),
+    profile: makeCandidate("profile", {
+      score: 0.8609,
+      consistencyScore: 0.5863,
+      warnings: [],
+      speciesScore: 0.58,
+      targetStyleScore: 0.71,
+      speciesEarScore: 0.75,
+      speciesMuzzleScore: 0.7874,
+      speciesHeadShapeScore: 0.58,
+      speciesSilhouetteScore: 0.6072
+    })
+  },
+  targetStyle: "mascot",
+  acceptedScoreThreshold: 0.58,
+  speciesId: "cat"
+});
+
+assert.equal(localizedCatSpreadPackCoherence.severity, "block");
+assert.deepEqual(localizedCatSpreadPackCoherence.blockingViews, ["threeQuarter"]);
+assert.deepEqual(localizedCatSpreadPackCoherence.warningViews, []);
+
+const localizedCatSpreadReroute = decideAutoReroute({
+  config: defaultConfig,
+  generationViewToGenerate: undefined,
+  providerName: "comfyui",
+  requestedViews: ["front", "threeQuarter", "profile"],
+  packCoherence: localizedCatSpreadPackCoherence,
+  missingGeneratedViews: [],
+  lowQualityGeneratedViews: ["threeQuarter"],
+  frontStrong: true,
+  continuity: {
+    enabled: true,
+    attempted: true,
+    applied: false,
+    reason: "no_recent_ready_session"
+  }
+});
+
+assert.ok(localizedCatSpreadReroute);
+assert.equal(localizedCatSpreadReroute?.strategy, "targeted_view_retry");
+assert.deepEqual(localizedCatSpreadReroute?.targetViews, ["threeQuarter"]);
 
 const reviewSkipped = decideAutoReroute({
   config: defaultConfig,
