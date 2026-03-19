@@ -11915,6 +11915,19 @@ function manifestBasePath(jobDbId: string, manifestPath?: string): string {
   return path.join(REPO_ROOT, "out", "characters", "generations", jobDbId, "generation_manifest.json");
 }
 
+export function buildManifestSelectedByView(
+  selectedByView: Partial<Record<CharacterView, ScoredCandidate>>
+): GenerationManifest["selectedByView"] {
+  const manifestSelectedByView: GenerationManifest["selectedByView"] = {};
+  for (const [view, candidate] of Object.entries(selectedByView) as Array<[CharacterView, ScoredCandidate | undefined]>) {
+    const candidateId = candidate?.candidate?.id?.trim();
+    if (candidateId) {
+      manifestSelectedByView[view] = { candidateId };
+    }
+  }
+  return manifestSelectedByView;
+}
+
 export function resolveManifestReadPath(
   jobDbId: string,
   paths: {
@@ -11927,6 +11940,20 @@ export function resolveManifestReadPath(
   }
 
   return manifestBasePath(jobDbId, paths.manifestPath);
+}
+
+export function resolveHitlSelectionManifestReadPath(
+  jobDbId: string,
+  paths: {
+    manifestPath?: string;
+    sourceManifestPath?: string;
+  }
+): string {
+  return resolveManifestReadPath(jobDbId, paths);
+}
+
+export function shouldRetainSelectedByViewOnSelectionBlock(source: "auto" | "hitl"): boolean {
+  return source === "hitl";
 }
 
 function getComfyUiUrl(): string | undefined {
@@ -12802,10 +12829,13 @@ async function persistSelectedCandidates(input: {
       decisionOutcome
     }
   };
+  manifest.selectedByView = buildManifestSelectedByView(selectedByView);
 
   if (requiresSelectionReview) {
     manifest.status = "PENDING_HITL";
-    manifest.selectedByView = {};
+    if (!shouldRetainSelectedByViewOnSelectionBlock(source)) {
+      manifest.selectedByView = {};
+    }
     const blockedManifest = withManifestHashes({
       ...manifest,
       schemaVersion: "1.0"
@@ -13502,18 +13532,23 @@ export async function handleGenerateCharacterAssetsJob(input: {
   }
 
   if (selectedCandidateIds) {
-    if (!fs.existsSync(manifestPath)) {
-      throw new Error(`HITL manifest not found: ${manifestPath}`);
+    const selectedManifestPath = resolveHitlSelectionManifestReadPath(jobDbId, {
+      manifestPath: generation.manifestPath,
+      sourceManifestPath: generation.sourceManifestPath
+    });
+
+    if (!fs.existsSync(selectedManifestPath)) {
+      throw new Error(`HITL manifest not found: ${selectedManifestPath}`);
     }
 
-    const parsedManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as unknown;
+    const parsedManifest = JSON.parse(fs.readFileSync(selectedManifestPath, "utf8")) as unknown;
     if (!isRecord(parsedManifest)) {
       throw new Error("Invalid generation manifest format");
     }
 
     const manifestCandidates = Array.isArray(parsedManifest.candidates) ? parsedManifest.candidates : [];
     const parsedCandidates = manifestCandidates
-      .map((candidate) => parseManifestCandidate(manifestPath, candidate))
+      .map((candidate) => parseManifestCandidate(selectedManifestPath, candidate))
       .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
 
     const byId = new Map(parsedCandidates.map((candidate) => [candidate.id, candidate]));

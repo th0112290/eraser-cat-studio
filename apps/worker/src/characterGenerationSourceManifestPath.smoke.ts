@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveManifestReadPath } from "./characterGeneration";
+import { resolveHitlSelectionManifestReadPath, resolveManifestReadPath } from "./characterGeneration";
 
 const jobDbId = "job-123";
 
@@ -16,6 +16,14 @@ assert.equal(
     manifestPath: "C:/tmp/new-manifest.json"
   }),
   "C:\\tmp\\new-manifest.json"
+);
+
+assert.equal(
+  resolveHitlSelectionManifestReadPath(jobDbId, {
+    manifestPath: "C:/tmp/new-manifest.json",
+    sourceManifestPath: "C:/tmp/source-manifest.json"
+  }),
+  "C:\\tmp\\source-manifest.json"
 );
 
 assert.ok(
