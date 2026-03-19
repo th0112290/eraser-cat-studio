@@ -7497,7 +7497,7 @@ export function shouldDowngradeCatFrontFragmentationRisk(input: {
   const ultraSparseOutlineDowngrade =
     (input.subjectFillRatio ?? 0) >= 0.08 &&
     subjectIsolationScore >= 0.14 &&
-    largestComponentShare >= 0.18 &&
+    largestComponentShare >= 0.14 &&
     significantComponentCount <= 8 &&
     (input.speciesScore ?? 0) >= 0.48 &&
     (input.speciesEarScore ?? 0) >= 0.24 &&

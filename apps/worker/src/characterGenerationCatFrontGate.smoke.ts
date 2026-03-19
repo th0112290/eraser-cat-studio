@@ -88,6 +88,27 @@ assert.equal(
 );
 
 assert.equal(
+  shouldDowngradeCatFrontFragmentationRisk({
+    speciesId: "cat",
+    view: "front",
+    subjectFillRatio: 0.0933,
+    subjectIsolationScore: 0.1604,
+    largestComponentShare: 0.1493,
+    significantComponentCount: 6,
+    speciesScore: 0.5482,
+    speciesEarScore: 0.2647,
+    speciesMuzzleScore: 0.7083,
+    speciesSilhouetteScore: 0.75,
+    targetStyleScore: 0.6035,
+    frontSymmetryScore: 0.9981,
+    headSquarenessScore: 0.2524,
+    handRegionDensityScore: 0.5228
+  }),
+  true,
+  "live sparse single-subject cat fronts with low component concentration should still downgrade fragmentation when symmetry and species cues are strong"
+);
+
+assert.equal(
   shouldDowngradeCatFrontHeadShapeBreakdownRisk({
     speciesId: "cat",
     view: "front",
