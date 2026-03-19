@@ -443,6 +443,77 @@ assert.ok(
     "repair_sparse_guide_softened"
   )
 );
+assert.ok(
+  repairSparseSideGuides.diagnosticsByView.threeQuarter?.reasonCodes.includes("soft_structure:canny")
+);
+assert.equal(repairSparseSideGuides.diagnosticsByView.threeQuarter?.structureGuideMetrics?.canny?.status, "review");
+
+const repairSparseFrontGuides = assessStageInputPreflight({
+  stage: "repair",
+  views: ["front"],
+  targetStyle: "eraser cat mascot",
+  referenceBankByView: {
+    front: [
+      makeReferenceEntry("front_master", 0.93, "front"),
+      makeReferenceEntry("repair_base", 0.87, "front"),
+      makeReferenceEntry("composition", 0.41, "front")
+    ]
+  },
+  referenceAnalysisByView: {
+    front: {
+      alphaCoverage: 0.33,
+      monochromeScore: 0.88
+    }
+  } as any,
+  structureGuideMetricsByView: {
+    front: {
+      lineart: makeStructureMetric("lineart", {
+        score: 0.16,
+        status: "block",
+        signalCoverage: 0.005,
+        stdDev: 0.0706,
+        reasonCodes: ["guide_too_sparse", "guide_signal_soft"]
+      }),
+      canny: makeStructureMetric("canny", {
+        score: 0.58,
+        status: "review",
+        signalCoverage: 0.0097,
+        stdDev: 0.0746,
+        reasonCodes: ["guide_sparse", "guide_signal_soft"]
+      }),
+      depth: makeStructureMetric("depth", {
+        score: 1,
+        status: "ok",
+        signalCoverage: 0.7729,
+        dynamicRange: 1,
+        stdDev: 0.4376
+      })
+    }
+  },
+  structureControlsByView: {
+    front: {
+      lineart: makeStructureControlImage("composition", "composition_front", "front"),
+      canny: makeStructureControlImage("composition", "composition_front", "front"),
+      depth: makeStructureControlImage("repair_base", "repair_base_front", "front")
+    }
+  }
+});
+
+assert.equal(repairSparseFrontGuides.status, "ok");
+assert.deepEqual(repairSparseFrontGuides.blockedViews, []);
+assert.deepEqual(repairSparseFrontGuides.warningViews, []);
+assert.ok(
+  !repairSparseFrontGuides.diagnosticsByView.front?.reasonCodes.includes("weak_structure:lineart")
+);
+assert.ok(
+  !repairSparseFrontGuides.diagnosticsByView.front?.reasonCodes.includes("soft_structure:lineart")
+);
+assert.ok(
+  repairSparseFrontGuides.diagnosticsByView.front?.structureGuideMetrics?.lineart?.reasonCodes.includes(
+    "repair_sparse_guide_softened"
+  )
+);
+assert.equal(repairSparseFrontGuides.diagnosticsByView.front?.structureGuideMetrics?.lineart?.status, "ok");
 
 console.log("[characterGenerationStageInputPreflight.smoke] PASS");
 process.exit(0);

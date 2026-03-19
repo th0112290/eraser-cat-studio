@@ -1302,7 +1302,7 @@ function normalizeStructureGuideMetricsForPreflight(input: {
   view: CharacterView;
   metrics: Partial<Record<CharacterStructureControlKind, StructureGuideQualityMetrics>>;
 }): Partial<Record<CharacterStructureControlKind, StructureGuideQualityMetrics>> {
-  if (input.stage !== "repair" || input.view === "front") {
+  if (input.stage !== "repair") {
     return input.metrics;
   }
 
@@ -1331,8 +1331,8 @@ function normalizeStructureGuideMetricsForPreflight(input: {
     }
     next[kind] = {
       ...metric,
-      score: roundPreflightMetric(Math.max(metric.score, 0.58)),
-      status: "review",
+      score: roundPreflightMetric(Math.max(metric.score, input.view === "front" ? 0.72 : 0.58)),
+      status: input.view === "front" ? "ok" : "review",
       reasonCodes: dedupeStrings([...reasonCodes, "repair_sparse_guide_softened"])
     };
   }
