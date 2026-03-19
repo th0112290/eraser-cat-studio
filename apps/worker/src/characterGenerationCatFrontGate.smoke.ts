@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   deriveRetryAdjustmentForCandidate,
+  isStrongFrontMasterCandidate,
   scoreCandidate,
   shouldDowngradeCatFrontFragmentationRisk,
   shouldDowngradeCatFrontHeadShapeBreakdownRisk
@@ -184,6 +185,30 @@ assert.ok(
 assert.ok(
   retryAdjustment.viewPromptHints.some((hint) => hint.includes("single centered full-body cat mascot")),
   "cat front retry adjustment should strengthen centered single-subject guidance"
+);
+
+assert.equal(
+  isStrongFrontMasterCandidate(
+    {
+      candidate: { view: "front" },
+      rejections: [],
+      score: 0.8765,
+      breakdown: {
+        frontSymmetryScore: 0.9937,
+        headSquarenessScore: 0.2567,
+        speciesScore: 0.643,
+        targetStyleScore: 0.7787,
+        speciesEarScore: 0.4488,
+        speciesMuzzleScore: 0.9298,
+        speciesSilhouetteScore: 0.9398
+      }
+    } as any,
+    "eraser-cat-mascot-production",
+    0.62,
+    "cat"
+  ),
+  true,
+  "cat front strong gate should accept highly symmetric fronts that miss the square-head floor by a rounding margin when species/style cues are otherwise strong"
 );
 
 const duplicateFrontGateCandidate = scoreCandidate({

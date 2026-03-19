@@ -8356,10 +8356,20 @@ export function isStrongFrontMasterCandidate(
           Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.34
         )
       ));
+  const catFrontHeadSquarenessFloor =
+    mascotSpecies === "cat" &&
+    (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.98 &&
+    (candidate.breakdown.speciesScore ?? 0) >= Math.max(0.5, profileThresholds.frontMasterMinSpeciesScore + 0.24) &&
+    (candidate.breakdown.targetStyleScore ?? 0) >= Math.max(0.6, profileThresholds.frontMasterMinStyleScore + 0.2) &&
+    (candidate.breakdown.speciesEarScore ?? 0) >= 0.24 &&
+    (candidate.breakdown.speciesMuzzleScore ?? 0) >= 0.68 &&
+    (candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.72
+      ? Math.max(0.25, profileThresholds.frontMasterMinHeadSquarenessScore - 0.01)
+      : profileThresholds.frontMasterMinHeadSquarenessScore;
 
   return (
     (candidate.breakdown.frontSymmetryScore ?? 0) >= profileThresholds.minFrontSymmetryScore &&
-    (candidate.breakdown.headSquarenessScore ?? 0) >= profileThresholds.frontMasterMinHeadSquarenessScore &&
+    (candidate.breakdown.headSquarenessScore ?? 0) >= catFrontHeadSquarenessFloor &&
     (candidate.breakdown.speciesScore ?? 0) >= profileThresholds.frontMasterMinSpeciesScore &&
     (candidate.breakdown.targetStyleScore ?? 0) >= profileThresholds.frontMasterMinStyleScore &&
     dogFrontSupportStrong &&
