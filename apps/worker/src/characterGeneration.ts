@@ -3325,6 +3325,36 @@ function dedupeReferenceBank(entries: CharacterReferenceBankEntry[]): CharacterR
   return out;
 }
 
+function inlineReferencesMatch(
+  left?: (InlineImageReference & { sourcePath?: string }) | null,
+  right?: (InlineImageReference & { sourcePath?: string }) | null
+): boolean {
+  const leftPath = typeof left?.sourcePath === "string" ? left.sourcePath.trim() : "";
+  const rightPath = typeof right?.sourcePath === "string" ? right.sourcePath.trim() : "";
+  if (leftPath && rightPath) {
+    return leftPath === rightPath;
+  }
+  const leftBase64 = typeof left?.referenceImageBase64 === "string" ? left.referenceImageBase64.trim() : "";
+  const rightBase64 = typeof right?.referenceImageBase64 === "string" ? right.referenceImageBase64.trim() : "";
+  return leftBase64.length > 0 && leftBase64 === rightBase64;
+}
+
+export function shouldSuppressDuplicateViewStarterReference(input: {
+  stage: GenerationStageKey;
+  view: CharacterView;
+  speciesId?: string;
+  starterReference?: (InlineImageReference & { sourcePath?: string }) | null;
+  familyReference?: (InlineImageReference & { sourcePath?: string }) | null;
+}): boolean {
+  if (input.stage !== "angles" || input.view !== "threeQuarter") {
+    return false;
+  }
+  if (input.speciesId !== "cat") {
+    return false;
+  }
+  return inlineReferencesMatch(input.starterReference, input.familyReference);
+}
+
 function resolveStageConfig(
   stage: GenerationStageKey
 ): { workflowStage: CharacterWorkflowStage; templateVersion: string; templateSpecPath: string } {
@@ -3594,6 +3624,7 @@ export function loadStagePoseGuides(input: {
 
 export function buildPreferredSideReferenceInputByView(input: {
   views: CharacterView[];
+  speciesId?: string;
   familyReferencesByView?: Partial<Record<CharacterView, InlineImageReference>>;
   starterReferenceByView?: Partial<Record<CharacterView, InlineImageReference>>;
 }): Partial<Record<CharacterView, InlineImageReference>> {
@@ -3602,8 +3633,10 @@ export function buildPreferredSideReferenceInputByView(input: {
     if (view === "front") {
       continue;
     }
-    const preferredReference =
-      input.starterReferenceByView?.[view] ?? input.familyReferencesByView?.[view];
+    const preferCompositionForCatThreeQuarter = view === "threeQuarter" && input.speciesId === "cat";
+    const preferredReference = preferCompositionForCatThreeQuarter
+      ? input.familyReferencesByView?.[view] ?? input.starterReferenceByView?.[view]
+      : input.starterReferenceByView?.[view] ?? input.familyReferencesByView?.[view];
     if (!preferredReference?.referenceImageBase64) {
       continue;
     }
@@ -15282,6 +15315,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
       const starterReferenceByView = loadMascotStarterReferencesByView(promptBundle.speciesId, remainingViews);
       const preferredAngleReferenceInputByView = buildPreferredSideReferenceInputByView({
         views: remainingViews,
+        speciesId: promptBundle.speciesId,
         familyReferencesByView: mascotFamilyReferencesByView,
         starterReferenceByView
       });
@@ -15296,8 +15330,19 @@ export async function handleGenerateCharacterAssetsJob(input: {
       for (const view of remainingViews) {
         const bank: CharacterReferenceBankEntry[] = [];
         const starterReference = starterReferenceByView[view];
+        const familyReference = mascotFamilyReferencesByView[view];
         const preferredSideReference = preferredAngleReferenceInputByView[view];
-        const sideStarterLikeReference = starterReference ?? preferredSideReference;
+        const suppressStarterReference = shouldSuppressDuplicateViewStarterReference({
+          stage: "angles",
+          view,
+          speciesId: promptBundle.speciesId,
+          starterReference,
+          familyReference
+        });
+        const sideStarterLikeReference = suppressStarterReference
+          ? preferredSideReference
+          : starterReference ?? preferredSideReference;
+        const hasSideAnchor = Boolean(starterReference ?? preferredSideReference ?? familyReference);
         const initialAngleBiasAdjustment = buildInitialAngleReferenceBiasAdjustment({
           view,
           speciesId: promptBundle.speciesId,
@@ -15316,7 +15361,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 stage: "angles",
                 role: "front_master",
                 targetView: view,
-                hasStarter: Boolean(sideStarterLikeReference)
+                hasStarter: hasSideAnchor
               }),
               note: "approved front master anchor",
               image: inlineReferenceFromCandidate(frontBaseline.candidate)
@@ -15332,14 +15377,14 @@ export async function handleGenerateCharacterAssetsJob(input: {
                 stage: "angles",
                 role: "subject",
                 targetView: view,
-                hasStarter: Boolean(sideStarterLikeReference)
+                hasStarter: hasSideAnchor
               }),
               note: "external fallback identity anchor",
               image: sideReference
             })
           );
         }
-        if (sideStarterLikeReference) {
+        if (sideStarterLikeReference && !suppressStarterReference) {
           bank.push(
             createReferenceBankEntry({
               id: starterReference ? `${view}_starter` : `${view}_preferred_side_starter`,
@@ -15361,12 +15406,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
         }
         bank.push(
           ...buildMascotFamilyReferenceEntries({
-            speciesId: promptBundle.speciesId,
-            stage: "angles",
-            targetView: view,
-            familyReferencesByView: mascotFamilyReferencesByView,
-            hasStarter: Boolean(sideStarterLikeReference),
-            preferMultiReference: promptBundle.selectionHints.preferMultiReference,
+          speciesId: promptBundle.speciesId,
+          stage: "angles",
+          targetView: view,
+          familyReferencesByView: mascotFamilyReferencesByView,
+          hasStarter: hasSideAnchor,
+          preferMultiReference: promptBundle.selectionHints.preferMultiReference,
             heroModeEnabled: shouldEnableMascotHeroMode({
               stage: "angles",
               heroMode: promptBundle.heroMode,
@@ -15437,6 +15482,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     );
     const preferredSideReferenceInputByView = buildPreferredSideReferenceInputByView({
       views: requestedViews,
+      speciesId: promptBundle.speciesId,
       familyReferencesByView: mascotFamilyReferencesByView,
       starterReferenceByView
     });
@@ -15445,8 +15491,19 @@ export async function handleGenerateCharacterAssetsJob(input: {
     for (const view of requestedViews) {
       const bank: CharacterReferenceBankEntry[] = [];
       const starterReference = starterReferenceByView[view];
+      const familyReference = mascotFamilyReferencesByView[view];
       const preferredSideReference = preferredSideReferenceInputByView[view];
-      const sideStarterLikeReference = starterReference ?? preferredSideReference;
+      const suppressStarterReference = shouldSuppressDuplicateViewStarterReference({
+        stage: requestedBaseStage,
+        view,
+        speciesId: promptBundle.speciesId,
+        starterReference,
+        familyReference
+      });
+      const sideStarterLikeReference = suppressStarterReference
+        ? preferredSideReference
+        : starterReference ?? preferredSideReference;
+      const hasSideAnchor = Boolean(starterReference ?? preferredSideReference ?? familyReference);
       if (preferredSideReference) {
         perViewReferenceInputByView[view] = preferredSideReference;
       }
@@ -15460,14 +15517,14 @@ export async function handleGenerateCharacterAssetsJob(input: {
               stage: requestedBaseStage,
               role: generation.viewToGenerate ? "front_master" : "subject",
               targetView: view,
-              hasStarter: Boolean(sideStarterLikeReference)
+              hasStarter: hasSideAnchor
             }),
             note: generation.viewToGenerate ? "front continuity reference" : "shared external reference",
             image: perViewReference
           })
         );
       }
-      if (sideStarterLikeReference) {
+      if (sideStarterLikeReference && !suppressStarterReference) {
         bank.push(
           createReferenceBankEntry({
             id: starterReference ? `${view}_starter` : `${view}_preferred_side_starter`,
@@ -15493,7 +15550,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
           stage: requestedBaseStage,
           targetView: view,
           familyReferencesByView: mascotFamilyReferencesByView,
-          hasStarter: Boolean(sideStarterLikeReference),
+          hasStarter: hasSideAnchor,
           preferMultiReference: promptBundle.selectionHints.preferMultiReference,
           heroModeEnabled: shouldEnableMascotHeroMode({
             stage: requestedBaseStage,
@@ -16206,6 +16263,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         );
         const autoRerouteReferenceInputByView = buildPreferredSideReferenceInputByView({
           views: autoRerouteSideViews,
+          speciesId: promptBundle.speciesId,
           familyReferencesByView: mascotFamilyReferencesByView,
           starterReferenceByView: autoRerouteStarterReferenceByView
         });
@@ -16228,8 +16286,19 @@ export async function handleGenerateCharacterAssetsJob(input: {
         const autoRerouteReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
         for (const view of autoRerouteSideViews) {
           const starterReference = autoRerouteStarterReferenceByView[view];
+          const familyReference = mascotFamilyReferencesByView[view];
           const preferredSideReference = autoRerouteReferenceInputByView[view];
-          const sideStarterLikeReference = starterReference ?? preferredSideReference;
+          const suppressStarterReference = shouldSuppressDuplicateViewStarterReference({
+            stage: "angles",
+            view,
+            speciesId: promptBundle.speciesId,
+            starterReference,
+            familyReference
+          });
+          const sideStarterLikeReference = suppressStarterReference
+            ? preferredSideReference
+            : starterReference ?? preferredSideReference;
+          const hasSideAnchor = Boolean(starterReference ?? preferredSideReference ?? familyReference);
           const bank: CharacterReferenceBankEntry[] = [];
           if (autoRerouteFrontBaseline) {
             bank.push(
@@ -16241,7 +16310,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
                   stage: "angles",
                   role: "front_master",
                   targetView: view,
-                  hasStarter: Boolean(sideStarterLikeReference)
+                  hasStarter: hasSideAnchor
                 }),
                 note: "auto reroute front anchor",
                 image: inlineReferenceFromCandidate(autoRerouteFrontBaseline.candidate)
@@ -16257,14 +16326,14 @@ export async function handleGenerateCharacterAssetsJob(input: {
                   stage: "angles",
                   role: "subject",
                   targetView: view,
-                  hasStarter: Boolean(sideStarterLikeReference)
+                  hasStarter: hasSideAnchor
                 }),
                 note: "auto reroute external subject anchor",
                 image: autoRerouteSideReference
               })
             );
           }
-          if (sideStarterLikeReference) {
+          if (sideStarterLikeReference && !suppressStarterReference) {
             bank.push(
               createReferenceBankEntry({
                 id: starterReference
@@ -16286,17 +16355,17 @@ export async function handleGenerateCharacterAssetsJob(input: {
               })
             );
           }
-          bank.push(
-            ...buildMascotFamilyReferenceEntries({
-              speciesId: promptBundle.speciesId,
+        bank.push(
+          ...buildMascotFamilyReferenceEntries({
+            speciesId: promptBundle.speciesId,
+            stage: "angles",
+            targetView: view,
+            familyReferencesByView: mascotFamilyReferencesByView,
+            hasStarter: hasSideAnchor,
+            preferMultiReference: promptBundle.selectionHints.preferMultiReference,
+            heroModeEnabled: shouldEnableMascotHeroMode({
               stage: "angles",
-              targetView: view,
-              familyReferencesByView: mascotFamilyReferencesByView,
-              hasStarter: Boolean(sideStarterLikeReference),
-              preferMultiReference: promptBundle.selectionHints.preferMultiReference,
-              heroModeEnabled: shouldEnableMascotHeroMode({
-                stage: "angles",
-                heroMode: promptBundle.heroMode,
+              heroMode: promptBundle.heroMode,
                 frontAnchorScore: autoRerouteFrontBaseline?.score
               })
             })

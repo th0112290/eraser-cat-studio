@@ -6,7 +6,8 @@ import {
   rebalanceReferenceBankForRetry,
   resolveAdaptiveReferenceWeight,
   resolveStageInputMinimumReferenceWeights,
-  selectRetryInlineReferenceInput
+  selectRetryInlineReferenceInput,
+  shouldSuppressDuplicateViewStarterReference
 } from "./characterGeneration";
 
 const preferredSideReferences = buildPreferredSideReferenceInputByView({
@@ -23,6 +24,46 @@ const preferredSideReferences = buildPreferredSideReferenceInputByView({
 assert.equal(preferredSideReferences.front, undefined);
 assert.equal(preferredSideReferences.threeQuarter?.referenceImageBase64, "starter-3q");
 assert.equal(preferredSideReferences.profile?.referenceImageBase64, "starter-p");
+
+const catPreferredSideReferences = buildPreferredSideReferenceInputByView({
+  views: ["threeQuarter", "profile"],
+  speciesId: "cat",
+  familyReferencesByView: {
+    threeQuarter: { referenceImageBase64: "family-3q", referenceMimeType: "image/png" } as any
+  },
+  starterReferenceByView: {
+    threeQuarter: { referenceImageBase64: "family-3q", referenceMimeType: "image/png" } as any,
+    profile: { referenceImageBase64: "starter-p", referenceMimeType: "image/png" } as any
+  }
+});
+
+assert.equal(
+  catPreferredSideReferences.threeQuarter?.referenceImageBase64,
+  "family-3q",
+  "cat three-quarter initial side reference should prefer composition over starter"
+);
+assert.equal(catPreferredSideReferences.profile?.referenceImageBase64, "starter-p");
+assert.equal(
+  shouldSuppressDuplicateViewStarterReference({
+    stage: "angles",
+    view: "threeQuarter",
+    speciesId: "cat",
+    starterReference: { referenceImageBase64: "family-3q", referenceMimeType: "image/png" } as any,
+    familyReference: { referenceImageBase64: "family-3q", referenceMimeType: "image/png" } as any
+  }),
+  true,
+  "cat three-quarter angles should suppress duplicate starter references when composition matches starter"
+);
+assert.equal(
+  shouldSuppressDuplicateViewStarterReference({
+    stage: "angles",
+    view: "threeQuarter",
+    speciesId: "dog",
+    starterReference: { referenceImageBase64: "family-3q", referenceMimeType: "image/png" } as any,
+    familyReference: { referenceImageBase64: "family-3q", referenceMimeType: "image/png" } as any
+  }),
+  false
+);
 
 const threeQuarterFrontWeight = resolveAdaptiveReferenceWeight({
   stage: "angles",
