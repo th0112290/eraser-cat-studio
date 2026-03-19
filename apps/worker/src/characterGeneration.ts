@@ -1307,10 +1307,11 @@ function normalizeStructureGuideMetricsForPreflight(input: {
   }
 
   const depth = input.metrics.depth;
+  const minDepthSignalCoverage = input.view === "front" ? 0.08 : 0.2;
   const depthStrong =
     depth?.status === "ok" &&
     (depth.score ?? 0) >= 0.9 &&
-    (depth.signalCoverage ?? 0) >= 0.2 &&
+    (depth.signalCoverage ?? 0) >= minDepthSignalCoverage &&
     (depth.dynamicRange ?? 0) >= 0.14;
   if (!depthStrong) {
     return input.metrics;
