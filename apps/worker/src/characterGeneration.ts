@@ -11063,6 +11063,27 @@ export function hasBlockingConsistencyRecoveryIssue(
       handRegionDensityScore: candidate.breakdown.handRegionDensityScore
     });
   }
+  const catWarningOnlyShapeDriftRecoveryIssue =
+    normalizeGenerationSpecies(speciesId) === "cat" &&
+    candidate.rejections.length === 0 &&
+    !reasons.has("inconsistent_with_front_baseline") &&
+    reasons.has("consistency_low") &&
+    reasons.has("consistency_shape_drift") &&
+    !reasons.has("consistency_style_drift") &&
+    (candidate.candidate.view === "threeQuarter" || candidate.candidate.view === "profile");
+  if (catWarningOnlyShapeDriftRecoveryIssue) {
+    const scoreFloor = candidate.candidate.view === "profile" ? 0.84 : 0.74;
+    return !(
+      candidate.score >= scoreFloor &&
+      (candidate.consistencyScore ?? 0) >= 0.3 &&
+      (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+      (candidate.breakdown.targetStyleScore ?? 0) >= 0.68 &&
+      (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.9 &&
+      (candidate.breakdown.headSquarenessScore ?? 0) >= 0.2 &&
+      (candidate.candidate.view !== "threeQuarter" ||
+        (candidate.breakdown.handRegionDensityScore ?? 0) >= 0.45)
+    );
+  }
   const onlyShapeDriftRecoveryIssue =
     !reasons.has("inconsistent_with_front_baseline") &&
     !reasons.has("consistency_low") &&

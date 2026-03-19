@@ -166,5 +166,62 @@ assert.equal(
   "high-score profile candidates with mixed drift warnings should not stay blocked when profile identity and style cues remain strong"
 );
 
+const highScoreCatThreeQuarterWarningOnlyShapeDrift = {
+  candidate: { view: "threeQuarter" },
+  score: 0.7641,
+  consistencyScore: 0.31,
+  warnings: [
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "consistency_low",
+    "consistency_shape_drift"
+  ],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.7049,
+    speciesScore: 0.5147,
+    speciesMuzzleScore: 0.2424,
+    speciesSilhouetteScore: 0.4221,
+    subjectIsolationScore: 0.9999,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.2114,
+    handRegionDensityScore: 0.769
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(highScoreCatThreeQuarterWarningOnlyShapeDrift, "cat"),
+  false,
+  "high-score cat three-quarter candidates with warning-only consistency low + shape drift should remain recoverable"
+);
+
+const highScoreProfileWarningOnlyShapeDrift = {
+  candidate: { view: "profile" },
+  score: 0.8472,
+  consistencyScore: 0.31,
+  warnings: [
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "consistency_low",
+    "consistency_shape_drift"
+  ],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.8844,
+    speciesScore: 0.5214,
+    speciesMuzzleScore: 0.7348,
+    speciesSilhouetteScore: 0.9931,
+    subjectIsolationScore: 0.9008,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.9412
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(highScoreProfileWarningOnlyShapeDrift, "cat"),
+  false,
+  "high-score profile candidates with warning-only consistency low + shape drift should remain recoverable"
+);
+
 console.log("[characterGenerationSequentialStageGate.smoke] PASS");
 process.exit(0);
