@@ -11019,6 +11019,25 @@ export function hasBlockingConsistencyRecoveryIssue(
       (candidate.breakdown.subjectIsolationScore ?? 0) >= 0.8
     );
   }
+  const profileLowOnlyRecoveryIssue =
+    candidate.candidate.view === "profile" &&
+    candidate.rejections.length === 0 &&
+    !reasons.has("inconsistent_with_front_baseline") &&
+    reasons.has("consistency_low") &&
+    !reasons.has("consistency_shape_drift") &&
+    !reasons.has("consistency_style_drift");
+  if (profileLowOnlyRecoveryIssue) {
+    return !(
+      candidate.score >= 0.86 &&
+      (candidate.consistencyScore ?? 0) >= 0.4 &&
+      (candidate.breakdown.targetStyleScore ?? 0) >= 0.84 &&
+      (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
+      Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.74 &&
+      (candidate.breakdown.subjectIsolationScore ?? 0) >= 0.9 &&
+      (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.9 &&
+      (candidate.breakdown.headSquarenessScore ?? 0) >= 0.7
+    );
+  }
   const profileMixedDriftOnly =
     candidate.candidate.view === "profile" &&
     !reasons.has("inconsistent_with_front_baseline") &&

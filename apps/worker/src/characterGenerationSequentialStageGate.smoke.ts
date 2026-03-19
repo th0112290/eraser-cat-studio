@@ -253,5 +253,32 @@ assert.equal(
   "high-score profile candidates with warning-only consistency low + shape drift should remain recoverable"
 );
 
+const highScoreProfileLowOnly = {
+  candidate: { view: "profile" },
+  score: 0.8796,
+  consistencyScore: 0.43,
+  warnings: [
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "consistency_low"
+  ],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.8694,
+    speciesScore: 0.522,
+    speciesMuzzleScore: 0.7816,
+    speciesSilhouetteScore: 0.9502,
+    subjectIsolationScore: 0.972,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.9093
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(highScoreProfileLowOnly, "cat"),
+  false,
+  "high-score profile candidates with warning-only consistency_low should remain recoverable"
+);
+
 console.log("[characterGenerationSequentialStageGate.smoke] PASS");
 process.exit(0);
