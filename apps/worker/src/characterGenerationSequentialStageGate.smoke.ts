@@ -109,5 +109,34 @@ assert.equal(
   "high-score profile candidates with style-drift-only recovery issues should not stay blocked"
 );
 
+const highScoreCatThreeQuarterMixedDriftOnly = {
+  candidate: { view: "threeQuarter" },
+  score: 0.7651,
+  consistencyScore: 0.32,
+  warnings: [
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "consistency_shape_drift",
+    "consistency_style_drift"
+  ],
+  rejections: [],
+  breakdown: {
+    targetStyleScore: 0.7094,
+    speciesScore: 0.5157,
+    speciesMuzzleScore: 0.1004,
+    speciesSilhouetteScore: 0.4229,
+    subjectIsolationScore: 0.9951,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.2114,
+    handRegionDensityScore: 0.6154
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(highScoreCatThreeQuarterMixedDriftOnly, "cat"),
+  false,
+  "high-score cat three-quarter candidates with mixed drift warnings should not stay blocked when side silhouette cues remain strong"
+);
+
 console.log("[characterGenerationSequentialStageGate.smoke] PASS");
 process.exit(0);

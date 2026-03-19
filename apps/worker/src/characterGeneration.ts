@@ -7572,6 +7572,7 @@ export function shouldDowngradeCatThreeQuarterFrontCollapseRisk(input: {
   speciesHeadShapeScore?: number;
   speciesSilhouetteScore?: number;
   targetStyleScore?: number;
+  frontSymmetryScore?: number;
   headSquarenessScore?: number;
   handRegionDensityScore?: number;
   pawStabilityScore?: number;
@@ -7582,14 +7583,57 @@ export function shouldDowngradeCatThreeQuarterFrontCollapseRisk(input: {
   }
 
   return (
-    (input.subjectIsolationScore ?? 0) >= 0.6 &&
-    (input.speciesScore ?? 0) >= 0.4 &&
-    Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.48 &&
-    (input.speciesHeadShapeScore ?? 0) >= 0.18 &&
+    (
+      (input.subjectIsolationScore ?? 0) >= 0.6 &&
+      (input.speciesScore ?? 0) >= 0.4 &&
+      Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.48 &&
+      (input.speciesHeadShapeScore ?? 0) >= 0.18 &&
+      (input.targetStyleScore ?? 0) >= 0.68 &&
+      (input.headSquarenessScore ?? 0) >= 0.36 &&
+      (input.handRegionDensityScore ?? 0) >= 0.38 &&
+      (input.pawStabilityScore ?? 0) >= 0.32
+    ) ||
+    (
+      (input.subjectIsolationScore ?? 0) >= 0.98 &&
+      (input.speciesScore ?? 0) >= 0.5 &&
+      Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.42 &&
+      (input.targetStyleScore ?? 0) >= 0.68 &&
+      (input.frontSymmetryScore ?? 0) >= 0.9 &&
+      (input.headSquarenessScore ?? 0) >= 0.2 &&
+      (input.handRegionDensityScore ?? 0) >= 0.45
+    )
+  );
+}
+
+export function shouldDowngradeCatThreeQuarterConsistencyDrift(input: {
+  speciesId?: string;
+  view: CharacterView;
+  score?: number;
+  consistencyScore?: number | null;
+  subjectIsolationScore?: number;
+  speciesScore?: number;
+  speciesMuzzleScore?: number;
+  speciesSilhouetteScore?: number;
+  targetStyleScore?: number;
+  frontSymmetryScore?: number;
+  headSquarenessScore?: number;
+  handRegionDensityScore?: number;
+}): boolean {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (species !== "cat" || input.view !== "threeQuarter") {
+    return false;
+  }
+
+  return (
+    (input.score ?? 0) >= 0.69 &&
+    (input.consistencyScore ?? 0) >= 0.3 &&
+    (input.subjectIsolationScore ?? 0) >= 0.98 &&
+    (input.speciesScore ?? 0) >= 0.5 &&
+    Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.42 &&
     (input.targetStyleScore ?? 0) >= 0.68 &&
-    (input.headSquarenessScore ?? 0) >= 0.36 &&
-    (input.handRegionDensityScore ?? 0) >= 0.38 &&
-    (input.pawStabilityScore ?? 0) >= 0.32
+    (input.frontSymmetryScore ?? 0) >= 0.9 &&
+    (input.headSquarenessScore ?? 0) >= 0.2 &&
+    (input.handRegionDensityScore ?? 0) >= 0.45
   );
 }
 
@@ -10599,6 +10643,7 @@ export function scoreCandidate(input: {
         speciesHeadShapeScore,
         speciesSilhouetteScore,
         targetStyleScore,
+        frontSymmetryScore,
         headSquarenessScore,
         handRegionDensityScore,
         pawStabilityScore
@@ -10945,6 +10990,29 @@ export function hasBlockingConsistencyRecoveryIssue(
       (candidate.breakdown.subjectIsolationScore ?? 0) >= 0.8
     );
   }
+  const catThreeQuarterMixedDriftOnly =
+    normalizeGenerationSpecies(speciesId) === "cat" &&
+    candidate.candidate.view === "threeQuarter" &&
+    !reasons.has("inconsistent_with_front_baseline") &&
+    !reasons.has("consistency_low") &&
+    reasons.has("consistency_shape_drift") &&
+    reasons.has("consistency_style_drift");
+  if (catThreeQuarterMixedDriftOnly) {
+    return !shouldDowngradeCatThreeQuarterConsistencyDrift({
+      speciesId,
+      view: candidate.candidate.view,
+      score: candidate.score,
+      consistencyScore: candidate.consistencyScore,
+      subjectIsolationScore: candidate.breakdown.subjectIsolationScore,
+      speciesScore: candidate.breakdown.speciesScore,
+      speciesMuzzleScore: candidate.breakdown.speciesMuzzleScore,
+      speciesSilhouetteScore: candidate.breakdown.speciesSilhouetteScore,
+      targetStyleScore: candidate.breakdown.targetStyleScore,
+      frontSymmetryScore: candidate.breakdown.frontSymmetryScore,
+      headSquarenessScore: candidate.breakdown.headSquarenessScore,
+      handRegionDensityScore: candidate.breakdown.handRegionDensityScore
+    });
+  }
   const onlyShapeDriftRecoveryIssue =
     !reasons.has("inconsistent_with_front_baseline") &&
     !reasons.has("consistency_low") &&
@@ -11061,15 +11129,34 @@ function applyConsistencyScoring(
       (consistency.parts.palette < 0.34 ||
         consistency.parts.monochrome < 0.38 ||
         consistency.parts.paletteComplexity < 0.34);
+    const downgradeCatThreeQuarterConsistencyDrift =
+      mascotTarget &&
+      shouldDowngradeCatThreeQuarterConsistencyDrift({
+        speciesId,
+        view: entry.candidate.view,
+        score: entry.score,
+        consistencyScore: consistency.score,
+        subjectIsolationScore: entry.breakdown.subjectIsolationScore,
+        speciesScore: entry.breakdown.speciesScore,
+        speciesMuzzleScore: entry.breakdown.speciesMuzzleScore,
+        speciesSilhouetteScore: entry.breakdown.speciesSilhouetteScore,
+        targetStyleScore: entry.breakdown.targetStyleScore,
+        frontSymmetryScore: entry.breakdown.frontSymmetryScore,
+        headSquarenessScore: entry.breakdown.headSquarenessScore,
+        handRegionDensityScore: entry.breakdown.handRegionDensityScore
+      });
 
-    if (consistency.score < rejectThreshold || (criticalShapeDrift && !downgradeCanineSideCriticalShapeDrift)) {
+    if (
+      !downgradeCatThreeQuarterConsistencyDrift &&
+      (consistency.score < rejectThreshold || (criticalShapeDrift && !downgradeCanineSideCriticalShapeDrift))
+    ) {
       if (!entry.rejections.includes("inconsistent_with_front_baseline")) {
         entry.rejections.push("inconsistent_with_front_baseline");
       }
       if (criticalShapeDrift && !entry.warnings.includes("consistency_shape_drift")) {
         entry.warnings.push("consistency_shape_drift");
       }
-    } else if (consistency.score < warningThreshold) {
+    } else if (consistency.score < warningThreshold || downgradeCatThreeQuarterConsistencyDrift) {
       if (!entry.warnings.includes("consistency_low")) {
         entry.warnings.push("consistency_low");
       }

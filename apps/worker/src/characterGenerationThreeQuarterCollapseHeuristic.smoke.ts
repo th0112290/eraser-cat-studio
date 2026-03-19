@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   deriveRetryAdjustmentForCandidate,
   isThreeQuarterFrontCollapseRisk,
+  shouldDowngradeCatThreeQuarterConsistencyDrift,
   shouldDowngradeCatThreeQuarterFrontCollapseRisk
 } from "./characterGeneration";
 
@@ -130,12 +131,51 @@ assert.equal(
     speciesHeadShapeScore: 0.2577,
     speciesSilhouetteScore: 0.5596,
     targetStyleScore: 0.6986,
+    frontSymmetryScore: 0.9,
     headSquarenessScore: 0.5203,
     handRegionDensityScore: 0.4494,
     pawStabilityScore: 0.6
   }),
   true,
   "cat three-quarter candidates with strong side geometry and isolation should downgrade collapse false positives"
+);
+
+assert.equal(
+  shouldDowngradeCatThreeQuarterFrontCollapseRisk({
+    speciesId: "cat",
+    view: "threeQuarter",
+    subjectIsolationScore: 0.9951,
+    speciesScore: 0.5157,
+    speciesMuzzleScore: 0.1004,
+    speciesHeadShapeScore: 0,
+    speciesSilhouetteScore: 0.4229,
+    targetStyleScore: 0.7094,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.2114,
+    handRegionDensityScore: 0.6154,
+    pawStabilityScore: 0.18
+  }),
+  true,
+  "high-score cat three-quarter candidates with strong isolation and silhouette cues should downgrade collapse even when muzzle detail stays sparse"
+);
+
+assert.equal(
+  shouldDowngradeCatThreeQuarterConsistencyDrift({
+    speciesId: "cat",
+    view: "threeQuarter",
+    score: 0.7651,
+    consistencyScore: 0.32,
+    subjectIsolationScore: 0.9951,
+    speciesScore: 0.5157,
+    speciesMuzzleScore: 0.1004,
+    speciesSilhouetteScore: 0.4229,
+    targetStyleScore: 0.7094,
+    frontSymmetryScore: 0.9,
+    headSquarenessScore: 0.2114,
+    handRegionDensityScore: 0.6154
+  }),
+  true,
+  "high-score cat three-quarter candidates with mixed drift warnings should be downgradeable when the side silhouette remains strong"
 );
 
 console.log("[characterGenerationThreeQuarterCollapseHeuristic.smoke] PASS");
