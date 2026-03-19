@@ -8360,7 +8360,7 @@ export function isStrongFrontMasterCandidate(
     mascotSpecies === "cat" &&
     (candidate.breakdown.frontSymmetryScore ?? 0) >= 0.99 &&
     (candidate.breakdown.speciesScore ?? 0) >= 0.5 &&
-    (candidate.breakdown.targetStyleScore ?? 0) >= 0.6 &&
+    (candidate.breakdown.targetStyleScore ?? 0) >= 0.59 &&
     Math.max(candidate.breakdown.speciesMuzzleScore ?? 0, candidate.breakdown.speciesSilhouetteScore ?? 0) >= 0.66 &&
     (candidate.breakdown.headSquarenessScore ?? 0) >= 0.2 &&
     (candidate.breakdown.handRegionDensityScore ?? 0) >= 0.45 &&

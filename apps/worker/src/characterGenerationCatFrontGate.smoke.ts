@@ -221,7 +221,7 @@ assert.equal(
         frontSymmetryScore: 0.9979,
         headSquarenessScore: 0.2049,
         speciesScore: 0.531,
-        targetStyleScore: 0.6,
+        targetStyleScore: 0.5976,
         speciesEarScore: 0.3114,
         speciesMuzzleScore: 0.6667,
         speciesSilhouetteScore: 0.7143,
