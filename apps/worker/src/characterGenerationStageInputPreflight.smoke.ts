@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { assessStageInputPreflight } from "./characterGeneration";
+import { assessStageInputPreflight, resolveProviderStageTimeoutMs } from "./characterGeneration";
 
 type CharacterView = "front" | "threeQuarter" | "profile";
 
@@ -90,6 +90,24 @@ const healthySideBase = assessStageInputPreflight({
 assert.equal(healthySideBase.status, "ok");
 assert.deepEqual(healthySideBase.blockedViews, []);
 assert.deepEqual(healthySideBase.executionViews, ["threeQuarter"]);
+
+assert.equal(
+  resolveProviderStageTimeoutMs({
+    providerRequestTimeoutMs: 360_000,
+    executionViewCount: 1,
+    candidateCount: 6
+  }),
+  1_200_000
+);
+
+assert.equal(
+  resolveProviderStageTimeoutMs({
+    providerRequestTimeoutMs: 360_000,
+    executionViewCount: 2,
+    candidateCount: 4
+  }),
+  840_000
+);
 
 const frontStructured = assessStageInputPreflight({
   stage: "front",

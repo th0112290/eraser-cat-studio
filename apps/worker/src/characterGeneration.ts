@@ -5208,6 +5208,22 @@ async function withAsyncOperationTimeout<T>(
   }
 }
 
+export function resolveProviderStageTimeoutMs(input: {
+  providerRequestTimeoutMs: number;
+  providerStageTimeoutOverrideMs?: number;
+  executionViewCount: number;
+  candidateCount: number;
+}): number {
+  if ((input.providerStageTimeoutOverrideMs ?? 0) > 0) {
+    return input.providerStageTimeoutOverrideMs as number;
+  }
+  const providerStageTimeoutMultiplier = Math.max(
+    input.executionViewCount,
+    Math.min(3, Math.ceil(input.candidateCount / 2))
+  );
+  return input.providerRequestTimeoutMs * Math.max(1, providerStageTimeoutMultiplier) + 120_000;
+}
+
 function clamp01(value: number): number {
   if (value <= 0) {
     return 0;
@@ -5333,6 +5349,43 @@ function mergeRetryAdjustments(
   };
 
   return hasRetryAdjustmentContent(merged) ? merged : undefined;
+}
+
+export function buildInitialAngleReferenceBiasAdjustment(input: {
+  view: CharacterView;
+  speciesId?: string;
+  hasApprovedFrontAnchor?: boolean;
+}): RetryAdjustment | undefined {
+  if (!input.hasApprovedFrontAnchor || input.view !== "threeQuarter") {
+    return undefined;
+  }
+
+  if (normalizeGenerationSpecies(input.speciesId) !== "cat") {
+    return undefined;
+  }
+
+  return {
+    extraNegativeTokens: [
+      "front-facing cat chest",
+      "level frontal cat ears",
+      "centered cat muzzle",
+      "same-size cat ears",
+      "same-size cat eyes"
+    ],
+    viewPromptHints: [
+      "strict cat three-quarter turn around 35 to 45 degrees, near ear clearly larger than the far ear, far ear still attached and peeking behind the head, near eye slightly larger than the far eye, short cat muzzle rotated off center, and torso/chest following the same turn instead of slipping back to front symmetry"
+    ],
+    disablePose: false,
+    enforceSideTurnBalance: true,
+    referenceWeightDeltas: {
+      composition: 0.16,
+      view_starter: 0.12,
+      front_master: -0.16,
+      subject: -0.08,
+      hero: -0.05
+    },
+    notes: ["biased cat three-quarter initial angles away from frontal collapse"]
+  };
 }
 
 function summarizeRepairDirectiveProfile(
@@ -13974,10 +14027,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
         sharedReferenceBank: adjustedReferenceBank,
         referenceBankByView
       });
-      const providerStageTimeoutMs =
-        providerStageTimeoutOverrideMs > 0
-          ? providerStageTimeoutOverrideMs
-          : providerRequestTimeoutMs * Math.max(1, executionViews.length) + 120_000;
+      const providerStageTimeoutMs = resolveProviderStageTimeoutMs({
+        providerRequestTimeoutMs,
+        providerStageTimeoutOverrideMs,
+        executionViewCount: executionViews.length,
+        candidateCount: stageCandidatePlan.candidateCount
+      });
       const poseGuideMimeTypeByView = Object.fromEntries(
         Object.entries(input.poseGuidesByView ?? {})
           .filter(([, guide]) => typeof guide?.referenceImageBase64 === "string" && guide.referenceImageBase64.length > 0)
@@ -15237,11 +15292,17 @@ export async function handleGenerateCharacterAssetsJob(input: {
       );
       const angleReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
       const angleReferenceInputByView: Partial<Record<CharacterView, InlineImageReference>> = {};
+      const angleBaseAdjustmentsByView: Partial<Record<CharacterView, RetryAdjustment>> = {};
       for (const view of remainingViews) {
         const bank: CharacterReferenceBankEntry[] = [];
         const starterReference = starterReferenceByView[view];
         const preferredSideReference = preferredAngleReferenceInputByView[view];
         const sideStarterLikeReference = starterReference ?? preferredSideReference;
+        const initialAngleBiasAdjustment = buildInitialAngleReferenceBiasAdjustment({
+          view,
+          speciesId: promptBundle.speciesId,
+          hasApprovedFrontAnchor: Boolean(frontBaseline)
+        });
         if (preferredSideReference) {
           angleReferenceInputByView[view] = preferredSideReference;
         }
@@ -15316,6 +15377,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
         if (bank.length > 0) {
           angleReferenceBankByView[view] = dedupeReferenceBank(bank);
         }
+        if (hasRetryAdjustmentContent(initialAngleBiasAdjustment)) {
+          angleBaseAdjustmentsByView[view] = initialAngleBiasAdjustment;
+        }
       }
       if (Object.keys(starterReferenceByView).length > 0) {
         starterReferencePathsByView = {
@@ -15341,6 +15405,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
         ...(sideReference ? { referenceInput: sideReference } : {}),
         ...(Object.keys(angleReferenceInputByView).length > 0 ? { referenceInputByView: angleReferenceInputByView } : {}),
         ...(Object.keys(angleReferenceBankByView).length > 0 ? { referenceBankByView: angleReferenceBankByView } : {}),
+        ...(Object.keys(angleBaseAdjustmentsByView).length > 0
+          ? { baseAdjustmentsByView: angleBaseAdjustmentsByView }
+          : {}),
         ...(Object.keys(filteredAnglePoseGuides).length > 0 ? { poseGuidesByView: filteredAnglePoseGuides } : {})
       });
     }

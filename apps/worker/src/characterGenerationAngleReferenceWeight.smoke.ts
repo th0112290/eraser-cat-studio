@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  buildInitialAngleReferenceBiasAdjustment,
   buildPreferredSideReferenceInputByView,
   deriveRetryAdjustmentForCandidate,
   rebalanceReferenceBankForRetry,
@@ -82,6 +83,27 @@ const angleMinimumsProfile = resolveStageInputMinimumReferenceWeights("angles", 
 assert.equal(angleMinimumsProfile.front_master, 0.48);
 assert.equal(angleMinimumsProfile.composition, 0.48);
 assert.equal(angleMinimumsProfile.view_starter, 0.42);
+
+const catInitialAngleBias = buildInitialAngleReferenceBiasAdjustment({
+  view: "threeQuarter",
+  speciesId: "cat",
+  hasApprovedFrontAnchor: true
+});
+assert.equal(catInitialAngleBias?.enforceSideTurnBalance, true);
+assert.ok((catInitialAngleBias?.referenceWeightDeltas.composition ?? 0) >= 0.16);
+assert.ok((catInitialAngleBias?.referenceWeightDeltas.view_starter ?? 0) >= 0.12);
+assert.ok((catInitialAngleBias?.referenceWeightDeltas.front_master ?? 0) <= -0.16);
+assert.ok(
+  catInitialAngleBias?.viewPromptHints.some((hint) => hint.includes("strict cat three-quarter turn around 35 to 45 degrees")),
+  "cat initial angle bias should reinforce a real three-quarter turn before retries"
+);
+
+const dogInitialAngleBias = buildInitialAngleReferenceBiasAdjustment({
+  view: "threeQuarter",
+  speciesId: "dog",
+  hasApprovedFrontAnchor: true
+});
+assert.equal(dogInitialAngleBias, undefined);
 
 const retryAdjustment = deriveRetryAdjustmentForCandidate({
   stage: "angles",
