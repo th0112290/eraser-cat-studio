@@ -40,9 +40,6 @@ import {
 import { getAssetObject } from "./assetStorage";
 import {
   buildManifestSelectedByView,
-  formatContinuityDescriptor,
-  formatContinuityQueueStats,
-  formatContinuitySentence,
   manifestBasePath,
   parseManifestContinuity,
   resolveHitlSelectionManifestReadPath,
@@ -71,6 +68,11 @@ import {
   buildPersistedSelectionDiagnostics,
   handleBlockedSelectionReview
 } from "./characterGenerationSelectionReview";
+import {
+  buildInitialProviderMeta,
+  buildInitialSelectionDiagnostics,
+  handleHitlRequiredSelection
+} from "./characterGenerationInitialSelection";
 import {
   buildSelectionBuildPayload,
   enqueueSelectionBuild,
@@ -16780,6 +16782,23 @@ export async function handleGenerateCharacterAssetsJob(input: {
     referenceBankHandoff: mascotReferenceBankReviewChecklist.handoff
   });
 
+  const initialSelectionDiagnostics = buildInitialSelectionDiagnostics({
+    existingSelectionDiagnostics: providerRunMeta?.selectionDiagnostics,
+    workflowStages: workflowStageRuns,
+    coherenceIssues,
+    packCoherence,
+    rigStability: initialRigStability,
+    selectionRisk: initialSelectionRisk,
+    qualityEmbargo: initialQualityEmbargo,
+    packDefectSummary: initialPackDefectSummary,
+    finalQualityFirewall: initialFinalQualityFirewall,
+    selectedCandidateSummaryByView: initialSelectedCandidateSummaryByView,
+    referenceBankDiagnostics: mascotReferenceBankDiagnostics,
+    referenceBankReviewPlan: mascotReferenceBankReviewPlan,
+    referenceBankReviewChecklist: mascotReferenceBankReviewChecklist,
+    decisionOutcome,
+    autoReroute: autoRerouteDiagnostics
+  });
   const manifest = withManifestHashes({
     schemaVersion: "1.0",
     ...(ultraWorkflowEnabled ? { templateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION } : {}),
@@ -16806,77 +16825,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
     selectionHints: promptBundle.selectionHints,
     ...(packCoherence ? { packCoherence } : {}),
     ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {}),
-    ...(providerRunMeta
-      ? {
-          providerMeta: {
-            ...providerRunMeta,
-            selectionDiagnostics: {
-              ...(providerRunMeta.selectionDiagnostics ?? {}),
-              workflowStages: workflowStageRuns,
-              coherenceIssues,
-              packCoherence,
-              ...(initialRigStability ? { rigStability: initialRigStability } : {}),
-              ...(initialSelectionRisk ? { selectionRisk: initialSelectionRisk } : {}),
-              ...(initialQualityEmbargo ? { qualityEmbargo: initialQualityEmbargo } : {}),
-              ...(initialPackDefectSummary ? { packDefectSummary: initialPackDefectSummary } : {}),
-              ...(initialFinalQualityFirewall ? { finalQualityFirewall: initialFinalQualityFirewall } : {}),
-              ...(initialSelectedCandidateSummaryByView
-                ? { selectedCandidateSummaryByView: initialSelectedCandidateSummaryByView }
-                : {}),
-              referenceBankDiagnostics: mascotReferenceBankDiagnostics,
-              referenceBankReviewPlan: mascotReferenceBankReviewPlan,
-              referenceBankReviewChecklist: mascotReferenceBankReviewChecklist,
-              decisionOutcome,
-              ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {})
-            }
-          }
-        }
-      : workflowStageRuns.length > 0
-        ? {
-            providerMeta: {
-              workflowStage: workflowStageRuns.at(-1)?.stage,
-              workflowTemplateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION,
-              selectionDiagnostics: {
-                workflowStages: workflowStageRuns,
-                coherenceIssues,
-                packCoherence,
-                ...(initialRigStability ? { rigStability: initialRigStability } : {}),
-                ...(initialSelectionRisk ? { selectionRisk: initialSelectionRisk } : {}),
-                ...(initialQualityEmbargo ? { qualityEmbargo: initialQualityEmbargo } : {}),
-                ...(initialPackDefectSummary ? { packDefectSummary: initialPackDefectSummary } : {}),
-                ...(initialFinalQualityFirewall ? { finalQualityFirewall: initialFinalQualityFirewall } : {}),
-                ...(initialSelectedCandidateSummaryByView
-                  ? { selectedCandidateSummaryByView: initialSelectedCandidateSummaryByView }
-                  : {}),
-                referenceBankDiagnostics: mascotReferenceBankDiagnostics,
-                referenceBankReviewPlan: mascotReferenceBankReviewPlan,
-                referenceBankReviewChecklist: mascotReferenceBankReviewChecklist,
-                decisionOutcome,
-                ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {})
-              }
-            }
-          }
-        : {
-            providerMeta: {
-              selectionDiagnostics: {
-                coherenceIssues,
-                packCoherence,
-                ...(initialRigStability ? { rigStability: initialRigStability } : {}),
-                ...(initialSelectionRisk ? { selectionRisk: initialSelectionRisk } : {}),
-                ...(initialQualityEmbargo ? { qualityEmbargo: initialQualityEmbargo } : {}),
-                ...(initialPackDefectSummary ? { packDefectSummary: initialPackDefectSummary } : {}),
-                ...(initialFinalQualityFirewall ? { finalQualityFirewall: initialFinalQualityFirewall } : {}),
-                ...(initialSelectedCandidateSummaryByView
-                  ? { selectedCandidateSummaryByView: initialSelectedCandidateSummaryByView }
-                  : {}),
-                referenceBankDiagnostics: mascotReferenceBankDiagnostics,
-                referenceBankReviewPlan: mascotReferenceBankReviewPlan,
-                referenceBankReviewChecklist: mascotReferenceBankReviewChecklist,
-                decisionOutcome,
-                ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {})
-              }
-            }
-          }),
+    providerMeta: buildInitialProviderMeta({
+      providerRunMeta,
+      workflowStages: workflowStageRuns,
+      workflowTemplateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION,
+      selectionDiagnostics: initialSelectionDiagnostics
+    }),
     ...(workflowStageRuns.length > 0 ? { workflowStages: workflowStageRuns } : {}),
     reference: {
       assetId: generation.referenceAssetId ?? null,
@@ -16929,129 +16883,64 @@ export async function handleGenerateCharacterAssetsJob(input: {
   });
 
   if (requiresHitl) {
-    const missingText = missingGeneratedViews.length > 0 ? ` Missing views: ${missingGeneratedViews.join(", ")}.` : "";
-    const lowQualityText =
-      lowQualityGeneratedViews.length > 0
-        ? ` Low-quality views: ${lowQualityGeneratedViews.join(", ")} (threshold=${acceptedScoreThreshold.toFixed(
-            2
-          )}).`
-        : "";
-    const coherenceText =
-      coherenceIssues.length > 0
-        ? ` Pack coherence issues: ${coherenceIssues.join(", ")}${
-            packCoherence ? ` (severity=${packCoherence.severity}, score=${packCoherence.score.toFixed(2)})` : ""
-          }.`
-        : "";
-    const rigStabilityText =
-      initialRigStability?.severity && initialRigStability.severity !== "none"
-        ? ` Rig stability: ${initialRigStability.summary}.`
-        : "";
-    const continuityDescriptor = formatContinuityDescriptor(continuitySnapshot);
-    const continuityQueueStats = formatContinuityQueueStats(continuitySnapshot);
-    const continuityText = continuityDescriptor
-      ? ` Continuity: ${continuityDescriptor}${continuitySnapshot?.applied ? " (applied)." : "."}`
-      : "";
-    const continuityQueueText = continuityQueueStats ? ` Queue: ${continuityQueueStats}.` : "";
-    const continuityQueueStatusSuffix = continuityQueueStats ? ` Queue: ${continuityQueueStats}.` : "";
-    const continuityQueuePipeSuffix = continuityQueueStats ? ` | ${continuityQueueStats}` : "";
-    await prisma.agentSuggestion.create({
-      data: {
-        episodeId: payload.episodeId,
-        jobId: jobDbId,
-        type: "HITL_REVIEW",
-        status: "PENDING",
-        title: generation.viewToGenerate
-          ? `Regenerate ${generation.viewToGenerate} candidates`
-          : "Choose best character view candidates",
-        summary: generation.viewToGenerate
-          ? `View-only regenerate completed for ${generation.viewToGenerate}. Pick candidates to continue.${continuityText}${continuityQueueText}`
-          : `Auto-pick disabled or partial provider failure.${missingText}${lowQualityText}${coherenceText}${rigStabilityText}${continuityText}${continuityQueueText} Select one candidate per view from generation manifest.`,
-        payload: toPrismaJson({
-          manifestPath,
-          provider: providerName,
-          providerWarning,
-          mode: generation.mode,
-          promptPreset: promptBundle.presetId,
-          sessionId,
-          viewToGenerate: generation.viewToGenerate ?? null,
-          packCoherence,
-          ...(initialRigStability ? { rigStability: initialRigStability } : {}),
-          ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {}),
-          ...toFlatContinuityFields(manifest.reference.continuity)
-        })
-      }
-    });
-
-    if (character.buildJobDbId) {
-      await helpers.setJobStatus(character.buildJobDbId, "CANCELLED", { finishedAt: new Date() });
-      await helpers.logJob(character.buildJobDbId, "warn", "Cancelled awaiting HITL pick", {
-        source: "worker:generate-character-assets",
-        manifestPath
-      });
-    }
-
-    if (character.previewJobDbId) {
-      await helpers.setJobStatus(character.previewJobDbId, "CANCELLED", { finishedAt: new Date() });
-      await helpers.logJob(character.previewJobDbId, "warn", "Cancelled awaiting HITL pick", {
-        source: "worker:generate-character-assets",
-        manifestPath
-      });
-    }
-
-    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    await writeGenerationProgress(97, "manifest_written_hitl", {
-      manifestPath,
-      requiresHitl: true,
-      provider: providerName
-    });
     const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
-    if (sessionDelegate) {
-      await sessionDelegate.update({
-        where: { id: sessionId },
-        data: {
-          status: "READY",
-          statusMessage: buildHitlSessionStatusMessage({
-            viewToGenerate: generation.viewToGenerate,
-            missingGeneratedViews,
-            lowQualityGeneratedViews,
-            coherenceIssues,
-            packCoherence,
-            autoReroute: autoRerouteDiagnostics,
-            rigStability: initialRigStability,
-            selectionRiskLevel: initialSelectionRisk?.level,
-            selectionRiskSummary: initialSelectionRisk ? summarizeSelectionRisk(initialSelectionRisk) : undefined,
-            qualityEmbargoLevel: initialQualityEmbargo?.level,
-            qualityEmbargoSummary: initialQualityEmbargo ? summarizeQualityEmbargo(initialQualityEmbargo) : undefined,
-            finalQualityFirewallLevel: initialFinalQualityFirewall?.level,
-            finalQualityFirewallSummary: initialFinalQualityFirewall
-              ? summarizeFinalQualityFirewall(initialFinalQualityFirewall)
-              : undefined,
-            continuity: continuitySnapshot
-          })
-        }
-      });
-    }
-
-    await helpers.logJob(jobDbId, "info", "Character generation completed (HITL required)", {
+    await handleHitlRequiredSelection({
+      manifest,
       manifestPath,
-      provider: providerName,
+      providerName,
       providerWarning,
-      candidateCount: scored.length,
-      inputHash: manifest.inputHash,
-      manifestHash: manifest.manifestHash,
-      ...toFlatContinuityFields(manifest.reference.continuity),
-      sessionId,
-      viewToGenerate: generation.viewToGenerate ?? null,
-      lowQualityViews: lowQualityGeneratedViews,
+      scoredCandidateCount: scored.length,
+      acceptedScoreThreshold,
+      missingGeneratedViews,
+      lowQualityGeneratedViews,
       coherenceIssues,
-      ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {}),
-      qualityThreshold: acceptedScoreThreshold,
+      packCoherence,
+      rigStability: initialRigStability,
+      selectionRisk: initialSelectionRisk,
+      qualityEmbargo: initialQualityEmbargo,
+      finalQualityFirewall: initialFinalQualityFirewall,
+      autoReroute: autoRerouteDiagnostics,
+      viewToGenerate: generation.viewToGenerate,
+      mode: generation.mode,
+      promptPresetId: promptBundle.presetId,
+      sessionId,
+      episodeId: payload.episodeId,
+      jobDbId,
+      buildJobDbId: character.buildJobDbId,
+      previewJobDbId: character.previewJobDbId,
       limits: {
         maxCandidatesPerView: limits.maxCandidatesPerView,
         maxTotalImages: limits.maxTotalImages,
         maxRetries: limits.maxRetries
       },
-      budget
+      budget,
+      writeGenerationProgress,
+      createAgentSuggestion: async (entry) => {
+        await prisma.agentSuggestion.create({
+          data: {
+            episodeId: payload.episodeId,
+            jobId: jobDbId,
+            type: "HITL_REVIEW",
+            status: "PENDING",
+            title: entry.title,
+            summary: entry.summary,
+            payload: toPrismaJson(entry.payload)
+          }
+        });
+      },
+      setJobStatus: helpers.setJobStatus,
+      logJob: helpers.logJob,
+      updateSessionReady: sessionDelegate
+        ? async (statusMessage) => {
+            await sessionDelegate.update({
+              where: { id: sessionId },
+              data: {
+                status: "READY",
+                statusMessage
+              }
+            });
+          }
+        : undefined
     });
 
     return;
