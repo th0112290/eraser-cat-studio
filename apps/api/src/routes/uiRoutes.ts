@@ -4720,6 +4720,53 @@ export function summarizeArtifactFreshnessForRows(rows: Array<{ generatedAt: str
   };
 }
 
+type BenchmarkRefreshAction = {
+  label: string;
+  command: string;
+  hint: string;
+  tone: UiBadgeTone;
+  badge: string;
+};
+
+export function buildBenchmarkRefreshActions(input: {
+  staleSourceCount: number;
+  agingSourceCount: number;
+}): BenchmarkRefreshAction[] {
+  const tone: UiBadgeTone =
+    input.staleSourceCount > 0 ? "bad" : input.agingSourceCount > 0 ? "warn" : "muted";
+  return [
+    {
+      label: "Motion preset benchmark",
+      command: "pnpm benchmark:motion-presets",
+      hint: "Refreshes motion preset evidence under out/motion_preset_benchmark.json before trusting stale motion guidance.",
+      tone,
+      badge: "refresh"
+    },
+    {
+      label: "Require-ready motion validation",
+      command: "pnpm validate:motion-preset-benchmark -- --require-ready",
+      hint: "Verifies age, profile coverage, and failing records before rollout decisions rely on motion benchmark state.",
+      tone,
+      badge: "validate"
+    },
+    {
+      label: "Preset rollout refresh",
+      command: "pnpm rollout:video-i2v-preset -- --character-pack-id=<packId>",
+      hint: "Rebuilds preset benchmark matrix and rollout artifacts for the current mascot pack when benchmark rows are stale.",
+      tone,
+      badge: "rollout"
+    },
+    {
+      label: "Multichannel rollout refresh",
+      command:
+        "pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=<packId> --medical-character-pack-id=<packId>",
+      hint: "Refreshes cross-channel preset benchmark summary, validation, and rollout artifacts for broader review. Use one shared pack id in both placeholders when both channels should point at the same mascot pack.",
+      tone,
+      badge: "multichannel"
+    }
+  ];
+}
+
 function profileBrowserHref(values: Array<string | null | undefined>): string {
   const query = values
     .map((value) => str(value))
@@ -8938,6 +8985,10 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       const sourceFreshness = sources.map((source) => ({ source, freshness: describeArtifactFreshness(source.latestGeneratedAt) }));
       const staleSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isStale).length;
       const agingSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isAging).length;
+      const benchmarkRefreshActions = buildBenchmarkRefreshActions({
+        staleSourceCount,
+        agingSourceCount
+      });
 	    const benchmarkSummaryCards: DecisionStat[] = [
 	      { label: "Backend Objects", value: String(backendScenarios.length), hint: `${availableSources}/${sources.length} artifact roots available`, tone: "muted" },
 	      { label: "Ready Backends", value: String(backendReady), hint: "usable benchmark scenarios", tone: backendReady > 0 ? "ok" : "warn" },
@@ -8961,9 +9012,15 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts",
           source.exists ? freshness.detail : ""
         ]);
-        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}${freshness.isStale ? `<a class="secondary" href="${benchmarkRepairHref}">Open repair queue</a>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}${freshness.isStale || freshness.isAging ? `<a class="secondary" href="#benchmark-refresh-playbooks">Refresh playbooks</a>` : ""}${freshness.isStale ? `<a class="secondary" href="${benchmarkRepairHref}">Open repair queue</a>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
       })
       .join("");
+      const benchmarkRefreshRows = benchmarkRefreshActions
+        .map(
+          (action) =>
+            `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(action.label)}</strong></span><span class="mono">${esc(action.command)}</span><span class="muted-text">${esc(action.hint)}</span></div><div class="inline-actions"><span class="badge ${action.tone}">${esc(action.badge)}</span><button type="button" class="secondary" data-copy="${esc(action.command)}">Copy command</button></div></div>`
+        )
+        .join("");
 
 	    const backendRows = backendScenarios
 	      .map((row) => {
@@ -9296,7 +9353,13 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      linkedCards: benchmarkLinkedObjects,
 	      linkedEmpty: "No linked benchmark objects are available.",
 	      linkedTone: "muted"
-	    })}${renderArtifactEvidenceSection({
+	    })}<section class="card decision-jump-target" id="benchmark-refresh-playbooks"><div class="section-head"><div><h2>Refresh Playbooks</h2><p class="section-intro">${
+        staleSourceCount > 0
+          ? "Artifact roots are stale. Run the matching benchmark refresh command before trusting promotion or rollout decisions."
+          : agingSourceCount > 0
+            ? "Artifact roots are aging. Keep refresh commands adjacent so benchmark drift can be renewed before it becomes stale."
+            : "Keep these commands nearby so operators can refresh benchmark evidence without leaving the control plane."
+      }</p></div><div class="inline-actions"><a href="${benchmarkRepairHref}">Acceptance</a><a href="${benchmarkRolloutsHref}">Rollouts</a></div></div><div class="status-list">${benchmarkRefreshRows}</div></section>${renderArtifactEvidenceSection({
 	      sectionId: "benchmark-evidence",
 	      title: "Artifact Evidence Drawer",
 	      intro: "Artifact sources and raw evidence stay available, but the queue remains the primary review surface.",

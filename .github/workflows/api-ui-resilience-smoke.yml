@@ -78,6 +78,9 @@ jobs:
       - name: Run 503 payload contract smoke
         run: pnpm -C apps/api run smoke:error-payload
 
+      - name: Run benchmark refresh helper smoke
+        run: pnpm -C apps/api run smoke:ui:benchmark-refresh
+
       - name: Start infra and migrate DB
         run: |
           pnpm docker:up
