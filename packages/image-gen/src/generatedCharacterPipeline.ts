@@ -18,6 +18,19 @@ import { collectCharacterPipelinePackQcChecks } from "./generatedCharacterPipeli
 import { materializeCharacterPipelineQcArtifacts } from "./generatedCharacterPipelineQcMaterialize";
 import { runCharacterPipelineEditRepairLoopWithDeps } from "./generatedCharacterPipelineRepairLoop";
 import {
+  expressionGenerationNegativePrompt as expressionGenerationNegativePromptImpl,
+  expressionRepairNegativePrompt as expressionRepairNegativePromptImpl,
+  resolveInitialEditDenoise as resolveInitialEditDenoiseImpl,
+  runAdapterViewOnlyRepairStillWithDeps,
+  viewRepairPrompt as viewRepairPromptImpl,
+  viewRepairNegativePrompt as viewRepairNegativePromptImpl,
+  visemeGenerationNegativePrompt as visemeGenerationNegativePromptImpl,
+  visemeRepairNegativePrompt as visemeRepairNegativePromptImpl,
+  visemeRepairPrompt as visemeRepairPromptImpl,
+  expressionRepairPrompt as expressionRepairPromptImpl,
+  type StageRepairKind
+} from "./generatedCharacterPipelineRepairPrimitives";
+import {
   resolveMascotAnchorHeuristics,
   resolveMascotSpeciesProfile,
   type MascotAnchorExpectation,
@@ -2693,52 +2706,43 @@ export function visemePrompt(viseme: GeneratedCharacterViseme, speciesId?: Masco
   ]);
 }
 
-type StageRepairKind = "view" | "expression" | "viseme";
-
-function pickEscalationPrompt(round: number, prompts: readonly string[]): string {
-  return prompts[Math.min(Math.max(0, round - 1), prompts.length - 1)] ?? prompts[prompts.length - 1] ?? "";
+function buildRepairPrimitiveDeps() {
+  return {
+    resolveMascotSpeciesProfile,
+    legacySpeciesRepairHint,
+    expressionPrompt,
+    visemePrompt,
+    mergePromptWithSuffixes,
+    buildAnimationSafeGeneratePrompt,
+    buildAnimationSafeEditPrompt,
+    buildAnimationSafeNegativePrompt,
+    clamp,
+    workflowTemplatePath,
+    stillOutputPath,
+    defaultOutputPrefix,
+    viewLabel,
+    resolveManifestSpeciesId,
+    loadManifest,
+    poseGuidePathForView,
+    readRequiredLocalImageReference,
+    readLocalImageReference,
+    buildStructureControlsFromReference,
+    buildRequestHash,
+    hashFileContents,
+    maybeReturnCachedAsset,
+    normalizeStillToCanvas,
+    persistStillAsset,
+    buildAssetMetadata,
+    updateManifestWithAsset,
+    saveManifest,
+    repoRoot: REPO_ROOT,
+    comfyAdapterUrl: COMFY_ADAPTER_URL,
+    viewOnlyQualityProfile: VIEW_ONLY_QUALITY_PROFILE
+  };
 }
 
 function viewRepairPrompt(view: GeneratedCharacterView, round: number, speciesId?: MascotSpeciesId): string {
-  const speciesProfile = resolveMascotSpeciesProfile(speciesId);
-  const frontViewHint = speciesProfile.viewHints.front ?? "";
-  const threeQuarterViewHint = speciesProfile.viewHints.threeQuarter ?? "";
-  const profileViewHint = speciesProfile.viewHints.profile ?? "";
-  if (view === "threeQuarter") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, strict right three-quarter turnaround frame, neutral expression, rotate head and torso away from camera, show asymmetrical face, keep one eye partially occluded, preserve approved front identity and silhouette, do not keep a front view",
-        "same character, right three-quarter mascot turnaround, head turned about 35 degrees, torso also turned, near cheek and near ear larger than far side, preserve mascot identity, avoid frontal symmetry entirely",
-        "same character, right three-quarter orthographic turnaround view, visible depth on head and body, near eye dominant and far eye reduced, preserve approved front identity, absolutely not front-facing"
-      ]),
-      [
-        threeQuarterViewHint,
-        ...speciesProfile.identityTokens.slice(0, 2),
-        legacySpeciesRepairHint(speciesProfile.id, "view"),
-        "clear torso yaw, far paw still present, absolutely not straight-on"
-      ]
-    );
-  }
-  if (view === "profile") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, strict right profile turnaround frame, neutral expression, full side silhouette, only one visible eye, nose and mouth shifted into side view, preserve approved front identity and silhouette, do not keep a front view",
-        "same character, exact right side profile mascot sheet frame, head and torso rotated to a side silhouette, far eye hidden, preserve approved front identity, avoid frontal symmetry entirely",
-        "same character, right profile orthographic turnaround view, face and torso fully side-facing, one visible eye only, preserve mascot silhouette and identity, absolutely not front-facing"
-      ]),
-      [
-        profileViewHint,
-        ...speciesProfile.identityTokens.slice(0, 2),
-        legacySpeciesRepairHint(speciesProfile.id, "view"),
-        "one visible eye only, one readable near paw, absolutely not straight-on"
-      ]
-    );
-  }
-  return mergePromptWithSuffixes("same character, front view, neutral expression, preserve approved front identity and silhouette", [
-    frontViewHint,
-    ...speciesProfile.identityTokens.slice(0, 2),
-    legacySpeciesRepairHint(speciesProfile.id, "view")
-  ]);
+  return viewRepairPromptImpl(view, round, speciesId, buildRepairPrimitiveDeps());
 }
 
 function expressionRepairPrompt(
@@ -2746,280 +2750,35 @@ function expressionRepairPrompt(
   round: number,
   speciesId?: MascotSpeciesId
 ): string {
-  const speciesProfile = resolveMascotSpeciesProfile(speciesId);
-  const frontViewHint = speciesProfile.viewHints.front ?? "";
-  if (expression === "happy") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, clearly happy expression, visible smiling mouth, cheerful eye shape, keep body pose stable, face must be clearly different from neutral",
-        "same character, front view, exaggerated happy mascot face, obvious smile and uplifted expression, preserve identity and body pose, make facial change unmistakable",
-        "same character, front view, broad happy smile with visibly changed eyes, preserve identity and body pose, the face must read as happy at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "expression")]
-    );
-  }
-  if (expression === "surprised") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, clearly surprised expression, visible rounded open mouth and widened eyes, keep body pose stable, face must be clearly different from neutral",
-        "same character, front view, exaggerated surprised mascot face, obvious O mouth and startled eyes, preserve identity and body pose, make facial change unmistakable",
-        "same character, front view, strong surprise reaction, very clear round mouth and widened eyes, preserve identity and body pose, the face must read as surprised at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "expression")]
-    );
-  }
-  if (expression === "blink") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, blink expression, both eyes fully closed into visible lines, neutral mouth, keep body pose stable, face must be clearly different from neutral",
-        "same character, front view, exaggerated blink mascot face, eyes visibly shut closed, preserve identity and body pose, make facial change unmistakable",
-        "same character, front view, strong blink frame, both eyes closed with clear eyelid lines, preserve identity and body pose, the face must read as blinking at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "expression")]
-    );
-  }
-  if (expression === "angry") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, clearly angry expression, lowered brows, narrowed eyes, tight frowning mouth, keep body pose stable, face must be clearly different from neutral",
-        "same character, front view, exaggerated angry mascot face, obvious glare and tense frown, preserve identity and body pose, make facial change unmistakable",
-        "same character, front view, strong angry reaction, very clear scowl and compressed mouth, preserve identity and body pose, the face must read as angry at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "expression")]
-    );
-  }
-  if (expression === "sad") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, clearly sad expression, drooping brows, softened eyes, small downturned mouth, keep body pose stable, face must be clearly different from neutral",
-        "same character, front view, exaggerated sad mascot face, obvious downturned mouth and sorrowful eyes, preserve identity and body pose, make facial change unmistakable",
-        "same character, front view, strong sad reaction, very clear downturned mouth and melancholy eyes, preserve identity and body pose, the face must read as sad at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "expression")]
-    );
-  }
-  if (expression === "thinking") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, clearly thinking expression, one brow raised, focused eyes, small pondering mouth, keep body pose stable, face must be clearly different from neutral",
-        "same character, front view, exaggerated thinking mascot face, obvious pondering look with raised brow, preserve identity and body pose, make facial change unmistakable",
-        "same character, front view, strong thinking reaction, very clear pondering brow and mouth shape, preserve identity and body pose, the face must read as thoughtful at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "expression")]
-    );
-  }
-  return expressionPrompt(expression, speciesId);
+  return expressionRepairPromptImpl(expression, round, speciesId, buildRepairPrimitiveDeps());
 }
 
 function visemeRepairPrompt(viseme: GeneratedCharacterViseme, round: number, speciesId?: MascotSpeciesId): string {
-  const speciesProfile = resolveMascotSpeciesProfile(speciesId);
-  const frontViewHint = speciesProfile.viewHints.front ?? "";
-  if (viseme === "mouth_open_small") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, neutral eyes, mouth slightly open for speech with a clearly visible opening below the nose, preserve identity and body pose, visibly change only the lower mouth",
-        "same character, front view, speech viseme A-small, neutral eyes, obvious small lower-mouth opening, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a clear small open lower mouth below the nose, neutral eyes, preserve identity and body pose, mouth must read as open at thumbnail size"
-      ]),
-      [
-        frontViewHint,
-        ...speciesProfile.identityTokens.slice(0, 2),
-        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
-        "do not leave the lower mouth loop closed",
-        "do not change only the nose"
-      ]
-    );
-  }
-  if (viseme === "mouth_open_wide") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, neutral eyes, mouth wide open for speech with a clearly visible opening below the nose, preserve identity and body pose, visibly change only the lower mouth",
-        "same character, front view, speech viseme A-wide, neutral eyes, obvious wide open lower mouth, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a very clear wide open lower mouth below the nose, neutral eyes, preserve identity and body pose, mouth must read as wide open at thumbnail size"
-      ]),
-      [
-        frontViewHint,
-        ...speciesProfile.identityTokens.slice(0, 2),
-        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
-        "do not leave the lower mouth loop closed",
-        "do not change only the nose"
-      ]
-    );
-  }
-  if (viseme === "mouth_round_o") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, neutral eyes, rounded O mouth shape with a clearly visible opening below the nose, preserve identity and body pose, visibly change only the lower mouth",
-        "same character, front view, speech viseme O, neutral eyes, obvious rounded O lower mouth, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a very clear rounded O lower mouth opening below the nose, neutral eyes, preserve identity and body pose, mouth must read as O-shaped at thumbnail size"
-      ]),
-      [
-        frontViewHint,
-        ...speciesProfile.identityTokens.slice(0, 2),
-        legacySpeciesRepairHint(speciesProfile.id, "viseme"),
-        "do not leave the lower mouth loop closed",
-        "do not change only the nose"
-      ]
-    );
-  }
-  if (viseme === "mouth_smile_open") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, smiling open mouth for speech with a clearly visible opening, preserve identity and body pose, visibly change only the mouth",
-        "same character, front view, speech viseme smile-open, obvious smiling mouth opening, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a very clear smiling open mouth, preserve identity and body pose, mouth must read as smiling and open at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
-    );
-  }
-  if (viseme === "mouth_fv") {
-    return mergePromptWithSuffixes(
-      pickEscalationPrompt(round, [
-        "same character, front view, mouth shape for F or V phoneme with upper teeth touching the lower lip, preserve identity and body pose, visibly change only the mouth",
-        "same character, front view, speech viseme FV, obvious teeth-on-lip mouth shape, preserve identity and body pose, mouth change must be unmistakable",
-        "same character, front view, front talking viseme with a very clear FV mouth shape, preserve identity and body pose, mouth must read as F or V at thumbnail size"
-      ]),
-      [frontViewHint, ...speciesProfile.identityTokens.slice(0, 2), legacySpeciesRepairHint(speciesProfile.id, "viseme")]
-    );
-  }
-  return visemePrompt(viseme, speciesId);
+  return visemeRepairPromptImpl(viseme, round, speciesId, buildRepairPrimitiveDeps());
 }
 
 function viewRepairNegativePrompt(basePrompt: string | undefined, view: GeneratedCharacterView): string {
-  return mergePromptWithSuffixes(basePrompt ?? "", [
-    "front view",
-    "frontal pose",
-    "straight-on face",
-    "symmetrical front face",
-    ...(view === "profile" ? ["two visible eyes", "frontal muzzle"] : ["perfect bilateral symmetry"])
-  ]);
+  return viewRepairNegativePromptImpl(basePrompt, view, buildRepairPrimitiveDeps());
 }
 
 export function expressionGenerationNegativePrompt(basePrompt: string | undefined): string {
-  return mergePromptWithSuffixes(basePrompt ?? "", [
-    "neutral expression",
-    "expressionless face",
-    "unchanged face",
-    "subtle expression",
-    "barely changed face",
-    "same face as neutral"
-  ]);
+  return expressionGenerationNegativePromptImpl(basePrompt, buildRepairPrimitiveDeps());
 }
 
 function expressionRepairNegativePrompt(basePrompt: string | undefined): string {
-  return mergePromptWithSuffixes(expressionGenerationNegativePrompt(basePrompt), [
-    "neutral expression",
-    "expressionless face",
-    "unchanged face",
-    "subtle expression",
-    "barely changed face"
-  ]);
+  return expressionRepairNegativePromptImpl(basePrompt, buildRepairPrimitiveDeps());
 }
 
 export function visemeGenerationNegativePrompt(basePrompt: string | undefined): string {
-  return mergePromptWithSuffixes(basePrompt ?? "", [
-    "closed mouth",
-    "neutral mouth",
-    "unchanged mouth",
-    "tiny mouth slit",
-    "barely open mouth",
-    "mouth barely changed",
-    "same mouth as mouth closed",
-    "closed lower mouth loop",
-    "nose-only edit",
-    "unchanged nose"
-  ]);
+  return visemeGenerationNegativePromptImpl(basePrompt, buildRepairPrimitiveDeps());
 }
 
 function visemeRepairNegativePrompt(basePrompt: string | undefined): string {
-  return mergePromptWithSuffixes(visemeGenerationNegativePrompt(basePrompt), [
-    "closed mouth",
-    "neutral mouth",
-    "unchanged mouth",
-    "tiny mouth slit",
-    "barely open mouth",
-    "mouth barely changed"
-  ]);
+  return visemeRepairNegativePromptImpl(basePrompt, buildRepairPrimitiveDeps());
 }
 
 export function resolveInitialEditDenoise(kind: StageRepairKind, baseDenoise: number | undefined): number {
-  const baseline = baseDenoise ?? DEFAULT_EDIT_DENOISE;
-  const floor = kind === "viseme" ? 0.48 : kind === "expression" ? 0.38 : DEFAULT_EDIT_DENOISE;
-  return Number(clamp(Math.max(baseline, floor), 0.32, 0.72).toFixed(3));
-}
-
-function resolveRepairDenoise(kind: StageRepairKind, baseDenoise: number | undefined, round: number): number {
-  const baseline = resolveInitialEditDenoise(kind, baseDenoise);
-  const initialBoost = kind === "view" ? 0.14 : kind === "viseme" ? 0.16 : 0.1;
-  const roundBoost = (round - 1) * (kind === "view" ? 0.08 : kind === "viseme" ? 0.09 : 0.07);
-  return Number(clamp(baseline + initialBoost + roundBoost, 0.32, 0.72).toFixed(3));
-}
-
-function repairSeed(baseSeed: number, round: number, salt: number): number {
-  return baseSeed + round * 1009 + salt;
-}
-
-function expressionSeed(baseSeed: number, expression: GeneratedCharacterExpression, round: number): number {
-  const order = ["happy", "surprised", "blink", "angry", "sad", "thinking"] as const;
-  const index = Math.max(0, order.indexOf(expression as (typeof order)[number]));
-  return repairSeed(baseSeed + index * 97 + 11, round, 37);
-}
-
-function visemeSeed(baseSeed: number, viseme: GeneratedCharacterViseme, round: number): number {
-  const order = ["mouth_open_small", "mouth_open_wide", "mouth_round_o", "mouth_smile_open", "mouth_fv"] as const;
-  const index = Math.max(0, order.indexOf(viseme as (typeof order)[number]));
-  return repairSeed(baseSeed + index * 89 + 17, round, 71);
-}
-
-function buildAdapterViewPositivePrompt(frontMasterPrompt: string, speciesId: MascotSpeciesId): string {
-  const speciesProfile = resolveMascotSpeciesProfile(speciesId);
-  return buildAnimationSafeGeneratePrompt(
-    mergePromptWithSuffixes(frontMasterPrompt, [
-      "single mascot only",
-      "transparent background",
-      ...speciesProfile.identityTokens.slice(0, 3),
-      ...speciesProfile.guardrails.slice(0, 2)
-    ])
-  );
-}
-
-function buildAdapterViewPrompt(
-  view: Exclude<GeneratedCharacterView, "front">,
-  round: number,
-  speciesId: MascotSpeciesId
-): string {
-  const speciesProfile = resolveMascotSpeciesProfile(speciesId);
-  const viewHint = speciesProfile.viewHints[view] ?? "";
-  const anchorTokens = speciesProfile.anchorTokens?.slice(0, 3) ?? [];
-  return buildAnimationSafeEditPrompt(
-    mergePromptWithSuffixes(viewRepairPrompt(view, round, speciesId), [
-      viewHint,
-      ...speciesProfile.identityTokens.slice(0, 3),
-      ...anchorTokens,
-      "approved front master continuity",
-      "single mascot only",
-      "transparent background"
-    ])
-  );
-}
-
-function buildAdapterViewModelStack(
-  providerMeta: CharacterCandidateProviderMeta | undefined,
-  view: Exclude<GeneratedCharacterView, "front">
-): string[] {
-  const entries = [
-    "provider:comfyui",
-    "workflow_stage:view_only",
-    "workflow_template:ultra_view_only_v1",
-    `quality_profile:${providerMeta?.qualityProfileId ?? VIEW_ONLY_QUALITY_PROFILE.id}`,
-    `target_view:${view}`,
-    providerMeta?.checkpointName ? `checkpoint:${providerMeta.checkpointName}` : null,
-    providerMeta?.loraName ? `lora:${providerMeta.loraName}` : null,
-    providerMeta?.poseControlNetName ? `pose_controlnet:${providerMeta.poseControlNetName}` : null,
-    providerMeta?.runSettings?.sampler ? `sampler:${providerMeta.runSettings.sampler}` : null,
-    providerMeta?.runSettings?.scheduler ? `scheduler:${providerMeta.runSettings.scheduler}` : null
-  ];
-  return entries.filter((entry, index): entry is string => Boolean(entry) && entries.indexOf(entry) === index);
+  return resolveInitialEditDenoiseImpl(kind, baseDenoise, buildRepairPrimitiveDeps());
 }
 
 async function runAdapterViewOnlyRepairStill(input: {
@@ -3032,165 +2791,7 @@ async function runAdapterViewOnlyRepairStill(input: {
   round: number;
   repairHistory?: string[];
 }): Promise<CharacterStillAsset> {
-  const workflowPath = workflowTemplatePath("view_only_adapter");
-  const outputPath = stillOutputPath({
-    characterId: input.characterId,
-    stage: "view",
-    view: input.view
-  });
-  const outputPrefix = defaultOutputPrefix(input.characterId, `${viewLabel(input.view)}_neutral_adapter_round_${input.round}`);
-  const speciesId = resolveManifestSpeciesId(loadManifest(input.characterId), input.speciesId);
-  const positivePrompt = buildAdapterViewPositivePrompt(input.frontMaster.prompt, speciesId);
-  const viewPrompt = buildAdapterViewPrompt(input.view, input.round, speciesId);
-  const negativePrompt = buildAnimationSafeNegativePrompt(viewRepairNegativePrompt(input.negativePrompt, input.view));
-  const compositionAsset = resolveMascotCompositionReferenceAsset(speciesId, input.view);
-  if (!compositionAsset) {
-    throw new Error(`Missing mascot composition reference for species=${speciesId} view=${input.view}`);
-  }
-  const posePath = poseGuidePathForView(input.view);
-  const frontReference = readRequiredLocalImageReference(input.frontMaster.file_path, "approved front master");
-  const compositionReference = readRequiredLocalImageReference(
-    compositionAsset.filePath,
-    `${input.view} composition reference`
-  );
-  const poseReference = readRequiredLocalImageReference(posePath, `${input.view} pose guide`);
-  const styleAsset = resolveMascotStyleReferenceAsset(speciesId);
-  const styleReference = styleAsset ? readLocalImageReference(styleAsset.filePath) : null;
-  const compositionRefId = `${input.view}_family_composition`;
-  const structureControls = await buildStructureControlsFromReference(compositionReference, ["lineart", "canny"], {
-    sourceRole: "composition",
-    sourceRefId: compositionRefId,
-    sourceView: input.view
-  });
-  const stagePlan = {
-    stage: "view_only" as const,
-    templateVersion: "ultra_view_only_v1",
-    templateSpecPath: path.relative(REPO_ROOT, workflowPath).replace(/\\/g, "/"),
-    views: [input.view],
-    candidateCount: 1,
-    acceptedScoreThreshold: 0.58,
-    structureControlKinds: ["lineart", "canny"] as CharacterStructureControlKind[],
-    origin: "repair_pass" as const,
-    passLabel: `adapter_view_only_round_${input.round}`,
-    reasonCodes: [`repair_view_${input.view}`],
-    triggerViews: [input.view]
-  };
-  const requestHash = buildRequestHash({
-    workflow: "view_only_adapter",
-    workflowPath,
-    characterId: input.characterId,
-    targetView: input.view,
-    positivePrompt,
-    viewPrompt,
-    negativePrompt,
-    baseSeed: input.baseSeed,
-    qualityProfile: VIEW_ONLY_QUALITY_PROFILE,
-    stagePlan,
-    targetCanvas: {
-      width: input.frontMaster.width,
-      height: input.frontMaster.height
-    },
-    frontAssetId: input.frontMaster.asset_id,
-    frontAssetHash: hashFileContents(input.frontMaster.file_path),
-    compositionHash: hashFileContents(compositionAsset.filePath),
-    poseHash: hashFileContents(posePath),
-    ...(styleAsset ? { styleHash: hashFileContents(styleAsset.filePath) } : {}),
-    repairHistory: input.repairHistory ?? []
-  });
-  const cached = await maybeReturnCachedAsset({
-    outputPath,
-    requestHash
-  });
-  if (cached) {
-    return cached;
-  }
-
-  const provider = new ComfyUiCharacterGenerationProvider(COMFY_ADAPTER_URL);
-  const referenceBank: CharacterReferenceBankEntry[] = [
-    referenceBankEntry(
-      "approved_front_master",
-      "front_master",
-      "front",
-      0.98,
-      "approved front continuity anchor",
-      frontReference
-    ),
-    referenceBankEntry(
-      compositionRefId,
-      "composition",
-      input.view,
-      0.4,
-      compositionAsset.note ?? compositionReference.filePath,
-      compositionReference
-    )
-  ];
-  if (styleReference && styleAsset) {
-    referenceBank.push(
-      referenceBankEntry("family_style_anchor", "style", "front", 0.28, styleAsset.note ?? styleAsset.filePath, styleReference)
-    );
-  }
-
-  const result = await provider.generate({
-    mode: "reference",
-    views: [input.view],
-    candidateCount: 1,
-    baseSeed: input.baseSeed,
-    speciesId,
-    positivePrompt,
-    negativePrompt,
-    referenceMode: "img2img",
-    referenceImageBase64: frontReference.imageBase64,
-    referenceMimeType: frontReference.mimeType,
-    poseImageBase64ByView: {
-      [input.view]: poseReference.imageBase64
-    },
-    poseMimeTypeByView: {
-      [input.view]: poseReference.mimeType
-    },
-    structureControlsByView: {
-      [input.view]: structureControls
-    },
-    workflowStage: "view_only",
-    workflowTemplateVersion: "ultra_view_only_v1",
-    stagePlan,
-    qualityProfile: VIEW_ONLY_QUALITY_PROFILE,
-    guardrails: resolveMascotSpeciesProfile(speciesId).guardrails,
-    viewPrompts: {
-      [input.view]: viewPrompt
-    },
-    referenceBankByView: {
-      [input.view]: referenceBank
-    }
-  });
-  const candidate = result.candidates.find((entry) => entry.view === input.view);
-  if (!candidate) {
-    throw new Error(`adapter view-only repair returned no candidate for ${input.view}`);
-  }
-
-  const metadata = buildAssetMetadata({
-    characterId: input.characterId,
-    stage: "view",
-    workflow: "view_only_adapter",
-    workflowTemplatePath: workflowPath,
-    requestHash,
-    outputPath,
-    outputPrefix,
-    prompt: viewPrompt,
-    negativePrompt,
-    seed: candidate.seed,
-    width: input.frontMaster.width,
-    height: input.frontMaster.height,
-    view: input.view,
-    parentAsset: input.frontMaster,
-    repairHistory: input.repairHistory,
-    modelStackOverride: buildAdapterViewModelStack(candidate.providerMeta, input.view)
-  });
-  const normalizedBuffer = await normalizeStillToCanvas(candidate.data, input.frontMaster.width, input.frontMaster.height);
-  const asset = await persistStillAsset(outputPath, metadata, normalizedBuffer);
-  const manifest = loadManifest(input.characterId);
-  updateManifestWithAsset(manifest, asset);
-  saveManifest(manifest);
-  return asset;
+  return runAdapterViewOnlyRepairStillWithDeps(input, buildRepairPrimitiveDeps());
 }
 
 export async function runCharacterPipelineEditRepairLoop(
