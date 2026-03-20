@@ -656,6 +656,16 @@ type CharacterRebuildSelectedRequest = {
   generateJobId: string;
 };
 
+type CharacterProposalPreviewEntry = {
+  kind: CharacterOverrideKind;
+  available: boolean;
+  state: "missing" | "create" | "update" | "unchanged";
+  tone: "bad" | "warn" | "ok" | "muted";
+  stateLabel: string;
+  summary: string;
+  detail: string;
+};
+
 type CharacterGenerationOverrideTarget = {
   generateJobId: string;
   manifest: GenerationManifest;
@@ -3251,6 +3261,170 @@ function readProposalOverrideSeed(input: {
   }
   return normalizePrettyJsonDocument(
     input.kind === "anchors" ? sanitizeAnchorOverridePayload(proposalSeed) : sanitizeCropBoxOverridePayload(proposalSeed)
+  );
+}
+
+function readExistingOverrideDocumentText(input: {
+  overridePath: string | null;
+  kind: CharacterOverrideKind;
+}): string | null {
+  if (!input.overridePath || !fs.existsSync(input.overridePath)) {
+    return null;
+  }
+  const raw = readJsonFileSafe(input.overridePath);
+  if (!isRecord(raw)) {
+    return null;
+  }
+  return normalizePrettyJsonDocument(
+    input.kind === "anchors" ? sanitizeAnchorOverridePayload(raw) : sanitizeCropBoxOverridePayload(raw)
+  );
+}
+
+function countAnchorEntries(value: unknown): { viewCount: number; anchorCount: number } {
+  const root = isRecord(value) ? value : null;
+  const views = root && isRecord(root.views) ? root.views : root;
+  if (!views || !isRecord(views)) {
+    return { viewCount: 0, anchorCount: 0 };
+  }
+  let viewCount = 0;
+  let anchorCount = 0;
+  for (const viewValue of Object.values(views)) {
+    if (!isRecord(viewValue)) {
+      continue;
+    }
+    const ids = Object.values(viewValue).filter((entry) => isRecord(entry));
+    if (ids.length > 0) {
+      viewCount += 1;
+      anchorCount += ids.length;
+    }
+  }
+  return { viewCount, anchorCount };
+}
+
+function isCropBoxLeaf(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.w === "number" &&
+    typeof value.h === "number"
+  );
+}
+
+function countCropBoxEntries(value: unknown): { groupCount: number; boxCount: number } {
+  const root = isRecord(value) ? value : null;
+  if (!root) {
+    return { groupCount: 0, boxCount: 0 };
+  }
+  let groupCount = 0;
+  let boxCount = 0;
+  for (const groupValue of Object.values(root)) {
+    if (!isRecord(groupValue)) {
+      continue;
+    }
+    let localCount = 0;
+    for (const entry of Object.values(groupValue)) {
+      if (isCropBoxLeaf(entry)) {
+        localCount += 1;
+      }
+    }
+    if (localCount > 0) {
+      groupCount += 1;
+      boxCount += localCount;
+    }
+  }
+  return { groupCount, boxCount };
+}
+
+function summarizeProposalPreviewDocument(input: {
+  kind: CharacterOverrideKind;
+  proposalText: string | null;
+  overrideText: string | null;
+}): CharacterProposalPreviewEntry {
+  if (!input.proposalText) {
+    return {
+      kind: input.kind,
+      available: false,
+      state: "missing",
+      tone: "bad",
+      stateLabel: "unavailable",
+      summary:
+        input.kind === "anchors" ? "proposal.json has no anchor seed" : "proposal.json has no crop-box seed",
+      detail:
+        input.kind === "anchors"
+          ? "Apply proposal is blocked until auto_proposal.anchors exists."
+          : "Apply proposal is blocked until auto_proposal.crop_boxes exists."
+    };
+  }
+
+  const parsedProposal = JSON.parse(input.proposalText);
+  const summary =
+    input.kind === "anchors"
+      ? (() => {
+          const stats = countAnchorEntries(parsedProposal);
+          return `${stats.viewCount} views / ${stats.anchorCount} anchors`;
+        })()
+      : (() => {
+          const stats = countCropBoxEntries(parsedProposal);
+          return `${stats.groupCount} groups / ${stats.boxCount} crop boxes`;
+        })();
+
+  if (!input.overrideText) {
+    return {
+      kind: input.kind,
+      available: true,
+      state: "create",
+      tone: "warn",
+      stateLabel: "create override",
+      summary,
+      detail:
+        input.kind === "anchors"
+          ? "No anchors.json override exists yet. Applying proposal will create the first explicit anchor override file."
+          : "No crop-boxes.json override exists yet. Applying proposal will create the first explicit crop override file."
+    };
+  }
+
+  if (input.overrideText === input.proposalText) {
+    return {
+      kind: input.kind,
+      available: true,
+      state: "unchanged",
+      tone: "ok",
+      stateLabel: "already synced",
+      summary,
+      detail:
+        input.kind === "anchors"
+          ? "Proposal anchors already match the saved anchors.json override."
+          : "Proposal crop boxes already match the saved crop-boxes.json override."
+    };
+  }
+
+  return {
+    kind: input.kind,
+    available: true,
+    state: "update",
+    tone: "warn",
+    stateLabel: "update override",
+    summary,
+    detail:
+      input.kind === "anchors"
+        ? "Proposal anchors differ from the current anchors.json override and will overwrite it."
+        : "Proposal crop boxes differ from the current crop-boxes.json override and will overwrite it."
+  };
+}
+
+export function summarizeProposalApplyPreview(input: {
+  proposalPath: string | null;
+  anchorsOverridePath: string | null;
+  cropBoxesOverridePath: string | null;
+}): CharacterProposalPreviewEntry[] {
+  return (["anchors", "cropBoxes"] as const).map((kind) =>
+    summarizeProposalPreviewDocument({
+      kind,
+      proposalText: readProposalOverrideSeed({ proposalPath: input.proposalPath, kind }),
+      overrideText: readExistingOverrideDocumentText({
+        overridePath: kind === "anchors" ? input.anchorsOverridePath : input.cropBoxesOverridePath,
+        kind
+      })
+    })
   );
 }
 
@@ -7630,6 +7804,30 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           kind: "cropBoxes"
         })
       : null;
+    const selectedProposalApplyPreview = selectedGeneratedLineage
+      ? summarizeProposalApplyPreview({
+          proposalPath: selectedGeneratedLineage.proposalPath,
+          anchorsOverridePath: selectedGeneratedLineage.overrides.anchorsPath,
+          cropBoxesOverridePath: selectedGeneratedLineage.overrides.cropBoxesPath
+        })
+      : [];
+    const selectedProposalApplyPreviewCards = selectedProposalApplyPreview
+      .map(
+        (entry) => `<article class="cg-diagnostic-card"><div class="cg-rig-kicker">${escHtml(
+          entry.kind === "anchors" ? "anchors.json" : "crop-boxes.json"
+        )}</div><h4>${escHtml(entry.summary)}</h4><p><span class="badge ${entry.tone}">${escHtml(
+          entry.stateLabel
+        )}</span> ${escHtml(entry.detail)}</p></article>`
+      )
+      .join("");
+    const selectedProposalApplyStatusCopy =
+      selectedProposalApplyPreview.length === 0 || selectedProposalApplyPreview.every((entry) => !entry.available)
+        ? "Proposal apply is unavailable until pack artifacts materialize proposal seeds."
+        : selectedProposalApplyPreview.every((entry) => entry.available && entry.state === "unchanged")
+          ? "Proposal seeds already match the saved override files. Reapply only if the override files were cleared or drifted out of sync."
+          : selectedProposalApplyPreview.some((entry) => entry.state === "create")
+            ? "Proposal apply will create missing override files before the next rebuild."
+            : "Proposal apply will overwrite at least one existing override file with the current proposal seed.";
     const selectedHasRebuildSelection = Boolean(
       selectedManifest?.selectedByView?.front?.candidateId &&
         selectedManifest?.selectedByView?.threeQuarter?.candidateId &&
@@ -7928,7 +8126,13 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   selectedGeneratedLineage.proposalPath ? "" : ' class="secondary" disabled'
                 }>Apply proposal files</button><button type="submit" name="afterApply" value="rebuild" class="secondary"${
                   selectedGeneratedLineage.proposalPath && selectedHasRebuildSelection ? "" : " disabled"
-                }>Apply proposal + rebuild</button></form></div><p class="cg-override-meta">This path overwrites override files with the current proposal seeds. Use anchors/crop-box editors instead when you need manual edits before rebuild.</p><div class="cg-inline-links">${selectedGeneratedLineage.proposalUrl ? `<a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">Open proposal.json</a>` : ""}<a href="#cg-override-anchors">Anchors lane</a><a href="#cg-override-crop-boxes">Crop-box lane</a></div></article><article class="cg-override-editor" id="cg-rebuild-selection"><div class="cg-rig-kicker">Current Selection Rebuild</div><h4>Rebuild the Character Pack with current selected candidates</h4><p>This path keeps the current selected candidate ids and reruns pack assembly / preview. Use it after saving anchors.json or crop-boxes.json so compare reads the updated rig evidence without a fresh full recreate.</p><p class="cg-override-meta">${escHtml(
+                }>Apply proposal + rebuild</button></form></div><p class="cg-override-meta">${escHtml(
+                  selectedProposalApplyStatusCopy
+                )}</p>${
+                  selectedProposalApplyPreviewCards
+                    ? `<div class="cg-diagnostic-grid" style="margin-top:10px">${selectedProposalApplyPreviewCards}</div>`
+                    : ""
+                }<p class="cg-override-meta">This path overwrites override files with the current proposal seeds. Use anchors/crop-box editors instead when you need manual edits before rebuild.</p><div class="cg-inline-links">${selectedGeneratedLineage.proposalUrl ? `<a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">Open proposal.json</a>` : ""}<a href="#cg-override-anchors">Anchors lane</a><a href="#cg-override-crop-boxes">Crop-box lane</a></div></article><article class="cg-override-editor" id="cg-rebuild-selection"><div class="cg-rig-kicker">Current Selection Rebuild</div><h4>Rebuild the Character Pack with current selected candidates</h4><p>This path keeps the current selected candidate ids and reruns pack assembly / preview. Use it after saving anchors.json or crop-boxes.json so compare reads the updated rig evidence without a fresh full recreate.</p><p class="cg-override-meta">${escHtml(
                   selectedRebuildSelectionSummary
                 )}</p><div class="notice">${
                   selectedHasRebuildSelection

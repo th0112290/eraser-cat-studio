@@ -90,6 +90,9 @@ jobs:
       - name: Run character action contract smoke
         run: pnpm -C apps/api run smoke:character-action-contracts
 
+      - name: Run character proposal preview smoke
+        run: pnpm -C apps/api run smoke:character-proposal-preview
+
       - name: Run character UI action smoke
         run: pnpm -C apps/api run smoke:character-ui-actions
 

@@ -14,6 +14,7 @@
     "smoke:ui:explorer-refresh-handoff": "tsx src/routes/uiRoutesExplorerRefreshHandoff.smoke.ts",
     "smoke:ui:rollout-refresh": "tsx src/routes/uiRoutesRolloutRefresh.smoke.ts",
     "smoke:character-proposal-apply": "tsx src/routes/characterRoutesProposalApply.smoke.ts",
+    "smoke:character-proposal-preview": "tsx src/routes/characterRoutesProposalPreview.smoke.ts",
     "smoke:character-action-contracts": "tsx src/routes/characterRoutesActionContract.smoke.ts",
     "smoke:character-ui-actions": "tsx src/routes/characterRoutesUiAction.smoke.ts",
     "smoke:character-practical": "tsx src/routes/characterRoutesPractical.smoke.ts",
