@@ -66,6 +66,7 @@ import { initializeGenerationExecutionRuntime } from "./characterGenerationExecu
 import { runGenerationLifecycle } from "./characterGenerationLifecycle";
 import { runSelectionAutoRerouteFlow } from "./characterGenerationAutoReroute";
 import { runGenerationCompletionRuntime } from "./characterGenerationCompletionRuntime";
+import { initializeGenerationReviewState } from "./characterGenerationReviewState";
 import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
 import {
   handleSelectionReviewGate,
@@ -12322,202 +12323,27 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const workflowStageRuns: NonNullable<GenerationManifest["workflowStages"]> = [];
   const requestedBaseStage: GenerationStageKey = generation.viewToGenerate === "front" ? "front" : "angles";
   const requestedBasePassPrefix = generation.viewToGenerate === "front" ? "front" : "angles";
-  const repairEmbargoedCandidateIdsByView: Partial<Record<CharacterView, Set<string>>> = {};
-  const repairEmbargoedFallbackViews = new Set<CharacterView>();
-  const isRepairEmbargoedSelection = (view: CharacterView, candidate: ScoredCandidate): boolean => {
-    if (repairEmbargoedCandidateIdsByView[view]?.has(candidate.candidate.id)) {
-      return true;
-    }
-    return repairEmbargoedFallbackViews.has(view);
-  };
-  const summarizeBestScores = (views: CharacterView[]) => {
-    const bestByView = groupBestByView(scored);
-    return Object.fromEntries(
-      views.map((view) => [
-        view,
-        bestByView[view]
-          ? {
-              score: Number(bestByView[view]!.score.toFixed(4)),
-              warnings: bestByView[view]!.warnings.length,
-              rejections: bestByView[view]!.rejections.length
-            }
-          : null
-      ])
-    );
-  };
-  const recordSideViewAcceptanceGateStage = (input: {
-    views: CharacterView[];
-    selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
-    gateDecisionsByView: Partial<Record<CharacterView, SideViewAcceptanceGateDecisionSummary>>;
-    origin?: CharacterWorkflowStageOrigin;
-    passLabel?: string;
-    reasonCodes?: string[];
-    triggerViews?: CharacterView[];
-    seedOffset?: number;
-  }) => {
-    const stageBestCandidateSummaryByView = summarizeStageBestCandidateByView({
-      views: input.views,
-      bestByView: input.selectedByView,
-      acceptedScoreThreshold,
-      targetStyle: promptBundle.qualityProfile.targetStyle,
-      speciesId: promptBundle.speciesId
-    });
-    const stageObservedDefectFamiliesByView = summarizeObservedDefectFamiliesByView({
-      views: input.views,
-      bestByView: input.selectedByView
-    });
-    const stageExitSummary = summarizeStageExitByView(stageBestCandidateSummaryByView);
-    const runtimeVariantTags = dedupeStrings(
-      Object.values(input.gateDecisionsByView)
-        .flatMap((summary) => (summary.chosenStage ? [`chosen:${summary.chosenStage}`] : []))
-        .filter((entry) => entry.length > 0)
-    );
-    workflowStageRuns.push({
-      stage: "side_view_acceptance_gate",
-      templateVersion: "synthetic_side_view_acceptance_gate_v1",
-      ...(input.origin ? { origin: input.origin } : {}),
-      ...(input.passLabel ? { passLabel: input.passLabel } : {}),
-      ...(Array.isArray(input.reasonCodes) && input.reasonCodes.length > 0 ? { reasonCodes: input.reasonCodes } : {}),
-      ...(Array.isArray(input.triggerViews) && input.triggerViews.length > 0 ? { triggerViews: input.triggerViews } : {}),
-      ...(typeof input.seedOffset === "number" ? { seedOffset: input.seedOffset } : {}),
-      views: input.views,
-      candidateCount: 3,
-      acceptedScoreThreshold: Number(acceptedScoreThreshold.toFixed(4)),
-      roundsAttempted: 1,
-      ...(stageObservedDefectFamiliesByView ? { observedDefectFamiliesByView: stageObservedDefectFamiliesByView } : {}),
-      ...stageExitSummary,
-      ...(runtimeVariantTags.length > 0 ? { runtimeVariantTags } : {}),
-      ...(stageBestCandidateSummaryByView ? { bestCandidateSummaryByView: stageBestCandidateSummaryByView } : {}),
-      ...(Object.keys(input.gateDecisionsByView).length > 0 ? { gateDecisionsByView: input.gateDecisionsByView } : {})
-    });
-  };
-  const applyRepairEmbargoDecisions = (
-    views: CharacterView[],
-    repairTriageByView: Partial<Record<CharacterView, RepairTriageDecisionSummary>>
-  ) => {
-    for (const view of dedupeCharacterViews(views)) {
-      const triage = repairTriageByView[view];
-      if (!triage) {
-        continue;
-      }
-      if (triage.decision === "reject_view") {
-        const sourceCandidateId =
-          typeof triage.sourceCandidateId === "string" && triage.sourceCandidateId.trim().length > 0
-            ? triage.sourceCandidateId.trim()
-            : undefined;
-        if (sourceCandidateId) {
-          const existing = repairEmbargoedCandidateIdsByView[view] ?? new Set<string>();
-          existing.add(sourceCandidateId);
-          repairEmbargoedCandidateIdsByView[view] = existing;
-          repairEmbargoedFallbackViews.delete(view);
-        } else {
-          repairEmbargoedFallbackViews.add(view);
-        }
-      } else {
-        repairEmbargoedFallbackViews.delete(view);
-      }
-    }
-  };
-  const recordRepairTriageGateStage = (input: {
-    views: CharacterView[];
-    selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
-    repairTriageByView: Partial<Record<CharacterView, RepairTriageDecisionSummary>>;
-    origin?: CharacterWorkflowStageOrigin;
-    passLabel?: string;
-    reasonCodes?: string[];
-    triggerViews?: CharacterView[];
-    seedOffset?: number;
-  }) => {
-    const stageBestCandidateSummaryByView = summarizeStageBestCandidateByView({
-      views: input.views,
-      bestByView: input.selectedByView,
-      acceptedScoreThreshold,
-      targetStyle: promptBundle.qualityProfile.targetStyle,
-      speciesId: promptBundle.speciesId
-    });
-    const stageObservedDefectFamiliesByView = summarizeObservedDefectFamiliesByView({
-      views: input.views,
-      bestByView: input.selectedByView
-    });
-    const stageExitSummary = summarizeStageExitByView(stageBestCandidateSummaryByView);
-    const runtimeVariantTags = dedupeStrings(
-      Object.values(input.repairTriageByView)
-        .map((summary) => `triage:${summary.decision}`)
-        .filter((entry) => entry.length > 0)
-    );
-    workflowStageRuns.push({
-      stage: "repair_triage_gate",
-      templateVersion: "synthetic_repair_triage_gate_v1",
-      ...(input.origin ? { origin: input.origin } : {}),
-      ...(input.passLabel ? { passLabel: input.passLabel } : {}),
-      ...(Array.isArray(input.reasonCodes) && input.reasonCodes.length > 0 ? { reasonCodes: input.reasonCodes } : {}),
-      ...(Array.isArray(input.triggerViews) && input.triggerViews.length > 0 ? { triggerViews: input.triggerViews } : {}),
-      ...(typeof input.seedOffset === "number" ? { seedOffset: input.seedOffset } : {}),
-      views: input.views,
-      candidateCount: 1,
-      acceptedScoreThreshold: Number(acceptedScoreThreshold.toFixed(4)),
-      roundsAttempted: 1,
-      ...(stageObservedDefectFamiliesByView ? { observedDefectFamiliesByView: stageObservedDefectFamiliesByView } : {}),
-      ...stageExitSummary,
-      ...(runtimeVariantTags.length > 0 ? { runtimeVariantTags } : {}),
-      ...(stageBestCandidateSummaryByView ? { bestCandidateSummaryByView: stageBestCandidateSummaryByView } : {}),
-      ...(Object.keys(input.repairTriageByView).length > 0 ? { repairTriageByView: input.repairTriageByView } : {})
-    });
-  };
-  const recordPostRepairAcceptanceGateStage = (input: {
-    views: CharacterView[];
-    selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
-    repairAcceptanceByView: Partial<Record<CharacterView, PostRepairAcceptanceDecisionSummary>>;
-    acceptedScoreThresholdOverride?: number;
-    origin?: CharacterWorkflowStageOrigin;
-    passLabel?: string;
-    reasonCodes?: string[];
-    triggerViews?: CharacterView[];
-    seedOffset?: number;
-  }) => {
-    const stageBestCandidateSummaryByView = summarizeStageBestCandidateByView({
-      views: input.views,
-      bestByView: input.selectedByView,
-      acceptedScoreThreshold,
-      targetStyle: promptBundle.qualityProfile.targetStyle,
-      speciesId: promptBundle.speciesId
-    });
-    const stageObservedDefectFamiliesByView = summarizeObservedDefectFamiliesByView({
-      views: input.views,
-      bestByView: input.selectedByView
-    });
-    const stageExitSummary = summarizeStageExitByView(stageBestCandidateSummaryByView);
-    const runtimeVariantTags = dedupeStrings(
-      Object.values(input.repairAcceptanceByView)
-        .flatMap((summary) => (summary.chosenStage ? [`chosen:${summary.chosenStage}`, `repair_accept:${summary.decision}`] : [`repair_accept:${summary.decision}`]))
-        .filter((entry) => entry.length > 0)
-    );
-    workflowStageRuns.push({
-      stage: "post_repair_acceptance_gate",
-      templateVersion: "synthetic_post_repair_acceptance_gate_v1",
-      ...(input.origin ? { origin: input.origin } : {}),
-      ...(input.passLabel ? { passLabel: input.passLabel } : {}),
-      ...(Array.isArray(input.reasonCodes) && input.reasonCodes.length > 0 ? { reasonCodes: input.reasonCodes } : {}),
-      ...(Array.isArray(input.triggerViews) && input.triggerViews.length > 0 ? { triggerViews: input.triggerViews } : {}),
-      ...(typeof input.seedOffset === "number" ? { seedOffset: input.seedOffset } : {}),
-      views: input.views,
-      candidateCount: 1,
-      acceptedScoreThreshold: Number(
-        (typeof input.acceptedScoreThresholdOverride === "number"
-          ? input.acceptedScoreThresholdOverride
-          : acceptedScoreThreshold
-        ).toFixed(4)
-      ),
-      roundsAttempted: 1,
-      ...(stageObservedDefectFamiliesByView ? { observedDefectFamiliesByView: stageObservedDefectFamiliesByView } : {}),
-      ...stageExitSummary,
-      ...(runtimeVariantTags.length > 0 ? { runtimeVariantTags } : {}),
-      ...(stageBestCandidateSummaryByView ? { bestCandidateSummaryByView: stageBestCandidateSummaryByView } : {}),
-      ...(Object.keys(input.repairAcceptanceByView).length > 0
-        ? { repairAcceptanceByView: input.repairAcceptanceByView }
-        : {})
-    });
-  };
+  const reviewState = initializeGenerationReviewState({
+    scored,
+    workflowStageRuns,
+    acceptedScoreThreshold,
+    targetStyle: promptBundle.qualityProfile.targetStyle,
+    speciesId: promptBundle.speciesId,
+    groupBestByView,
+    summarizeStageBestCandidateByView,
+    summarizeObservedDefectFamiliesByView,
+    summarizeStageExitByView,
+    dedupeStrings,
+    dedupeCharacterViews
+  });
+  const {
+    isRepairEmbargoedSelection,
+    summarizeBestScores,
+    recordSideViewAcceptanceGateStage,
+    applyRepairEmbargoDecisions,
+    recordRepairTriageGateStage,
+    recordPostRepairAcceptanceGateStage
+  } = reviewState;
   const styleScore = scoreStyleMatch(promptBundle.positivePrompt, promptBundle.qualityProfile.targetStyle);
   const ultraWorkflowEnabled =
     runtime.providerName === "comfyui" && isMascotTargetStyle(promptBundle.qualityProfile.targetStyle);
