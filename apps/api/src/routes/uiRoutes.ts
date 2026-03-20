@@ -38,6 +38,10 @@ import {
   resolveRuntimeShotCharacterPackId
 } from "./uiRouteBenchmarkRuntimeArtifacts";
 import {
+  buildCandidateCompareMapFromItems,
+  collectReferenceLineageWithResolvers
+} from "./uiRouteBenchmarkReferenceArtifacts";
+import {
   collectBundleReviewState,
   reviewIssuesForShot,
   summarizeReviewIssues,
@@ -1716,72 +1720,18 @@ function collectReferenceLineage(
   source: RolloutArtifactSource,
   baseDir: string
 ): { manifestPaths: string[]; selectedImagePaths: string[]; rig: RigReviewState } {
-  const shotSidecarDir = path.basename(baseDir).toLowerCase() === "shot_sidecar" ? baseDir : path.join(baseDir, "shot_sidecar");
-  if (!fs.existsSync(shotSidecarDir)) {
-    return { manifestPaths: [], selectedImagePaths: [], rig: createEmptyRigReviewState() };
-  }
-
-  let entries: string[] = [];
-  try {
-    entries = fs.readdirSync(shotSidecarDir)
-      .filter((name) => name.endsWith(".request.json") || name.endsWith(".plan.json"))
-      .map((name) => path.join(shotSidecarDir, name))
-      .slice(0, 12);
-  } catch {
-    return { manifestPaths: [], selectedImagePaths: [], rig: createEmptyRigReviewState() };
-  }
-
-  const manifestPaths: string[] = [];
-  const selectedImagePaths: string[] = [];
-  let rig = createEmptyRigReviewState();
-  for (const filePath of entries) {
-    const doc = readJsonFileSafe(filePath);
-    if (!isRecord(doc)) {
-      continue;
-    }
-    rig = mergeRigReviewStates(rig, extractRigReviewState(doc));
-    const referenceBundle = isRecord(doc.reference_bundle) ? doc.reference_bundle : {};
-    const candidateManifest = str(referenceBundle.generation_manifest_path);
-    const candidateImage = str(referenceBundle.selected_image_path) ?? str(doc.first_frame);
-    if (candidateManifest) {
-      manifestPaths.push(candidateManifest);
-    }
-    if (candidateImage) {
-      selectedImagePaths.push(candidateImage);
-    }
-    const requestPath = safeJsonArtifactPath(source, doc.request_path);
-    if (requestPath && requestPath !== filePath) {
-      const requestDoc = readJsonFileSafe(requestPath);
-      if (isRecord(requestDoc) && isRecord(requestDoc.reference_bundle)) {
-        rig = mergeRigReviewStates(rig, extractRigReviewState(requestDoc));
-        const nestedReference = requestDoc.reference_bundle;
-        const nestedManifest = str(nestedReference.generation_manifest_path);
-        const nestedImage = str(nestedReference.selected_image_path) ?? str(requestDoc.first_frame);
-        if (nestedManifest) {
-          manifestPaths.push(nestedManifest);
-        }
-        if (nestedImage) {
-          selectedImagePaths.push(nestedImage);
-        }
-      }
-    }
-  }
-
-  return {
-    manifestPaths: uniqueStrings(manifestPaths),
-    selectedImagePaths: uniqueStrings(selectedImagePaths),
-    rig
-  };
+  return collectReferenceLineageWithResolvers({
+    baseDir,
+    readJsonFileSafe,
+    normalizeJsonArtifactPath: (candidatePath) => safeJsonArtifactPath(source, candidatePath),
+    createEmptyRigReviewState,
+    mergeRigReviewStates,
+    extractRigReviewState
+  });
 }
 
 function buildCandidateCompareMap(source: RolloutArtifactSource, baseDir: string): Map<string, string> {
-  const candidateMap = new Map<string, string>();
-  for (const item of findCandidateCompareItems(source, baseDir)) {
-    const doc = readJsonFileSafe(item.path);
-    const shotId = str(isRecord(doc) ? doc.shot_id : undefined) ?? candidateCompareStem(item.path);
-    candidateMap.set(shotId, item.path);
-  }
-  return candidateMap;
+  return buildCandidateCompareMapFromItems(findCandidateCompareItems(source, baseDir), readJsonFileSafe);
 }
 
 function acceptanceStatusFromArtifact(raw: JsonRecord): string {
