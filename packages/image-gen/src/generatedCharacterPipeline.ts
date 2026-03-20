@@ -16,6 +16,7 @@ import { materializeGeneratedCharacterPack } from "./generatedCharacterPackBuild
 import { collectCharacterPipelineAnimationChecks } from "./generatedCharacterPipelineAnimationChecks";
 import { collectCharacterPipelinePackQcChecks } from "./generatedCharacterPipelinePackQc";
 import { materializeCharacterPipelineQcArtifacts } from "./generatedCharacterPipelineQcMaterialize";
+import { runCharacterPipelineEditRepairLoopWithDeps } from "./generatedCharacterPipelineRepairLoop";
 import {
   resolveMascotAnchorHeuristics,
   resolveMascotSpeciesProfile,
@@ -2694,127 +2695,6 @@ export function visemePrompt(viseme: GeneratedCharacterViseme, speciesId?: Masco
 
 type StageRepairKind = "view" | "expression" | "viseme";
 
-type RepairSelection = {
-  views: GeneratedCharacterView[];
-  expressions: GeneratedCharacterExpression[];
-  visemes: GeneratedCharacterViseme[];
-  shouldRebuildPack: boolean;
-  hasRepairSourceTask: boolean;
-};
-
-function loadRepairDocument(characterId: string): CharacterPipelineRepairDocument | null {
-  const filePath = path.join(characterRootDir(characterId), "qc", "repair_tasks.json");
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-  return readJson<CharacterPipelineRepairDocument>(filePath);
-}
-
-function pushUnique<T>(target: T[], value: T): void {
-  if (!target.includes(value)) {
-    target.push(value);
-  }
-}
-
-function parseViewFromRepairCode(code: string): GeneratedCharacterView | null {
-  if (code.includes("THREEQUARTER")) {
-    return "threeQuarter";
-  }
-  if (code.includes("PROFILE")) {
-    return "profile";
-  }
-  if (code.includes("FRONT")) {
-    return "front";
-  }
-  return null;
-}
-
-function parseExpressionFromRepairCode(code: string): GeneratedCharacterExpression | null {
-  if (code.includes("HAPPY")) {
-    return "happy";
-  }
-  if (code.includes("SURPRISED")) {
-    return "surprised";
-  }
-  if (code.includes("BLINK")) {
-    return "blink";
-  }
-  if (code.includes("NEUTRAL")) {
-    return "neutral";
-  }
-  return null;
-}
-
-function parseVisemeFromRepairCode(code: string): GeneratedCharacterViseme | null {
-  if (code.includes("MOUTH_OPEN_SMALL")) {
-    return "mouth_open_small";
-  }
-  if (code.includes("MOUTH_OPEN_WIDE")) {
-    return "mouth_open_wide";
-  }
-  if (code.includes("MOUTH_ROUND_O")) {
-    return "mouth_round_o";
-  }
-  if (code.includes("MOUTH_CLOSED")) {
-    return "mouth_closed";
-  }
-  return null;
-}
-
-function resolveRepairSelection(tasks: CharacterPipelineRepairTask[]): RepairSelection {
-  const selection: RepairSelection = {
-    views: [],
-    expressions: [],
-    visemes: [],
-    shouldRebuildPack: false,
-    hasRepairSourceTask: false
-  };
-
-  for (const task of tasks) {
-    if (task.action === "rerun_view_generation") {
-      const parsed = parseViewFromRepairCode(task.code);
-      if (parsed) {
-        pushUnique(selection.views, parsed);
-      } else {
-        pushUnique(selection.views, "threeQuarter");
-        pushUnique(selection.views, "profile");
-      }
-      continue;
-    }
-    if (task.action === "rerun_expression_generation") {
-      const parsed = parseExpressionFromRepairCode(task.code);
-      if (parsed && parsed !== "neutral") {
-        pushUnique(selection.expressions, parsed);
-      } else {
-        for (const expression of ["happy", "surprised", "blink"] as const) {
-          pushUnique(selection.expressions, expression);
-        }
-      }
-      continue;
-    }
-    if (task.action === "rerun_viseme_generation") {
-      const parsed = parseVisemeFromRepairCode(task.code);
-      if (parsed && parsed !== "mouth_closed") {
-        pushUnique(selection.visemes, parsed);
-      } else {
-        for (const viseme of ["mouth_open_small", "mouth_open_wide", "mouth_round_o"] as const) {
-          pushUnique(selection.visemes, viseme);
-        }
-      }
-      continue;
-    }
-    if (task.action === "rebuild_pack") {
-      selection.shouldRebuildPack = true;
-      continue;
-    }
-    if (task.action === "repair_source_asset") {
-      selection.hasRepairSourceTask = true;
-    }
-  }
-
-  return selection;
-}
-
 function pickEscalationPrompt(round: number, prompts: readonly string[]): string {
   return prompts[Math.min(Math.max(0, round - 1), prompts.length - 1)] ?? prompts[prompts.length - 1] ?? "";
 }
@@ -3313,155 +3193,6 @@ async function runAdapterViewOnlyRepairStill(input: {
   return asset;
 }
 
-async function runCharacterPipelineEditRepairRound(input: {
-  characterId: string;
-  negativePrompt?: string;
-  threeQuarterSeed: number;
-  profileSeed: number;
-  expressionBaseSeed: number;
-  visemeBaseSeed: number;
-  denoise?: number;
-  round: number;
-}): Promise<boolean> {
-  const repairDocument = loadRepairDocument(input.characterId);
-  if (!repairDocument || repairDocument.tasks.length === 0) {
-    return false;
-  }
-
-  const selection = resolveRepairSelection(repairDocument.tasks);
-  const frontMaster = requireApprovedFrontMaster(input.characterId);
-  const manifestBefore = loadManifest(input.characterId);
-  const manifestSpeciesBefore = manifestBefore.species;
-  const manifest = assignManifestSpecies(manifestBefore);
-  if (manifest.species !== manifestSpeciesBefore) {
-    saveManifest(manifest);
-  }
-  const speciesId = resolveManifestSpeciesId(manifest);
-  const neutralFrontAsset = manifest.expressions.front?.neutral ?? manifest.views.front ?? frontMaster;
-  let changed = false;
-
-  for (const view of selection.views) {
-    if (view === "front") {
-      const frontViewPath = stillOutputPath({
-        characterId: input.characterId,
-        stage: "view",
-        view: "front"
-      });
-      const frontViewAsset = aliasAssetWithNewContract({
-        parentAsset: frontMaster,
-        stage: "view",
-        outputPath: frontViewPath,
-        view: "front"
-      });
-      const latestManifest = loadManifest(input.characterId);
-      updateManifestWithAsset(latestManifest, frontViewAsset);
-      saveManifest(latestManifest);
-      changed = true;
-      continue;
-    }
-
-    const repairHistoryBase = [
-      `repair_round:${input.round}`,
-      "repair_stage:view",
-      `repair_target:${view}`
-    ];
-    const baseSeed = repairSeed(
-      view === "threeQuarter" ? input.threeQuarterSeed : input.profileSeed,
-      input.round,
-      view === "threeQuarter" ? 13 : 29
-    );
-
-    if (ENABLE_ADAPTER_VIEW_REPAIR) {
-      try {
-        await runAdapterViewOnlyRepairStill({
-          characterId: input.characterId,
-          frontMaster,
-          view,
-          negativePrompt: input.negativePrompt,
-          speciesId,
-          baseSeed,
-          round: input.round,
-          repairHistory: [...repairHistoryBase, "repair_strategy:adapter_view_only"]
-        });
-        changed = true;
-        continue;
-      } catch (error) {
-        const summary = error instanceof Error ? error.message : String(error);
-        console.warn(`[generatedCharacterPipeline] adapter view repair failed for ${input.characterId}:${view}: ${summary}`);
-      }
-    }
-
-    await runEditCharacterStill({
-      characterId: input.characterId,
-      inputImagePath: frontMaster.file_path,
-      editPrompt: viewRepairPrompt(view, input.round, speciesId),
-      negativePrompt: viewRepairNegativePrompt(input.negativePrompt, view),
-      seed: baseSeed,
-      denoise: resolveRepairDenoise("view", input.denoise, input.round),
-      stage: "view",
-      view,
-      parentAssetId: frontMaster.asset_id,
-      repairHistory: [...repairHistoryBase, "repair_strategy:prompt_denoise_escalation"]
-    });
-    changed = true;
-  }
-
-  for (const expression of selection.expressions) {
-    if (expression === "neutral") {
-      continue;
-    }
-    await runLocalFaceRepairStill({
-      characterId: input.characterId,
-      baseAsset: neutralFrontAsset,
-      stage: "expression",
-      expression,
-      editPrompt: expressionRepairPrompt(expression, input.round, speciesId),
-      negativePrompt: expressionRepairNegativePrompt(input.negativePrompt),
-      seed: expressionSeed(input.expressionBaseSeed, expression, input.round),
-      denoise: resolveRepairDenoise("expression", input.denoise, input.round),
-      round: input.round,
-      repairHistory: [
-        `repair_round:${input.round}`,
-        "repair_stage:expression",
-        `repair_target:${expression}`
-      ],
-      speciesId
-    });
-    changed = true;
-  }
-
-  const mouthClosedBase = manifest.visemes.front?.mouth_closed ?? neutralFrontAsset;
-  for (const viseme of selection.visemes) {
-    if (viseme === "mouth_closed") {
-      continue;
-    }
-    await runLocalFaceRepairStill({
-      characterId: input.characterId,
-      baseAsset: mouthClosedBase,
-      stage: "viseme",
-      viseme,
-      editPrompt: visemeRepairPrompt(viseme, input.round, speciesId),
-      negativePrompt: visemeRepairNegativePrompt(input.negativePrompt),
-      seed: visemeSeed(input.visemeBaseSeed, viseme, input.round),
-      denoise: resolveRepairDenoise("viseme", input.denoise, input.round),
-      round: input.round,
-      repairHistory: [
-        `repair_round:${input.round}`,
-        "repair_stage:viseme",
-        `repair_target:${viseme}`
-      ],
-      speciesId
-    });
-    changed = true;
-  }
-
-  if (changed || selection.shouldRebuildPack) {
-    await buildGeneratedCharacterPack({ characterId: input.characterId });
-  }
-
-  return changed || selection.shouldRebuildPack;
-}
-
 export async function runCharacterPipelineEditRepairLoop(
   input: RunCharacterPipelineEditRepairLoopInput
 ): Promise<{
@@ -3470,38 +3201,33 @@ export async function runCharacterPipelineEditRepairLoop(
   reportPath?: string;
   repairTasksPath?: string;
 }> {
-  const maxRounds = Math.max(0, input.maxRounds ?? DEFAULT_AUTO_REPAIR_ROUNDS);
-  let roundsAttempted = 0;
-
-  for (let round = 1; round <= maxRounds; round += 1) {
-    const acceptanceBefore = resolveCharacterPipelineAcceptance(input.characterId);
-    if (acceptanceBefore.status === "accepted") {
-      break;
-    }
-    const changed = await runCharacterPipelineEditRepairRound({
-      characterId: input.characterId,
-      negativePrompt: input.negativePrompt,
-      threeQuarterSeed: input.threeQuarterSeed,
-      profileSeed: input.profileSeed,
-      expressionBaseSeed: input.expressionBaseSeed,
-      visemeBaseSeed: input.visemeBaseSeed,
-      denoise: input.denoise,
-      round
-    });
-    if (!changed) {
-      break;
-    }
-    roundsAttempted = round;
-    await runCharacterAnimationSafeQc({ characterId: input.characterId });
-  }
-
-  const acceptance = resolveCharacterPipelineAcceptance(input.characterId);
-  return {
-    roundsAttempted,
-    acceptanceStatus: acceptance.status,
-    reportPath: acceptance.report_path,
-    repairTasksPath: acceptance.repair_tasks_path
-  };
+  return runCharacterPipelineEditRepairLoopWithDeps(input, {
+    characterRootDir,
+    readJson,
+    loadManifest,
+    saveManifest,
+    assignManifestSpecies,
+    resolveManifestSpeciesId: (manifest) => resolveManifestSpeciesId(manifest),
+    requireApprovedFrontMaster,
+    stillOutputPath,
+    aliasAssetWithNewContract,
+    updateManifestWithAsset,
+    runAdapterViewOnlyRepairStill,
+    runEditCharacterStill,
+    runLocalFaceRepairStill,
+    buildGeneratedCharacterPack,
+    viewRepairPrompt,
+    viewRepairNegativePrompt,
+    expressionRepairPrompt,
+    expressionRepairNegativePrompt,
+    visemeRepairPrompt,
+    visemeRepairNegativePrompt,
+    resolveCharacterPipelineAcceptance,
+    resolveInitialEditDenoise,
+    defaultAutoRepairRounds: DEFAULT_AUTO_REPAIR_ROUNDS,
+    enableAdapterViewRepair: ENABLE_ADAPTER_VIEW_REPAIR,
+    runCharacterAnimationSafeQc
+  });
 }
 
 export async function generateCharacterExpressionPack(
