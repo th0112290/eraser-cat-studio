@@ -38,6 +38,13 @@ import {
   resolveRuntimeShotCharacterPackId
 } from "./uiRouteBenchmarkRuntimeArtifacts";
 import {
+  collectBundleReviewState,
+  reviewIssuesForShot,
+  summarizeReviewIssues,
+  type BundleReviewState,
+  type ReviewIssueEntry
+} from "./uiRouteBenchmarkBundleReview";
+import {
   createEmptyRigReviewState,
   extractRigReviewState,
   mergeRigReviewStates,
@@ -291,24 +298,6 @@ type DatasetLineageRow = {
   selectedImagePaths: string[];
   schemaGaps: string[];
   rig: RigReviewState;
-};
-
-type ReviewIssueEntry = {
-  code: string;
-  severity: string;
-  message: string;
-  shotId: string | null;
-  stage: string | null;
-  detailsSummary: string | null;
-};
-
-type BundleReviewState = {
-  finalPassed: boolean | null;
-  finalStage: string | null;
-  fallbackSteps: string[];
-  qcArtifactPath: string | null;
-  renderLogPath: string | null;
-  issuesByShot: Map<string, ReviewIssueEntry[]>;
 };
 
 type SidecarPlanReviewEntry = {
@@ -1721,87 +1710,6 @@ function buildSidecarPlanReviewMap(
   }
 
   return reviewByShot;
-}
-
-function collectReviewIssuesByShot(report: unknown): Map<string, ReviewIssueEntry[]> {
-  const issuesByShot = new Map<string, ReviewIssueEntry[]>();
-  const pushIssue = (raw: unknown, stage: string | null): void => {
-    if (!isRecord(raw)) return;
-    const shotId = str(raw.shotId) ?? str(raw.shot_id) ?? "*";
-    const entry: ReviewIssueEntry = {
-      code: str(raw.code) ?? str(raw.check) ?? str(raw.rule) ?? str(raw.name) ?? "issue",
-      severity: str(raw.severity) ?? "INFO",
-      message: str(raw.message) ?? str(raw.reason) ?? str(raw.details) ?? "-",
-      shotId: shotId === "*" ? null : shotId,
-      stage,
-      detailsSummary: rolloutDetailItems(raw.details, 2)[0] ?? null
-    };
-    const bucket = issuesByShot.get(shotId) ?? [];
-    const duplicate = bucket.some(
-      (item) =>
-        item.code === entry.code &&
-        item.severity === entry.severity &&
-        item.message === entry.message &&
-        item.stage === entry.stage
-    );
-    if (!duplicate) {
-      bucket.push(entry);
-      issuesByShot.set(shotId, bucket);
-    }
-  };
-
-  if (!isRecord(report)) {
-    return issuesByShot;
-  }
-
-  for (const issue of recordList(report.issues)) {
-    pushIssue(issue, null);
-  }
-  for (const run of recordList(report.runs)) {
-    const stage = str(run.stage);
-    for (const issue of recordList(run.issues)) {
-      pushIssue(issue, stage);
-    }
-  }
-  return issuesByShot;
-}
-
-function reviewIssuesForShot(issuesByShot: Map<string, ReviewIssueEntry[]>, shotId: string): ReviewIssueEntry[] {
-  return [...(issuesByShot.get(shotId) ?? []), ...(issuesByShot.get("*") ?? [])];
-}
-
-function summarizeReviewIssues(entries: ReviewIssueEntry[], limit = 2): string {
-  if (entries.length === 0) return "-";
-  const summary = entries
-    .slice(0, limit)
-    .map((entry) => compact([entry.severity, entry.code, entry.message], " / "))
-    .join("; ");
-  return entries.length > limit ? `${summary} (+${entries.length - limit})` : summary;
-}
-
-function collectBundleReviewState(input: {
-  qcDoc: unknown;
-  renderLogDoc: unknown;
-  qcArtifactPath: string | null;
-  renderLogPath: string | null;
-}): BundleReviewState {
-  const qcDoc = isRecord(input.qcDoc) ? input.qcDoc : {};
-  const renderLogDoc = isRecord(input.renderLogDoc) ? input.renderLogDoc : {};
-  const regressionSummary = isRecord(renderLogDoc.episode_regression_summary) ? renderLogDoc.episode_regression_summary : {};
-  return {
-    finalPassed:
-      readBooleanOrNull(qcDoc.final_passed) ??
-      readBooleanOrNull(regressionSummary.final_passed) ??
-      readBooleanOrNull(renderLogDoc.qc_passed),
-    finalStage: str(qcDoc.final_stage) ?? str(renderLogDoc.final_stage) ?? null,
-    fallbackSteps: uniqueStrings([
-      ...(Array.isArray(qcDoc.fallback_steps_applied) ? qcDoc.fallback_steps_applied : []).map((value) => str(value)),
-      ...(Array.isArray(renderLogDoc.fallback_steps_applied) ? renderLogDoc.fallback_steps_applied : []).map((value) => str(value))
-    ]),
-    qcArtifactPath: input.qcArtifactPath,
-    renderLogPath: input.renderLogPath,
-    issuesByShot: collectReviewIssuesByShot(input.qcDoc)
-  };
 }
 
 function collectReferenceLineage(
