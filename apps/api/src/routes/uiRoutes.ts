@@ -31,6 +31,7 @@ import {
   resolveSinglePackId,
   type BenchmarkRefreshAction
 } from "./uiRouteBenchmarkHandoffs";
+import { resolveBenchmarkScenarioHandoffStateWithNormalizer } from "./uiRouteBenchmarkScenarioHandoff";
 export {
   buildBenchmarkRefreshActions,
   buildBenchmarkRefreshPlaybooksSection,
@@ -4807,30 +4808,7 @@ export function resolveBenchmarkScenarioHandoffState(doc: JsonRecord, rawScenari
   characterPackId: string | null;
   fixturePath: string | null;
 } {
-  return {
-    characterPackId:
-      str(rawScenario.character_pack_id) ??
-      str(rawScenario.characterPackId) ??
-      str(rawScenario.requested_character_pack_id) ??
-      str(rawScenario.requestedCharacterPackId) ??
-      str(doc.character_pack_id) ??
-      str(doc.characterPackId) ??
-      str(doc.requested_character_pack_id) ??
-      str(doc.requestedCharacterPackId),
-    fixturePath:
-      safeRolloutArtifactPath(rawScenario.fixture_path) ??
-      safeRolloutArtifactPath(rawScenario.fixturePath) ??
-      safeRolloutArtifactPath(rawScenario.runtime_fixture_path) ??
-      safeRolloutArtifactPath(rawScenario.runtimeFixturePath) ??
-      safeRolloutArtifactPath(rawScenario.input_path) ??
-      safeRolloutArtifactPath(rawScenario.inputPath) ??
-      safeRolloutArtifactPath(doc.fixture_path) ??
-      safeRolloutArtifactPath(doc.fixturePath) ??
-      safeRolloutArtifactPath(doc.runtime_fixture_path) ??
-      safeRolloutArtifactPath(doc.runtimeFixturePath) ??
-      safeRolloutArtifactPath(doc.input_path) ??
-      safeRolloutArtifactPath(doc.inputPath)
-  };
+  return resolveBenchmarkScenarioHandoffStateWithNormalizer(doc, rawScenario, safeRolloutArtifactPath);
 }
 
 function profileBrowserHref(values: Array<string | null | undefined>): string {
