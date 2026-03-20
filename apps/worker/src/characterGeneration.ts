@@ -48,8 +48,6 @@ import {
   resolveHitlSelectionManifestReadPath,
   resolveManifestAcceptedScoreThreshold,
   resolveManifestReadPath,
-  shouldContinueBlockedSelectionBuild,
-  shouldRetainSelectedByViewOnSelectionBlock,
   toFlatContinuityFields
 } from "./characterGenerationManifestState";
 import {
@@ -61,9 +59,7 @@ import {
   resolveFrontReferenceFromSession as resolveFrontReferenceFromSessionWithDelegate
 } from "./characterGenerationContinuityReference";
 import {
-  buildHitlSessionStatusMessage,
-  buildSelectionGateBlockedMessage,
-  buildSelectionGateReviewSummary
+  buildHitlSessionStatusMessage
 } from "./characterGenerationSelectionMessaging";
 import {
   buildSelectionDecisionOutcome,
@@ -71,6 +67,10 @@ import {
   summarizeQualityEmbargo,
   summarizeSelectionRisk
 } from "./characterGenerationSelectionDecision";
+import {
+  buildPersistedSelectionDiagnostics,
+  handleBlockedSelectionReview
+} from "./characterGenerationSelectionReview";
 import {
   buildSelectionBuildPayload,
   enqueueSelectionBuild,
@@ -12301,12 +12301,12 @@ async function persistSelectedCandidates(input: {
   manifest.packCoherence = packCoherence;
   manifest.providerMeta = {
     ...(manifest.providerMeta ?? {}),
-    selectionDiagnostics: {
-      ...(isRecord(manifest.providerMeta?.selectionDiagnostics)
+    selectionDiagnostics: buildPersistedSelectionDiagnostics({
+      existingSelectionDiagnostics: isRecord(manifest.providerMeta?.selectionDiagnostics)
         ? manifest.providerMeta?.selectionDiagnostics
-        : {}),
-      finalSelectionSource: source,
-      selectedCandidateSummaryByView: attemptedSelectionSummary,
+        : undefined,
+      source,
+      attemptedSelectionSummary,
       packCoherence,
       rigStability,
       selectionRisk,
@@ -12314,151 +12314,66 @@ async function persistSelectedCandidates(input: {
       packDefectSummary,
       finalQualityFirewall,
       decisionOutcome
-    }
+    })
   };
   manifest.selectedByView = buildManifestSelectedByView(selectedByView);
 
   if (requiresSelectionReview) {
-    const continueBlockedSelectionBuild = shouldContinueBlockedSelectionBuild(source);
-    manifest.status = continueBlockedSelectionBuild ? "HITL_SELECTED" : "PENDING_HITL";
-    if (!shouldRetainSelectedByViewOnSelectionBlock(source)) {
-      manifest.selectedByView = {};
-    }
-    const blockedManifest = withManifestHashes({
-      ...manifest,
-      schemaVersion: "1.0"
-    });
-    fs.writeFileSync(manifestPath, `${JSON.stringify(blockedManifest, null, 2)}\n`, "utf8");
-
-    const blockedMessage = buildSelectionGateBlockedMessage({
+    const { continueBlockedSelectionBuild, blockedMessage } = await handleBlockedSelectionReview({
+      manifest,
       source,
+      manifestPath,
+      withManifestHashes,
+      providerName,
+      jobDbId,
+      buildJobDbId: character.buildJobDbId,
+      previewJobDbId: character.previewJobDbId,
+      helpers,
       rigStability,
       packCoherence,
       selectionRisk,
       selectionRiskSummary,
       qualityEmbargo,
       qualityEmbargoSummary,
-      finalQualityFirewall,
-      finalQualityFirewallSummary
-    });
-
-    await helpers.logJob(jobDbId, "warn", "Selected candidate pack blocked by selection gate", {
-      source,
-      provider: providerName,
-      manifestPath,
-      continueBlockedSelectionBuild,
-      rigStability,
-      packCoherence,
-      selectionRisk,
-      qualityEmbargo,
       packDefectSummary,
       finalQualityFirewall,
-      selectedCandidateSummaryByView: attemptedSelectionSummary
-    });
-
-    if (!continueBlockedSelectionBuild && character.buildJobDbId) {
-      await helpers.setJobStatus(character.buildJobDbId, "CANCELLED", {
-        lastError: blockedMessage,
-        finishedAt: new Date()
-      });
-      await helpers.logJob(character.buildJobDbId, "warn", "Cancelled after selection gate blocked selected pack", {
-        source: `worker:generate-character-assets:${source}`,
-        manifestPath,
-        rigStability,
-        packCoherence,
-        selectionRisk,
-        qualityEmbargo,
-        finalQualityFirewall
-      });
-    }
-
-    if (!continueBlockedSelectionBuild && character.previewJobDbId) {
-      await helpers.setJobStatus(character.previewJobDbId, "CANCELLED", {
-        lastError: blockedMessage,
-        finishedAt: new Date()
-      });
-      await helpers.logJob(character.previewJobDbId, "warn", "Cancelled after selection gate blocked selected pack", {
-        source: `worker:generate-character-assets:${source}`,
-        manifestPath,
-        packCoherence,
-        selectionRisk,
-        qualityEmbargo
-      });
-    }
-
-    await prisma.agentSuggestion.create({
-      data: {
-        episodeId,
-        jobId: jobDbId,
-        type: "HITL_REVIEW",
-        status: "PENDING",
-        title: "Selected pack needs re-pick",
-        summary: buildSelectionGateReviewSummary({
-          rigStability,
-          packCoherence,
-          selectionRiskSummary,
-          qualityEmbargo,
-          qualityEmbargoSummary,
-          finalQualityFirewall,
-          finalQualityFirewallSummary
-        }),
-        payload: toPrismaJson({
-          manifestPath,
-          provider: providerName,
-          source,
-          rigStability,
-          packCoherence,
-          selectionRisk,
-          qualityEmbargo,
-          packDefectSummary,
-          finalQualityFirewall,
-          selectedCandidateSummaryByView: attemptedSelectionSummary,
-          ...toFlatContinuityFields(blockedManifest.reference.continuity)
-        })
-      }
-    });
-
-    if (!continueBlockedSelectionBuild && sessionId) {
-      const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
-      if (sessionDelegate) {
-        await sessionDelegate.update({
-          where: { id: sessionId },
+      finalQualityFirewallSummary,
+      attemptedSelectionSummary,
+      flattenContinuityFields: toFlatContinuityFields,
+      createReviewSuggestion: async ({ summary, payload }) => {
+        await prisma.agentSuggestion.create({
           data: {
-            status: "READY",
-            statusMessage: buildHitlSessionStatusMessage({
-              viewToGenerate: undefined,
-              missingGeneratedViews: [],
-              lowQualityGeneratedViews: [],
-              coherenceIssues: packCoherence.issues,
-              packCoherence,
-              rigStability,
-              selectionRiskLevel: selectionRisk.level,
-              selectionRiskSummary,
-              qualityEmbargoLevel: qualityEmbargo.level,
-              qualityEmbargoSummary,
-              finalQualityFirewallLevel: finalQualityFirewall.level,
-              finalQualityFirewallSummary,
-              continuity: blockedManifest.reference.continuity
-            })
+            episodeId,
+            jobId: jobDbId,
+            type: "HITL_REVIEW",
+            status: "PENDING",
+            title: "Selected pack needs re-pick",
+            summary,
+            payload: toPrismaJson(payload)
           }
         });
-      }
-    }
+      },
+      updateSessionReady:
+        sessionId
+          ? async (statusMessage) => {
+              const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+              if (!sessionDelegate) {
+                return;
+              }
+              await sessionDelegate.update({
+                where: { id: sessionId },
+                data: {
+                  status: "READY",
+                  statusMessage
+                }
+              });
+            }
+          : undefined
+    });
 
     if (!continueBlockedSelectionBuild) {
       throw new Error(blockedMessage);
     }
-
-    await helpers.logJob(jobDbId, "info", "Continuing blocked HITL-selected rebuild for evidence generation", {
-      source,
-      manifestPath,
-      rigStability,
-      packCoherence,
-      selectionRisk,
-      qualityEmbargo,
-      packDefectSummary,
-      finalQualityFirewall
-    });
   }
 
   const selectedAssets = await persistSelectedCandidateAssets({
