@@ -59,6 +59,7 @@ import {
   handleHitlRequiredSelection
 } from "./characterGenerationInitialSelection";
 import { handleHitlSelectedGeneration } from "./characterGenerationHitlSelected";
+import { initializeCharacterGenerationBootstrap } from "./characterGenerationBootstrap";
 import { buildSelectionDecisionOutcome } from "./characterGenerationSelectionDecision";
 import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
 import {
@@ -12077,315 +12078,122 @@ export async function handleGenerateCharacterAssetsJob(input: {
   let sessionId: string | undefined;
 
   try {
-
-  await helpers.setEpisodeStatus(payload.episodeId, "GENERATING");
-
-  const episode = await prisma.episode.findUnique({
-    where: { id: payload.episodeId },
-    select: {
-      id: true,
-      topic: true,
-      channelId: true
-    }
-  });
-
-  if (!episode) {
-    throw new Error(`Episode not found: ${payload.episodeId}`);
-  }
-
-  const channelBible = await prisma.channelBible.findFirst({
-    where: {
-      channelId: episode.channelId,
-      isActive: true
-    },
-    orderBy: {
-      version: "desc"
-    },
-    select: {
-      id: true,
-      json: true
-    }
-  });
-
-  const styleHints = deriveStyleHintsFromChannelBible(channelBible?.json);
-  const promptBundle = buildCharacterPrompt({
-    mode: generation.mode,
-    presetId: generation.promptPreset,
-    speciesId: generation.species,
-    positivePrompt: generation.positivePrompt ?? episode.topic,
-    negativePrompt: generation.negativePrompt,
-    styleHints
-  });
-  const mascotReferenceBankDiagnostics = summarizeMascotReferenceBankDiagnostics(promptBundle.speciesId);
-  const mascotReferenceBankReviewPlan = buildMascotReferenceBankReviewPlan(mascotReferenceBankDiagnostics);
-  const mascotReferenceBankReviewChecklist = buildReferenceBankReviewChecklist({
-    diagnostics: mascotReferenceBankDiagnostics,
-    reviewPlan: mascotReferenceBankReviewPlan
-  });
-  const continuityConfig = readContinuityReferenceConfig();
-  const continuityAutoEnabled = continuityAutoOverride ?? shouldAutoContinuityReference();
-  const continuityPolicy = {
-    ...continuityConfig,
-    requestOverride: continuityAutoOverride ?? null
-  };
-
-  let referenceAnalysis: ImageAnalysis | undefined;
-  let referenceImageBase64: string | undefined;
-  let referenceMimeType: string | undefined;
-  let continuityReferenceSessionId: string | null = null;
-  let starterReferencePath: string | null = null;
-  let starterReferencePathsByView: Partial<Record<CharacterView, string>> | undefined;
-  let continuitySnapshot: GenerationManifest["reference"]["continuity"] | undefined;
-  if (generation.mode === "reference") {
-    continuitySnapshot = {
-      enabled: false,
-      attempted: false,
-      applied: false,
-      reason: "reference_mode"
-    };
-    if (!generation.referenceAssetId) {
-      throw new Error("reference mode requires generation.referenceAssetId");
-    }
-
-    const referenceAsset = await prisma.asset.findUnique({
-      where: { id: generation.referenceAssetId },
-      select: {
-        id: true,
-        channelId: true,
-        status: true,
-        normalizedKey1024: true,
-        normalizedKey2048: true,
-        originalKey: true,
-        storageKey: true,
-        mime: true
-      }
-    });
-
-    if (!referenceAsset) {
-      throw new Error(`reference asset not found: ${generation.referenceAssetId}`);
-    }
-
-    if (referenceAsset.channelId !== episode.channelId) {
-      throw new Error("reference asset channel mismatch");
-    }
-
-    if (referenceAsset.status !== "READY") {
-      throw new Error("reference asset must be READY");
-    }
-
-    const referenceBuffer = await getAssetObject(normalizeReferenceAssetStorageKey(referenceAsset));
-    referenceAnalysis = await analyzeImage(referenceBuffer);
-    referenceImageBase64 = referenceBuffer.toString("base64");
-    referenceMimeType = referenceAsset.mime ?? "image/png";
-  }
-
-  const earlyLimits = readGenerationLimits();
-  const earlyViews = generation.viewToGenerate ? [generation.viewToGenerate] : CHARACTER_VIEWS;
-  const earlyClamped = clampGenerationRequest(generation, earlyViews.length, earlyLimits);
-  const manifestPath = manifestBasePath(jobDbId, generation.manifestPath, REPO_ROOT);
-  const referenceSourceManifestPath = resolveManifestReadPath(jobDbId, {
-    manifestPath: generation.manifestPath,
-    sourceManifestPath: generation.sourceManifestPath
-  }, REPO_ROOT);
-  const progressPath = path.join(path.dirname(manifestPath), "generation_progress.json");
-  const writeGenerationProgress = async (progress: number, stage: string, details?: Record<string, unknown>) => {
-    const progressPayload = {
-      schemaVersion: "1.0",
-      updatedAt: new Date().toISOString(),
-      jobId: jobDbId,
-      episodeId: payload.episodeId,
-      characterPackId: character.characterPackId,
-      sessionId: sessionId ?? null,
-      stage,
-      progress,
-      details: details ?? {}
-    };
-    fs.mkdirSync(path.dirname(progressPath), { recursive: true });
-    fs.writeFileSync(progressPath, `${JSON.stringify(progressPayload, null, 2)}\n`, "utf8");
-    await helpers.setJobStatus(jobDbId, "RUNNING", { progress, lastError: null });
-  };
-  const session = await upsertGenerationSession({
+  const bootstrap = await initializeCharacterGenerationBootstrap({
     prisma,
-    generation,
     episodeId: payload.episodeId,
     characterPackId: character.characterPackId,
-    promptPresetId: promptBundle.presetId,
-    positivePrompt: promptBundle.positivePrompt,
-    negativePrompt: promptBundle.negativePrompt,
-    seed: generation.seed ?? 101,
-    candidateCount: earlyClamped.candidateCount,
-    manifestPath,
-    statusMessage: generation.viewToGenerate
-      ? `Generating candidates for view: ${generation.viewToGenerate}`
-      : "Generating candidates for all views."
+    generation: generation as {
+      mode: string;
+      promptPreset: string;
+      species?: string;
+      positivePrompt?: string | null;
+      negativePrompt?: string | null;
+      referenceAssetId?: string | null;
+      viewToGenerate?: CharacterView;
+      provider?: string | null;
+      seed?: number | null;
+      manifestPath?: string | null;
+      sourceManifestPath?: string | null;
+      selectedCandidateIds?: Record<CharacterView, string> | null;
+    },
+    continuityAutoOverride,
+    repoRoot: REPO_ROOT,
+    jobDbId,
+    buildCharacterPrompt: (helperInput) =>
+      buildCharacterPrompt({
+        mode: helperInput.mode as CharacterGenerationPayload["mode"],
+        presetId: helperInput.presetId,
+        speciesId: helperInput.speciesId as CharacterGenerationPayload["species"],
+        positivePrompt: helperInput.positivePrompt,
+        negativePrompt: helperInput.negativePrompt ?? undefined,
+        styleHints: helperInput.styleHints as ReturnType<typeof deriveStyleHintsFromChannelBible>
+      }),
+    deriveStyleHintsFromChannelBible,
+    summarizeMascotReferenceBankDiagnostics,
+    buildMascotReferenceBankReviewPlan: (diagnostics) =>
+      buildMascotReferenceBankReviewPlan(
+        diagnostics as ReturnType<typeof summarizeMascotReferenceBankDiagnostics>
+      ),
+    buildReferenceBankReviewChecklist: (helperInput) =>
+      buildReferenceBankReviewChecklist({
+        diagnostics: helperInput.diagnostics as ReturnType<typeof summarizeMascotReferenceBankDiagnostics>,
+        reviewPlan: helperInput.reviewPlan as ReturnType<typeof buildMascotReferenceBankReviewPlan>
+      }),
+    readContinuityReferenceConfig,
+    shouldAutoContinuityReference,
+    analyzeImage,
+    getAssetObject: (assetKey) => getAssetObject(assetKey as string),
+    normalizeReferenceAssetStorageKey: (asset) =>
+      normalizeReferenceAssetStorageKey(asset as {
+        normalizedKey1024: string | null;
+        normalizedKey2048: string | null;
+        originalKey: string | null;
+        storageKey: string;
+      }),
+    readGenerationLimits,
+    clampGenerationRequest: (helperGeneration, viewCount, helperLimits) =>
+      clampGenerationRequest(
+        helperGeneration as CharacterGenerationPayload,
+        viewCount,
+        helperLimits as ReturnType<typeof readGenerationLimits>
+      ),
+    manifestBasePath: (targetJobDbId, targetManifestPath, repoRoot) =>
+      manifestBasePath(targetJobDbId, targetManifestPath ?? undefined, repoRoot),
+    resolveManifestReadPath: (targetJobDbId, helperInput, repoRoot) =>
+      resolveManifestReadPath(
+        targetJobDbId,
+        {
+          manifestPath: helperInput.manifestPath ?? undefined,
+          sourceManifestPath: helperInput.sourceManifestPath ?? undefined
+        },
+        repoRoot
+      ),
+    upsertGenerationSession: (helperInput) =>
+      upsertGenerationSession({
+        ...helperInput,
+        generation: helperInput.generation as CharacterGenerationPayload
+      }),
+    hasCandidateSelection: (value) =>
+      hasCandidateSelection(value as CharacterGenerationPayload["selectedCandidateIds"]),
+    normalizeSelectedCandidateIds,
+    resolveAutoContinuityReference: (helperInput) =>
+      resolveAutoContinuityReference({
+        ...helperInput,
+        currentSessionId: helperInput.currentSessionId,
+        config: helperInput.config as ReturnType<typeof readContinuityReferenceConfig>
+      }),
+    isMascotTargetStyle,
+    loadMascotStarterReference: (speciesId, view) => loadMascotStarterReference(speciesId, view) ?? null,
+    loadMascotFamilyReferenceCached: (speciesId, view) => loadMascotFamilyReferenceCached(speciesId, view) ?? null,
+    logJob: helpers.logJob,
+    setJobStatus: helpers.setJobStatus,
+    setEpisodeStatus: helpers.setEpisodeStatus
   });
-  sessionId = session.id;
-  await writeGenerationProgress(4, "session_ready", {
-    sessionId,
-    providerRequested: generation.provider ?? null,
-    requestedViews: earlyViews,
-    candidateCount: earlyClamped.candidateCount
-  });
-  const selectedCandidateIds = hasCandidateSelection(generation.selectedCandidateIds)
-    ? normalizeSelectedCandidateIds(generation.selectedCandidateIds)
-    : undefined;
-
-  if (
-    !selectedCandidateIds &&
-    generation.mode === "new" &&
-    !referenceImageBase64 &&
-    continuityAutoEnabled
-  ) {
-    const continuity = await resolveAutoContinuityReference({
-      prisma,
-      episodeId: payload.episodeId,
-      channelId: episode.channelId,
-      characterPackId: character.characterPackId,
-      currentSessionId: sessionId,
-      config: continuityConfig
-    });
-    if (continuity.match) {
-      try {
-        referenceImageBase64 = continuity.match.referenceImageBase64;
-        referenceMimeType = continuity.match.referenceMimeType;
-        continuityReferenceSessionId = continuity.match.sessionId;
-        const continuityBuffer = Buffer.from(continuity.match.referenceImageBase64, "base64");
-        referenceAnalysis = await analyzeImage(continuityBuffer);
-        await helpers.logJob(jobDbId, "info", "Auto continuity reference applied", {
-          sourceSessionId: continuity.match.sessionId,
-          characterPackId: character.characterPackId,
-          policy: continuityPolicy,
-          diagnostics: {
-            ...continuity.diagnostics,
-            sourcePool: continuity.match.sourcePool,
-            candidatePicked: continuity.match.candidatePicked,
-            candidateScore: continuity.match.candidateScore,
-            candidateRejectionCount: continuity.match.candidateRejectionCount,
-            candidateUpdatedAt: continuity.match.candidateUpdatedAt
-          }
-        });
-        continuitySnapshot = {
-          enabled: true,
-          attempted: true,
-          applied: true,
-          reason: "matched",
-          attemptedSourceSessionId: continuity.match.sessionId,
-          cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
-          queuedSessionCount: continuity.diagnostics.queuedSessionCount,
-          uniqueQueuedSessionCount: continuity.diagnostics.uniqueQueuedSessionCount,
-          duplicateSessionCount: continuity.diagnostics.duplicateSessionCount,
-          searchedSessionCount: continuity.diagnostics.searchedSessionCount,
-          searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
-          preferredPoolCount: continuity.diagnostics.preferredPoolCount,
-          fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
-          sourcePool: continuity.match.sourcePool,
-          candidatePicked: continuity.match.candidatePicked,
-          candidateScore: continuity.match.candidateScore,
-          candidateRejectionCount: continuity.match.candidateRejectionCount,
-          candidateUpdatedAt: continuity.match.candidateUpdatedAt,
-          policy: continuityPolicy
-        };
-      } catch (error) {
-        referenceImageBase64 = undefined;
-        referenceMimeType = undefined;
-        continuityReferenceSessionId = null;
-        referenceAnalysis = undefined;
-        await helpers.logJob(jobDbId, "warn", "Auto continuity reference ignored due to invalid source", {
-          characterPackId: character.characterPackId,
-          sourceSessionId: continuity.match.sessionId,
-          policy: continuityPolicy,
-          diagnostics: continuity.diagnostics,
-          error: errorMessage(error)
-        });
-        continuitySnapshot = {
-          enabled: true,
-          attempted: true,
-          applied: false,
-          reason: "invalid_source",
-          attemptedSourceSessionId: continuity.match.sessionId,
-          cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
-          queuedSessionCount: continuity.diagnostics.queuedSessionCount,
-          uniqueQueuedSessionCount: continuity.diagnostics.uniqueQueuedSessionCount,
-          duplicateSessionCount: continuity.diagnostics.duplicateSessionCount,
-          searchedSessionCount: continuity.diagnostics.searchedSessionCount,
-          searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
-          preferredPoolCount: continuity.diagnostics.preferredPoolCount,
-          fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
-          policy: continuityPolicy
-        };
-      }
-    } else {
-      await helpers.logJob(jobDbId, "info", "Auto continuity reference skipped", {
-        characterPackId: character.characterPackId,
-        policy: continuityPolicy,
-        diagnostics: continuity.diagnostics
-      });
-      continuitySnapshot = {
-        enabled: true,
-        attempted: true,
-        applied: false,
-        reason: continuity.diagnostics.reason ?? "skipped",
-        cutoffUpdatedAt: continuity.diagnostics.cutoffUpdatedAt,
-        queuedSessionCount: continuity.diagnostics.queuedSessionCount,
-        uniqueQueuedSessionCount: continuity.diagnostics.uniqueQueuedSessionCount,
-        duplicateSessionCount: continuity.diagnostics.duplicateSessionCount,
-        searchedSessionCount: continuity.diagnostics.searchedSessionCount,
-        searchedSessionIdsPreview: continuity.diagnostics.searchedSessionIdsPreview,
-        preferredPoolCount: continuity.diagnostics.preferredPoolCount,
-        fallbackPoolCount: continuity.diagnostics.fallbackPoolCount,
-        policy: continuityPolicy
-      };
-    }
-  } else if (generation.mode === "new") {
-    const hasHitlSelection = Boolean(selectedCandidateIds);
-    const hasReferenceAlready = Boolean(referenceImageBase64);
-    let reason = "not_attempted";
-    if (!continuityAutoEnabled) {
-      reason = continuityAutoOverride === false ? "disabled_by_request" : "disabled_by_env";
-    } else if (hasHitlSelection) {
-      reason = "hitl_selection_present";
-    } else if (hasReferenceAlready) {
-      reason = "reference_already_present";
-    }
-    continuitySnapshot = {
-      enabled: continuityAutoEnabled,
-      attempted: false,
-      applied: false,
-      reason,
-      policy: continuityPolicy
-    };
-    await helpers.logJob(jobDbId, "info", "Auto continuity reference not attempted", {
-      characterPackId: character.characterPackId,
-      reason,
-      policy: continuityPolicy
-      });
-  }
-
-  if (
-    generation.mode === "new" &&
-    !referenceImageBase64 &&
-    isMascotTargetStyle(promptBundle.qualityProfile.targetStyle) &&
-    (generation.viewToGenerate !== undefined || earlyViews.length === 1)
-  ) {
-    const mascotSeedReference =
-      loadMascotStarterReference(promptBundle.speciesId, "front") ??
-      loadMascotFamilyReferenceCached(promptBundle.speciesId, "front");
-    if (mascotSeedReference) {
-      referenceImageBase64 = mascotSeedReference.referenceImageBase64;
-      referenceMimeType = mascotSeedReference.referenceMimeType;
-      starterReferencePath = mascotSeedReference.sourcePath;
-      starterReferencePathsByView = {
-        ...(starterReferencePathsByView ?? {}),
-        front: mascotSeedReference.sourcePath
-      };
-      const starterBuffer = Buffer.from(mascotSeedReference.referenceImageBase64, "base64");
-      referenceAnalysis = await analyzeImage(starterBuffer);
-      await helpers.logJob(jobDbId, "info", "Mascot seed reference applied", {
-        speciesId: promptBundle.speciesId,
-        starterReferencePath
-      });
-    }
-  }
+  const episode = bootstrap.episode;
+  const promptBundle = bootstrap.promptBundle as ReturnType<typeof buildCharacterPrompt>;
+  const mascotReferenceBankDiagnostics =
+    bootstrap.mascotReferenceBankDiagnostics as ReturnType<typeof summarizeMascotReferenceBankDiagnostics>;
+  const mascotReferenceBankReviewPlan =
+    bootstrap.mascotReferenceBankReviewPlan as ReturnType<typeof buildMascotReferenceBankReviewPlan>;
+  const mascotReferenceBankReviewChecklist =
+    bootstrap.mascotReferenceBankReviewChecklist as ReturnType<typeof buildReferenceBankReviewChecklist>;
+  const continuityConfig = bootstrap.continuityConfig as ReturnType<typeof readContinuityReferenceConfig>;
+  let referenceAnalysis = bootstrap.referenceAnalysis as ImageAnalysis | undefined;
+  let referenceImageBase64 = bootstrap.referenceImageBase64;
+  let referenceMimeType = bootstrap.referenceMimeType;
+  let continuityReferenceSessionId = bootstrap.continuityReferenceSessionId;
+  let starterReferencePath = bootstrap.starterReferencePath;
+  let starterReferencePathsByView = bootstrap.starterReferencePathsByView;
+  let continuitySnapshot = bootstrap.continuitySnapshot as GenerationManifest["reference"]["continuity"] | undefined;
+  const limits = bootstrap.limits as ReturnType<typeof readGenerationLimits>;
+  const requestedViews = bootstrap.earlyViews;
+  const clamped = bootstrap.clamped as ReturnType<typeof clampGenerationRequest>;
+  const manifestPath = bootstrap.manifestPath;
+  const referenceSourceManifestPath = bootstrap.referenceSourceManifestPath;
+  const selectedCandidateIds = bootstrap.selectedCandidateIds;
+  const writeGenerationProgress = bootstrap.writeGenerationProgress;
+  const bootstrapSessionId = bootstrap.sessionId;
+  sessionId = bootstrapSessionId;
 
   if (selectedCandidateIds) {
     await handleHitlSelectedGeneration<GenerationManifest>({
@@ -12450,10 +12258,6 @@ export async function handleGenerateCharacterAssetsJob(input: {
 
   const comfyUiUrl = getComfyUiUrl();
   const remoteApiConfig = getRemoteApiConfig();
-  const limits = earlyLimits;
-  const requestedViews = earlyViews;
-  const clamped = earlyClamped;
-
   const requestedProvider =
     generation.provider ??
     (comfyUiUrl ? "comfyui" : remoteApiConfig.baseUrl ? "remoteApi" : "mock");
