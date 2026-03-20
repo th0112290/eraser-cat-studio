@@ -256,6 +256,8 @@ type RouteReasonExplorerRow = {
   fallbackSteps: string[];
   fallbackSummary: string;
   generatedAt: string;
+  characterPackId: string | null;
+  fixturePath: string | null;
   sourceLabel: string;
   sourcePath: string;
   smokeArtifactPath: string;
@@ -1600,6 +1602,11 @@ function collectRuntimePackIdsFromShotsDoc(runtimeDoc: unknown): string[] {
   return uniqueStrings(recordList(runtimeDoc.shots).map((shot) => readRuntimeShotCharacterPackId(shot)));
 }
 
+export function resolveSinglePackId(packIds: string[] | null | undefined): string | null {
+  const resolved = uniqueStrings(packIds ?? []);
+  return resolved.length === 1 ? resolved[0] : null;
+}
+
 function resolveRuntimeShotCharacterPackId(runtimeDoc: unknown, shotId: string): string | null {
   if (!isShotsDocLike(runtimeDoc)) {
     return null;
@@ -2127,6 +2134,7 @@ function collectRouteReasonRows(): RouteReasonExplorerRow[] {
     const baseDir = path.dirname(bundle.sidecarPlanPath ?? bundle.smokePath);
     const compareMap = buildCandidateCompareMap(bundle.source, baseDir);
     const planReviewByShot = buildSidecarPlanReviewMap(bundle.source, bundle.sidecarPlanDoc);
+    const bundleFixturePath = collectBundleFixturePath(bundle);
     const bundleReview = collectBundleReviewState({
       qcDoc: bundle.qcDoc,
       renderLogDoc: bundle.renderLogDoc,
@@ -2184,6 +2192,8 @@ function collectRouteReasonRows(): RouteReasonExplorerRow[] {
             " | "
           ) || "-",
         generatedAt: bundle.generatedAt,
+        characterPackId: resolveRuntimeShotCharacterPackId(bundle.runtimeDoc, item.shotId),
+        fixturePath: bundleFixturePath,
         sourceLabel: bundle.source.label,
         sourcePath: bundle.source.outRoot,
         smokeArtifactPath: bundle.smokePath,
@@ -10323,6 +10333,13 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
               hash: "rollout-evidence"
             })
           : "";
+        const repairHandoffLinks = buildRigRepairHandoffLinks({
+          currentHref: currentRouteHref,
+          characterPackId: row.characterPackId,
+          fixturePath: row.fixturePath,
+          repairable: row.rig.repairable,
+          recreateRecommended: row.rig.recreateRecommended
+        });
         const finalLabel = row.finalPassed === null ? "unknown" : row.finalPassed ? "passed" : "failed";
         return `<tr id="${rowId}" class="ops-review-table-row${isRouteFocused(row.episodeId, row.shotId, row.routeReason, row.selectedCandidateId, row.bundle, row.artifactRelativePath) ? " is-focused" : ""}">
           <td><div class="table-note"><strong>${esc(row.shotId)}</strong><span class="muted-text">${esc(`${row.episodeId} / ${row.scenario} / ${row.bundle}`)}</span><span class="muted-text">${esc(humanizeOpsLabel(row.shotType))}</span><span class="muted-text">attempt ${esc(row.attemptSummary)}</span><span class="muted-text">${esc(summarizeRigContext(row.rig))}</span></div></td>
@@ -10330,7 +10347,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           <td><div class="table-note"><strong>${esc(row.renderModeSummary)}</strong><span class="muted-text">${esc(row.providerSummary)}</span><span class="muted-text">${esc(row.policySummary)}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span><span class="muted-text">${esc(summarizeRigLineage(row.rig))}</span></div></td>
           <td><div class="table-note"><span class="badge ${row.acceptanceTone}">${esc(humanizeOpsLabel(row.acceptanceStatus))}</span><span class="muted-text">final ${esc(finalLabel)} / ${esc(row.finalStage ?? "-")}</span></div></td>
           <td><div class="table-note"><span class="muted-text">${esc(compact([row.qcSummary !== "-" ? row.qcSummary : null, row.repairSummary !== "-" ? row.repairSummary : null], " | ") || "-")}</span><span class="muted-text">rig ${esc(summarizeRigSignals(row.rig))}</span><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">${esc(row.issueCount > 0 ? `${row.issueCount} issues: ${row.issueSummary}` : "no run issues")}</span><span class="muted-text">families ${esc(summarizeValues(row.rig.rigReasonFamilies, 3))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
-          <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${runtimeHref ? `<a href="${runtimeHref}">Runtime Shots</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
+          <td><div class="inline-actions"><a href="${smokeHref}">Smoke</a>${runtimeHref ? `<a href="${runtimeHref}">Runtime Shots</a>` : ""}${planHref ? `<a href="${planHref}">Plan</a>` : ""}${qcHref ? `<a href="${qcHref}">QC</a>` : ""}${renderLogHref ? `<a href="${renderLogHref}">Render Log</a>` : ""}${actualJudgeHref ? `<a href="${actualJudgeHref}">Actual Judge</a>` : ""}${visualJudgeHref ? `<a href="${visualJudgeHref}">Visual Judge</a>` : ""}${compareHref ? `<a href="${compareHref}">Candidate Compare</a>` : ""}${renderModeHref ? `<a href="${renderModeHref}">Render Modes</a>` : ""}${repairHandoffLinks}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.artifactRelativePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
         </tr>`;
       })
@@ -10747,11 +10764,18 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         ]
           .filter((item) => item.length > 0)
           .join("");
+        const repairHandoffLinks = buildRigRepairHandoffLinks({
+          currentHref: currentLineageHref,
+          characterPackId: resolveSinglePackId(row.packIds),
+          fixturePath: row.inputShotsPath,
+          repairable: row.rig.repairable,
+          recreateRecommended: row.rig.recreateRecommended
+        });
         return `<tr id="${rowId}" class="ops-review-table-row${isLineageFocused(row.episodeId, row.bundle, row.artifactRelativePath, ...row.datasetIds, ...row.packIds) ? " is-focused" : ""}">
           <td><div class="table-note"><strong>${esc(row.bundle)}</strong><span class="muted-text">${esc(row.scenario)}</span><span class="mono">${esc(row.artifactRelativePath)}</span></div></td>
           <td><div class="table-note"><strong>${esc(row.episodeId)}</strong><span class="muted-text">bible ${esc(row.bibleRef)}</span><span class="muted-text">beats ${esc(String(row.beatCount))} / route reasons ${esc(summarizeValues(row.routeReasons, 2))}</span></div></td>
           <td><div class="table-note"><strong>${esc(summarizeValues(row.datasetIds, 3))}</strong><span class="muted-text">packs ${esc(summarizeValues(row.packIds, 3))}</span><span class="muted-text">${esc(summarizeRigContext(row.rig))}</span></div></td>
-          <td><div class="inline-actions">${artifactLinks}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div><div class="muted-text">${esc(compact([row.inputShotsPath, row.runtimeShotsPath], " -> ") || "-")}</div></td>
+          <td><div class="inline-actions">${artifactLinks}${repairHandoffLinks}<button type="button" class="secondary" data-copy="${esc(row.smokeArtifactPath)}">Copy path</button></div><div class="muted-text">${esc(compact([row.inputShotsPath, row.runtimeShotsPath], " -> ") || "-")}</div></td>
           <td><div class="table-note"><strong>${esc(summarizeValues(row.manifestPaths, 2))}</strong><span class="muted-text">${esc(summarizeValues(row.selectedImagePaths, 2))}</span><span class="muted-text">anchor ${esc(formatAnchorConfidenceSummary(row.rig))}</span><span class="muted-text">${esc(summarizeRigLineage(row.rig))}</span></div></td>
           <td><div class="table-note"><strong>${esc(summarizeValues(row.schemaGaps, 3))}</strong><span class="muted-text">${esc(summarizeRigFlags(row.rig))}</span><span class="muted-text">families ${esc(summarizeValues(row.rig.rigReasonFamilies, 3))}</span><span class="muted-text">rig codes ${esc(summarizeValues(row.rig.rigReasonCodes, 3))}</span><span class="muted-text">fallback ${esc(summarizeValues(row.rig.fallbackReasonCodes, 3))}</span></div></td>
           <td><div class="stack"><strong>${esc(row.sourceLabel)}</strong><span class="mono">${esc(row.sourcePath)}</span><span class="muted-text">${fmtDate(row.generatedAt)}</span></div></td>
