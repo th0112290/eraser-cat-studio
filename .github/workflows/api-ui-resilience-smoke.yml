@@ -81,11 +81,17 @@ jobs:
       - name: Run benchmark refresh helper smoke
         run: pnpm -C apps/api run smoke:ui:benchmark-refresh
 
+      - name: Run benchmark character handoff smoke
+        run: pnpm -C apps/api run smoke:ui:benchmark-character-handoff
+
       - name: Run rollout refresh helper smoke
         run: pnpm -C apps/api run smoke:ui:rollout-refresh
 
       - name: Run explorer refresh handoff smoke
         run: pnpm -C apps/api run smoke:ui:explorer-refresh-handoff
+
+      - name: Run repair character handoff smoke
+        run: pnpm -C apps/api run smoke:ui:repair-character-handoff
 
       - name: Run character action contract smoke
         run: pnpm -C apps/api run smoke:character-action-contracts
