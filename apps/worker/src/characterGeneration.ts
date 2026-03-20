@@ -2760,8 +2760,14 @@ export function buildPackDefectSummary(input: {
       candidate: input.selectedByView[view],
       speciesId: input.speciesId
     });
+    const downgradeCanineSoftHeadBlock = shouldDowngradeSelectedCanineSoftHeadBlock({
+      candidate: input.selectedByView[view],
+      speciesId: input.speciesId
+    });
     const families = summarizeObservedDefectFamilies(input.selectedByView[view]).filter(
-      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+      (family) =>
+        (!downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)) &&
+        (!downgradeCanineSoftHeadBlock || family !== "head")
     );
     if (families.length === 0) {
       continue;
@@ -7708,6 +7714,116 @@ export function deriveSparseCatFrontAnchorScoreFallback(input: {
   );
 }
 
+function deriveSparseCanineFrontAnchorScoreFallback(input: {
+  candidate: ScoredCandidate | undefined;
+  acceptedScoreThreshold?: number;
+  speciesId?: string;
+}): number | null {
+  const candidate = input.candidate;
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (!candidate || candidate.candidate.view !== "front" || (species !== "dog" && species !== "wolf")) {
+    return null;
+  }
+
+  const breakdown = candidate.breakdown ?? {};
+  const hasRichFrontMetrics =
+    typeof breakdown.frontSymmetryScore === "number" ||
+    typeof breakdown.headSquarenessScore === "number" ||
+    typeof breakdown.speciesScore === "number" ||
+    typeof breakdown.targetStyleScore === "number";
+  if (hasRichFrontMetrics) {
+    return null;
+  }
+
+  const disqualifyingPattern =
+    /fragmented_or_multi_object_front|text_or_watermark_high_risk|subject_isolation_low|head_shape_breakdown|face_or_eyes_region_unstable|species_breakdown|mascot_identity_too_weak|dog_front_species_breakdown|dog_front_face_too_small|dog_front_arm_zone_empty|wolf_front_species_breakdown|wolf_front_face_too_narrow/i;
+  if (candidate.rejections.length > 0 || candidate.warnings.some((reason) => disqualifyingPattern.test(reason))) {
+    return null;
+  }
+
+  const minimumFrontScore = Math.max(
+    species === "wolf" ? 0.93 : 0.9,
+    (typeof input.acceptedScoreThreshold === "number"
+      ? input.acceptedScoreThreshold
+      : resolveMascotQcThresholds(input.speciesId).frontMasterMinScore) + 0.28
+  );
+  const coverageSignal = Math.max(breakdown.alphaScore ?? 0, breakdown.occupancyScore ?? 0);
+  if (
+    candidate.score < minimumFrontScore ||
+    (candidate.consistencyScore ?? 0) < 0.95 ||
+    (breakdown.styleScore ?? 0) < 0.92 ||
+    (breakdown.qualityScore ?? 0) < (species === "wolf" ? 0.64 : 0.6) ||
+    (breakdown.referenceScore ?? 0) < 0.64 ||
+    coverageSignal < (species === "wolf" ? 0.68 : 0.5)
+  ) {
+    return null;
+  }
+
+  return clamp01(
+    Math.min(
+      species === "wolf" ? 0.76 : 0.74,
+      candidate.score * 0.34 +
+        (breakdown.styleScore ?? 0) * 0.16 +
+        (breakdown.qualityScore ?? 0) * 0.14 +
+        (breakdown.referenceScore ?? 0) * 0.12 +
+        coverageSignal * 0.14
+    )
+  );
+}
+
+function deriveSparseFrontAnchorScoreFallback(input: {
+  candidate: ScoredCandidate | undefined;
+  acceptedScoreThreshold?: number;
+  speciesId?: string;
+}): number | null {
+  return deriveSparseCatFrontAnchorScoreFallback(input) ?? deriveSparseCanineFrontAnchorScoreFallback(input);
+}
+
+function shouldDowngradeSelectedCanineSoftHeadBlock(input: {
+  candidate: ScoredCandidate | undefined;
+  speciesId?: string;
+}): boolean {
+  const candidate = input.candidate;
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (!candidate || (species !== "dog" && species !== "wolf") || candidate.rejections.length > 0) {
+    return false;
+  }
+
+  const allowedWarnings = new Set<string>([
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "palette_too_complex_for_mascot",
+    "head_shape_not_square_enough",
+    "dog_front_arm_zone_weak",
+    "threequarter_frontality_risk",
+    "paw_symmetry_low",
+    "consistency_shape_drift",
+    "consistency_style_drift",
+    "bbox_occupancy_outlier",
+    "paw_shape_unstable",
+    "finger_spikes_detected",
+    "paw_readability_low",
+    "paw_shape_failure",
+    "wolf_muzzle_too_short",
+    "dog_muzzle_too_short"
+  ]);
+  if ([...candidate.warnings].some((warning) => !allowedWarnings.has(warning))) {
+    return false;
+  }
+
+  const view = candidate.candidate.view;
+  const breakdown = candidate.breakdown ?? {};
+  const scoreFloor = view === "front" ? 0.88 : view === "threeQuarter" ? 0.62 : 0.6;
+  const consistencyFloor = view === "front" ? 0.95 : view === "threeQuarter" ? 0.48 : 0.38;
+  return (
+    candidate.score >= scoreFloor &&
+    (view === "front" || (candidate.consistencyScore ?? 0) >= consistencyFloor) &&
+    (breakdown.styleScore ?? breakdown.targetStyleScore ?? 0) >= 0.84 &&
+    (breakdown.qualityScore ?? 0) >= 0.48 &&
+    (breakdown.referenceScore ?? 0) >= 0.44
+  );
+}
+
 function shouldDowngradeCatSelectedThreeQuarterRepairBlock(input: {
   candidate: ScoredCandidate | undefined;
   speciesId?: string;
@@ -8261,7 +8377,7 @@ function summarizeCandidateRigStability(input: {
   const geometryCue = computeMascotGeometryCue(candidate);
   const anchorFromMeta = resolveCandidateAnchorConfidenceFromMeta(candidate);
   const landmarkFromMeta = resolveCandidateLandmarkConsistencyFromMeta(candidate);
-  const sparseCatFrontAnchorScore = deriveSparseCatFrontAnchorScoreFallback({
+  const sparseCatFrontAnchorScore = deriveSparseFrontAnchorScoreFallback({
     candidate,
     speciesId: input.speciesId
   });
@@ -8436,7 +8552,7 @@ function summarizeCandidateRigStability(input: {
   };
 }
 
-function assessRigStability(input: {
+export function assessRigStability(input: {
   selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
   packCoherence?: PackCoherenceDiagnostics;
   targetStyle?: string;
@@ -8721,7 +8837,7 @@ export function isStrongFrontMasterCandidate(
     return false;
   }
   if (
-    deriveSparseCatFrontAnchorScoreFallback({
+    deriveSparseFrontAnchorScoreFallback({
       candidate,
       acceptedScoreThreshold,
       speciesId
@@ -8923,7 +9039,7 @@ export function buildPackCoherenceDiagnostics(input: {
     }
   };
 
-  const sparseCatFrontAnchorScore = deriveSparseCatFrontAnchorScoreFallback({
+  const sparseCatFrontAnchorScore = deriveSparseFrontAnchorScoreFallback({
     candidate: front,
     acceptedScoreThreshold: input.acceptedScoreThreshold,
     speciesId: input.speciesId
@@ -9724,8 +9840,14 @@ export function assessQualityEmbargo(input: {
       candidate,
       speciesId: input.speciesId
     });
+    const downgradeCanineSoftHeadBlock = shouldDowngradeSelectedCanineSoftHeadBlock({
+      candidate,
+      speciesId: input.speciesId
+    });
     const families = summarizeObservedDefectFamilies(candidate).filter(
-      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+      (family) =>
+        (!downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)) &&
+        (!downgradeCanineSoftHeadBlock || family !== "head")
     );
     if (families.length > 0) {
       defectFamiliesByView[view] = families;
@@ -9941,11 +10063,19 @@ export function assessFinalQualityFirewall(input: {
       candidate,
       speciesId: input.speciesId
     });
+    const downgradeCanineSoftHeadBlock = shouldDowngradeSelectedCanineSoftHeadBlock({
+      candidate,
+      speciesId: input.speciesId
+    });
     const families = (defectFamiliesByView[view] ?? []).filter(
-      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+      (family) =>
+        (!downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)) &&
+        (!downgradeCanineSoftHeadBlock || family !== "head")
     );
     const persistentFamilies = (persistentFamiliesByView[view] ?? []).filter(
-      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+      (family) =>
+        (!downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)) &&
+        (!downgradeCanineSoftHeadBlock || family !== "head")
     );
     const filteredRejections = downgradeSelectedRepairBlock
       ? candidate.rejections.filter(
