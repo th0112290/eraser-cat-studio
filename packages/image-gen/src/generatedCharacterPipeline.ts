@@ -21,6 +21,10 @@ import {
   runDeterministicCharacterPipelineWithDeps
 } from "./generatedCharacterPipelineDeterministic";
 import {
+  runLocalFaceRepairStillWithDeps,
+  strengthenVisemeAssetIfNeededWithDeps
+} from "./generatedCharacterPipelineLocalRepair";
+import {
   anchorStatusMatchesExpectation as anchorStatusMatchesExpectationImpl,
   applyAnchorOverridesWithDeps,
   applyCropBoxOverridesWithDeps,
@@ -2717,6 +2721,39 @@ function buildDeterministicPipelineDeps() {
   };
 }
 
+function buildLocalRepairDeps() {
+  return {
+    clamp,
+    normalizeCropBox,
+    characterRootDir,
+    readJson,
+    writeJson,
+    ensureDir,
+    loadManifest,
+    saveManifest,
+    updateManifestWithAsset,
+    resolveManifestSpeciesId,
+    resolveAnimationQcThresholds,
+    resolveRepairCropBoxes,
+    loadImageRaster,
+    loadImageRasterFromBuffer,
+    normalizeStillToCanvas,
+    measureForegroundBounds,
+    deriveHeadCropFromBodyBounds,
+    detectFrontFaceFeatureCrops,
+    fullImageCrop: FULL_IMAGE_CROP,
+    measureDarkFeatureCenter,
+    meanVisibleRegionColor,
+    meanRegionDifference,
+    expandCropBox,
+    buildVisemeRepairCrop,
+    cropNormalizedRegion,
+    runEditCharacterStill,
+    defaultImageWidth: DEFAULT_IMAGE_WIDTH,
+    defaultImageHeight: DEFAULT_IMAGE_HEIGHT
+  };
+}
+
 function viewRepairPrompt(view: GeneratedCharacterView, round: number, speciesId?: MascotSpeciesId): string {
   return viewRepairPromptImpl(view, round, speciesId, buildRepairPrimitiveDeps());
 }
@@ -3056,132 +3093,6 @@ async function resolveRepairCropBoxes(characterId: string): Promise<CharacterCro
   return resolveRepairCropBoxesWithDeps(characterId, buildCropAnchorDeps());
 }
 
-async function computeCropPixelRegion(
-  sourcePath: string,
-  crop: CropBox
-): Promise<{ left: number; top: number; width: number; height: number; sourceWidth: number; sourceHeight: number }> {
-  const metadata = await sharp(sourcePath, { failOn: "none" }).metadata();
-  const sourceWidth = metadata.width ?? DEFAULT_IMAGE_WIDTH;
-  const sourceHeight = metadata.height ?? DEFAULT_IMAGE_HEIGHT;
-  const width = clamp(Math.round(sourceWidth * crop.w), 1, sourceWidth);
-  const height = clamp(Math.round(sourceHeight * crop.h), 1, sourceHeight);
-  const left = clamp(Math.round(sourceWidth * crop.cx - width / 2), 0, Math.max(0, sourceWidth - width));
-  const top = clamp(Math.round(sourceHeight * crop.cy - height / 2), 0, Math.max(0, sourceHeight - height));
-  return { left, top, width, height, sourceWidth, sourceHeight };
-}
-
-function repairCropTargetSize(width: number, height: number): { width: number; height: number } {
-  const longestSide = Math.max(width, height, 1);
-  const scale = clamp(1024 / longestSide, 1, 4);
-  return {
-    width: Math.max(192, Math.round(width * scale)),
-    height: Math.max(192, Math.round(height * scale))
-  };
-}
-
-async function compositeEditedCropOntoBase(input: {
-  basePath: string;
-  overlayPath: string;
-  crop: CropBox;
-  outputPath: string;
-}): Promise<void> {
-  const region = await computeCropPixelRegion(input.basePath, input.crop);
-  const overlayBuffer = await sharp(input.overlayPath, { failOn: "none" })
-    .resize({
-      width: region.width,
-      height: region.height,
-      fit: "fill"
-    })
-    .png()
-    .toBuffer();
-
-  ensureDir(path.dirname(input.outputPath));
-  await sharp(input.basePath, { failOn: "none" })
-    .ensureAlpha()
-    .composite([
-      {
-        input: overlayBuffer,
-        left: region.left,
-        top: region.top,
-        blend: "over"
-      }
-    ])
-    .png()
-    .toFile(input.outputPath);
-}
-
-type SyntheticVisemeGeometry = {
-  kind: "ellipse" | "roundRect";
-  mouthWidthRatio: number;
-  mouthHeightRatio: number;
-  eraseWidthRatio: number;
-  eraseHeightRatio: number;
-  verticalOffsetRatio: number;
-  cornerRatio: number;
-};
-
-function darkenColor(color: RgbaColor, amount: number): RgbaColor {
-  const factor = clamp(1 - amount, 0, 1);
-  return {
-    r: Math.round(color.r * factor),
-    g: Math.round(color.g * factor),
-    b: Math.round(color.b * factor),
-    alpha: color.alpha
-  };
-}
-
-function rgbaToCss(color: RgbaColor): string {
-  return `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.max(0, Math.min(1, color.alpha / 255)).toFixed(3)})`;
-}
-
-function resolveSyntheticVisemeGeometry(
-  viseme: GeneratedCharacterViseme,
-  speciesId: MascotSpeciesId,
-  scaleBoost: number
-): SyntheticVisemeGeometry | null {
-  const canineWidthBoost = speciesId === "dog" || speciesId === "wolf" ? 1.08 : 1;
-  if (viseme === "mouth_open_small") {
-    return {
-      kind: "ellipse",
-      mouthWidthRatio: 0.74 * canineWidthBoost * scaleBoost,
-      mouthHeightRatio: 0.78 * scaleBoost,
-      eraseWidthRatio: 1.48 * scaleBoost,
-      eraseHeightRatio: 1.82 * scaleBoost,
-      verticalOffsetRatio: 0.12,
-      cornerRatio: 0.5
-    };
-  }
-  if (viseme === "mouth_open_wide") {
-    return {
-      kind: "roundRect",
-      mouthWidthRatio: 1.18 * canineWidthBoost * scaleBoost,
-      mouthHeightRatio: 0.82 * scaleBoost,
-      eraseWidthRatio: 1.72 * scaleBoost,
-      eraseHeightRatio: 1.96 * scaleBoost,
-      verticalOffsetRatio: 0.1,
-      cornerRatio: speciesId === "wolf" ? 0.24 : 0.42
-    };
-  }
-  if (viseme === "mouth_round_o") {
-    return {
-      kind: "ellipse",
-      mouthWidthRatio: 0.76 * scaleBoost,
-      mouthHeightRatio: 1.12 * scaleBoost,
-      eraseWidthRatio: 1.4 * scaleBoost,
-      eraseHeightRatio: 1.96 * scaleBoost,
-      verticalOffsetRatio: 0.12,
-      cornerRatio: 0.5
-    };
-  }
-  return null;
-}
-
-function resolveFrontMouthCrop(image: LoadedImageRaster, cropBoxes: CharacterCropBoxes): CropBox {
-  const bounds = measureForegroundBounds(image, FULL_IMAGE_CROP);
-  const headCrop = bounds ? deriveHeadCropFromBodyBounds(bounds, "front") : cropBoxes.head.front;
-  return detectFrontFaceFeatureCrops(image, headCrop).mouth ?? cropBoxes.mouth;
-}
-
 async function strengthenVisemeAssetIfNeeded(input: {
   characterId: string;
   baseAsset: CharacterStillAsset;
@@ -3189,144 +3100,7 @@ async function strengthenVisemeAssetIfNeeded(input: {
   viseme: GeneratedCharacterViseme;
   speciesId?: MascotSpeciesId;
 }): Promise<CharacterStillAsset> {
-  if (input.viseme === "mouth_closed") {
-    return input.visemeAsset;
-  }
-  const speciesId = resolveManifestSpeciesId(loadManifest(input.characterId), input.speciesId);
-  const geometryAttempts = [1, 1.16, 1.32];
-  const cropBoxes = await resolveRepairCropBoxes(input.characterId);
-  const baseRaster = await loadImageRaster(input.baseAsset.file_path);
-  let workingVisemeBuffer: Buffer = fs.readFileSync(input.visemeAsset.file_path);
-  let visemeRaster = await loadImageRasterFromBuffer(workingVisemeBuffer, input.visemeAsset.file_path);
-  if (visemeRaster.width !== baseRaster.width || visemeRaster.height !== baseRaster.height) {
-    workingVisemeBuffer = Buffer.from(
-      await normalizeStillToCanvas(workingVisemeBuffer, baseRaster.width, baseRaster.height)
-    );
-    visemeRaster = await loadImageRasterFromBuffer(workingVisemeBuffer, input.visemeAsset.file_path);
-  }
-  const mouthCrop = resolveFrontMouthCrop(baseRaster, cropBoxes);
-  const currentDelta = meanRegionDifference(baseRaster, visemeRaster, mouthCrop);
-  const targetDelta = Math.max(resolveAnimationQcThresholds(speciesId).minVisemeFaceVariation * 1.3, 0.01);
-  if (currentDelta >= targetDelta) {
-    return input.visemeAsset;
-  }
-
-  const overlayCrop = expandCropBox(mouthCrop, 1.9, 2.35, 0.03);
-  const overlayRegion = normalizedRegionToPixels(baseRaster, overlayCrop);
-  const mouthRegion = normalizedRegionToPixels(baseRaster, mouthCrop);
-  const overlayWidth = Math.max(1, overlayRegion.right - overlayRegion.left);
-  const overlayHeight = Math.max(1, overlayRegion.bottom - overlayRegion.top);
-  const mouthWidthPx = Math.max(1, mouthRegion.right - mouthRegion.left);
-  const mouthHeightPx = Math.max(1, mouthRegion.bottom - mouthRegion.top);
-  const mouthCenter = measureDarkFeatureCenter(baseRaster, mouthCrop) ?? {
-    x: mouthCrop.cx,
-    y: mouthCrop.cy,
-    density: 0
-  };
-  const muzzleColor =
-    meanVisibleRegionColor(baseRaster, expandCropBox(mouthCrop, 1.6, 1.85, 0), {
-      skipDarkFeatures: true,
-      minLuma: 72
-    }) ??
-    meanVisibleRegionColor(baseRaster, expandCropBox(mouthCrop, 1.4, 1.6, 0), {
-      skipDarkFeatures: true
-    }) ?? {
-      r: 224,
-      g: 214,
-      b: 198,
-      alpha: 255
-    };
-  const mouthFill = darkenColor({ r: 28, g: 20, b: 18, alpha: 245 }, speciesId === "wolf" ? 0.08 : 0);
-  const lipStroke = darkenColor(muzzleColor, speciesId === "wolf" ? 0.5 : 0.42);
-
-  for (const scaleBoost of geometryAttempts) {
-    const geometry = resolveSyntheticVisemeGeometry(input.viseme, speciesId, scaleBoost);
-    if (!geometry) {
-      break;
-    }
-    const mouthWidth = clamp(
-      Math.round(mouthWidthPx * geometry.mouthWidthRatio),
-      Math.max(10, Math.round(overlayWidth * 0.22)),
-      Math.max(12, Math.round(overlayWidth * 0.94))
-    );
-    const mouthHeight = clamp(
-      Math.round(mouthHeightPx * geometry.mouthHeightRatio),
-      Math.max(8, Math.round(overlayHeight * 0.18)),
-      Math.max(10, Math.round(overlayHeight * 0.9))
-    );
-    const eraseWidth = clamp(
-      Math.round(mouthWidthPx * geometry.eraseWidthRatio),
-      mouthWidth + 4,
-      Math.max(14, Math.round(overlayWidth * 0.98))
-    );
-    const eraseHeight = clamp(
-      Math.round(mouthHeightPx * geometry.eraseHeightRatio),
-      mouthHeight + 4,
-      Math.max(14, Math.round(overlayHeight * 0.98))
-    );
-    const anchorX = clamp(
-      Math.round(mouthCenter.x * baseRaster.width) - overlayRegion.left,
-      Math.floor(overlayWidth * 0.2),
-      Math.ceil(overlayWidth * 0.8)
-    );
-    const anchorY = clamp(
-      Math.round((mouthCenter.y + mouthCrop.h * geometry.verticalOffsetRatio) * baseRaster.height) - overlayRegion.top,
-      Math.floor(overlayHeight * 0.24),
-      Math.ceil(overlayHeight * 0.82)
-    );
-    const eraseX = Math.round(anchorX - eraseWidth / 2);
-    const eraseY = Math.round(anchorY - eraseHeight / 2);
-    const mouthX = Math.round(anchorX - mouthWidth / 2);
-    const mouthY = Math.round(anchorY - mouthHeight / 2);
-    const strokeWidth = Math.max(2, Math.round(Math.min(mouthWidth, mouthHeight) * 0.09));
-    const lipY = Math.round(mouthY + mouthHeight * 0.1);
-    const lipStartX = Math.round(mouthX + mouthWidth * 0.14);
-    const lipEndX = Math.round(mouthX + mouthWidth * 0.86);
-    const lipControlY = Math.round(lipY - Math.max(2, mouthHeight * 0.16));
-    const mouthNode =
-      geometry.kind === "roundRect"
-        ? `<rect x="${mouthX}" y="${mouthY}" width="${mouthWidth}" height="${mouthHeight}" rx="${Math.max(4, Math.round(mouthHeight * geometry.cornerRatio))}" ry="${Math.max(4, Math.round(mouthHeight * geometry.cornerRatio))}" fill="${rgbaToCss(mouthFill)}" />`
-        : `<ellipse cx="${anchorX}" cy="${anchorY}" rx="${Math.max(4, Math.round(mouthWidth / 2))}" ry="${Math.max(4, Math.round(mouthHeight / 2))}" fill="${rgbaToCss(mouthFill)}" />`;
-    const overlaySvg = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${overlayWidth}" height="${overlayHeight}" viewBox="0 0 ${overlayWidth} ${overlayHeight}">
-  <ellipse cx="${anchorX}" cy="${anchorY}" rx="${Math.max(6, Math.round(eraseWidth / 2))}" ry="${Math.max(6, Math.round(eraseHeight / 2))}" fill="${rgbaToCss(muzzleColor)}" />
-  ${mouthNode}
-  <path d="M ${lipStartX} ${lipY} Q ${anchorX} ${lipControlY} ${lipEndX} ${lipY}" fill="none" stroke="${rgbaToCss(lipStroke)}" stroke-width="${strokeWidth}" stroke-linecap="round" opacity="0.9" />
-</svg>`
-    );
-    const overlayBuffer = await sharp(overlaySvg, { limitInputPixels: false })
-      .resize({
-        width: overlayWidth,
-        height: overlayHeight,
-        fit: "fill"
-      })
-      .png()
-      .toBuffer();
-    const candidateBuffer = await sharp(workingVisemeBuffer, { limitInputPixels: false })
-      .ensureAlpha()
-      .composite([
-        {
-          input: overlayBuffer,
-          left: overlayRegion.left,
-          top: overlayRegion.top,
-          blend: "over"
-        }
-      ])
-      .png()
-      .toBuffer();
-    const candidateRaster = await loadImageRasterFromBuffer(candidateBuffer, input.visemeAsset.file_path);
-    const candidateDelta = meanRegionDifference(baseRaster, candidateRaster, mouthCrop);
-    if (candidateDelta < targetDelta && scaleBoost !== geometryAttempts[geometryAttempts.length - 1]) {
-      continue;
-    }
-    fs.writeFileSync(input.visemeAsset.file_path, candidateBuffer);
-    const metadata = readJson<CharacterStillAsset>(input.visemeAsset.metadata_path);
-    metadata.postprocess = [...new Set([...(metadata.postprocess ?? []), "viseme_local_strengthen", "viseme_local_composite"])];
-    writeJson(metadata.metadata_path, metadata);
-    return metadata;
-  }
-
-  return input.visemeAsset;
+  return strengthenVisemeAssetIfNeededWithDeps(input, buildLocalRepairDeps());
 }
 
 async function runLocalFaceRepairStill(input: {
@@ -3343,70 +3117,7 @@ async function runLocalFaceRepairStill(input: {
   speciesId?: MascotSpeciesId;
   repairHistory?: string[];
 }): Promise<CharacterStillAsset> {
-  const cropBoxes = await resolveRepairCropBoxes(input.characterId);
-  const crop =
-    input.stage === "expression"
-      ? expandCropBox(cropBoxes.head.front, 1.08, 1.1, 0.01)
-      : buildVisemeRepairCrop(cropBoxes);
-  const cropRegion = await computeCropPixelRegion(input.baseAsset.file_path, crop);
-  const targetSize = repairCropTargetSize(cropRegion.width, cropRegion.height);
-  const targetLabel = input.stage === "expression" ? input.expression ?? "neutral" : input.viseme ?? "mouth_closed";
-  const tempInputPath = path.join(
-    characterRootDir(input.characterId),
-    "repair",
-    `${input.stage}_${targetLabel}_round_${input.round}_local_input.png`
-  );
-
-  await cropNormalizedRegion({
-    sourcePath: input.baseAsset.file_path,
-    crop,
-    targetPath: tempInputPath,
-    targetWidth: targetSize.width,
-    targetHeight: targetSize.height
-  });
-
-  const asset = await runEditCharacterStill({
-    characterId: input.characterId,
-    inputImagePath: tempInputPath,
-    editPrompt: input.editPrompt,
-    negativePrompt: input.negativePrompt,
-    seed: input.seed,
-    denoise: input.denoise,
-    stage: input.stage,
-    view: "front",
-    expression: input.expression,
-    viseme: input.viseme,
-    parentAssetId: input.baseAsset.asset_id,
-    repairHistory: [...(input.repairHistory ?? []), "repair_strategy:face_local_crop_edit"]
-  });
-
-  await compositeEditedCropOntoBase({
-    basePath: input.baseAsset.file_path,
-    overlayPath: asset.file_path,
-    crop,
-    outputPath: asset.file_path
-  });
-
-  const metadata = readJson<CharacterStillAsset>(asset.metadata_path);
-  metadata.width = input.baseAsset.width;
-  metadata.height = input.baseAsset.height;
-  metadata.postprocess = [...new Set([...(metadata.postprocess ?? []), "face_local_crop_edit", "face_local_composite"])];
-  writeJson(metadata.metadata_path, metadata);
-  const finalAsset =
-    input.stage === "viseme" && input.viseme && input.viseme !== "mouth_closed"
-      ? await strengthenVisemeAssetIfNeeded({
-          characterId: input.characterId,
-          baseAsset: input.baseAsset,
-          visemeAsset: metadata,
-          viseme: input.viseme,
-          speciesId: input.speciesId
-        })
-      : metadata;
-
-  const manifest = loadManifest(input.characterId);
-  updateManifestWithAsset(manifest, finalAsset);
-  saveManifest(manifest);
-  return finalAsset;
+  return runLocalFaceRepairStillWithDeps(input, buildLocalRepairDeps());
 }
 
 export async function buildGeneratedCharacterPack(input: {
