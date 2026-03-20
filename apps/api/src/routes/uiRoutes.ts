@@ -58,6 +58,11 @@ import {
   type SmokeArtifactBundle
 } from "./uiRouteBenchmarkSmokeBundles";
 import {
+  buildRegressionReportViews as buildRegressionReportViewsFromSource,
+  collectBenchmarkViewerDataFromSources,
+  type RegressionReportView
+} from "./uiRouteBenchmarkRegressionReports";
+import {
   collectBundleReviewState,
   reviewIssuesForShot,
   summarizeReviewIssues,
@@ -163,28 +168,6 @@ type BenchmarkScenarioView = {
   detailArtifactPath: string;
   smokeArtifactPath: string | null;
   planArtifactPath: string | null;
-  candidateCompareItems: Array<{ label: string; path: string }>;
-  artifactRelativePath: string;
-};
-
-type RegressionReportView = {
-  benchmarkName: string;
-  bundlePath: string;
-  episodeId: string;
-  status: string;
-  tone: UiBadgeTone;
-  warningCount: number;
-  errorCount: number;
-  generatedAt: string;
-  issueSummary: string;
-  profileSummary: string;
-  renderModeSummary: string;
-  mismatchCount: number;
-  sourceLabel: string;
-  sourcePath: string;
-  artifactPath: string;
-  smokeArtifactPath: string | null;
-  renderModeArtifactPath: string | null;
   candidateCompareItems: Array<{ label: string; path: string }>;
   artifactRelativePath: string;
 };
@@ -1320,97 +1303,17 @@ function buildBackendBenchmarkViews(source: RolloutArtifactSource): BenchmarkSce
 }
 
 function buildRegressionReportViews(source: RolloutArtifactSource): RegressionReportView[] {
-  const benchmarkRoot = path.join(source.outRoot, "multi_channel_benchmarks");
-  if (!fs.existsSync(benchmarkRoot)) {
-    return [];
-  }
-
-  const files = findFilesByName(benchmarkRoot, "episode_regression_report.json", 6);
-  const rows: RegressionReportView[] = [];
-  for (const filePath of files) {
-    const doc = readJsonFileSafe(filePath);
-    if (!isRecord(doc)) {
-      continue;
-    }
-
-    const dirPath = path.dirname(filePath);
-    const smokePath = path.join(dirPath, "smoke_report.json");
-    const renderModePath = path.join(dirPath, "shot_render_mode_report.json");
-    const smokeArtifactPath = safeJsonArtifactPath(source, smokePath);
-    const renderModeArtifactPath = safeJsonArtifactPath(source, renderModePath);
-    const candidateCompareItems = findCandidateCompareItems(source, dirPath);
-    const smokeDoc = smokeArtifactPath ? readJsonFileSafe(smokeArtifactPath) : null;
-    const renderModeDoc = renderModeArtifactPath ? readJsonFileSafe(renderModeArtifactPath) : null;
-    const relativeDir = artifactRelativePath(benchmarkRoot, dirPath);
-    const warningCount = Math.max(0, Math.round(num(doc.warning_count) ?? 0));
-    const errorCount = Math.max(0, Math.round(num(doc.error_count) ?? 0));
-    const finalPassed = doc.final_passed === true;
-    const status = !finalPassed || errorCount > 0 ? "blocked" : warningCount > 0 ? "warn" : "ready";
-    const profileSelection = isRecord(smokeDoc) && isRecord(smokeDoc.profile_selection) ? smokeDoc.profile_selection : {};
-    const profileSummary = compact([
-      str(isRecord(smokeDoc) ? smokeDoc.profile_bundle : undefined),
-      str(profileSelection.channel_profile_id) ? `channel ${str(profileSelection.channel_profile_id)}` : null,
-      str(profileSelection.mascot_profile_id) ? `mascot ${str(profileSelection.mascot_profile_id)}` : null,
-      str(profileSelection.studio_profile_id) ? `studio ${str(profileSelection.studio_profile_id)}` : null
-    ]);
-    const issues = recordList(doc.issues);
-    const issueSummary = issues.length > 0
-      ? summarizeValues(
-        issues.map((issue) => compact([str(issue.code), str(issue.message)], " - ")),
-        2
-      )
-      : "no regression issues";
-    const renderModeSummaryDoc = isRecord(renderModeDoc) && isRecord(renderModeDoc.summary) ? renderModeDoc.summary : {};
-    const mismatchCount = Math.max(0, Math.round(num(renderModeSummaryDoc.mismatched_stored_vs_recommended) ?? 0));
-    const totalShots = Math.max(0, Math.round(num(renderModeSummaryDoc.total_shots) ?? 0));
-    const renderModeSummary =
-      mismatchCount > 0
-        ? `${mismatchCount}/${totalShots || "-"} mismatched stored vs recommended`
-        : totalShots > 0
-          ? `0/${totalShots} mismatched`
-          : "-";
-
-    rows.push({
-      benchmarkName: relativeDir.split("/")[0] ?? "benchmark",
-      bundlePath: relativeDir,
-      episodeId: str(doc.episode_id) ?? "-",
-      status,
-      tone: rolloutTone(status),
-      warningCount,
-      errorCount,
-      generatedAt: str(doc.generated_at) ?? "-",
-      issueSummary,
-      profileSummary: profileSummary || "-",
-      renderModeSummary,
-      mismatchCount,
-      sourceLabel: source.label,
-      sourcePath: source.outRoot,
-      artifactPath: filePath,
-      smokeArtifactPath,
-      renderModeArtifactPath,
-      candidateCompareItems,
-      artifactRelativePath: artifactRelativePath(source.outRoot, filePath)
-    });
-  }
-
-  const priority = new Map<string, number>([
-    ["blocked", 0],
-    ["warn", 1],
-    ["ready", 2],
-    ["unknown", 3]
-  ]);
-  rows.sort((left, right) => {
-    const leftPriority = priority.get(normalizeRolloutStatus(left.status)) ?? 9;
-    const rightPriority = priority.get(normalizeRolloutStatus(right.status)) ?? 9;
-    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-    const leftTime = new Date(left.generatedAt).getTime();
-    const rightTime = new Date(right.generatedAt).getTime();
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    return left.bundlePath.localeCompare(right.bundlePath);
+  return buildRegressionReportViewsFromSource({
+    source,
+    pathExists: (filePath) => fs.existsSync(filePath),
+    findFilesByName,
+    readJsonFileSafe,
+    safeJsonArtifactPath,
+    findCandidateCompareItems,
+    normalizeRolloutStatus,
+    rolloutTone,
+    artifactRelativePath
   });
-  return rows;
 }
 
 function collectBenchmarkViewerData(): {
@@ -1418,27 +1321,13 @@ function collectBenchmarkViewerData(): {
   backendScenarios: BenchmarkScenarioView[];
   regressions: RegressionReportView[];
 } {
-  const sources: RolloutSourceStatus[] = [];
-  const backendScenarios: BenchmarkScenarioView[] = [];
-  const regressions: RegressionReportView[] = [];
-  for (const source of getRolloutArtifactSources()) {
-    const exists = fs.existsSync(source.outRoot);
-    const sourceBackend = exists ? buildBackendBenchmarkViews(source) : [];
-    const sourceRegressions = exists ? buildRegressionReportViews(source) : [];
-    const latestGeneratedAt = selectGeneratedAt(
-      [...sourceBackend.map((row) => row.generatedAt), ...sourceRegressions.map((row) => row.generatedAt)].filter((value) => value !== "-")
-    );
-    sources.push({
-      label: source.label,
-      outRoot: source.outRoot,
-      exists,
-      recordCount: sourceBackend.length + sourceRegressions.length,
-      latestGeneratedAt
-    });
-    backendScenarios.push(...sourceBackend);
-    regressions.push(...sourceRegressions);
-  }
-  return { sources, backendScenarios, regressions };
+  return collectBenchmarkViewerDataFromSources({
+    sources: getRolloutArtifactSources(),
+    pathExists: (filePath) => fs.existsSync(filePath),
+    buildBackendBenchmarkViews,
+    buildRegressionReportViews,
+    selectGeneratedAt
+  });
 }
 
 function collectBundleFixturePath(bundle: SmokeArtifactBundle): string | null {
