@@ -56,24 +56,16 @@ import {
   resolveFrontReferenceFromSession as resolveFrontReferenceFromSessionWithDelegate
 } from "./characterGenerationContinuityReference";
 import {
-  buildHitlSessionStatusMessage
-} from "./characterGenerationSelectionMessaging";
-import {
-  buildSelectionDecisionOutcome,
-  summarizeFinalQualityFirewall,
-  summarizeQualityEmbargo,
-  summarizeSelectionRisk
-} from "./characterGenerationSelectionDecision";
-import {
-  buildPersistedSelectionDiagnostics,
-  handleBlockedSelectionReview
-} from "./characterGenerationSelectionReview";
-import {
   buildInitialProviderMeta,
   buildInitialSelectionDiagnostics,
   handleHitlRequiredSelection
 } from "./characterGenerationInitialSelection";
+import { buildSelectionDecisionOutcome } from "./characterGenerationSelectionDecision";
 import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
+import {
+  handleSelectionReviewGate,
+  prepareSelectionPersistenceContext
+} from "./characterGenerationSelectionAssessment";
 
 export {
   buildManifestSelectedByView,
@@ -12206,134 +12198,103 @@ async function persistSelectedCandidates(input: {
   workflowHash
   } = input;
 
-  const acceptedScoreThreshold = resolveManifestAcceptedScoreThreshold(manifest, isMascotTargetStyle);
-  const packCoherence = buildPackCoherenceDiagnostics({
+  const preparedSelection = prepareSelectionPersistenceContext({
+    source,
     selectedByView,
-    targetStyle: manifest.qualityProfile?.targetStyle,
-    acceptedScoreThreshold,
-    speciesId: manifest.species
+    manifest,
+    resolveAcceptedScoreThreshold: (targetManifest) =>
+      resolveManifestAcceptedScoreThreshold(targetManifest, isMascotTargetStyle),
+    buildPackCoherenceDiagnostics: (assessmentInput) =>
+      buildPackCoherenceDiagnostics({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        targetStyle: assessmentInput.targetStyle,
+        acceptedScoreThreshold: assessmentInput.acceptedScoreThreshold,
+        speciesId: assessmentInput.speciesId
+      }),
+    summarizeSelectionCandidateSummaryByView: (assessmentInput) =>
+      summarizeSelectionCandidateSummaryByView({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        targetStyle: assessmentInput.targetStyle,
+        acceptedScoreThreshold: assessmentInput.acceptedScoreThreshold
+      }),
+    assessRigStability: (assessmentInput) =>
+      assessRigStability({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        packCoherence: assessmentInput.packCoherence as PackCoherenceDiagnostics,
+        targetStyle: assessmentInput.targetStyle,
+        speciesId: assessmentInput.speciesId,
+        autoReroute: assessmentInput.autoReroute as AutoRerouteDiagnostics | undefined
+      }),
+    assessAutoSelectionRisk: (assessmentInput) =>
+      assessAutoSelectionRisk({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        packCoherence: assessmentInput.packCoherence as PackCoherenceDiagnostics,
+        rigStability: assessmentInput.rigStability as RigStabilityDiagnostics,
+        targetStyle: assessmentInput.targetStyle,
+        acceptedScoreThreshold: assessmentInput.acceptedScoreThreshold,
+        autoReroute: assessmentInput.autoReroute as AutoRerouteDiagnostics | undefined,
+        speciesId: assessmentInput.speciesId
+      }),
+    assessQualityEmbargo: (assessmentInput) =>
+      assessQualityEmbargo({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        rigStability: assessmentInput.rigStability as RigStabilityDiagnostics,
+        targetStyle: assessmentInput.targetStyle,
+        acceptedScoreThreshold: assessmentInput.acceptedScoreThreshold,
+        autoReroute: assessmentInput.autoReroute as AutoRerouteDiagnostics | undefined,
+        speciesId: assessmentInput.speciesId
+      }),
+    buildPackDefectSummary: (assessmentInput) =>
+      buildPackDefectSummary({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        workflowStages: assessmentInput.workflowStages as StageRunSummary[] | undefined,
+        speciesId: assessmentInput.speciesId
+      }),
+    assessFinalQualityFirewall: (assessmentInput) =>
+      assessFinalQualityFirewall({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        targetStyle: assessmentInput.targetStyle,
+        acceptedScoreThreshold: assessmentInput.acceptedScoreThreshold,
+        autoReroute: assessmentInput.autoReroute as AutoRerouteDiagnostics | undefined,
+        packCoherence: assessmentInput.packCoherence as PackCoherenceDiagnostics,
+        rigStability: assessmentInput.rigStability as RigStabilityDiagnostics,
+        selectionRisk: assessmentInput.selectionRisk as SelectionRiskAssessment,
+        qualityEmbargo: assessmentInput.qualityEmbargo as QualityEmbargoAssessment,
+        packDefectSummary: assessmentInput.packDefectSummary as PackDefectSummary,
+        speciesId: assessmentInput.speciesId
+      }),
+    resolveSelectionWorstRuntimeBucket: (assessmentInput) =>
+      resolveSelectionWorstRuntimeBucket({
+        selectedByView: assessmentInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        targetStyle: assessmentInput.targetStyle
+      })
   });
-  const attemptedSelectionSummary = summarizeSelectionCandidateSummaryByView({
-    selectedByView,
-    targetStyle: manifest.qualityProfile?.targetStyle,
-    acceptedScoreThreshold
-  });
-  const rigStability = assessRigStability({
-    selectedByView,
-    packCoherence,
-    targetStyle: manifest.qualityProfile?.targetStyle,
-    speciesId: manifest.species,
-    autoReroute: manifest.autoReroute
-  });
-  const selectionRisk = assessAutoSelectionRisk({
-    selectedByView,
-    packCoherence,
-    rigStability,
-    targetStyle: manifest.qualityProfile?.targetStyle,
-    acceptedScoreThreshold,
-    autoReroute: manifest.autoReroute,
-    speciesId: manifest.species
-  });
-  const qualityEmbargo = assessQualityEmbargo({
-    selectedByView,
-    rigStability,
-    targetStyle: manifest.qualityProfile?.targetStyle,
-    acceptedScoreThreshold,
-    autoReroute: manifest.autoReroute,
-    speciesId: manifest.species
-  });
-  const packDefectSummary = buildPackDefectSummary({
-    selectedByView,
-    workflowStages: manifest.workflowStages,
-    speciesId: manifest.species
-  });
-  const finalQualityFirewall = assessFinalQualityFirewall({
-    selectedByView,
-      targetStyle: manifest.qualityProfile?.targetStyle,
-      acceptedScoreThreshold,
-      autoReroute: manifest.autoReroute,
-      packCoherence,
-      rigStability,
-      selectionRisk,
-      qualityEmbargo,
-      packDefectSummary,
-      speciesId: manifest.species
-    });
-  const selectionRiskSummary = summarizeSelectionRisk(selectionRisk);
-  const qualityEmbargoSummary = summarizeQualityEmbargo(qualityEmbargo);
-  const finalQualityFirewallSummary = summarizeFinalQualityFirewall(finalQualityFirewall);
-  const requiresSelectionReview =
-    rigStability.severity === "block" ||
-    packCoherence.severity === "block" ||
-    qualityEmbargo.level === "block" ||
-    finalQualityFirewall.level === "block" ||
-    (source === "auto" &&
-      (rigStability.reviewOnly ||
-        selectionRisk.level !== "none" ||
-        qualityEmbargo.level === "review" ||
-        finalQualityFirewall.level === "review"));
-  const decisionOutcome = buildSelectionDecisionOutcome({
-    kind: source === "hitl" ? "hitl_selected" : requiresSelectionReview ? "hitl_review" : "auto_selected",
-    sourceStage:
-      (Array.isArray(manifest.workflowStages) && manifest.workflowStages.length > 0
-        ? manifest.workflowStages.at(-1)?.stage
-        : undefined) ?? manifest.providerMeta?.workflowStage,
-    missingGeneratedViews: [],
-    lowQualityGeneratedViews: [],
-    packCoherence,
-    autoReroute: manifest.autoReroute,
-    worstRuntimeBucket: resolveSelectionWorstRuntimeBucket({
-      selectedByView,
-      targetStyle: manifest.qualityProfile?.targetStyle
-    }),
-    rigStability,
-    selectionRisk,
-    qualityEmbargo,
-    finalQualityFirewall
-  });
-  manifest.packCoherence = packCoherence;
-  manifest.providerMeta = {
-    ...(manifest.providerMeta ?? {}),
-    selectionDiagnostics: buildPersistedSelectionDiagnostics({
-      existingSelectionDiagnostics: isRecord(manifest.providerMeta?.selectionDiagnostics)
-        ? manifest.providerMeta?.selectionDiagnostics
-        : undefined,
-      source,
-      attemptedSelectionSummary,
-      packCoherence,
-      rigStability,
-      selectionRisk,
-      qualityEmbargo,
-      packDefectSummary,
-      finalQualityFirewall,
-      decisionOutcome
-    })
-  };
-  manifest.selectedByView = buildManifestSelectedByView(selectedByView);
 
-  if (requiresSelectionReview) {
-    const { continueBlockedSelectionBuild, blockedMessage } = await handleBlockedSelectionReview({
-      manifest,
+  if (preparedSelection.requiresSelectionReview) {
+    await handleSelectionReviewGate({
+      manifest: preparedSelection.manifest,
       source,
       manifestPath,
-      withManifestHashes,
+      withManifestHashes: (manifestToHash) =>
+        withManifestHashes(
+          manifestToHash as Omit<GenerationManifest, "inputHash" | "manifestHash">
+        ),
       providerName,
       jobDbId,
       buildJobDbId: character.buildJobDbId,
       previewJobDbId: character.previewJobDbId,
       helpers,
-      rigStability,
-      packCoherence,
-      selectionRisk,
-      selectionRiskSummary,
-      qualityEmbargo,
-      qualityEmbargoSummary,
-      packDefectSummary,
-      finalQualityFirewall,
-      finalQualityFirewallSummary,
-      attemptedSelectionSummary,
-      flattenContinuityFields: toFlatContinuityFields,
-      createReviewSuggestion: async ({ summary, payload }) => {
+      rigStability: preparedSelection.rigStability,
+      packCoherence: preparedSelection.packCoherence,
+      selectionRisk: preparedSelection.selectionRisk,
+      selectionRiskSummary: preparedSelection.selectionRiskSummary,
+      qualityEmbargo: preparedSelection.qualityEmbargo,
+      qualityEmbargoSummary: preparedSelection.qualityEmbargoSummary,
+      packDefectSummary: preparedSelection.packDefectSummary,
+      finalQualityFirewall: preparedSelection.finalQualityFirewall,
+      finalQualityFirewallSummary: preparedSelection.finalQualityFirewallSummary,
+      attemptedSelectionSummary: preparedSelection.attemptedSelectionSummary,
+      prismaCreateReviewSuggestion: async (summary, payload) => {
         await prisma.agentSuggestion.create({
           data: {
             episodeId,
@@ -12363,10 +12324,6 @@ async function persistSelectedCandidates(input: {
             }
           : undefined
     });
-
-    if (!continueBlockedSelectionBuild) {
-      throw new Error(blockedMessage);
-    }
   }
 
   await finalizeSelectedCandidatePersistence({
@@ -12375,7 +12332,7 @@ async function persistSelectedCandidates(input: {
     episodeChannelId,
     jobDbId,
     source,
-    manifest,
+    manifest: preparedSelection.manifest,
     manifestPath,
     character,
     sessionId,
@@ -12383,7 +12340,7 @@ async function persistSelectedCandidates(input: {
     workflowHash,
     maxAttempts,
     retryBackoffMs,
-    normalizedSpecies: normalizeGenerationSpecies(manifest.species),
+    normalizedSpecies: normalizeGenerationSpecies(preparedSelection.manifest.species),
     selectedByView,
     withManifestHashes: (manifestToHash) =>
       withManifestHashes(
