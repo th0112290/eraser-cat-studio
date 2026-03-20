@@ -73,16 +73,7 @@ import {
   buildInitialSelectionDiagnostics,
   handleHitlRequiredSelection
 } from "./characterGenerationInitialSelection";
-import {
-  buildSelectionBuildPayload,
-  enqueueSelectionBuild,
-  finalizeSelectionSessionReady,
-  resolveSelectedAssetIds,
-  resolveSelectedCandidateIds,
-  resolveSelectedSeed,
-  writeQueuedSelectionManifestAndLog
-} from "./characterGenerationSelectionQueue";
-import { persistSelectedCandidateAssets } from "./characterGenerationSelectionAssets";
+import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
 
 export {
   buildManifestSelectedByView,
@@ -12378,109 +12369,34 @@ async function persistSelectedCandidates(input: {
     }
   }
 
-  const selectedAssets = await persistSelectedCandidateAssets({
+  await finalizeSelectedCandidatePersistence({
     prisma,
-    episodeChannelId,
     episodeId,
+    episodeChannelId,
     jobDbId,
     source,
-    qualityProfileId: manifest.qualityProfileId,
-    selectedByView
-  });
-  const allViews: CharacterView[] = ["front", "threeQuarter", "profile"];
-  for (const [view, persistedAsset] of selectedAssets) {
-    manifest.selectedByView[view] = {
-      candidateId: persistedAsset.candidateId,
-      assetId: persistedAsset.assetId,
-      assetIngestJobId: persistedAsset.ingestJobId
-    };
-  }
-
-  const assetIds = resolveSelectedAssetIds({
-    views: allViews,
-    selectedAssets,
-    existingAssetIds: character.assetIds
-  });
-
-  const resolvedSelectedCandidateIds = resolveSelectedCandidateIds({
-    views: allViews,
-    selectedByView,
-    manifestSelectedByView: manifest.selectedByView ?? {},
-    existingSelectedIds: character.generation?.selectedCandidateIds
-  });
-
-  const resolvedSeed = resolveSelectedSeed({
-    selectedByView,
-    selectedCandidateIds: resolvedSelectedCandidateIds,
-    manifestCandidates: manifest.candidates,
-    existingSeed: character.generation?.seed
-  });
-
-  const buildJobId = character.buildJobDbId;
-  if (!buildJobId) {
-    throw new Error("payload.character.buildJobDbId is required for generation pipeline");
-  }
-
-  const buildPayload = buildSelectionBuildPayload({
-    buildJobId,
-    episodeId,
+    manifest,
+    manifestPath,
     character,
     sessionId,
-    assetIds,
-    normalizedSpecies: normalizeGenerationSpecies(manifest.species),
-    manifestMode: manifest.mode,
-    providerName,
-    promptPreset: manifest.promptPreset,
-    positivePrompt: manifest.positivePrompt,
-    negativePrompt: manifest.negativePrompt,
-    seed: resolvedSeed,
-    candidateCount: manifest.candidates.length,
-    manifestPath,
-    selectedCandidateIds: resolvedSelectedCandidateIds
-  });
-
-  const buildBullmqJobId = await enqueueSelectionBuild({
-    prisma,
-    helpers,
-    buildJobId,
-    parentJobDbId: jobDbId,
-    buildPayload,
-    assetIds,
-    maxAttempts,
-    retryBackoffMs
-  });
-
-  const hashedManifest = await writeQueuedSelectionManifestAndLog({
-    manifest: {
-      ...manifest,
-      schemaVersion: "1.0"
-    },
-    manifestPath,
-    withManifestHashes,
-    helpers,
-    jobDbId,
-    source,
     providerName,
     workflowHash,
+    maxAttempts,
+    retryBackoffMs,
+    normalizedSpecies: normalizeGenerationSpecies(manifest.species),
+    selectedByView,
+    withManifestHashes: (manifestToHash) =>
+      withManifestHashes(
+        manifestToHash as Omit<GenerationManifest, "inputHash" | "manifestHash">
+      ),
     flattenContinuityFields: toFlatContinuityFields,
-    assetIds,
-    buildJobId,
-    buildBullmqJobId
-  });
-
-  await finalizeSelectionSessionReady({
-    sessionId,
-    source,
-    continuity: hashedManifest.reference.continuity,
-    assetIds,
-    selectedCandidateIds: resolvedSelectedCandidateIds,
     markPicked: async ({ sessionId: targetSessionId, selectedByView: pickedMap }) =>
       markSessionCandidatesPicked({
         prisma,
         sessionId: targetSessionId,
         selectedByView: pickedMap
       }),
-    updateReadyStatus: async ({ sessionId: targetSessionId, statusMessage }) => {
+    updateSessionReady: async ({ sessionId: targetSessionId, statusMessage }) => {
       const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
       if (!sessionDelegate) {
         return;
@@ -12492,7 +12408,8 @@ async function persistSelectedCandidates(input: {
           statusMessage
         }
       });
-    }
+    },
+    helpers
   });
 }
 
