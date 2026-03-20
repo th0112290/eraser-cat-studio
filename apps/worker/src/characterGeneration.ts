@@ -30,7 +30,6 @@ import {
   type PromptQualityProfile
 } from "@ec/image-gen";
 import {
-  BUILD_CHARACTER_PACK_JOB_NAME,
   REPO_ROOT,
   type CharacterGenerationPayload,
   type CharacterGenerationSelection,
@@ -76,6 +75,7 @@ import {
   buildSelectionBuildPayload,
   buildSelectionQueuedStatusMessage,
   buildSelectionSessionPickedMap,
+  enqueueSelectionBuild,
   resolveSelectedAssetIds,
   resolveSelectedCandidateIds,
   resolveSelectedSeed
@@ -12522,36 +12522,15 @@ async function persistSelectedCandidates(input: {
     selectedCandidateIds: resolvedSelectedCandidateIds
   });
 
-  await helpers.logJob(buildJobId, "info", "Transition -> QUEUED", {
-    source: "worker:generate-character-assets",
+  const buildBullmqJobId = await enqueueSelectionBuild({
+    prisma,
+    helpers,
+    buildJobId,
     parentJobDbId: jobDbId,
-    assetIds
-  });
-
-  const buildBull = await helpers.addEpisodeJob(
-    BUILD_CHARACTER_PACK_JOB_NAME,
     buildPayload,
+    assetIds,
     maxAttempts,
     retryBackoffMs
-  );
-  const buildBullmqJobId = buildBull.id === undefined ? buildJobId : String(buildBull.id);
-
-  await prisma.job.update({
-    where: {
-      id: buildJobId
-    },
-    data: {
-      status: "QUEUED",
-      bullmqJobId: buildBullmqJobId,
-      lastError: null,
-      finishedAt: null
-    }
-  });
-
-  await helpers.logJob(buildJobId, "info", "Transition -> ENQUEUED", {
-    source: "worker:generate-character-assets",
-    bullmqJobId: buildBullmqJobId,
-    assetIds
   });
 
   const hashedManifest = withManifestHashes({

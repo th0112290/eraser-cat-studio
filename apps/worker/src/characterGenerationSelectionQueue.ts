@@ -1,3 +1,4 @@
+import type { PrismaClient } from "@prisma/client";
 import type { CharacterView } from "@ec/image-gen";
 import type {
   CharacterAssetSelection,
@@ -6,6 +7,7 @@ import type {
   EpisodeJobPayload
 } from "./queue";
 import { formatContinuitySentence, type ManifestContinuity } from "./characterGenerationManifestState";
+import { BUILD_CHARACTER_PACK_JOB_NAME as BUILD_CHARACTER_PACK_JOB } from "./queue";
 
 type SelectedAssetRecord = {
   assetId: string;
@@ -29,6 +31,20 @@ type ManifestCandidateLike = {
 
 export type SelectedCandidateIdMap = Record<CharacterView, string>;
 export type SessionPickedCandidateMap = Record<CharacterView, { candidateId: string; assetId: string }>;
+
+type AddEpisodeJob = (
+  name: string,
+  payload: EpisodeJobPayload,
+  maxAttempts: number,
+  retryBackoffMs: number
+) => Promise<{ id?: string | number }>;
+
+type JobLogger = (jobId: string, level: string, message: string, details?: unknown) => Promise<void>;
+
+type SelectionQueueHelpers = {
+  addEpisodeJob: AddEpisodeJob;
+  logJob: JobLogger;
+};
 
 export function resolveSelectedAssetIds(input: {
   views: CharacterView[];
@@ -168,4 +184,49 @@ export function buildSelectionQueuedStatusMessage(input: {
   return input.source === "hitl"
     ? `HITL selection applied and build queued.${formatContinuitySentence(input.continuity)}`
     : `Auto-selected and build queued.${formatContinuitySentence(input.continuity)}`;
+}
+
+export async function enqueueSelectionBuild(input: {
+  prisma: PrismaClient;
+  helpers: SelectionQueueHelpers;
+  buildJobId: string;
+  parentJobDbId: string;
+  buildPayload: EpisodeJobPayload;
+  assetIds: CharacterAssetSelection;
+  maxAttempts: number;
+  retryBackoffMs: number;
+}): Promise<string> {
+  await input.helpers.logJob(input.buildJobId, "info", "Transition -> QUEUED", {
+    source: "worker:generate-character-assets",
+    parentJobDbId: input.parentJobDbId,
+    assetIds: input.assetIds
+  });
+
+  const buildBull = await input.helpers.addEpisodeJob(
+    BUILD_CHARACTER_PACK_JOB,
+    input.buildPayload,
+    input.maxAttempts,
+    input.retryBackoffMs
+  );
+  const buildBullmqJobId = buildBull.id === undefined ? input.buildJobId : String(buildBull.id);
+
+  await input.prisma.job.update({
+    where: {
+      id: input.buildJobId
+    },
+    data: {
+      status: "QUEUED",
+      bullmqJobId: buildBullmqJobId,
+      lastError: null,
+      finishedAt: null
+    }
+  });
+
+  await input.helpers.logJob(input.buildJobId, "info", "Transition -> ENQUEUED", {
+    source: "worker:generate-character-assets",
+    bullmqJobId: buildBullmqJobId,
+    assetIds: input.assetIds
+  });
+
+  return buildBullmqJobId;
 }
