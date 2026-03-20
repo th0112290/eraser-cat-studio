@@ -15,6 +15,12 @@ import {
 import { materializeGeneratedCharacterPack } from "./generatedCharacterPackBuild";
 import { collectCharacterPipelineAnimationChecks } from "./generatedCharacterPipelineAnimationChecks";
 import {
+  generateCharacterExpressionPackWithDeps,
+  generateCharacterViewSetWithDeps,
+  generateCharacterVisemePackWithDeps,
+  runDeterministicCharacterPipelineWithDeps
+} from "./generatedCharacterPipelineDeterministic";
+import {
   anchorStatusMatchesExpectation as anchorStatusMatchesExpectationImpl,
   applyAnchorOverridesWithDeps,
   applyCropBoxOverridesWithDeps,
@@ -2474,82 +2480,8 @@ export async function runEditCharacterStill(input: RunEditCharacterStillInput): 
 export async function generateCharacterViewSet(
   input: GenerateCharacterViewSetInput
 ): Promise<GeneratedCharacterManifest> {
-  const frontMaster = requireApprovedFrontMaster(input.characterId);
-  const manifest = assignManifestSpecies(loadManifest(input.characterId), input.speciesId);
-  const speciesProfile = resolveMascotSpeciesProfile(resolveManifestSpeciesId(manifest, input.speciesId));
-  const threeQuarterViewHint = speciesProfile.viewHints.threeQuarter ?? "";
-  const profileViewHint = speciesProfile.viewHints.profile ?? "";
-  const frontViewPath = stillOutputPath({
-    characterId: input.characterId,
-    stage: "view",
-    view: "front"
-  });
-  const frontViewAsset = aliasAssetWithNewContract({
-    parentAsset: frontMaster,
-    stage: "view",
-    outputPath: frontViewPath,
-    view: "front"
-  });
-  updateManifestWithAsset(manifest, frontViewAsset);
-
-  const derivedViews: Array<{
-    view: GeneratedCharacterView;
-    seed: number;
-    prompt: string;
-  }> = [
-    {
-      view: "threeQuarter",
-      seed: input.threeQuarterSeed,
-      prompt: mergePromptWithSuffixes(
-        "same character, strict right three-quarter turnaround frame, neutral expression, rotate head and torso away from camera, keep one eye partially occluded, preserve approved front identity, preserve head ratio and mascot silhouette, do not keep a front view",
-        [
-          threeQuarterViewHint,
-          ...speciesProfile.identityTokens.slice(0, 2),
-          legacySpeciesRepairHint(speciesProfile.id, "view"),
-          "clear torso yaw, near eye larger than far eye, far paw still present, absolutely not front-facing"
-        ]
-      )
-    },
-    {
-      view: "profile",
-      seed: input.profileSeed,
-      prompt: mergePromptWithSuffixes(
-        "same character, strict right profile turnaround frame, neutral expression, rotate head and torso to a full side silhouette, show only one visible eye, preserve approved front identity, preserve silhouette clarity and body proportions, do not keep a front view",
-        [
-          profileViewHint,
-          ...speciesProfile.identityTokens.slice(0, 2),
-          legacySpeciesRepairHint(speciesProfile.id, "view"),
-          "one visible eye only, one readable near paw, true side silhouette, absolutely not front-facing"
-        ]
-      )
-    }
-  ];
-
-  for (const entry of derivedViews) {
-    const asset = await runEditCharacterStill({
-      characterId: input.characterId,
-      inputImagePath: frontMaster.file_path,
-      editPrompt: entry.prompt,
-      negativePrompt: input.negativePrompt,
-      seed: entry.seed,
-      denoise: input.denoise,
-      stage: "view",
-      view: entry.view,
-      parentAssetId: frontMaster.asset_id
-    });
-    updateManifestWithAsset(manifest, asset);
-  }
-
-  return saveManifest(manifest);
+  return generateCharacterViewSetWithDeps(input, buildDeterministicPipelineDeps());
 }
-
-const DEFAULT_EXPRESSION_SET: GeneratedCharacterExpression[] = ["neutral", "happy", "surprised", "blink"];
-const DEFAULT_VISEME_SET: GeneratedCharacterViseme[] = [
-  "mouth_closed",
-  "mouth_open_small",
-  "mouth_open_wide",
-  "mouth_round_o"
-];
 
 function legacySpeciesRepairHint(speciesId: MascotSpeciesId, mode: "view" | "expression" | "viseme"): string {
   if (speciesId === "dog") {
@@ -2755,6 +2687,36 @@ function buildRepairPrimitiveDeps() {
   };
 }
 
+function buildDeterministicPipelineDeps() {
+  return {
+    loadManifest,
+    saveManifest,
+    assignManifestSpecies,
+    resolveManifestSpeciesId,
+    resolveMascotSpeciesProfile,
+    legacySpeciesRepairHint,
+    mergePromptWithSuffixes,
+    stillOutputPath,
+    requireApprovedFrontMaster,
+    aliasAssetWithNewContract,
+    updateManifestWithAsset,
+    runEditCharacterStill,
+    expressionPrompt,
+    expressionGenerationNegativePrompt,
+    visemePrompt,
+    visemeGenerationNegativePrompt,
+    resolveInitialEditDenoise: (kind: "view" | "expression" | "viseme", baseDenoise: number | undefined) =>
+      resolveInitialEditDenoise(kind, baseDenoise),
+    strengthenVisemeAssetIfNeeded,
+    runGenerateCharacterStill,
+    approveFrontMaster,
+    buildGeneratedCharacterPack,
+    runCharacterAnimationSafeQc,
+    runCharacterPipelineEditRepairLoop,
+    defaultAutoRepairRounds: DEFAULT_AUTO_REPAIR_ROUNDS
+  };
+}
+
 function viewRepairPrompt(view: GeneratedCharacterView, round: number, speciesId?: MascotSpeciesId): string {
   return viewRepairPromptImpl(view, round, speciesId, buildRepairPrimitiveDeps());
 }
@@ -2848,90 +2810,13 @@ export async function runCharacterPipelineEditRepairLoop(
 export async function generateCharacterExpressionPack(
   input: GenerateExpressionPackInput
 ): Promise<GeneratedCharacterManifest> {
-  const frontMaster = requireApprovedFrontMaster(input.characterId);
-  const manifest = assignManifestSpecies(loadManifest(input.characterId), input.speciesId);
-  const frontNeutralPath = stillOutputPath({
-    characterId: input.characterId,
-    stage: "expression",
-    view: "front",
-    expression: "neutral"
-  });
-  const frontNeutralAsset = aliasAssetWithNewContract({
-    parentAsset: frontMaster,
-    stage: "expression",
-    outputPath: frontNeutralPath,
-    view: "front",
-    expression: "neutral"
-  });
-  updateManifestWithAsset(manifest, frontNeutralAsset);
-
-  const expressions = (input.expressions ?? DEFAULT_EXPRESSION_SET).filter((entry) => entry !== "neutral");
-  for (let index = 0; index < expressions.length; index += 1) {
-    const expression = expressions[index];
-    const asset = await runEditCharacterStill({
-      characterId: input.characterId,
-      inputImagePath: frontMaster.file_path,
-      editPrompt: expressionPrompt(expression, manifest.species),
-      negativePrompt: expressionGenerationNegativePrompt(input.negativePrompt),
-      seed: input.baseSeed + index * 97 + 11,
-      denoise: resolveInitialEditDenoise("expression", input.denoise),
-      stage: "expression",
-      view: "front",
-      expression,
-      parentAssetId: frontMaster.asset_id
-    });
-    updateManifestWithAsset(manifest, asset);
-  }
-
-  return saveManifest(manifest);
+  return generateCharacterExpressionPackWithDeps(input, buildDeterministicPipelineDeps());
 }
 
 export async function generateCharacterVisemePack(
   input: GenerateVisemePackInput
 ): Promise<GeneratedCharacterManifest> {
-  const frontMaster = requireApprovedFrontMaster(input.characterId);
-  const manifest = assignManifestSpecies(loadManifest(input.characterId), input.speciesId);
-  const closedPath = stillOutputPath({
-    characterId: input.characterId,
-    stage: "viseme",
-    view: "front",
-    viseme: "mouth_closed"
-  });
-  const closedAsset = aliasAssetWithNewContract({
-    parentAsset: frontMaster,
-    stage: "viseme",
-    outputPath: closedPath,
-    view: "front",
-    viseme: "mouth_closed"
-  });
-  updateManifestWithAsset(manifest, closedAsset);
-
-  const visemes = (input.visemes ?? DEFAULT_VISEME_SET).filter((entry) => entry !== "mouth_closed");
-  for (let index = 0; index < visemes.length; index += 1) {
-    const viseme = visemes[index];
-    const asset = await runEditCharacterStill({
-      characterId: input.characterId,
-      inputImagePath: frontMaster.file_path,
-      editPrompt: visemePrompt(viseme, manifest.species),
-      negativePrompt: visemeGenerationNegativePrompt(input.negativePrompt),
-      seed: input.baseSeed + index * 89 + 17,
-      denoise: resolveInitialEditDenoise("viseme", input.denoise),
-      stage: "viseme",
-      view: "front",
-      viseme,
-      parentAssetId: frontMaster.asset_id
-    });
-    const strengthenedAsset = await strengthenVisemeAssetIfNeeded({
-      characterId: input.characterId,
-      baseAsset: closedAsset,
-      visemeAsset: asset,
-      viseme,
-      speciesId: manifest.species
-    });
-    updateManifestWithAsset(manifest, strengthenedAsset);
-  }
-
-  return saveManifest(manifest);
+  return generateCharacterVisemePackWithDeps(input, buildDeterministicPipelineDeps());
 }
 
 export type CropBox = { cx: number; cy: number; w: number; h: number };
@@ -3732,55 +3617,7 @@ export function assertCharacterPipelineAccepted(characterId: string): CharacterP
 export async function runDeterministicCharacterPipeline(
   input: RunDeterministicCharacterPipelineInput
 ): Promise<GeneratedCharacterManifest> {
-  const autoApproveFrontMaster = input.autoApproveFrontMaster ?? true;
-  const existingManifest = loadManifest(input.characterId);
-  const manifestSpeciesBefore = existingManifest.species;
-  const seededManifest = assignManifestSpecies(existingManifest, input.speciesId);
-  if (seededManifest.species !== manifestSpeciesBefore) {
-    saveManifest(seededManifest);
-  }
-  if (!existingManifest.approved_front_master) {
-    await runGenerateCharacterStill({
-      characterId: input.characterId,
-      positivePrompt: input.positivePrompt,
-      negativePrompt: input.negativePrompt,
-      seed: input.frontSeed,
-      width: input.width,
-      height: input.height,
-      steps: input.steps,
-      cfg: input.cfg,
-      loraStrength: input.loraStrength,
-      autoApprove: autoApproveFrontMaster
-    });
-  }
-
-  if (autoApproveFrontMaster && !loadManifest(input.characterId).approved_front_master) {
-    await approveFrontMaster({ characterId: input.characterId });
-  }
-
-  await generateCharacterViewSet({
-    characterId: input.characterId,
-    speciesId: input.speciesId,
-    negativePrompt: input.negativePrompt,
-    threeQuarterSeed: input.threeQuarterSeed ?? input.frontSeed + 23,
-    profileSeed: input.profileSeed ?? input.frontSeed + 37,
-    denoise: input.denoise
-  });
-  await generateCharacterExpressionPack({ characterId: input.characterId, speciesId: input.speciesId, negativePrompt: input.negativePrompt, baseSeed: input.expressionBaseSeed ?? input.frontSeed + 101, denoise: input.denoise });
-  await generateCharacterVisemePack({ characterId: input.characterId, speciesId: input.speciesId, negativePrompt: input.negativePrompt, baseSeed: input.visemeBaseSeed ?? input.frontSeed + 211, denoise: input.denoise });
-  await buildGeneratedCharacterPack({ characterId: input.characterId });
-  await runCharacterAnimationSafeQc({ characterId: input.characterId });
-  await runCharacterPipelineEditRepairLoop({
-    characterId: input.characterId,
-    negativePrompt: input.negativePrompt,
-    threeQuarterSeed: input.threeQuarterSeed ?? input.frontSeed + 23,
-    profileSeed: input.profileSeed ?? input.frontSeed + 37,
-    expressionBaseSeed: input.expressionBaseSeed ?? input.frontSeed + 101,
-    visemeBaseSeed: input.visemeBaseSeed ?? input.frontSeed + 211,
-    denoise: input.denoise,
-    maxRounds: input.autoRepairRounds ?? DEFAULT_AUTO_REPAIR_ROUNDS
-  });
-  return loadManifest(input.characterId);
+  return runDeterministicCharacterPipelineWithDeps(input, buildDeterministicPipelineDeps());
 }
 
 export function resolveGeneratedCharacterPackPath(packId: string): string {
