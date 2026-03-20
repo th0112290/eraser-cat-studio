@@ -58,6 +58,7 @@ import {
 import {
   handleHitlRequiredSelection
 } from "./characterGenerationInitialSelection";
+import { handleHitlSelectedGeneration } from "./characterGenerationHitlSelected";
 import { buildSelectionDecisionOutcome } from "./characterGenerationSelectionDecision";
 import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
 import {
@@ -12387,247 +12388,62 @@ export async function handleGenerateCharacterAssetsJob(input: {
   }
 
   if (selectedCandidateIds) {
-    const selectedManifestPath = resolveHitlSelectionManifestReadPath(jobDbId, {
-      manifestPath: generation.manifestPath,
-      sourceManifestPath: generation.sourceManifestPath
-    }, REPO_ROOT);
-
-    if (!fs.existsSync(selectedManifestPath)) {
-      throw new Error(`HITL manifest not found: ${selectedManifestPath}`);
-    }
-
-    const parsedManifest = JSON.parse(fs.readFileSync(selectedManifestPath, "utf8")) as unknown;
-    if (!isRecord(parsedManifest)) {
-      throw new Error("Invalid generation manifest format");
-    }
-
-    const manifestCandidates = Array.isArray(parsedManifest.candidates) ? parsedManifest.candidates : [];
-    const parsedCandidates = manifestCandidates
-      .map((candidate) => parseManifestCandidate(selectedManifestPath, candidate))
-      .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
-
-    const byId = new Map(parsedCandidates.map((candidate) => [candidate.id, candidate]));
-    const selectedEntries = {
-      front: byId.get(selectedCandidateIds.front),
-      threeQuarter: byId.get(selectedCandidateIds.threeQuarter),
-      profile: byId.get(selectedCandidateIds.profile)
-    };
-
-    if (!selectedEntries.front || selectedEntries.front.view !== "front") {
-      throw new Error(`Invalid HITL selection for front: ${selectedCandidateIds.front}`);
-    }
-    if (!selectedEntries.threeQuarter || selectedEntries.threeQuarter.view !== "threeQuarter") {
-      throw new Error(`Invalid HITL selection for threeQuarter: ${selectedCandidateIds.threeQuarter}`);
-    }
-    if (!selectedEntries.profile || selectedEntries.profile.view !== "profile") {
-      throw new Error(`Invalid HITL selection for profile: ${selectedCandidateIds.profile}`);
-    }
-
-    const toScored = async (entry: (typeof selectedEntries)[keyof typeof selectedEntries]): Promise<ScoredCandidate> => {
-      if (!entry) {
-        throw new Error("Missing selected candidate");
-      }
-
-      if (!fs.existsSync(entry.filePath)) {
-        throw new Error(`Selected candidate file missing: ${entry.filePath}`);
-      }
-
-      const data = fs.readFileSync(entry.filePath);
-      const analysis = await analyzeImage(data);
-      const manifestProvider = asString(parsedManifest.provider).trim();
-      const candidate: CharacterGenerationCandidate = {
-        id: entry.id,
-        ...(entry.provider ? { provider: entry.provider } : {}),
-        view: entry.view,
-        candidateIndex: entry.candidateIndex,
-        seed: entry.seed,
-        provider:
-          manifestProvider === "comfyui"
-            ? "comfyui"
-            : manifestProvider === "remoteApi"
-              ? "remoteApi"
-              : "mock",
-        prompt: asString(parsedManifest.positivePrompt),
-        negativePrompt: asString(parsedManifest.negativePrompt),
-        mimeType: entry.mimeType,
-        data,
-        providerMeta: {
-          ...(entry.providerMeta ?? {}),
-          localCandidatePath: entry.filePath
-        }
-      };
-
-      return {
-        candidate,
-        analysis,
-        score: clamp01(entry.score),
-        styleScore: clamp01(entry.styleScore),
-        referenceSimilarity: entry.referenceSimilarity,
-        consistencyScore: entry.consistencyScore,
-        warnings: entry.warnings,
-        rejections: entry.rejections,
-        breakdown:
-          entry.breakdown ??
-          {
-            alphaScore: scoreAlphaCoverage(analysis),
-            occupancyScore: scoreBBoxOccupancy(analysis),
-            sharpnessScore: scoreSharpness(analysis),
-            noiseScore: scoreNoise(analysis),
-            watermarkScore: scoreWatermarkSafety(analysis),
-            resolutionScore: scoreResolutionQuality(analysis),
-            referenceScore: entry.referenceSimilarity ?? 0.5,
-            styleScore: clamp01(entry.styleScore),
-            qualityScore: clamp01(
-              scoreAlphaCoverage(analysis) * 0.16 +
-                scoreBBoxOccupancy(analysis) * 0.18 +
-                scoreSharpness(analysis) * 0.2 +
-                scoreNoise(analysis) * 0.12 +
-                scoreWatermarkSafety(analysis) * 0.2 +
-                scoreResolutionQuality(analysis) * 0.14
-            ),
-            consistencyScore: entry.consistencyScore,
-            generationRound: 0
-          }
-      };
-    };
-
-    const scoredFront = await toScored(selectedEntries.front);
-    const scoredThreeQuarter = await toScored(selectedEntries.threeQuarter);
-    const scoredProfile = await toScored(selectedEntries.profile);
-    const selectedByView: Record<CharacterView, ScoredCandidate> = {
-      front: scoredFront,
-      threeQuarter: scoredThreeQuarter,
-      profile: scoredProfile
-    };
-
-    const guardrails = Array.isArray(parsedManifest.guardrails)
-      ? parsedManifest.guardrails.filter((item): item is string => typeof item === "string")
-      : promptBundle.guardrails;
-    const parsedQualityProfile =
-      isRecord(parsedManifest.qualityProfile) ? (parsedManifest.qualityProfile as PromptQualityProfile) : undefined;
-    const parsedSelectionHints = isRecord(parsedManifest.selectionHints)
-      ? {
-          ...(typeof parsedManifest.selectionHints.minAcceptedScore === "number"
-            ? { minAcceptedScore: parsedManifest.selectionHints.minAcceptedScore }
-            : {}),
-          ...(typeof parsedManifest.selectionHints.frontMasterMinAcceptedScore === "number"
-            ? { frontMasterMinAcceptedScore: parsedManifest.selectionHints.frontMasterMinAcceptedScore }
-            : {}),
-          ...(typeof parsedManifest.selectionHints.autoRetryRounds === "number"
-            ? { autoRetryRounds: parsedManifest.selectionHints.autoRetryRounds }
-            : {}),
-          ...(typeof parsedManifest.selectionHints.frontMasterCandidateCount === "number"
-            ? { frontMasterCandidateCount: parsedManifest.selectionHints.frontMasterCandidateCount }
-            : {}),
-          ...(typeof parsedManifest.selectionHints.sequentialReference === "boolean"
-            ? { sequentialReference: parsedManifest.selectionHints.sequentialReference }
-            : {}),
-          ...(typeof parsedManifest.selectionHints.prioritizeConsistency === "boolean"
-            ? { prioritizeConsistency: parsedManifest.selectionHints.prioritizeConsistency }
-            : {})
-        }
-      : undefined;
-    const parsedProviderMeta =
-      isRecord(parsedManifest.providerMeta)
-        ? (parsedManifest.providerMeta as NonNullable<GenerationManifest["providerMeta"]>)
-        : undefined;
-    const providerRequestedRaw = asString(parsedManifest.providerRequested).trim();
-    const providerWarningRaw = asString(parsedManifest.providerWarning).trim();
-    const parsedReference = isRecord(parsedManifest.reference) ? parsedManifest.reference : {};
-    const parsedContinuity = parseManifestContinuity(parsedReference.continuity);
-
-    const manifest = withManifestHashes({
-      schemaVersion: "1.0",
-      status: "HITL_SELECTED",
-      sessionId,
+    await handleHitlSelectedGeneration<GenerationManifest>({
+      selectedManifestPath: resolveHitlSelectionManifestReadPath(jobDbId, {
+        manifestPath: generation.manifestPath,
+        sourceManifestPath: generation.sourceManifestPath
+      }, REPO_ROOT),
+      selectedCandidateIds,
+      promptBundle,
+      generation,
+      sessionId: sessionId!,
       episodeId: payload.episodeId,
       characterPackId: character.characterPackId,
-      provider: asString(parsedManifest.provider).trim() || "mock",
-      providerRequested: providerRequestedRaw.length > 0 ? providerRequestedRaw : null,
-      providerWarning: providerWarningRaw.length > 0 ? providerWarningRaw : null,
-      workflowHash: asString(parsedManifest.workflowHash).trim() || "hitl-selection",
-      generatedAt: asString(parsedManifest.generatedAt).trim() || new Date().toISOString(),
-      mode: asString(parsedManifest.mode).trim() || generation.mode,
-      promptPreset: asString(parsedManifest.promptPreset).trim() || promptBundle.presetId,
-      species:
-        asString(parsedManifest.species).trim() ||
-        promptBundle.speciesId ||
-        normalizeGenerationSpecies(generation.species),
-      qualityProfileId:
-        asString(parsedManifest.qualityProfileId).trim() ||
-        parsedQualityProfile?.id ||
-        promptBundle.qualityProfile.id,
-      qualityProfile: parsedQualityProfile ?? promptBundle.qualityProfile,
-      positivePrompt: asString(parsedManifest.positivePrompt).trim() || promptBundle.positivePrompt,
-      negativePrompt: asString(parsedManifest.negativePrompt).trim() || promptBundle.negativePrompt,
-      guardrails,
-      selectionHints: parsedSelectionHints ?? promptBundle.selectionHints,
-      ...(parsedProviderMeta ? { providerMeta: parsedProviderMeta } : {}),
-      reference: {
-        assetId:
-          typeof parsedReference.assetId === "string"
-            ? parsedReference.assetId
-            : generation.referenceAssetId ?? null,
-        sourceSessionId:
-          typeof parsedReference.sourceSessionId === "string" && parsedReference.sourceSessionId.trim().length > 0
-            ? parsedReference.sourceSessionId
-            : continuityReferenceSessionId,
-        starterPath:
-          typeof parsedReference.starterPath === "string" && parsedReference.starterPath.trim().length > 0
-            ? parsedReference.starterPath
-            : starterReferencePath,
-        starterPathsByView:
-          parsedReference.starterPathsByView &&
-          typeof parsedReference.starterPathsByView === "object" &&
-          !Array.isArray(parsedReference.starterPathsByView)
-            ? (parsedReference.starterPathsByView as Partial<Record<CharacterView, string>>)
-            : starterReferencePathsByView,
-        phash: typeof parsedReference.phash === "string" ? parsedReference.phash : null,
-        palette: Array.isArray(parsedReference.palette)
-          ? (parsedReference.palette.filter(
-              (item): item is [number, number, number] =>
-                Array.isArray(item) &&
-                item.length === 3 &&
-                item.every((value) => typeof value === "number")
-            ) as Array<[number, number, number]>)
-          : null,
-        continuity: parsedContinuity ?? continuitySnapshot
-      },
-      candidates: parsedCandidates.map((entry) => ({
-        id: entry.id,
-        view: entry.view,
-        candidateIndex: entry.candidateIndex,
-        seed: entry.seed,
-        mimeType: entry.mimeType,
-        filePath: entry.filePath,
-        score: Number(entry.score.toFixed(4)),
-        styleScore: Number(entry.styleScore.toFixed(4)),
-        referenceSimilarity: entry.referenceSimilarity === null ? null : Number(entry.referenceSimilarity.toFixed(4)),
-        consistencyScore: entry.consistencyScore === null ? null : Number(entry.consistencyScore.toFixed(4)),
-        warnings: entry.warnings,
-        rejections: entry.rejections,
-        ...(entry.breakdown ? { breakdown: entry.breakdown } : {}),
-        ...(entry.providerMeta ? { providerMeta: entry.providerMeta } : {})
-      })),
-      selectedByView: {}
-    });
-
-    await persistSelectedCandidates({
-      prisma,
-      sessionId,
-      episodeId: payload.episodeId,
-      episodeChannelId: episode.channelId,
-      jobDbId,
-      character,
-      selectedByView,
-      manifest,
-      manifestPath,
-      maxAttempts,
-      retryBackoffMs,
-      helpers,
-      source: "hitl",
-      providerName: manifest.provider,
-      workflowHash: manifest.workflowHash
+      continuityReferenceSessionId,
+      starterReferencePath,
+      starterReferencePathsByView,
+      continuitySnapshot,
+      referenceAnalysis,
+      isRecord,
+      asString,
+      parseManifestCandidate,
+      parseManifestContinuity,
+      analyzeImage,
+      clamp01,
+      normalizeSpecies: normalizeGenerationSpecies,
+      scoreAlphaCoverage: (analysis) => scoreAlphaCoverage(analysis as ImageAnalysis),
+      scoreBBoxOccupancy: (analysis) => scoreBBoxOccupancy(analysis as ImageAnalysis),
+      scoreSharpness: (analysis) => scoreSharpness(analysis as ImageAnalysis),
+      scoreNoise: (analysis) => scoreNoise(analysis as ImageAnalysis),
+      scoreWatermarkSafety: (analysis) => scoreWatermarkSafety(analysis as ImageAnalysis),
+      scoreResolutionQuality: (analysis) => scoreResolutionQuality(analysis as ImageAnalysis),
+      withManifestHashes: (manifestToHash) =>
+        withManifestHashes(
+          manifestToHash as Omit<GenerationManifest, "inputHash" | "manifestHash">
+        ),
+      persistHitlSelection: async ({ manifest, selectedByView, providerName, workflowHash }) => {
+        await persistSelectedCandidates({
+          prisma,
+          sessionId,
+          episodeId: payload.episodeId,
+          episodeChannelId: episode.channelId,
+          jobDbId,
+          character,
+          selectedByView: {
+            front: selectedByView.front as ScoredCandidate,
+            threeQuarter: selectedByView.threeQuarter as ScoredCandidate,
+            profile: selectedByView.profile as ScoredCandidate
+          },
+          manifest,
+          manifestPath,
+          maxAttempts,
+          retryBackoffMs,
+          helpers,
+          source: "hitl",
+          providerName,
+          workflowHash
+        });
+      }
     });
     return;
   }
