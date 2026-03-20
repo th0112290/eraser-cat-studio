@@ -63,6 +63,11 @@ import {
   resolveAutoContinuityReference as resolveAutoContinuityReferenceWithDelegates,
   resolveFrontReferenceFromSession as resolveFrontReferenceFromSessionWithDelegate
 } from "./characterGenerationContinuityReference";
+import {
+  buildHitlSessionStatusMessage,
+  buildSelectionGateBlockedMessage,
+  buildSelectionGateReviewSummary
+} from "./characterGenerationSelectionMessaging";
 
 export {
   buildManifestSelectedByView,
@@ -12341,65 +12346,6 @@ async function resolveAutoContinuityReference(input: {
   });
 }
 
-function buildHitlSessionStatusMessage(input: {
-  viewToGenerate: CharacterGenerationView | undefined;
-  missingGeneratedViews: CharacterView[];
-  lowQualityGeneratedViews: CharacterView[];
-  coherenceIssues?: string[];
-  packCoherence?: PackCoherenceDiagnostics;
-  autoReroute?: AutoRerouteDiagnostics;
-  rigStability?: RigStabilityDiagnostics;
-  selectionRisk?: SelectionRiskAssessment;
-  qualityEmbargo?: QualityEmbargoAssessment;
-  finalQualityFirewall?: FinalQualityFirewallAssessment;
-  continuity: GenerationManifest["reference"]["continuity"] | undefined;
-}): string {
-  const continuitySentence = formatContinuitySentence(input.continuity);
-  const continuityDescriptor = formatContinuityDescriptor(input.continuity);
-  const continuityQueueStats = formatContinuityQueueStats(input.continuity);
-  const continuityQueueStatusSuffix = continuityQueueStats ? ` Queue: ${continuityQueueStats}.` : "";
-  const continuityQueuePipeSuffix = continuityQueueStats ? ` | ${continuityQueueStats}` : "";
-  const continuityDescriptorPipeSuffix = continuityDescriptor ? ` | ${continuityDescriptor}` : "";
-  const autoRerouteSentence = input.autoReroute?.attempted
-    ? input.autoReroute.recovered
-      ? " Auto-reroute recovered the pack once before review."
-      : " Auto-reroute already ran and still needs review."
-    : "";
-  const selectionRiskSentence =
-    input.selectionRisk && input.selectionRisk.level !== "none"
-      ? ` Selection risk=${summarizeSelectionRisk(input.selectionRisk)}.`
-      : "";
-  const rigStabilitySentence =
-    input.rigStability && input.rigStability.severity !== "none"
-      ? ` Rig stability=${input.rigStability.summary}.`
-      : "";
-  const qualityEmbargoSentence =
-    input.qualityEmbargo && input.qualityEmbargo.level !== "none"
-      ? ` Quality embargo=${summarizeQualityEmbargo(input.qualityEmbargo)}.`
-      : "";
-  const finalQualityFirewallSentence =
-    input.finalQualityFirewall && input.finalQualityFirewall.level !== "none"
-      ? ` Final quality firewall=${summarizeFinalQualityFirewall(input.finalQualityFirewall)}.`
-      : "";
-
-  if (input.viewToGenerate) {
-    return `Candidates ready for view ${input.viewToGenerate}. Pick to continue.${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuitySentence}${continuityQueueStatusSuffix}`;
-  }
-  if (input.missingGeneratedViews.length > 0) {
-    return `Partial generation complete. Missing: ${input.missingGeneratedViews.join(", ")}${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
-  }
-  if (input.lowQualityGeneratedViews.length > 0) {
-    return `Candidates generated but quality below threshold for: ${input.lowQualityGeneratedViews.join(", ")}${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
-  }
-  if (Array.isArray(input.coherenceIssues) && input.coherenceIssues.length > 0) {
-    const packSummary = input.packCoherence
-      ? ` severity=${input.packCoherence.severity} score=${input.packCoherence.score.toFixed(2)}`
-      : "";
-    return `Candidates generated but pack coherence needs review:${packSummary} ${input.coherenceIssues.join(", ")}${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuityDescriptorPipeSuffix}${continuityQueuePipeSuffix}`;
-  }
-  return `Candidates ready. Waiting for pick.${autoRerouteSentence}${rigStabilitySentence}${selectionRiskSentence}${qualityEmbargoSentence}${finalQualityFirewallSentence}${continuitySentence}${continuityQueueStatusSuffix}`;
-}
-
 async function persistSelectedCandidates(input: {
   prisma: PrismaClient;
   sessionId?: string;
@@ -12488,6 +12434,9 @@ async function persistSelectedCandidates(input: {
       packDefectSummary,
       speciesId: manifest.species
     });
+  const selectionRiskSummary = summarizeSelectionRisk(selectionRisk);
+  const qualityEmbargoSummary = summarizeQualityEmbargo(qualityEmbargo);
+  const finalQualityFirewallSummary = summarizeFinalQualityFirewall(finalQualityFirewall);
   const requiresSelectionReview =
     rigStability.severity === "block" ||
     packCoherence.severity === "block" ||
@@ -12548,23 +12497,17 @@ async function persistSelectedCandidates(input: {
     });
     fs.writeFileSync(manifestPath, `${JSON.stringify(blockedManifest, null, 2)}\n`, "utf8");
 
-    const coherenceSummary = `${packCoherence.issues.join(", ")} (score=${packCoherence.score.toFixed(2)})`;
-    const rigStabilitySummary = rigStability.summary;
-    const selectionRiskSummary = summarizeSelectionRisk(selectionRisk);
-    const qualityEmbargoSummary = summarizeQualityEmbargo(qualityEmbargo);
-    const finalQualityFirewallSummary = summarizeFinalQualityFirewall(finalQualityFirewall);
-    const blockedMessage =
-      rigStability.severity === "block"
-        ? `Selected candidate pack failed rig stability guard: ${rigStabilitySummary}`
-        : packCoherence.severity === "block"
-        ? `Selected candidate pack failed coherence gate: ${coherenceSummary}`
-        : finalQualityFirewall.level === "block"
-          ? `Selected candidate pack failed final quality firewall: ${finalQualityFirewallSummary}`
-        : qualityEmbargo.level === "block"
-          ? `Selected candidate pack failed quality embargo: ${qualityEmbargoSummary}`
-        : finalQualityFirewall.level === "review"
-          ? `Auto-selected pack failed final quality firewall review gate: ${finalQualityFirewallSummary}`
-        : `Auto-selected pack failed high-risk review gate: ${selectionRiskSummary}`;
+    const blockedMessage = buildSelectionGateBlockedMessage({
+      source,
+      rigStability,
+      packCoherence,
+      selectionRisk,
+      selectionRiskSummary,
+      qualityEmbargo,
+      qualityEmbargoSummary,
+      finalQualityFirewall,
+      finalQualityFirewallSummary
+    });
 
     await helpers.logJob(jobDbId, "warn", "Selected candidate pack blocked by selection gate", {
       source,
@@ -12617,18 +12560,15 @@ async function persistSelectedCandidates(input: {
         type: "HITL_REVIEW",
         status: "PENDING",
         title: "Selected pack needs re-pick",
-        summary:
-          rigStability.severity === "block"
-            ? `Selected candidates still fail the rig stability guard: ${rigStabilitySummary}. Manual compare or full-pack recreate is recommended.`
-            : packCoherence.severity === "block"
-            ? `Selected candidates still fail the pack coherence gate: ${coherenceSummary}. Pick a different combination or regenerate weak views.`
-            : finalQualityFirewall.level === "block"
-              ? `Selected candidates still fail the final quality firewall: ${finalQualityFirewallSummary}. Recreate the pack or replace persistent weak views.`
-            : qualityEmbargo.level === "block"
-              ? `Selected candidates still fail the quality embargo: ${qualityEmbargoSummary}. Recreate the pack or replace blocked views.`
-            : finalQualityFirewall.level === "review"
-              ? `Auto-selected candidates tripped the final quality firewall: ${finalQualityFirewallSummary}. Manual pick or full-pack recreate is recommended.`
-            : `Auto-selected candidates tripped the high-risk review gate: ${selectionRiskSummary}. Manual pick or full-pack recreate is recommended.`,
+        summary: buildSelectionGateReviewSummary({
+          rigStability,
+          packCoherence,
+          selectionRiskSummary,
+          qualityEmbargo,
+          qualityEmbargoSummary,
+          finalQualityFirewall,
+          finalQualityFirewallSummary
+        }),
         payload: toPrismaJson({
           manifestPath,
           provider: providerName,
@@ -12659,9 +12599,12 @@ async function persistSelectedCandidates(input: {
               coherenceIssues: packCoherence.issues,
               packCoherence,
               rigStability,
-              selectionRisk,
-              qualityEmbargo,
-              finalQualityFirewall,
+              selectionRiskLevel: selectionRisk.level,
+              selectionRiskSummary,
+              qualityEmbargoLevel: qualityEmbargo.level,
+              qualityEmbargoSummary,
+              finalQualityFirewallLevel: finalQualityFirewall.level,
+              finalQualityFirewallSummary,
               continuity: blockedManifest.reference.continuity
             })
           }
@@ -17449,9 +17392,14 @@ export async function handleGenerateCharacterAssetsJob(input: {
             packCoherence,
             autoReroute: autoRerouteDiagnostics,
             rigStability: initialRigStability,
-            selectionRisk: initialSelectionRisk,
-            qualityEmbargo: initialQualityEmbargo,
-            finalQualityFirewall: initialFinalQualityFirewall,
+            selectionRiskLevel: initialSelectionRisk?.level,
+            selectionRiskSummary: initialSelectionRisk ? summarizeSelectionRisk(initialSelectionRisk) : undefined,
+            qualityEmbargoLevel: initialQualityEmbargo?.level,
+            qualityEmbargoSummary: initialQualityEmbargo ? summarizeQualityEmbargo(initialQualityEmbargo) : undefined,
+            finalQualityFirewallLevel: initialFinalQualityFirewall?.level,
+            finalQualityFirewallSummary: initialFinalQualityFirewall
+              ? summarizeFinalQualityFirewall(initialFinalQualityFirewall)
+              : undefined,
             continuity: continuitySnapshot
           })
         }
