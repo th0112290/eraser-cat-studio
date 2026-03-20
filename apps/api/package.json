@@ -11,6 +11,7 @@
     "smoke:ui:ops-review-pages": "tsx src/routes/ui/pages/opsReviewPages.smoke.ts",
     "smoke:ui:artifact-freshness": "tsx src/routes/uiRoutesFreshness.smoke.ts",
     "smoke:ui:benchmark-refresh": "tsx src/routes/uiRoutesBenchmarkRefresh.smoke.ts",
+    "smoke:ui:rollout-refresh": "tsx src/routes/uiRoutesRolloutRefresh.smoke.ts",
     "smoke:character-proposal-apply": "tsx src/routes/characterRoutesProposalApply.smoke.ts",
     "smoke:character-action-contracts": "tsx src/routes/characterRoutesActionContract.smoke.ts",
     "smoke:character-ui-actions": "tsx src/routes/characterRoutesUiAction.smoke.ts",

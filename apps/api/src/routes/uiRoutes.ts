@@ -4755,12 +4755,20 @@ export function buildBenchmarkRefreshActions(input: {
       badge: "validate"
     },
     {
+      label: "Motion policy smoke",
+      command: "pnpm smoke:motion-policy",
+      hint:
+        "Runs the shared story/render/video motion policy chain without materializing rollout artifacts. Use this as the fastest operator check before a larger preset or multichannel refresh.",
+      tone,
+      badge: "smoke"
+    },
+    {
       label: "Preset rollout refresh",
       command: `pnpm rollout:video-i2v-preset -- --character-pack-id=${primaryPackId}`,
       hint:
         resolvedPackIds.length > 0
-          ? `Rebuilds preset benchmark matrix and rollout artifacts for ${primaryPackId} using the pack id inferred from current lineage rows.`
-          : "Rebuilds preset benchmark matrix and rollout artifacts for the current mascot pack when benchmark rows are stale.",
+          ? `Rebuilds preset benchmark matrix and rollout artifacts for ${primaryPackId} using the pack id inferred from current lineage rows. This wrapper already runs motion benchmark and require-ready validation.`
+          : "Rebuilds preset benchmark matrix and rollout artifacts for the current mascot pack when benchmark rows are stale. This wrapper already runs motion benchmark and require-ready validation.",
       tone,
       badge: "rollout"
     },
@@ -4769,10 +4777,10 @@ export function buildBenchmarkRefreshActions(input: {
       command: `pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=${economyPackId} --medical-character-pack-id=${medicalPackId}`,
       hint:
         resolvedPackIds.length > 1
-          ? `Refreshes cross-channel preset benchmark summary with inferred pack ids ${economyPackId} and ${medicalPackId}.`
+          ? `Refreshes cross-channel preset benchmark summary with inferred pack ids ${economyPackId} and ${medicalPackId}. This wrapper already runs motion benchmark and require-ready validation.`
           : resolvedPackIds.length === 1
-            ? `Refreshes cross-channel preset benchmark summary with ${economyPackId} in both channel slots.`
-            : "Refreshes cross-channel preset benchmark summary, validation, and rollout artifacts for broader review. Use one shared pack id in both placeholders when both channels should point at the same mascot pack.",
+            ? `Refreshes cross-channel preset benchmark summary with ${economyPackId} in both channel slots. This wrapper already runs motion benchmark and require-ready validation.`
+            : "Refreshes cross-channel preset benchmark summary, validation, and rollout artifacts for broader review. Use one shared pack id in both placeholders when both channels should point at the same mascot pack. This wrapper already runs motion benchmark and require-ready validation.",
       tone,
       badge: "multichannel"
     }
@@ -4799,6 +4807,26 @@ export function buildBenchmarkRefreshPlaybooksSection(input: {
     )
     .join("");
   return `<section class="card decision-jump-target" id="benchmark-refresh-playbooks"><div class="section-head"><div><h2>Refresh Playbooks</h2><p class="section-intro">${intro}</p></div><div class="inline-actions"><a href="${input.benchmarkRepairHref}">Acceptance</a><a href="${input.benchmarkRolloutsHref}">Rollouts</a></div></div><div class="status-list">${rows}</div></section>`;
+}
+
+export function buildRolloutRefreshPlaybooksSection(input: {
+  staleSourceCount: number;
+  agingSourceCount: number;
+  benchmarkRepairHref: string;
+  currentRolloutsHref: string;
+  packIds?: string[] | null;
+}): string {
+  return buildBenchmarkRefreshPlaybooksSection({
+    staleSourceCount: input.staleSourceCount,
+    agingSourceCount: input.agingSourceCount,
+    benchmarkRepairHref: input.benchmarkRepairHref,
+    benchmarkRolloutsHref: input.currentRolloutsHref,
+    actions: buildBenchmarkRefreshActions({
+      staleSourceCount: input.staleSourceCount,
+      agingSourceCount: input.agingSourceCount,
+      packIds: input.packIds
+    })
+  });
 }
 
 function profileBrowserHref(values: Array<string | null | undefined>): string {
@@ -11669,6 +11697,13 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      },
 	      hash: "benchmark-regressions"
 	    });
+	    const rolloutRepairHref = uiHref("/ui/benchmarks/repair-acceptance", {
+	      params: {
+	        ...decisionStateParams(decisionState),
+	        returnTo: currentRolloutsHref
+	      },
+	      hash: "repair-acceptance-table-decision"
+	    });
 	    const rolloutReturnHref = decisionState.returnTo ?? rolloutBenchmarkHref;
 	    const rolloutReturnLabel = decisionState.returnTo
 	      ? decisionState.returnTo.includes("/candidates") || decisionState.returnTo.includes("/ab-compare")
@@ -11678,6 +11713,12 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       const sourceFreshness = sources.map((source) => ({ source, freshness: describeArtifactFreshness(source.latestGeneratedAt) }));
       const staleSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isStale).length;
       const agingSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isAging).length;
+      const rolloutRefreshSection = buildRolloutRefreshPlaybooksSection({
+        staleSourceCount,
+        agingSourceCount,
+        benchmarkRepairHref: rolloutRepairHref,
+        currentRolloutsHref
+      });
 	    const rolloutSummaryCards: DecisionStat[] = [
 	      { label: "Signals", value: String(stats.total), hint: `${availableSources}/${sources.length} artifact roots available`, tone: "muted" },
         { label: "Freshness", value: `${staleSourceCount} stale / ${agingSourceCount} aging`, hint: "artifact age relative to the 168h rollout freshness window", tone: staleSourceCount > 0 ? "bad" : agingSourceCount > 0 ? "warn" : "ok" },
@@ -11696,7 +11737,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts",
           source.exists ? freshness.detail : ""
         ]);
-        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}${freshness.isStale || freshness.isAging ? `<a class="secondary" href="#benchmark-refresh-playbooks">Refresh playbooks</a>` : ""}${freshness.isStale ? `<a class="secondary" href="${rolloutRepairHref}">Open repair queue</a>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
       })
       .join("");
 
@@ -11897,7 +11938,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      drawerBodyHtml: rolloutEvidenceDrawerBody,
 	      drawerTone: "muted",
 	      drawerOpen: ["evidence", "artifact", "raw"].includes(rolloutFocusValue) || decisionToken(decisionState.view) === "evidence"
-	    })}<section class="card decision-jump-target" id="rollout-signal-table"><div class="section-head"><div><h2>Signal Queue</h2><p class="section-intro">Each signal remains an artifact-backed review object. Open decision detail only for rows that still need deeper proof.</p></div><input type="search" data-table-filter="rollouts-table" aria-label="Filter rollout signals" placeholder="Search signal kind, scope, target, verdict, reason..."/></div><div class="table-wrap"><table id="rollouts-table"><thead><tr><th>Object / Next Action</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th><th>Generated</th><th>Source</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">No rollout signals were found.</div></td></tr>'}</tbody></table></div></section><section class="card decision-jump-target" id="rollout-sources"><div class="section-head"><div><h2>Artifact Sources</h2><p class="section-intro">Source roots remain visible as supporting evidence, but they no longer lead the queue narrative.</p></div></div><div class="status-list">${sourceRows || '<div class="notice">No rollout artifact sources configured.</div>'}</div></section></div>${renderDecisionJumpScript()}`;
+	    })}${rolloutRefreshSection}<section class="card decision-jump-target" id="rollout-signal-table"><div class="section-head"><div><h2>Signal Queue</h2><p class="section-intro">Each signal remains an artifact-backed review object. Open decision detail only for rows that still need deeper proof.</p></div><input type="search" data-table-filter="rollouts-table" aria-label="Filter rollout signals" placeholder="Search signal kind, scope, target, verdict, reason..."/></div><div class="table-wrap"><table id="rollouts-table"><thead><tr><th>Object / Next Action</th><th>Status</th><th>Score</th><th>Verdict</th><th>Reason</th><th>Generated</th><th>Source</th></tr></thead><tbody>${rows || '<tr><td colspan="7"><div class="notice">No rollout signals were found.</div></td></tr>'}</tbody></table></div></section><section class="card decision-jump-target" id="rollout-sources"><div class="section-head"><div><h2>Artifact Sources</h2><p class="section-intro">Source roots remain visible as supporting evidence, but they no longer lead the queue narrative.</p></div></div><div class="status-list">${sourceRows || '<div class="notice">No rollout artifact sources configured.</div>'}</div></section></div>${renderDecisionJumpScript()}`;
 	    return reply.type("text/html; charset=utf-8").send(page("Rollouts", rolloutsBody));
 	  });
 

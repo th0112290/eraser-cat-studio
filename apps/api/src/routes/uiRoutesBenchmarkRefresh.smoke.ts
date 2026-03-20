@@ -11,9 +11,10 @@ const stale = buildBenchmarkRefreshActions({
   agingSourceCount: 1,
   packIds: ["pack-alpha", "pack-beta"]
 });
-assert(stale.length === 4, "expected four benchmark refresh actions");
+assert(stale.length === 5, "expected five benchmark refresh actions");
 assert(stale.every((entry) => entry.tone === "bad"), "expected stale refresh actions to use bad tone");
 assert(stale.some((entry) => entry.command === "pnpm benchmark:motion-presets"), "missing motion preset refresh command");
+assert(stale.some((entry) => entry.command === "pnpm smoke:motion-policy"), "missing motion policy smoke command");
 assert(
   stale.some((entry) => entry.command === "pnpm rollout:video-i2v-preset -- --character-pack-id=pack-alpha"),
   "missing inferred preset rollout command"
@@ -25,6 +26,10 @@ assert(
       "pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=pack-alpha --medical-character-pack-id=pack-beta"
   ),
   "missing multichannel rollout refresh command"
+);
+assert(
+  stale.some((entry) => entry.hint.includes("already runs motion benchmark and require-ready validation")),
+  "expected rollout wrapper hints to mention built-in motion validation"
 );
 
 const agingOnly = buildBenchmarkRefreshActions({

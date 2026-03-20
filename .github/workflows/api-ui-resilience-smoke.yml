@@ -81,6 +81,9 @@ jobs:
       - name: Run benchmark refresh helper smoke
         run: pnpm -C apps/api run smoke:ui:benchmark-refresh
 
+      - name: Run rollout refresh helper smoke
+        run: pnpm -C apps/api run smoke:ui:rollout-refresh
+
       - name: Run character action contract smoke
         run: pnpm -C apps/api run smoke:character-action-contracts
 
