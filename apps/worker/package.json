@@ -36,6 +36,7 @@
     "smoke:post-repair-acceptance-gate": "pnpm exec tsx src/characterGenerationPostRepairAcceptanceGate.smoke.ts",
     "smoke:selection-firewall": "pnpm exec tsx src/characterGenerationSelectionFirewall.smoke.ts",
     "smoke:rig-fixture-bank": "pnpm exec tsx src/characterGenerationCatFrontGate.smoke.ts && pnpm exec tsx src/characterGenerationCatThreeQuarterRepair.smoke.ts && pnpm exec tsx src/characterGenerationCanineHitlReview.smoke.ts && pnpm exec tsx src/characterGenerationHitlSelectionBlock.smoke.ts && pnpm exec tsx src/characterGenerationWolfFrontGate.smoke.ts",
+    "smoke:rig-fixture-bank:full": "pnpm run smoke:rig-fixture-bank && pnpm exec tsx src/characterGenerationDogFrontScoring.smoke.ts && pnpm exec tsx src/characterGenerationCanineConsistencyDrift.smoke.ts && pnpm exec tsx src/characterGenerationThreeQuarterFrontMasterFloor.smoke.ts && pnpm exec tsx src/characterGenerationRepairTriageGate.smoke.ts && pnpm exec tsx src/characterGenerationPostRepairAcceptanceGate.smoke.ts && pnpm exec tsx src/characterGenerationStageInputPreflight.smoke.ts",
     "smoke:env": "dotenv -e ../../.env -o -- node -e \"if(!process.env.DATABASE_URL||!process.env.REDIS_URL){throw new Error('Missing DATABASE_URL/REDIS_URL')} console.log('[worker] env smoke ok')\"",
     "smoke:persistence": "dotenv -e ../../.env -o -- tsx src/smokeJobPersistence.ts",
     "reconcile:stale-character-jobs": "dotenv -e ../../.env -o -- tsx src/reconcileStaleCharacterJobs.ts"

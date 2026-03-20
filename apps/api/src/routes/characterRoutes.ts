@@ -7505,6 +7505,22 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             : action?.action === "regenerate-view"
               ? "Open regenerate lane"
               : "Open compare lane";
+        const overrideHref =
+          overrideKind === "anchors"
+            ? "#cg-override-anchors"
+            : overrideKind === "cropBoxes"
+              ? "#cg-override-crop-boxes"
+              : selectedHasRebuildSelection
+                ? "#cg-rebuild-selection"
+                : "#pick-candidates";
+        const overrideLabel =
+          overrideKind === "anchors"
+            ? "Open anchors proposal"
+            : overrideKind === "cropBoxes"
+              ? "Open crop-box proposal"
+              : selectedHasRebuildSelection
+                ? "Open rebuild lane"
+                : "Open compare first";
         const charactersHref = selectedManifest?.characterPackId
           ? `/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}`
           : "";
@@ -7520,7 +7536,11 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           overrideCopy
         )}</p><p class="cg-override-meta">${escHtml(anchorDiagnosis)}</p><p class="cg-override-meta">${escHtml(
           evidence
-        )}</p><div class="cg-inline-links"><a href="${primaryHref}">${escHtml(primaryLabel)}</a><a href="#cg-manual-overrides">Manual overrides</a>${
+        )}</p><div class="cg-inline-links"><a href="${primaryHref}">${escHtml(primaryLabel)}</a><a href="${overrideHref}">${escHtml(
+          overrideLabel
+        )}</a>${selectedGeneratedLineage?.proposalUrl ? `<a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">Proposal JSON</a>` : ""}${
+          selectedGeneratedLineage?.proposalPath ? `<button type="button" class="secondary" data-copy="${escHtml(selectedGeneratedLineage.proposalPath)}">Copy proposal path</button>` : ""
+        }${
           charactersHref ? `<a href="${escHtml(charactersHref)}">Characters</a>` : ""
         }</div></article>`;
       })
@@ -7548,7 +7568,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
               : ""
           }<div class="cg-signal-table" style="margin-top:12px"><table><thead><tr><th>View</th><th>State</th><th>Anchor diagnosis</th><th>Metrics</th><th>Repair triage</th><th>Repair acceptance</th><th>Directive</th><th>Defects</th><th>Suggested path</th><th>Evidence</th></tr></thead><tbody>${selectedRigRepairRows}</tbody></table></div>${
             selectedJob && selectedGeneratedLineage && selectedAnchorsOverrideSeed && selectedCropBoxesOverrideSeed
-              ? `<section class="cg-override-console" id="cg-manual-overrides"><div class="cg-section-head"><div><div class="cg-section-kicker">Manual Repair / Override</div><h3>Save override files and rebuild the current pack without a full recreate</h3></div><p>Use this lane only after the repair console has narrowed the fault to anchors or crop boxes. Save the override file, then rebuild the current selected candidates to refresh pack evidence, preview, and compare.</p></div><div class="cg-override-grid"><article class="cg-override-editor"><div class="cg-rig-kicker">anchors.json</div><h4>Per-view anchor override</h4><p>Seeded from ${escHtml(
+              ? `<section class="cg-override-console" id="cg-manual-overrides"><div class="cg-section-head"><div><div class="cg-section-kicker">Manual Repair / Override</div><h3>Save override files and rebuild the current pack without a full recreate</h3></div><p>Use this lane only after the repair console has narrowed the fault to anchors or crop boxes. Save the override file, then rebuild the current selected candidates to refresh pack evidence, preview, and compare.</p></div><div class="cg-override-grid"><article class="cg-override-editor" id="cg-override-anchors"><div class="cg-rig-kicker">anchors.json</div><h4>Per-view anchor override</h4><p>Seeded from ${escHtml(
                   selectedAnchorsOverrideSeed.source === "override"
                     ? "the current override file"
                     : selectedAnchorsOverrideSeed.source === "proposal"
@@ -7558,17 +7578,19 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   selectedGeneratedLineage.overrides.anchorsUrl
                     ? `raw file: <a href="${escHtml(selectedGeneratedLineage.overrides.anchorsUrl)}">anchors.json</a>`
                     : "No anchors.json override file has been saved yet."
+                }${
+                  selectedGeneratedLineage.proposalUrl ? ` / proposal: <a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">proposal.json</a>` : ""
                 }</p><form method="post" action="/ui/character-generator/overrides/save">${renderCreationNavHiddenFields(
                   creationNav
                 )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="anchors"/><textarea name="overrideJson" rows="16">${escHtml(
                   selectedAnchorsOverrideSeed.text
                 )}</textarea><div class="cg-override-actions"><button type="submit" name="afterSave" value="save">Save anchors.json</button><button type="submit" name="afterSave" value="rebuild" class="secondary"${
                   selectedHasRebuildSelection ? "" : " disabled"
-                }>Save + rebuild current selection</button></div></form><div class="cg-override-actions"><form method="post" action="/ui/character-generator/overrides/clear">${renderCreationNavHiddenFields(
+                }>Save + rebuild current selection</button></div></form><div class="cg-inline-links">${selectedGeneratedLineage.proposalUrl ? `<a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">Open proposal.json</a>` : ""}<a href="#cg-rebuild-selection">Rebuild lane</a><a href="#pick-candidates">Compare</a></div><div class="cg-override-actions"><form method="post" action="/ui/character-generator/overrides/clear">${renderCreationNavHiddenFields(
                   creationNav
                 )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="anchors"/><button type="submit" name="afterClear" value="clear" class="secondary">Clear anchors.json</button><button type="submit" name="afterClear" value="rebuild" class="secondary"${
                   selectedHasRebuildSelection ? "" : " disabled"
-                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor"><div class="cg-rig-kicker">crop-boxes.json</div><h4>Crop box override</h4><p>Seeded from ${escHtml(
+                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor" id="cg-override-crop-boxes"><div class="cg-rig-kicker">crop-boxes.json</div><h4>Crop box override</h4><p>Seeded from ${escHtml(
                   selectedCropBoxesOverrideSeed.source === "override"
                     ? "the current override file"
                     : selectedCropBoxesOverrideSeed.source === "proposal"
@@ -7578,17 +7600,19 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   selectedGeneratedLineage.overrides.cropBoxesUrl
                     ? `raw file: <a href="${escHtml(selectedGeneratedLineage.overrides.cropBoxesUrl)}">crop-boxes.json</a>`
                     : "No crop-boxes.json override file has been saved yet."
+                }${
+                  selectedGeneratedLineage.proposalUrl ? ` / proposal: <a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">proposal.json</a>` : ""
                 }</p><form method="post" action="/ui/character-generator/overrides/save">${renderCreationNavHiddenFields(
                   creationNav
                 )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="cropBoxes"/><textarea name="overrideJson" rows="16">${escHtml(
                   selectedCropBoxesOverrideSeed.text
                 )}</textarea><div class="cg-override-actions"><button type="submit" name="afterSave" value="save">Save crop-boxes.json</button><button type="submit" name="afterSave" value="rebuild" class="secondary"${
                   selectedHasRebuildSelection ? "" : " disabled"
-                }>Save + rebuild current selection</button></div></form><div class="cg-override-actions"><form method="post" action="/ui/character-generator/overrides/clear">${renderCreationNavHiddenFields(
+                }>Save + rebuild current selection</button></div></form><div class="cg-inline-links">${selectedGeneratedLineage.proposalUrl ? `<a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">Open proposal.json</a>` : ""}<a href="#cg-rebuild-selection">Rebuild lane</a><a href="#pick-candidates">Compare</a></div><div class="cg-override-actions"><form method="post" action="/ui/character-generator/overrides/clear">${renderCreationNavHiddenFields(
                   creationNav
                 )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="cropBoxes"/><button type="submit" name="afterClear" value="clear" class="secondary">Clear crop-boxes.json</button><button type="submit" name="afterClear" value="rebuild" class="secondary"${
                   selectedHasRebuildSelection ? "" : " disabled"
-                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor"><div class="cg-rig-kicker">Current Selection Rebuild</div><h4>Rebuild the Character Pack with current selected candidates</h4><p>This path keeps the current selected candidate ids and reruns pack assembly / preview. Use it after saving anchors.json or crop-boxes.json so compare reads the updated rig evidence without a fresh full recreate.</p><p class="cg-override-meta">${escHtml(
+                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor" id="cg-rebuild-selection"><div class="cg-rig-kicker">Current Selection Rebuild</div><h4>Rebuild the Character Pack with current selected candidates</h4><p>This path keeps the current selected candidate ids and reruns pack assembly / preview. Use it after saving anchors.json or crop-boxes.json so compare reads the updated rig evidence without a fresh full recreate.</p><p class="cg-override-meta">${escHtml(
                   selectedRebuildSelectionSummary
                 )}</p><div class="notice">${
                   selectedHasRebuildSelection

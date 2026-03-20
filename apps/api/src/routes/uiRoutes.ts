@@ -4701,6 +4701,25 @@ function describeArtifactFreshness(
   };
 }
 
+export function summarizeArtifactFreshnessForRows(rows: Array<{ generatedAt: string }>): {
+  staleCount: number;
+  agingCount: number;
+  unknownCount: number;
+  newestDetail: string;
+} {
+  const freshness = rows.map((row) => describeArtifactFreshness(row.generatedAt));
+  const staleCount = freshness.filter((entry) => entry.isStale).length;
+  const agingCount = freshness.filter((entry) => entry.isAging).length;
+  const unknownCount = freshness.filter((entry) => entry.ageHours === null).length;
+  const latestGeneratedAt = selectGeneratedAt(rows.map((row) => row.generatedAt));
+  return {
+    staleCount,
+    agingCount,
+    unknownCount,
+    newestDetail: latestGeneratedAt ? `latest ${fmtDate(latestGeneratedAt)}` : "no artifact timestamp"
+  };
+}
+
 function profileBrowserHref(values: Array<string | null | undefined>): string {
   const query = values
     .map((value) => str(value))
@@ -9365,10 +9384,12 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       return true;
     });
 
+    const freshnessSummary = summarizeArtifactFreshnessForRows(rows);
     const summaryCards = [
       { label: "Rows", value: String(rows.length), tone: "muted" as UiBadgeTone, hint: "sidecar artifacts in scope" },
       { label: "Rejected", value: String(rows.filter((row) => row.acceptanceTone === "bad").length), tone: "bad" as UiBadgeTone, hint: "rejected or failed artifacts" },
       { label: "QC Failed", value: String(rows.filter((row) => row.qcTone === "bad").length), tone: "bad" as UiBadgeTone, hint: "qc reasons need operator review" },
+      { label: "Freshness", value: `${freshnessSummary.staleCount} stale / ${freshnessSummary.agingCount} aging / ${freshnessSummary.unknownCount} unknown`, tone: freshnessSummary.staleCount > 0 ? "bad" as UiBadgeTone : freshnessSummary.agingCount > 0 || freshnessSummary.unknownCount > 0 ? "warn" as UiBadgeTone : "ok" as UiBadgeTone, hint: freshnessSummary.newestDetail },
       { label: "Rig Blocked", value: String(rows.filter((row) => row.rig.rigBlocked).length), tone: "bad" as UiBadgeTone, hint: "selected candidates with fail-level rig signals" },
       { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "rows still tagged review_only" },
       { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence or low-confidence anchors" },
@@ -9688,7 +9709,15 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       facts: repairJumpFacts,
       linksHtml: `<a href="${repairReturnHref}">${repairReturnLabel}</a><a href="${repairBenchmarksHref}">Benchmark Queue</a><a href="${currentRepairHref}">Refresh handoff</a>`
     });
-    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Some artifacts do not emit an explicit <code>acceptance_status</code> or normalized <code>repair_reasons[]</code>. This explorer derives acceptance from <code>accepted</code>, <code>judge_accepted</code>, and <code>judge_decision</code>, and derives repair signals from presets, rejection reasons, and QC output.</span></div>`;
+    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Some artifacts do not emit an explicit <code>acceptance_status</code> or normalized <code>repair_reasons[]</code>. This explorer derives acceptance from <code>accepted</code>, <code>judge_accepted</code>, and <code>judge_decision</code>, and derives repair signals from presets, rejection reasons, and QC output.</span></div><div class="ops-review-note"><strong>Freshness</strong><span class="muted-text">${
+      freshnessSummary.staleCount > 0
+        ? `${freshnessSummary.staleCount} rows are stale. Refresh benchmark artifacts or reopen the benchmark queue before promoting repaired output.`
+        : freshnessSummary.unknownCount > 0
+          ? `${freshnessSummary.unknownCount} rows are missing parseable artifact timestamps. Treat freshness as indeterminate until those artifacts are refreshed.`
+          : freshnessSummary.agingCount > 0
+          ? `${freshnessSummary.agingCount} rows are aging. Refresh soon if a repair decision still looks ambiguous.`
+          : `Artifacts are fresh enough for queue review. ${freshnessSummary.newestDetail}.`
+    }</span></div>`;
     const body = buildRepairAcceptancePageBody({
       flash: `${flashHtml(request.query)}${repairJumpBanner}`,
       filters,
@@ -9771,11 +9800,13 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       return true;
     });
     const mismatchedCount = rows.filter((row) => row.renderModeSummary.includes("->")).length;
+    const freshnessSummary = summarizeArtifactFreshnessForRows(rows);
     const summaryCards = [
       { label: "Shots", value: String(rows.length), tone: "muted" as UiBadgeTone, hint: "runtime shots with route metadata" },
       { label: "Reasons", value: String(new Set(rows.map((row) => row.routeReason)).size), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.routeReason), 1) },
       { label: "Accepted", value: String(rows.filter((row) => row.acceptanceTone === "ok").length), tone: "ok" as UiBadgeTone, hint: "accepted / resolved routed shots" },
       { label: "Render Drift", value: String(mismatchedCount), tone: mismatchedCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone), hint: "stored vs recommended render-mode mismatches" },
+      { label: "Freshness", value: `${freshnessSummary.staleCount} stale / ${freshnessSummary.agingCount} aging / ${freshnessSummary.unknownCount} unknown`, tone: freshnessSummary.staleCount > 0 ? ("bad" as UiBadgeTone) : freshnessSummary.agingCount > 0 || freshnessSummary.unknownCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone), hint: freshnessSummary.newestDetail },
       { label: "Rig Blocked", value: String(rows.filter((row) => row.rig.rigBlocked).length), tone: "bad" as UiBadgeTone, hint: "selected candidates with fail-level rig signals" },
       { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "route rows still tagged review_only" },
       { label: "Repairable", value: String(rows.filter((row) => row.rig.repairable === true).length), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.rig.speciesId), 2) },
@@ -10115,7 +10146,15 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       facts: routeJumpFacts,
       linksHtml: `<a href="${routeReturnHref}">${routeReturnLabel}</a><a href="${routeBenchmarksHref}">Benchmark Queue</a><a href="${currentRouteHref}">Refresh handoff</a>`
     });
-    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">This explorer depends on <code>shot_grammar.route_reason</code> inside runtime shots. If route reasons are missing, benchmark smoke output needs to persist that field for every shot, not only episode-local previews.</span></div>`;
+    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">This explorer depends on <code>shot_grammar.route_reason</code> inside runtime shots. If route reasons are missing, benchmark smoke output needs to persist that field for every shot, not only episode-local previews.</span></div><div class="ops-review-note"><strong>Freshness</strong><span class="muted-text">${
+      freshnessSummary.staleCount > 0
+        ? `${freshnessSummary.staleCount} routed rows are stale. Refresh rollout evidence or rerun benchmark smoke before promoting a route_reason decision.`
+        : freshnessSummary.unknownCount > 0
+          ? `${freshnessSummary.unknownCount} routed rows are missing parseable artifact timestamps. Treat freshness as indeterminate until those artifacts are refreshed.`
+          : freshnessSummary.agingCount > 0
+          ? `${freshnessSummary.agingCount} routed rows are aging. Refresh soon if drift and compare evidence still disagree.`
+          : `Artifacts are fresh enough for route review. ${freshnessSummary.newestDetail}.`
+    }</span></div>`;
     const body = buildRouteReasonPageBody({
       flash: `${flashHtml(request.query)}${routeJumpBanner}`,
       filters,
@@ -10193,11 +10232,13 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       }
       return true;
     });
+    const freshnessSummary = summarizeArtifactFreshnessForRows(rows);
     const summaryCards = [
       { label: "Bundles", value: String(rows.length), tone: "muted" as UiBadgeTone, hint: "smoke bundles with runtime lineage" },
       { label: "Datasets", value: String(new Set(rows.flatMap((row) => row.datasetIds)).size), tone: "warn" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.datasetIds), 1) },
       { label: "Character Packs", value: String(new Set(rows.flatMap((row) => row.packIds)).size), tone: "ok" as UiBadgeTone, hint: summarizeCounts(rows.flatMap((row) => row.packIds), 1) },
       { label: "Bible Refs", value: String(new Set(rows.map((row) => row.bibleRef).filter((value) => value !== "-")).size), tone: "muted" as UiBadgeTone, hint: summarizeCounts(rows.map((row) => row.bibleRef), 1) },
+      { label: "Freshness", value: `${freshnessSummary.staleCount} stale / ${freshnessSummary.agingCount} aging / ${freshnessSummary.unknownCount} unknown`, tone: freshnessSummary.staleCount > 0 ? ("bad" as UiBadgeTone) : freshnessSummary.agingCount > 0 || freshnessSummary.unknownCount > 0 ? ("warn" as UiBadgeTone) : ("ok" as UiBadgeTone), hint: freshnessSummary.newestDetail },
       { label: "Schema Gaps", value: String(rows.filter((row) => row.schemaGaps.length > 0).length), tone: "bad" as UiBadgeTone, hint: "rows missing lossless dataset versioning" },
       { label: "Review Only", value: String(rows.filter((row) => row.rig.reviewOnly).length), tone: "warn" as UiBadgeTone, hint: "manifest or request lineage still tagged review_only" },
       { label: "Low Anchor", value: String(rows.filter((row) => row.rig.lowAnchorConfidence).length), tone: "warn" as UiBadgeTone, hint: "low anchor confidence across lineage inputs" },
@@ -10507,7 +10548,15 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       facts: lineageJumpFacts,
       linksHtml: `<a href="${lineageReturnHref}">${lineageReturnLabel}</a><a href="${lineageBenchmarksHref}">Benchmark Queue</a><a href="${currentLineageHref}">Refresh handoff</a>`
     });
-    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Current artifacts expose <code>dataset_id</code>, <code>pack_id</code>, <code>bible_ref</code>, and sidecar reference manifest paths. They do not consistently expose <code>dataset_version_id</code>, source URIs, or manifest versions, so this viewer cannot prove lossless dataset revisions yet.</span></div>`;
+    const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Current artifacts expose <code>dataset_id</code>, <code>pack_id</code>, <code>bible_ref</code>, and sidecar reference manifest paths. They do not consistently expose <code>dataset_version_id</code>, source URIs, or manifest versions, so this viewer cannot prove lossless dataset revisions yet.</span></div><div class="ops-review-note"><strong>Freshness</strong><span class="muted-text">${
+      freshnessSummary.staleCount > 0
+        ? `${freshnessSummary.staleCount} lineage rows are stale. Refresh smoke/runtime provenance before treating this lineage view as promotion-ready proof.`
+        : freshnessSummary.unknownCount > 0
+          ? `${freshnessSummary.unknownCount} lineage rows are missing parseable artifact timestamps. Treat provenance freshness as indeterminate until those artifacts are refreshed.`
+          : freshnessSummary.agingCount > 0
+          ? `${freshnessSummary.agingCount} lineage rows are aging. Refresh if schema gaps or review_only tags still look ambiguous.`
+          : `Artifacts are fresh enough for lineage review. ${freshnessSummary.newestDetail}.`
+    }</span></div>`;
     const body = buildDatasetLineagePageBody({
       flash: `${flashHtml(request.query)}${lineageJumpBanner}`,
       filters,
