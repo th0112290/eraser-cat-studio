@@ -62,6 +62,10 @@ import {
   type BenchmarkScenarioView
 } from "./uiRouteBenchmarkBackendScenarios";
 import {
+  buildSidecarPlanReviewMap as buildSidecarPlanReviewMapFromSource,
+  type SidecarPlanReviewEntry
+} from "./uiRouteBenchmarkPlanReview";
+import {
   buildRegressionReportViews as buildRegressionReportViewsFromSource,
   collectBenchmarkViewerDataFromSources,
   type RegressionReportView
@@ -141,19 +145,6 @@ type RolloutSignal = {
   sourcePath: string;
   artifactPath: string;
   artifactRelativePath: string;
-};
-
-type SidecarPlanReviewEntry = {
-  providerSummary: string;
-  policySummary: string;
-  attemptSummary: string;
-  selectedCandidateId: string;
-  requestPath: string | null;
-  candidateJudgePath: string | null;
-  actualJudgePath: string | null;
-  visualJudgePath: string | null;
-  preflightPath: string | null;
-  resultPath: string | null;
 };
 
 type ProfileBrowserBundleCard = {
@@ -1209,96 +1200,17 @@ function readBooleanOrNull(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-function safePlanArtifactPath(source: RolloutArtifactSource, artifact: unknown): string | null {
-  if (!isRecord(artifact)) return null;
-  const candidatePath = artifact.path;
-  const kind = (str(artifact.kind) ?? path.extname(str(candidatePath) ?? "").replace(".", "")).toLowerCase();
-  if (kind === "video") {
-    return safeRolloutVideoPath(source, candidatePath);
-  }
-  if (kind === "plan" || path.extname(str(candidatePath) ?? "").toLowerCase() === ".txt") {
-    return safeRolloutTextPath(source, candidatePath);
-  }
-  return safeJsonArtifactPath(source, candidatePath) ?? safeRolloutTextPath(source, candidatePath);
-}
-
-function pickPlanArtifactPath(source: RolloutArtifactSource, plan: JsonRecord, fragments: string[]): string | null {
-  const normalized = fragments.map((value) => value.toLowerCase());
-  for (const artifact of recordList(plan.artifacts)) {
-    const label = (str(artifact.label) ?? "").toLowerCase();
-    if (!normalized.some((fragment) => label.includes(fragment))) {
-      continue;
-    }
-    const resolvedPath = safePlanArtifactPath(source, artifact);
-    if (resolvedPath) {
-      return resolvedPath;
-    }
-  }
-  return null;
-}
-
 function buildSidecarPlanReviewMap(
   source: RolloutArtifactSource,
   sidecarPlan: unknown
 ): Map<string, SidecarPlanReviewEntry> {
-  const reviewByShot = new Map<string, SidecarPlanReviewEntry>();
-  if (!isRecord(sidecarPlan)) {
-    return reviewByShot;
-  }
-
-  for (const plan of recordList(sidecarPlan.plans)) {
-    const shotId = str(plan.shotId);
-    if (!shotId) continue;
-    const metadata = isRecord(plan.metadata) ? plan.metadata : {};
-    const policyTags = uniqueStrings((Array.isArray(metadata.policyTags) ? metadata.policyTags : []).map((value) => str(value)));
-    const attempt = num(metadata.attempt);
-    const maxAttempts = num(metadata.maxAttempts);
-    reviewByShot.set(shotId, {
-      providerSummary:
-        compact(
-          [
-            str(metadata.actualBackendCapability) ?? str(metadata.backendCapability) ?? str(metadata.requestedBackend),
-            str(metadata.actualRenderer) ?? str(plan.renderer) ?? str(metadata.requestedRenderer)
-          ],
-          " / "
-        ) || "-",
-      policySummary:
-        compact(
-          [
-            str(metadata.controlnetPreset),
-            str(metadata.impactPreset),
-            str(metadata.qcPreset),
-            policyTags.length > 0 ? `tags ${summarizeValues(policyTags, 3)}` : null
-          ],
-          " | "
-        ) || "-",
-      attemptSummary:
-        attempt === null
-          ? "-"
-          : maxAttempts !== null
-            ? `${formatNumber(attempt, 0)}/${formatNumber(maxAttempts, 0)}`
-            : formatNumber(attempt, 0),
-      selectedCandidateId:
-        str(metadata.premiumActualSelectedCandidateId) ??
-        str(metadata.premiumSelectedCandidateId) ??
-        str(isRecord(plan.judge) ? plan.judge.candidateId : undefined) ??
-        "-",
-      requestPath: pickPlanArtifactPath(source, plan, ["request"]),
-      candidateJudgePath:
-        safeJsonArtifactPath(source, metadata.premiumCandidateJudgePath) ??
-        pickPlanArtifactPath(source, plan, ["candidate-judge"]),
-      actualJudgePath:
-        safeJsonArtifactPath(source, metadata.premiumActualJudgePath) ??
-        pickPlanArtifactPath(source, plan, ["actual-judge"]),
-      visualJudgePath:
-        safeJsonArtifactPath(source, metadata.premiumActualVisualSignalReportPath) ??
-        pickPlanArtifactPath(source, plan, ["visual-judge"]),
-      preflightPath: pickPlanArtifactPath(source, plan, ["preflight"]),
-      resultPath: pickPlanArtifactPath(source, plan, ["result"])
-    });
-  }
-
-  return reviewByShot;
+  return buildSidecarPlanReviewMapFromSource({
+    source,
+    sidecarPlan,
+    safeJsonArtifactPath,
+    safeRolloutTextPath,
+    safeRolloutVideoPath
+  });
 }
 
 function collectReferenceLineage(
