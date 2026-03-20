@@ -1,4 +1,4 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -63,7 +63,7 @@ import {
   initializeGenerationProviderRuntime,
   runProviderGenerateWithFallback
 } from "./characterGenerationProviderRuntime";
-import { buildSelectionDecisionOutcome } from "./characterGenerationSelectionDecision";
+import { runSelectionAutoRerouteFlow } from "./characterGenerationAutoReroute";
 import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
 import {
   handleSelectionReviewGate,
@@ -15015,727 +15015,84 @@ export async function handleGenerateCharacterAssetsJob(input: {
     );
   }
 
-  const computeSelectionOutcome = (): {
-    selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
-    missingGeneratedViews: CharacterView[];
-    lowQualityGeneratedViews: CharacterView[];
-    runtimeLowQualityViews: CharacterView[];
-    packCoherence: PackCoherenceDiagnostics | undefined;
-    rigStability: RigStabilityDiagnostics | undefined;
-    coherenceIssues: string[];
-    frontStrong: boolean;
-  } => {
-    const selectedByView = mergePreferredSelectionByViewForSelection({
-      baseSelectedByView: groupBestByViewForSelection({
-        scored,
-        targetStyle: promptBundle.qualityProfile.targetStyle,
-        acceptedScoreThreshold
-      }),
-      preferredSelectionByView,
-      targetStyle: promptBundle.qualityProfile.targetStyle,
-      acceptedScoreThreshold
-    });
-    const missingGeneratedViews = requestedViews.filter((view) => !selectedByView[view]);
-    const runtimeLowQualityViews = requestedViews.filter((view) => {
-      const candidate = selectedByView[view];
-      if (!candidate) {
-        return false;
-      }
-      return isRuntimeBucketLowQuality({
-        candidate,
-        targetStyle: promptBundle.qualityProfile.targetStyle,
-        acceptedScoreThreshold
-      });
-    });
-    const lowQualityGeneratedViews = requestedViews.filter((view) => {
-      const candidate = selectedByView[view];
-      if (!candidate) {
-        return true;
-      }
-      if (isRepairEmbargoedSelection(view, candidate)) {
-        return true;
-      }
-      if (candidate.rejections.length > 0) {
-        return true;
-      }
-      if (runtimeLowQualityViews.includes(view)) {
-        return true;
-      }
-      return candidate.score < acceptedScoreThreshold;
-    });
-    const packCoherence =
-      generation.viewToGenerate === undefined
-        ? buildPackCoherenceDiagnostics({
-            selectedByView,
-            targetStyle: promptBundle.qualityProfile.targetStyle,
-            acceptedScoreThreshold,
-            speciesId: promptBundle.speciesId
-          })
-        : undefined;
-    const rigStability =
-      generation.viewToGenerate === undefined
-        ? assessRigStability({
-            selectedByView,
-            packCoherence,
-            targetStyle: promptBundle.qualityProfile.targetStyle,
-            speciesId: promptBundle.speciesId,
-            autoReroute: autoRerouteDiagnostics
-          })
-        : undefined;
-    return {
-      selectedByView,
-      missingGeneratedViews,
-      lowQualityGeneratedViews,
-      runtimeLowQualityViews,
-      packCoherence,
-      rigStability,
-      coherenceIssues: packCoherence?.issues ?? [],
-      frontStrong: isStrongFrontMasterCandidate(
-        selectedByView.front,
-        promptBundle.qualityProfile.targetStyle,
-        frontAnchorAcceptedScoreThreshold,
-        promptBundle.speciesId
-      )
-    };
-  };
-
-  let selectionOutcome = computeSelectionOutcome();
-  const autoRerouteDecision = decideAutoReroute({
-    config: autoRerouteConfig,
-    generationViewToGenerate: generation.viewToGenerate,
-    providerName: providerName as CharacterProviderName,
+  const autoRerouteResult = await runSelectionAutoRerouteFlow({
     requestedViews,
-    packCoherence: selectionOutcome.packCoherence,
-    rigStability: selectionOutcome.rigStability,
-    missingGeneratedViews: selectionOutcome.missingGeneratedViews,
-    lowQualityGeneratedViews: selectionOutcome.lowQualityGeneratedViews,
-    runtimeLowQualityViews: selectionOutcome.runtimeLowQualityViews,
-    frontStrong: selectionOutcome.frontStrong,
-    continuity: continuitySnapshot
+    scored,
+    preferredSelectionByView,
+    targetStyle: promptBundle.qualityProfile.targetStyle,
+    acceptedScoreThreshold,
+    speciesId: promptBundle.speciesId,
+    frontAnchorAcceptedScoreThreshold,
+    generationViewToGenerate: generation.viewToGenerate,
+    autoRerouteDiagnostics,
+    groupBestByViewForSelection,
+    mergePreferredSelectionByViewForSelection,
+    isRuntimeBucketLowQuality,
+    isRepairEmbargoedSelection,
+    buildPackCoherenceDiagnostics,
+    assessRigStability,
+    isStrongFrontMasterCandidate,
+    jobDbId,
+    providerName,
+    providerWarning,
+    autoRerouteConfig,
+    continuitySnapshot,
+    promptBundle,
+    clampedCandidateCount: clamped.candidateCount,
+    repairScoreFloor,
+    referenceImageBase64,
+    referenceMimeType,
+    starterReferencePathsByView,
+    mascotFamilyReferencesByView,
+    helpers,
+    runViewGeneration,
+    applyConsistencyScoring,
+    decideAutoReroute: (flowInput: any) =>
+      decideAutoReroute({
+        ...flowInput,
+        providerName: flowInput.providerName as CharacterProviderName
+      }),
+    inlineReferenceFromCandidate,
+    loadMascotStarterReference,
+    createReferenceBankEntry,
+    resolveAdaptiveReferenceWeight,
+    buildMascotFamilyReferenceEntries,
+    dedupeReferenceBank,
+    loadMascotStarterReferencesByView,
+    buildPreferredSideReferenceInputByView,
+    excludePoseGuidesCoveredByStarter,
+    loadStagePoseGuides,
+    shouldSuppressDuplicateViewStarterReference,
+    maybeRunUltraSideRefineStage,
+    maybeRunUltraIdentityLockStage,
+    buildSideViewAcceptanceGate,
+    recordSideViewAcceptanceGateStage,
+    dedupeCharacterViews,
+    selectBestRepairBaseCandidate,
+    buildRepairTriageGate,
+    applyRepairEmbargoDecisions,
+    recordRepairTriageGateStage,
+    buildRepairMaskReferenceForCandidate,
+    resolveAutoRepairDirective: (flowInput: any) =>
+      buildRepairDirectiveProfile({
+        stage: "repair",
+        view: flowInput.view as CharacterView,
+        candidate: flowInput.candidate as ScoredCandidate,
+        speciesId: flowInput.speciesId as MascotSpecies | undefined
+      }),
+    summarizeRepairDirectiveProfile,
+    buildPostRepairAcceptanceGate,
+    recordPostRepairAcceptanceGateStage,
+    selectBestCandidateForViewByStages,
+    buildAutoRerouteViewDelta,
+    toFlatContinuityFields,
+    shouldEnableMascotHeroMode
   });
-
-  if (autoRerouteDecision) {
-    const autoRerouteSelectionBefore = { ...selectionOutcome.selectedByView };
-    autoRerouteDiagnostics = {
-      attempted: true,
-      strategy: autoRerouteDecision.strategy,
-      triggers: autoRerouteDecision.triggers,
-      targetViews: autoRerouteDecision.targetViews,
-      candidateCountBoost: autoRerouteDecision.candidateCountBoost,
-      acceptedScoreThresholdBoost: autoRerouteDecision.acceptedScoreThresholdBoost,
-      seedOffset: autoRerouteDecision.seedOffset,
-      notes: autoRerouteDecision.notes,
-      initialMissingViews: selectionOutcome.missingGeneratedViews,
-      initialLowQualityViews: selectionOutcome.lowQualityGeneratedViews,
-      ...(selectionOutcome.packCoherence ? { initialPackCoherence: selectionOutcome.packCoherence } : {})
-    };
-    providerWarning = [
-      providerWarning,
-      `auto reroute ${autoRerouteDecision.strategy} for ${autoRerouteDecision.targetViews.join(", ")}`
-    ]
-      .filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
-      .join(" | ");
-    await helpers.logJob(jobDbId, "info", "Running auto reroute after pack diagnostics", {
-      strategy: autoRerouteDecision.strategy,
-      triggers: autoRerouteDecision.triggers,
-      targetViews: autoRerouteDecision.targetViews,
-      candidateCountBoost: autoRerouteDecision.candidateCountBoost,
-      acceptedScoreThresholdBoost: autoRerouteDecision.acceptedScoreThresholdBoost,
-      seedOffset: autoRerouteDecision.seedOffset,
-      initialPackCoherence: selectionOutcome.packCoherence,
-      initialMissingViews: selectionOutcome.missingGeneratedViews,
-      initialLowQualityViews: selectionOutcome.lowQualityGeneratedViews,
-      ...toFlatContinuityFields(continuitySnapshot)
-    });
-
-    if (autoRerouteDecision.targetViews.includes("front")) {
-      const rerouteFrontStarterReference = loadMascotStarterReference(promptBundle.speciesId, "front");
-      const rerouteFrontReferenceBank: CharacterReferenceBankEntry[] = [];
-      if (referenceImageBase64) {
-        rerouteFrontReferenceBank.push(
-          createReferenceBankEntry({
-            id: "auto_reroute_front_subject_reference",
-            role: "subject",
-            view: "front",
-            weight: resolveAdaptiveReferenceWeight({
-              stage: "front",
-              role: "subject",
-              targetView: "front",
-              hasStarter: Boolean(rerouteFrontStarterReference)
-            }),
-            note: "auto reroute subject anchor",
-            image: {
-              referenceImageBase64,
-              referenceMimeType
-            }
-          })
-        );
-      }
-      if (rerouteFrontStarterReference) {
-        rerouteFrontReferenceBank.push(
-          createReferenceBankEntry({
-            id: "auto_reroute_front_starter",
-            role: "starter",
-            view: "front",
-            weight: resolveAdaptiveReferenceWeight({
-              stage: "front",
-              role: "starter",
-              targetView: "front",
-              hasStarter: true
-            }),
-            note: rerouteFrontStarterReference.sourcePath,
-            image: rerouteFrontStarterReference
-          })
-        );
-      }
-      rerouteFrontReferenceBank.push(
-        ...buildMascotFamilyReferenceEntries({
-          speciesId: promptBundle.speciesId,
-          stage: "front",
-          targetView: "front",
-          familyReferencesByView: mascotFamilyReferencesByView,
-          hasStarter: Boolean(rerouteFrontStarterReference),
-          preferMultiReference: promptBundle.selectionHints.preferMultiReference,
-          heroModeEnabled: shouldEnableMascotHeroMode({
-            stage: "front",
-            heroMode: promptBundle.heroMode,
-            frontAnchorScore: selectionOutcome.selectedByView.front?.score
-          })
-        })
-      );
-      await runViewGeneration({
-        views: ["front"],
-        stage: "front",
-        origin: "auto_reroute",
-        passLabel: "front.auto_reroute",
-        reasonCodes: autoRerouteDecision.triggers,
-        triggerViews: autoRerouteDecision.targetViews,
-        candidateCountOverride: Math.max(
-          clamped.candidateCount,
-          Math.floor(promptBundle.selectionHints.frontMasterCandidateCount ?? clamped.candidateCount) +
-            autoRerouteDecision.candidateCountBoost
-        ),
-        acceptedScoreThresholdOverride: Math.min(
-          0.98,
-          frontAnchorAcceptedScoreThreshold + autoRerouteDecision.acceptedScoreThresholdBoost
-        ),
-        ...(rerouteFrontReferenceBank.length > 0
-          ? { referenceBank: dedupeReferenceBank(rerouteFrontReferenceBank) }
-          : {}),
-        budgetViewCount: requestedViews.length,
-        seedOffset: autoRerouteDecision.seedOffset
-      });
-      applyConsistencyScoring(
-        scored,
-        promptBundle.qualityProfile.targetStyle,
-        promptBundle.speciesId,
-        acceptedScoreThreshold
-      );
-      selectionOutcome = computeSelectionOutcome();
-    }
-
-    const autoRerouteFrontBaseline = selectionOutcome.frontStrong ? selectionOutcome.selectedByView.front : undefined;
-    const autoRerouteSideViews = autoRerouteDecision.targetViews.filter((view) => view !== "front");
-    let autoRerouteAcceptanceGate:
-      | ReturnType<typeof buildSideViewAcceptanceGate>
-      | undefined;
-    if (autoRerouteSideViews.length > 0) {
-      let autoRerouteSideReference: InlineImageReference | undefined;
-      if (autoRerouteFrontBaseline) {
-        autoRerouteSideReference = inlineReferenceFromCandidate(autoRerouteFrontBaseline.candidate);
-      } else if (referenceImageBase64) {
-        autoRerouteSideReference = {
-          referenceImageBase64,
-          referenceMimeType
-        };
-      }
-
-      if (autoRerouteSideReference) {
-        const autoRerouteStarterReferenceByView = loadMascotStarterReferencesByView(
-          promptBundle.speciesId,
-          autoRerouteSideViews
-        );
-        const autoRerouteReferenceInputByView = buildPreferredSideReferenceInputByView({
-          views: autoRerouteSideViews,
-          speciesId: promptBundle.speciesId,
-          familyReferencesByView: mascotFamilyReferencesByView,
-          starterReferenceByView: autoRerouteStarterReferenceByView
-        });
-        const autoReroutePoseGuidesByView = excludePoseGuidesCoveredByStarter(
-          "angles",
-          loadStagePoseGuides({
-            speciesId: promptBundle.speciesId,
-            views: autoRerouteSideViews
-          }),
-          autoRerouteStarterReferenceByView
-        );
-        if (Object.keys(autoRerouteStarterReferenceByView).length > 0) {
-          starterReferencePathsByView = {
-            ...(starterReferencePathsByView ?? {}),
-            ...Object.fromEntries(
-              Object.entries(autoRerouteStarterReferenceByView).map(([view, guide]) => [view, guide.sourcePath])
-            )
-          };
-        }
-        const autoRerouteReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
-        for (const view of autoRerouteSideViews) {
-          const starterReference = autoRerouteStarterReferenceByView[view];
-          const familyReference = mascotFamilyReferencesByView[view];
-          const preferredSideReference = autoRerouteReferenceInputByView[view];
-          const suppressStarterReference = shouldSuppressDuplicateViewStarterReference({
-            stage: "angles",
-            view,
-            speciesId: promptBundle.speciesId,
-            starterReference,
-            familyReference
-          });
-          const sideStarterLikeReference = suppressStarterReference
-            ? preferredSideReference
-            : starterReference ?? preferredSideReference;
-          const hasSideAnchor = Boolean(starterReference ?? preferredSideReference ?? familyReference);
-          const bank: CharacterReferenceBankEntry[] = [];
-          if (autoRerouteFrontBaseline) {
-            bank.push(
-              createReferenceBankEntry({
-                id: `${autoRerouteFrontBaseline.candidate.id}_auto_reroute_front_master`,
-                role: "front_master",
-                view: "front",
-                weight: resolveAdaptiveReferenceWeight({
-                  stage: "angles",
-                  role: "front_master",
-                  targetView: view,
-                  hasStarter: hasSideAnchor
-                }),
-                note: "auto reroute front anchor",
-                image: inlineReferenceFromCandidate(autoRerouteFrontBaseline.candidate)
-              })
-            );
-          } else {
-            bank.push(
-              createReferenceBankEntry({
-                id: `${view}_auto_reroute_subject_anchor`,
-                role: "subject",
-                view: "front",
-                weight: resolveAdaptiveReferenceWeight({
-                  stage: "angles",
-                  role: "subject",
-                  targetView: view,
-                  hasStarter: hasSideAnchor
-                }),
-                note: "auto reroute external subject anchor",
-                image: autoRerouteSideReference
-              })
-            );
-          }
-          if (sideStarterLikeReference && !suppressStarterReference) {
-            bank.push(
-              createReferenceBankEntry({
-                id: starterReference
-                  ? `${view}_auto_reroute_starter`
-                  : `${view}_auto_reroute_preferred_side_starter`,
-                role: "view_starter",
-                view,
-                weight: resolveAdaptiveReferenceWeight({
-                  stage: "angles",
-                  role: "view_starter",
-                  targetView: view,
-                  hasStarter: true
-                }),
-                note:
-                  starterReference && "sourcePath" in starterReference
-                    ? starterReference.sourcePath
-                    : "auto reroute preferred side reference starter anchor",
-                image: sideStarterLikeReference
-              })
-            );
-          }
-        bank.push(
-          ...buildMascotFamilyReferenceEntries({
-            speciesId: promptBundle.speciesId,
-            stage: "angles",
-            targetView: view,
-            familyReferencesByView: mascotFamilyReferencesByView,
-            hasStarter: hasSideAnchor,
-            preferMultiReference: promptBundle.selectionHints.preferMultiReference,
-            heroModeEnabled: shouldEnableMascotHeroMode({
-              stage: "angles",
-              heroMode: promptBundle.heroMode,
-                frontAnchorScore: autoRerouteFrontBaseline?.score
-              })
-            })
-          );
-          if (bank.length > 0) {
-            autoRerouteReferenceBankByView[view] = dedupeReferenceBank(bank);
-          }
-        }
-        await runViewGeneration({
-          views: autoRerouteSideViews,
-          stage: "angles",
-          origin: "auto_reroute",
-          passLabel: "angles.auto_reroute",
-          reasonCodes: autoRerouteDecision.triggers,
-          triggerViews: autoRerouteDecision.targetViews,
-          referenceInput: autoRerouteSideReference,
-          ...(Object.keys(autoRerouteReferenceInputByView).length > 0
-            ? { referenceInputByView: autoRerouteReferenceInputByView }
-            : {}),
-          ...(Object.keys(autoRerouteReferenceBankByView).length > 0
-            ? { referenceBankByView: autoRerouteReferenceBankByView }
-            : {}),
-          ...(Object.keys(autoReroutePoseGuidesByView).length > 0
-            ? { poseGuidesByView: autoReroutePoseGuidesByView }
-            : {}),
-          candidateCountOverride: Math.max(
-            clamped.candidateCount,
-            clamped.candidateCount + autoRerouteDecision.candidateCountBoost
-          ),
-          acceptedScoreThresholdOverride: Math.min(
-            0.98,
-            acceptedScoreThreshold + autoRerouteDecision.acceptedScoreThresholdBoost
-          ),
-          seedOffset: autoRerouteDecision.seedOffset + 5000
-        });
-        applyConsistencyScoring(
-          scored,
-          promptBundle.qualityProfile.targetStyle,
-          promptBundle.speciesId,
-          acceptedScoreThreshold
-        );
-        const autoRerouteBestAfterBase = groupBestByView(scored);
-        await maybeRunUltraSideRefineStage({
-          targetViews: autoRerouteSideViews,
-          bestByView: autoRerouteBestAfterBase,
-          frontReferenceInput: autoRerouteSideReference,
-          origin: "auto_reroute",
-          passLabel: "angles.refine_auto_reroute",
-          reasonCodes: [...autoRerouteDecision.triggers, "side_view_refine"],
-          triggerViews: autoRerouteSideViews,
-          seedOffset: autoRerouteDecision.seedOffset + 7000,
-          acceptedScoreThresholdBoost: autoRerouteDecision.acceptedScoreThresholdBoost * 0.35,
-          candidateCountBoost: Math.max(0, autoRerouteDecision.candidateCountBoost - 1)
-        });
-        const autoRerouteBestAfterRefine = groupBestByView(scored);
-        await maybeRunUltraIdentityLockStage({
-          targetViews: autoRerouteSideViews,
-          bestByView: autoRerouteBestAfterRefine,
-          frontReferenceInput: autoRerouteSideReference,
-          origin: "auto_reroute",
-          passLabel: "angles.identity_lock_auto_reroute",
-          reasonCodes: [...autoRerouteDecision.triggers, "identity_lock_refine"],
-          triggerViews: autoRerouteSideViews,
-          seedOffset: autoRerouteDecision.seedOffset + 8200,
-          acceptedScoreThresholdBoost: autoRerouteDecision.acceptedScoreThresholdBoost * 0.45,
-          candidateCountBoost: Math.max(0, autoRerouteDecision.candidateCountBoost - 1)
-        });
-        const autoRerouteBestAfterLock = groupBestByView(scored);
-        autoRerouteAcceptanceGate = buildSideViewAcceptanceGate({
-          targetViews: autoRerouteSideViews,
-          baseByView: autoRerouteBestAfterBase,
-          refineByView: autoRerouteBestAfterRefine,
-          lockByView: autoRerouteBestAfterLock,
-          acceptedScoreThreshold,
-          targetStyle: promptBundle.qualityProfile.targetStyle
-        });
-        if (Object.keys(autoRerouteAcceptanceGate.selectedByView).length > 0) {
-          preferredSelectionByView = {
-            ...preferredSelectionByView,
-            ...autoRerouteAcceptanceGate.selectedByView
-          };
-          recordSideViewAcceptanceGateStage({
-            views: autoRerouteSideViews,
-            selectedByView: autoRerouteAcceptanceGate.selectedByView,
-            gateDecisionsByView: autoRerouteAcceptanceGate.gateDecisionsByView,
-            origin: "auto_reroute",
-            passLabel: "angles.acceptance_gate_auto_reroute",
-            reasonCodes: [...autoRerouteDecision.triggers, "side_view_acceptance_gate"],
-            triggerViews: autoRerouteSideViews,
-            seedOffset: autoRerouteDecision.seedOffset + 8600
-          });
-        }
-        selectionOutcome = computeSelectionOutcome();
-      }
-    }
-
-    const autoRerouteRepairFrontBaseline = selectionOutcome.frontStrong ? selectionOutcome.selectedByView.front : undefined;
-    const autoRerouteRepairCandidates = selectionOutcome.selectedByView;
-    const autoRerouteRepairCandidateByView: Partial<Record<CharacterView, ScoredCandidate>> = {};
-    for (const view of dedupeCharacterViews(autoRerouteDecision.targetViews)) {
-      const candidate =
-        preferredSelectionByView[view] ??
-        selectBestRepairBaseCandidate({
-          scored,
-          view,
-          targetStyle: promptBundle.qualityProfile.targetStyle,
-          acceptedScoreThreshold
-        }) ??
-        autoRerouteRepairCandidates[view];
-      if (candidate) {
-        autoRerouteRepairCandidateByView[view] = candidate;
-      }
-    }
-    const autoRerouteRepairTriage = buildRepairTriageGate({
-      targetViews: autoRerouteDecision.targetViews,
-      candidateByView: autoRerouteRepairCandidateByView,
-      acceptedScoreThreshold: Math.min(0.98, acceptedScoreThreshold + autoRerouteDecision.acceptedScoreThresholdBoost * 0.5),
-      repairScoreFloor,
-      frontAnchorAcceptedScoreThreshold,
-      targetStyle: promptBundle.qualityProfile.targetStyle,
-      packCoherence: selectionOutcome.packCoherence,
-      rigStability: selectionOutcome.rigStability,
-      speciesId: promptBundle.speciesId,
-      gateDecisionsByView: autoRerouteAcceptanceGate?.gateDecisionsByView
-    });
-    applyRepairEmbargoDecisions(autoRerouteDecision.targetViews, autoRerouteRepairTriage.repairTriageByView);
-    if (Object.keys(autoRerouteRepairTriage.repairTriageByView).length > 0) {
-      recordRepairTriageGateStage({
-        views: dedupeCharacterViews(autoRerouteDecision.targetViews),
-        selectedByView: autoRerouteRepairCandidateByView,
-        repairTriageByView: autoRerouteRepairTriage.repairTriageByView,
-        origin: "auto_reroute",
-        passLabel: "angles.repair_triage_auto_reroute",
-        reasonCodes: [...autoRerouteDecision.triggers, "repair_triage_gate"],
-        triggerViews: autoRerouteDecision.targetViews,
-        seedOffset: autoRerouteDecision.seedOffset + 8800
-      });
-    }
-    selectionOutcome = computeSelectionOutcome();
-    if (autoRerouteRepairTriage.repairViews.length > 0) {
-      const autoRerouteRepairReferenceInputByView: Partial<Record<CharacterView, InlineImageReference>> = {};
-      const autoRerouteRepairMaskByView: Partial<Record<CharacterView, InlineImageReference>> = {};
-      const autoRerouteRepairReferenceBankByView: Partial<Record<CharacterView, CharacterReferenceBankEntry[]>> = {};
-      const autoRerouteRepairBaseAdjustmentsByView: Partial<Record<CharacterView, RetryAdjustment>> = {};
-      const autoRerouteRepairDirectiveProfilesByView: Partial<Record<CharacterView, RepairDirectiveProfileSummary>> = {
-        ...autoRerouteRepairTriage.directiveProfilesByView
-      };
-      const autoRerouteRepairFromCandidateIds: Partial<Record<CharacterView, string>> = {};
-      for (const view of autoRerouteRepairTriage.repairViews) {
-        const candidate = autoRerouteRepairTriage.repairBaseByView[view];
-        if (!candidate) {
-          continue;
-        }
-        autoRerouteRepairReferenceInputByView[view] = inlineReferenceFromCandidate(candidate.candidate);
-        autoRerouteRepairMaskByView[view] = await buildRepairMaskReferenceForCandidate(candidate);
-        autoRerouteRepairFromCandidateIds[view] = candidate.candidate.id;
-        const repairDirective = buildRepairDirectiveProfile({
-          stage: "repair",
-          view,
-          candidate,
-          speciesId: promptBundle.speciesId
-        });
-        if (repairDirective?.adjustment && hasRetryAdjustmentContent(repairDirective.adjustment)) {
-          autoRerouteRepairBaseAdjustmentsByView[view] = repairDirective.adjustment;
-        }
-        if (repairDirective && !autoRerouteRepairDirectiveProfilesByView[view]) {
-          autoRerouteRepairDirectiveProfilesByView[view] = summarizeRepairDirectiveProfile(repairDirective);
-        }
-        const starterReference = loadMascotStarterReference(promptBundle.speciesId, view);
-        const bank: CharacterReferenceBankEntry[] = [
-          createReferenceBankEntry({
-            id: `${candidate.candidate.id}_auto_reroute_repair_base`,
-            role: "repair_base",
-            view,
-            weight: resolveAdaptiveReferenceWeight({
-              stage: "repair",
-              role: "repair_base",
-              targetView: view,
-              hasStarter: Boolean(starterReference),
-              directiveFamilies: repairDirective?.families,
-              directiveSeverity: repairDirective?.severity
-            }),
-            note: "auto reroute repair base",
-            image: inlineReferenceFromCandidate(candidate.candidate)
-          }),
-          createReferenceBankEntry({
-            id: `${candidate.candidate.id}_auto_reroute_repair_composition`,
-            role: "composition",
-            view,
-            weight: resolveAdaptiveReferenceWeight({
-              stage: "repair",
-              role: "composition",
-              targetView: view,
-              hasStarter: Boolean(starterReference),
-              directiveFamilies: repairDirective?.families,
-              directiveSeverity: repairDirective?.severity
-            }),
-            note: "auto reroute repair composition",
-            image: inlineReferenceFromCandidate(candidate.candidate)
-          })
-        ];
-        if (autoRerouteRepairFrontBaseline) {
-          bank.push(
-            createReferenceBankEntry({
-              id: `${autoRerouteRepairFrontBaseline.candidate.id}_auto_reroute_front_master`,
-              role: "front_master",
-              view: "front",
-              weight: resolveAdaptiveReferenceWeight({
-                stage: "repair",
-                role: "front_master",
-                targetView: view,
-                hasStarter: Boolean(starterReference),
-                directiveFamilies: repairDirective?.families,
-                directiveSeverity: repairDirective?.severity
-              }),
-              note: "auto reroute approved front master",
-              image: inlineReferenceFromCandidate(autoRerouteRepairFrontBaseline.candidate)
-            })
-          );
-        }
-        bank.push(
-          ...buildMascotFamilyReferenceEntries({
-            speciesId: promptBundle.speciesId,
-            stage: "repair",
-            targetView: view,
-            familyReferencesByView: mascotFamilyReferencesByView,
-            hasStarter: Boolean(starterReference),
-            directiveFamilies: repairDirective?.families,
-            directiveSeverity: repairDirective?.severity,
-            preferMultiReference: promptBundle.selectionHints.preferMultiReference,
-            heroModeEnabled: shouldEnableMascotHeroMode({
-              stage: "repair",
-              heroMode: promptBundle.heroMode,
-              frontAnchorScore: autoRerouteRepairFrontBaseline?.score ?? autoRerouteFrontBaseline?.score
-            })
-          })
-        );
-        autoRerouteRepairReferenceBankByView[view] = dedupeReferenceBank(bank);
-      }
-      const resolvedAutoRerouteRepairViews = Object.keys(
-        autoRerouteRepairReferenceInputByView
-      ) as CharacterView[];
-      if (resolvedAutoRerouteRepairViews.length > 0) {
-        const rerouteRepairCandidateCount = Math.max(
-          1,
-          Math.floor(
-            (promptBundle.selectionHints.repairCandidateCount ?? 2) +
-              autoRerouteDecision.candidateCountBoost +
-              Math.max(
-                0,
-                ...resolvedAutoRerouteRepairViews.map(
-                  (view) => autoRerouteRepairDirectiveProfilesByView[view]?.candidateCountBoost ?? 0
-                )
-              )
-          )
-        );
-        const rerouteRepairAcceptedScoreThreshold = Math.min(
-          0.98,
-          acceptedScoreThreshold +
-            autoRerouteDecision.acceptedScoreThresholdBoost +
-            Math.max(
-              0,
-              ...resolvedAutoRerouteRepairViews.map(
-                (view) => autoRerouteRepairDirectiveProfilesByView[view]?.acceptedScoreThresholdBoost ?? 0
-              )
-            )
-        );
-        await runViewGeneration({
-          views: resolvedAutoRerouteRepairViews,
-          stage: "repair",
-          origin: "auto_reroute",
-          passLabel: "repair.auto_reroute",
-          reasonCodes: [...autoRerouteDecision.triggers, "repair_refine"],
-          triggerViews: resolvedAutoRerouteRepairViews,
-          candidateCountOverride: rerouteRepairCandidateCount,
-          acceptedScoreThresholdOverride: rerouteRepairAcceptedScoreThreshold,
-          referenceInput: autoRerouteRepairFrontBaseline
-            ? inlineReferenceFromCandidate(autoRerouteRepairFrontBaseline.candidate)
-            : undefined,
-          referenceInputByView: autoRerouteRepairReferenceInputByView,
-          repairMaskByView: autoRerouteRepairMaskByView,
-          referenceBankByView: autoRerouteRepairReferenceBankByView,
-          ...(Object.keys(autoRerouteRepairBaseAdjustmentsByView).length > 0
-            ? { baseAdjustmentsByView: autoRerouteRepairBaseAdjustmentsByView }
-            : {}),
-          ...(Object.keys(autoRerouteRepairDirectiveProfilesByView).length > 0
-            ? { directiveProfilesByView: autoRerouteRepairDirectiveProfilesByView }
-            : {}),
-          repairFromCandidateIds: autoRerouteRepairFromCandidateIds,
-          ...(Object.keys(autoRerouteRepairTriage.repairLineageByView).length > 0
-            ? {
-                repairLineageByView: autoRerouteRepairTriage.repairLineageByView
-              }
-            : {}),
-          seedOffset: autoRerouteDecision.seedOffset + 9000
-        });
-        applyConsistencyScoring(
-          scored,
-          promptBundle.qualityProfile.targetStyle,
-          promptBundle.speciesId,
-          acceptedScoreThreshold
-        );
-        const postRepairAcceptanceGate = buildPostRepairAcceptanceGate({
-          targetViews: resolvedAutoRerouteRepairViews,
-          preRepairByView: autoRerouteRepairTriage.repairBaseByView,
-          repairByView: Object.fromEntries(
-            resolvedAutoRerouteRepairViews
-              .map((view) => [
-                view,
-                selectBestCandidateForViewByStages({
-                  scored,
-                  view,
-                  stages: ["repair_refine"]
-                })
-              ])
-              .filter((entry): entry is [CharacterView, ScoredCandidate] => Boolean(entry[1]))
-          ) as Partial<Record<CharacterView, ScoredCandidate>>,
-          acceptedScoreThreshold,
-          promotionThresholdByView: Object.fromEntries(
-            resolvedAutoRerouteRepairViews.map((view) => [view, rerouteRepairAcceptedScoreThreshold])
-          ) as Partial<Record<CharacterView, number>>,
-          targetStyle: promptBundle.qualityProfile.targetStyle
-        });
-        if (Object.keys(postRepairAcceptanceGate.selectedByView).length > 0) {
-          preferredSelectionByView = {
-            ...preferredSelectionByView,
-            ...postRepairAcceptanceGate.selectedByView
-          };
-          recordPostRepairAcceptanceGateStage({
-            views: resolvedAutoRerouteRepairViews,
-            selectedByView: postRepairAcceptanceGate.selectedByView,
-            repairAcceptanceByView: postRepairAcceptanceGate.repairAcceptanceByView,
-            acceptedScoreThresholdOverride: rerouteRepairAcceptedScoreThreshold,
-            origin: "auto_reroute",
-            passLabel: "repair.acceptance_gate_auto_reroute",
-            reasonCodes: [...autoRerouteDecision.triggers, "post_repair_acceptance_gate"],
-            triggerViews: resolvedAutoRerouteRepairViews,
-            seedOffset: autoRerouteDecision.seedOffset + 9400
-          });
-        }
-        selectionOutcome = computeSelectionOutcome();
-      }
-    }
-
-    const autoRerouteViewDelta = buildAutoRerouteViewDelta({
-      before: autoRerouteSelectionBefore,
-      after: selectionOutcome.selectedByView,
-      views: autoRerouteDecision.targetViews
-    });
-    autoRerouteDiagnostics = {
-      ...autoRerouteDiagnostics,
-      finalMissingViews: selectionOutcome.missingGeneratedViews,
-      finalLowQualityViews: selectionOutcome.lowQualityGeneratedViews,
-      ...(selectionOutcome.packCoherence ? { finalPackCoherence: selectionOutcome.packCoherence } : {}),
-      ...(autoRerouteViewDelta ? { viewDeltaByView: autoRerouteViewDelta } : {}),
-      recovered:
-        selectionOutcome.missingGeneratedViews.length === 0 &&
-        selectionOutcome.lowQualityGeneratedViews.length === 0 &&
-        (selectionOutcome.packCoherence?.severity ?? "none") !== "block"
-    };
-    await helpers.logJob(
-      jobDbId,
-      autoRerouteDiagnostics.recovered ? "info" : "warn",
-      autoRerouteDiagnostics.recovered ? "Auto reroute recovered blocked pack" : "Auto reroute did not fully recover blocked pack",
-      {
-        strategy: autoRerouteDecision.strategy,
-        triggers: autoRerouteDecision.triggers,
-        targetViews: autoRerouteDecision.targetViews,
-        initialPackCoherence: autoRerouteDiagnostics.initialPackCoherence,
-        finalPackCoherence: autoRerouteDiagnostics.finalPackCoherence,
-        finalMissingViews: autoRerouteDiagnostics.finalMissingViews,
-        finalLowQualityViews: autoRerouteDiagnostics.finalLowQualityViews
-      }
-    );
-  }
-
+  let selectionOutcome = autoRerouteResult.selectionOutcome;
+  preferredSelectionByView = autoRerouteResult.preferredSelectionByView;
+  starterReferencePathsByView = autoRerouteResult.starterReferencePathsByView;
+  providerWarning = autoRerouteResult.providerWarning;
+  autoRerouteDiagnostics = autoRerouteResult.autoRerouteDiagnostics;
   await insertProviderCallLogs({
     prisma,
     sessionId,
