@@ -60,10 +60,9 @@ import {
 import { handleHitlSelectedGeneration } from "./characterGenerationHitlSelected";
 import { initializeCharacterGenerationBootstrap } from "./characterGenerationBootstrap";
 import {
-  initializeGenerationProviderRuntime,
-  runProviderGenerateWithFallback
+  initializeGenerationProviderRuntime
 } from "./characterGenerationProviderRuntime";
-import { initializeGenerationStageRuntime } from "./characterGenerationStageRuntime";
+import { initializeGenerationExecutionRuntime } from "./characterGenerationExecutionRuntime";
 import { runGenerationLifecycle } from "./characterGenerationLifecycle";
 import { runSelectionAutoRerouteFlow } from "./characterGenerationAutoReroute";
 import { runGenerationCompletionRuntime } from "./characterGenerationCompletionRuntime";
@@ -12304,9 +12303,6 @@ export async function handleGenerateCharacterAssetsJob(input: {
     toPositiveInt
   });
   const requestedProvider = runtime.requestedProvider;
-  let providerName = runtime.providerName;
-  let providerWarning = runtime.providerWarning;
-  let provider = runtime.provider;
   const budget = runtime.budget;
   const qualityConfig = runtime.qualityConfig;
   const autoRerouteConfig = runtime.autoRerouteConfig as ReturnType<typeof readAutoRerouteConfig>;
@@ -12323,9 +12319,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const candidatesDir = runtime.candidatesDir;
 
   const scored: ScoredCandidate[] = [];
-  let autoRerouteDiagnostics: AutoRerouteDiagnostics | undefined;
   const workflowStageRuns: NonNullable<GenerationManifest["workflowStages"]> = [];
-  let preferredSelectionByView: Partial<Record<CharacterView, ScoredCandidate>> = {};
   const requestedBaseStage: GenerationStageKey = generation.viewToGenerate === "front" ? "front" : "angles";
   const requestedBasePassPrefix = generation.viewToGenerate === "front" ? "front" : "angles";
   const repairEmbargoedCandidateIdsByView: Partial<Record<CharacterView, Set<string>>> = {};
@@ -12524,226 +12518,111 @@ export async function handleGenerateCharacterAssetsJob(input: {
         : {})
     });
   };
-  const maybePromotePreferredSelection = (view: CharacterView, contender: ScoredCandidate | undefined) => {
-    if (!contender) {
-      return;
-    }
-    const current = preferredSelectionByView[view];
-    const runtimeGuard = assessRuntimePromotionGuard({
-      current,
-      contender,
-      targetStyle: promptBundle.qualityProfile.targetStyle,
-      stage:
-        resolveCandidateWorkflowStage(contender) === "repair_refine"
-          ? "repair"
-          : resolveCandidateWorkflowStage(contender) === "identity_lock_refine"
-            ? "lock"
-            : "refine"
-    });
-    const runtimeBucket = classifyCandidateRuntimeBucket({
-      candidate: contender,
-      targetStyle: promptBundle.qualityProfile.targetStyle
-    });
-    const promotion = assessCandidatePromotion({
-      current,
-      contender,
-      acceptedScoreThreshold
-    });
-    const runtimeSelectable =
-      runtimeGuard.allow &&
-      runtimeBucket.level !== "block" &&
-      runtimeBucket.level !== "compound" &&
-      !(view === "front" && runtimeBucket.level === "degraded");
-    if ((!current || promotion.promote) && runtimeSelectable) {
-      preferredSelectionByView = {
-        ...preferredSelectionByView,
-        [view]: contender
-      };
-    }
-  };
   const styleScore = scoreStyleMatch(promptBundle.positivePrompt, promptBundle.qualityProfile.targetStyle);
   const ultraWorkflowEnabled =
-    providerName === "comfyui" && isMascotTargetStyle(promptBundle.qualityProfile.targetStyle);
+    runtime.providerName === "comfyui" && isMascotTargetStyle(promptBundle.qualityProfile.targetStyle);
   const mascotFamilyReferencesByView = ultraWorkflowEnabled
     ? loadMascotFamilyReferencesByView(promptBundle.speciesId, ["front", "threeQuarter", "profile"])
     : {};
-  const providerCallLogs: CharacterProviderCallLog[] = [];
-  let providerWorkflowHash = "unknown_workflow";
-  let providerGeneratedAt = new Date().toISOString();
-  let providerRunMeta:
-    | {
-        qualityProfileId?: string;
-        runSettings?: Partial<PromptQualityProfile>;
-        workflowStage?: CharacterWorkflowStage;
-        workflowTemplateVersion?: string;
-        capabilitySnapshot?: Record<string, unknown>;
-        workflowExports?: {
-          apiPromptPath?: string;
-          guiWorkflowPath?: string;
-          summaryPath?: string;
-        };
-        warnings?: string[];
-        selectionDiagnostics?: Record<string, unknown>;
-      }
-    | undefined;
-
-  const runProviderGenerate = async (
-    providerInput: CharacterProviderGenerateInput
-  ): Promise<CharacterGenerationCandidate[]> => {
-    const result = await runProviderGenerateWithFallback({
-      provider: provider as {
-        generate: (input: CharacterProviderGenerateInput) => Promise<{
-          candidates: CharacterGenerationCandidate[];
-          workflowHash: string;
-          generatedAt: string;
-          providerMeta?: Record<string, unknown>;
-          callLogs?: CharacterProviderCallLog[];
-        }>;
-      },
-      providerName,
-      providerWarning,
-      strictRealProvider,
-      providerInput,
-      isTransientProviderFailure,
-      errorMessage
-    });
-    provider = result.provider;
-    providerName = result.providerName;
-    providerWarning = result.providerWarning;
-    providerWorkflowHash = result.workflowHash;
-    providerGeneratedAt = result.generatedAt;
-    providerRunMeta = result.providerMeta;
-    providerCallLogs.push(...result.callLogs);
-    return result.candidates;
-  };
-
-  const generationRuntimeState = {
-    get providerName() {
-      return providerName;
-    },
-    set providerName(value) {
-      providerName = value;
-    },
-    get providerWarning() {
-      return providerWarning;
-    },
-    set providerWarning(value) {
-      providerWarning = value;
-    },
-    get provider() {
-      return provider;
-    },
-    set provider(value) {
-      provider = value;
-    },
-    get starterReferencePathsByView() {
-      return starterReferencePathsByView;
-    },
-    set starterReferencePathsByView(value) {
-      starterReferencePathsByView = value;
-    },
-    get preferredSelectionByView() {
-      return preferredSelectionByView;
-    },
-    set preferredSelectionByView(value) {
-      preferredSelectionByView = value;
-    },
-    get autoRerouteDiagnostics() {
-      return autoRerouteDiagnostics;
-    },
-    set autoRerouteDiagnostics(value) {
-      autoRerouteDiagnostics = value;
+  const generationExecutionRuntime = initializeGenerationExecutionRuntime({
+    providerName: runtime.providerName,
+    providerWarning: runtime.providerWarning,
+    provider: runtime.provider,
+    starterReferencePathsByView,
+    preferredSelectionByView: {},
+    autoRerouteDiagnostics: undefined,
+    strictRealProvider,
+    isTransientProviderFailure,
+    errorMessage,
+    stageRuntimeInput: {
+      resolveStageConfig,
+      autoRetryRounds,
+      clamped,
+      limits,
+      promptBundle,
+      ultraWorkflowEnabled,
+      analyzeImage,
+      buildStructureControlsByViewForStage,
+      buildStageInputPreflightAssessment,
+      clampStageCandidateCount,
+      writeGenerationProgress,
+      helpers,
+      jobDbId,
+      hasRetryAdjustmentContent,
+      summarizeStageBestCandidateByView,
+      summarizeObservedDefectFamiliesByView,
+      summarizeStageExitByView,
+      dedupeStrings,
+      buildPreflightBlockedStageOutcomeSummaries,
+      generation,
+      mergeRetryAdjustments,
+      appendPromptHints,
+      strengthenNegativePrompt,
+      stageRequiresPoseGuide,
+      resolveProviderStageTimeoutMs,
+      summarizeRetryGateDiagnosticsByView,
+      summarizeBestScores,
+      loadMascotFamilyReferenceCached,
+      isMascotTargetStyle,
+      withAsyncOperationTimeout,
+      postprocessCandidateForProduction,
+      scoreCandidate,
+      styleScore,
+      referenceAnalysis,
+      safeFileName,
+      fs,
+      path,
+      candidatesDir,
+      materializeCandidateProviderArtifacts,
+      collectRuntimeVariantTags,
+      applyConsistencyScoring,
+      groupBestByView,
+      isStrongFrontMasterCandidate,
+      hasBlockingConsistencyRecoveryIssue,
+      deriveRetryAdjustmentForCandidate,
+      adjustReferenceBankWeights,
+      rebalanceReferenceBankForRetry,
+      referenceBankHasHeroRole,
+      resolveStageControlPresetId,
+      mascotReferenceBankDiagnostics,
+      providerRequestTimeoutMs,
+      providerStageTimeoutOverrideMs,
+      candidatePostprocessTimeoutMs,
+      candidateAnalysisTimeoutMs,
+      referenceImageBase64,
+      referenceMimeType,
+      resolveFrontReferenceFromManifest,
+      sessionId,
+      resolveFrontReferenceFromSession,
+      prisma,
+      continuityConfig,
+      loadStagePoseGuides,
+      inlineReferenceFromCandidate,
+      buildRepairDirectiveProfile,
+      summarizeRepairDirectiveProfile,
+      buildMascotFamilyReferenceEntries,
+      shouldEnableMascotHeroMode,
+      createReferenceBankEntry,
+      resolveAdaptiveReferenceWeight,
+      mascotFamilyReferencesByView,
+      acceptedScoreThreshold,
+      dedupeReferenceBank,
+      resolveEffectiveStageTriggerThreshold,
+      shouldRunSideRefineForCandidate,
+      shouldRunIdentityLockForCandidate,
+      selectBestCandidateForViewByStages,
+      mergeStageViewOutcomeSummaries,
+      selectRetryInlineReferenceInput,
+      summarizeReferenceMixByView
     }
-  };
-
-  const stageRuntime = initializeGenerationStageRuntime({
-    runtimeState: generationRuntimeState,
-    resolveStageConfig,
-    autoRetryRounds,
-    clamped,
-    limits,
-    promptBundle,
-    ultraWorkflowEnabled,
-    analyzeImage,
-    buildStructureControlsByViewForStage,
-    buildStageInputPreflightAssessment,
-    clampStageCandidateCount,
-    writeGenerationProgress,
-    helpers,
-    jobDbId,
-    hasRetryAdjustmentContent,
-    summarizeStageBestCandidateByView,
-    summarizeObservedDefectFamiliesByView,
-    summarizeStageExitByView,
-    dedupeStrings,
-    buildPreflightBlockedStageOutcomeSummaries,
-    generation,
-    mergeRetryAdjustments,
-    appendPromptHints,
-    strengthenNegativePrompt,
-    stageRequiresPoseGuide,
-    resolveProviderStageTimeoutMs,
-    runProviderGenerate,
-    summarizeRetryGateDiagnosticsByView,
-    summarizeBestScores,
-    loadMascotFamilyReferenceCached,
-    isMascotTargetStyle,
-    withAsyncOperationTimeout,
-    postprocessCandidateForProduction,
-    scoreCandidate,
-    styleScore,
-    referenceAnalysis,
-    safeFileName,
-    fs,
-    path,
-    candidatesDir,
-    materializeCandidateProviderArtifacts,
-    collectRuntimeVariantTags,
-    applyConsistencyScoring,
-    groupBestByView,
-    isStrongFrontMasterCandidate,
-    hasBlockingConsistencyRecoveryIssue,
-    deriveRetryAdjustmentForCandidate,
-    adjustReferenceBankWeights,
-    rebalanceReferenceBankForRetry,
-    referenceBankHasHeroRole,
-    resolveStageControlPresetId,
-    mascotReferenceBankDiagnostics,
-    providerRequestTimeoutMs,
-    providerStageTimeoutOverrideMs,
-    candidatePostprocessTimeoutMs,
-    candidateAnalysisTimeoutMs,
-    referenceImageBase64,
-    referenceMimeType,
-    resolveFrontReferenceFromManifest,
-    sessionId,
-    resolveFrontReferenceFromSession,
-    prisma,
-    continuityConfig,
-    loadStagePoseGuides,
-    inlineReferenceFromCandidate,
-    buildRepairDirectiveProfile,
-    summarizeRepairDirectiveProfile,
-    buildMascotFamilyReferenceEntries,
-    shouldEnableMascotHeroMode,
-    createReferenceBankEntry,
-    resolveAdaptiveReferenceWeight,
-    mascotFamilyReferencesByView,
-    acceptedScoreThreshold,
-    dedupeReferenceBank,
-    resolveEffectiveStageTriggerThreshold,
-    shouldRunSideRefineForCandidate,
-    shouldRunIdentityLockForCandidate,
-    selectBestCandidateForViewByStages,
-    mergeStageViewOutcomeSummaries,
-    selectRetryInlineReferenceInput,
-    summarizeReferenceMixByView
   });
   const {
+    runtimeState: generationRuntimeState,
+    providerCallLogs,
     runViewGeneration,
     maybeRunUltraSideRefineStage,
     maybeRunUltraIdentityLockStage
-  } = stageRuntime;
+  } = generationExecutionRuntime;
   const selectionOutcome = await runGenerationLifecycle({
     runtimeState: generationRuntimeState,
     sequentialReferenceEnabled,
@@ -12825,6 +12704,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     upsertSessionCandidates,
     insertProviderCallLogs
   });
+  const generationRuntimeSnapshot = generationExecutionRuntime.getSnapshot();
   await runGenerationCompletionRuntime({
     completePostScoreGeneration,
     referenceSourceManifestPath,
@@ -12833,19 +12713,18 @@ export async function handleGenerateCharacterAssetsJob(input: {
     parseManifestCandidate,
     selectionOutcome,
     acceptedScoreThreshold,
-    autoRerouteDiagnostics,
     workflowStageRuns,
     promptBundle,
     mascotReferenceBankDiagnostics,
     mascotReferenceBankReviewPlan,
     mascotReferenceBankReviewChecklist,
-    providerRunMeta,
-    providerName,
+    providerRunMeta: generationRuntimeSnapshot.providerRunMeta,
+    providerName: generationRuntimeSnapshot.providerName,
     requestedProvider,
-    providerWarning,
+    providerWarning: generationRuntimeSnapshot.providerWarning,
     clampedWarnings: clamped.warnings,
-    providerWorkflowHash,
-    providerGeneratedAt,
+    providerWorkflowHash: generationRuntimeSnapshot.providerWorkflowHash,
+    providerGeneratedAt: generationRuntimeSnapshot.providerGeneratedAt,
     ultraWorkflowEnabled,
     workflowTemplateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION,
     episodeId: payload.episodeId,
@@ -12853,7 +12732,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     characterPackId: character.characterPackId,
     continuityReferenceSessionId,
     starterReferencePath,
-    starterReferencePathsByView,
+    starterReferencePathsByView: generationRuntimeSnapshot.starterReferencePathsByView,
     referenceAnalysis,
     continuitySnapshot,
     scored,
@@ -12882,7 +12761,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
     episodeChannelId: episode.channelId,
     character,
     maxAttempts,
-    retryBackoffMs
+    retryBackoffMs,
+    autoRerouteDiagnostics: generationRuntimeSnapshot.autoRerouteDiagnostics
   });
   } catch (error) {
     if (sessionId) {
