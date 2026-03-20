@@ -9,12 +9,38 @@ import type { EpisodeJobPayload } from "../services/scheduleService";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
 import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
 import {
+  buildCharacterProposalApplyApiResponse,
+  buildCharacterProposalApplyUiHref,
+  buildCharacterRebuildSelectedApiResponse,
+  buildCharacterRebuildSelectedUiHref,
+  buildUiHref,
+  hrefWithCreationNav,
+  parseCharacterProposalApplyRequest,
+  parseCharacterRebuildSelectedRequest,
+  readCreationNavState,
+  renderCreationNavHiddenFields,
+  requestUiHref,
+  type CharacterOverrideKind,
+  type CharacterProposalApplyMode,
+  type CharacterProposalApplyRequest,
+  type CharacterRebuildSelectedRequest,
+  type CreationNavState
+} from "./characterRouteActions";
+import {
   buildCharacterGeneratorPageBody,
   buildCharacterGeneratorStatusScript,
   buildCharacterGeneratorTopSection
 } from "./ui/pages/characterGeneratorPage";
 import { renderUiPage as uiPage } from "./ui/uiPage";
 import { buildStudioBody } from "./ui/pages/studioPage";
+export {
+  buildCharacterProposalApplyApiResponse,
+  buildCharacterProposalApplyUiHref,
+  buildCharacterRebuildSelectedApiResponse,
+  buildCharacterRebuildSelectedUiHref,
+  parseCharacterProposalApplyRequest,
+  parseCharacterRebuildSelectedRequest
+} from "./characterRouteActions";
 
 type JsonRecord = Record<string, unknown>;
 type HttpError = Error & { statusCode: number; details?: unknown };
@@ -643,17 +669,6 @@ type CharacterPackLineageOverrideSummary = {
   cropBoxesPath: string | null;
   cropBoxesUrl: string | null;
   cropBoxesText: string | null;
-};
-
-type CharacterOverrideKind = "anchors" | "cropBoxes";
-type CharacterProposalApplyMode = CharacterOverrideKind | "all";
-type CharacterProposalApplyRequest = {
-  generateJobId: string;
-  applyMode: CharacterProposalApplyMode;
-  rebuild: boolean;
-};
-type CharacterRebuildSelectedRequest = {
-  generateJobId: string;
 };
 
 type CharacterProposalPreviewEntry = {
@@ -1333,208 +1348,6 @@ function escHtml(value: unknown): string {
     .replaceAll("'", "&#39;");
 }
 
-type CreationNavState = {
-  returnTo?: string;
-  currentObject?: string;
-  focus?: string;
-  assetId?: string;
-  referenceAssetId?: string;
-  jobId?: string;
-  characterPackId?: string;
-  packId?: string;
-  episodeId?: string;
-};
-
-function readCreationNavState(root: JsonRecord): CreationNavState {
-  return {
-    returnTo: optionalString(root, "returnTo"),
-    currentObject: optionalString(root, "currentObject"),
-    focus: optionalString(root, "focus"),
-    assetId: optionalString(root, "assetId"),
-    referenceAssetId: optionalString(root, "referenceAssetId"),
-    jobId: optionalString(root, "jobId"),
-    characterPackId: optionalString(root, "characterPackId"),
-    packId: optionalString(root, "packId"),
-    episodeId: optionalString(root, "episodeId")
-  };
-}
-
-function buildUiHref(pathname: string, params: Record<string, string | number | boolean | undefined | null>): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-    const text = String(value).trim();
-    if (text.length === 0) {
-      continue;
-    }
-    search.set(key, text);
-  }
-  const query = search.toString();
-  return query.length > 0 ? `${pathname}?${query}` : pathname;
-}
-
-function hrefWithCreationNav(
-  pathname: string,
-  params: Record<string, string | number | boolean | undefined | null>,
-  nav: CreationNavState
-): string {
-  return buildUiHref(pathname, {
-    ...params,
-    ...(nav.returnTo ? { returnTo: nav.returnTo } : {}),
-    ...(nav.currentObject ? { currentObject: nav.currentObject } : {}),
-    ...(nav.focus ? { focus: nav.focus } : {})
-  });
-}
-
-export function buildCharacterProposalApplyUiHref(input: {
-  pathname?: string;
-  generateJobId: string;
-  rebuiltGenerateJobId?: string | null;
-  appliedKinds: CharacterOverrideKind[];
-  creationNav: CreationNavState;
-}): string {
-  const pathname = input.pathname ?? "/ui/character-generator";
-  const appliedKindsLabel = input.appliedKinds.join(" + ");
-  if (input.rebuiltGenerateJobId) {
-    return hrefWithCreationNav(
-      pathname,
-      {
-        jobId: input.rebuiltGenerateJobId,
-        message: `Applied proposal ${appliedKindsLabel} and queued current-selection rebuild.`
-      },
-      {
-        ...input.creationNav,
-        currentObject: `run:${input.rebuiltGenerateJobId}`,
-        focus: "cg-apply-proposal"
-      }
-    );
-  }
-  return hrefWithCreationNav(
-    pathname,
-    {
-      jobId: input.generateJobId,
-      message: `Applied proposal ${appliedKindsLabel} to override files. Rebuild current selection when you want fresh pack evidence.`
-    },
-    {
-      ...input.creationNav,
-      currentObject: input.creationNav.currentObject ?? `run:${input.generateJobId}`,
-      focus: "cg-apply-proposal"
-    }
-  );
-}
-
-export function buildCharacterRebuildSelectedUiHref(input: {
-  pathname?: string;
-  rebuiltGenerateJobId: string;
-  creationNav: CreationNavState;
-}): string {
-  return hrefWithCreationNav(
-    input.pathname ?? "/ui/character-generator",
-    {
-      jobId: input.rebuiltGenerateJobId,
-      message: "Current selection rebuild queued. The same selected candidates will rebuild the Character Pack with your latest override files."
-    },
-    {
-      ...input.creationNav,
-      currentObject: `run:${input.rebuiltGenerateJobId}`,
-      focus: "cg-manual-overrides"
-    }
-  );
-}
-
-export function buildCharacterProposalApplyApiResponse(input: {
-  applyMode: CharacterProposalApplyMode;
-  appliedKinds: CharacterOverrideKind[];
-  characterPackId: string;
-  anchorsOverridePath: string | null;
-  cropBoxesOverridePath: string | null;
-  rebuilt: {
-    sessionId: string;
-    episodeId: string;
-    generateJobId: string;
-    buildJobId: string;
-    previewJobId: string;
-    bullmqJobId: string;
-    manifestPath: string;
-    selection: CharacterGenerationSelection;
-  } | null;
-}): {
-  data: {
-    applyMode: CharacterProposalApplyMode;
-    appliedKinds: CharacterOverrideKind[];
-    characterPackId: string;
-    anchorsOverridePath: string | null;
-    cropBoxesOverridePath: string | null;
-    rebuilt: {
-      sessionId: string;
-      episodeId: string;
-      generateJobId: string;
-      buildJobId: string;
-      previewJobId: string;
-      bullmqJobId: string;
-      manifestPath: string;
-      selection: CharacterGenerationSelection;
-    } | null;
-  };
-} {
-  return {
-    data: {
-      applyMode: input.applyMode,
-      appliedKinds: input.appliedKinds,
-      characterPackId: input.characterPackId,
-      anchorsOverridePath: input.anchorsOverridePath,
-      cropBoxesOverridePath: input.cropBoxesOverridePath,
-      rebuilt: input.rebuilt
-    }
-  };
-}
-
-export function buildCharacterRebuildSelectedApiResponse(input: {
-  created: {
-    sessionId: string;
-    episodeId: string;
-    generateJobId: string;
-    buildJobId: string;
-    previewJobId: string;
-    bullmqJobId: string;
-    manifestPath: string;
-    selection: CharacterGenerationSelection;
-  };
-}): {
-  data: {
-    sessionId: string;
-    episodeId: string;
-    generateJobId: string;
-    buildJobId: string;
-    previewJobId: string;
-    bullmqJobId: string;
-    manifestPath: string;
-    selection: CharacterGenerationSelection;
-  };
-} {
-  return {
-    data: input.created
-  };
-}
-
-function renderCreationNavHiddenFields(nav: CreationNavState): string {
-  return [
-    ["returnTo", nav.returnTo],
-    ["currentObject", nav.currentObject],
-    ["focus", nav.focus],
-    ["assetId", nav.assetId],
-    ["referenceAssetId", nav.referenceAssetId]
-  ]
-    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
-    .map(([name, value]) => `<input type="hidden" name="${escHtml(name)}" value="${escHtml(value)}"/>`)
-    .join("");
-}
-
-function requestUiHref(request: { raw?: { url?: string } }): string {
-  return typeof request.raw?.url === "string" && request.raw.url.trim().length > 0 ? request.raw.url : "/";
-}
 
 function uiBadge(status: string): string {
   const normalized = status.toUpperCase();
@@ -3464,35 +3277,6 @@ export function buildProposalApplyOverrideDocuments(input: {
     appliedKinds,
     anchorsText,
     cropBoxesText
-  };
-}
-
-export function parseCharacterProposalApplyRequest(body: unknown): CharacterProposalApplyRequest {
-  const payload = requireBodyObject(body);
-  const generateJobId = optionalString(payload, "generateJobId");
-  const applyModeRaw = optionalString(payload, "applyMode") ?? "all";
-  const rebuild = payload.rebuild === true || optionalString(payload, "afterApply") === "rebuild";
-  if (!generateJobId) {
-    throw createHttpError(400, "generateJobId is required");
-  }
-  if (applyModeRaw !== "all" && applyModeRaw !== "anchors" && applyModeRaw !== "cropBoxes") {
-    throw createHttpError(400, "applyMode must be all, anchors, or cropBoxes");
-  }
-  return {
-    generateJobId,
-    applyMode: applyModeRaw,
-    rebuild
-  };
-}
-
-export function parseCharacterRebuildSelectedRequest(body: unknown): CharacterRebuildSelectedRequest {
-  const payload = requireBodyObject(body);
-  const generateJobId = optionalString(payload, "generateJobId");
-  if (!generateJobId) {
-    throw createHttpError(400, "generateJobId is required");
-  }
-  return {
-    generateJobId
   };
 }
 
