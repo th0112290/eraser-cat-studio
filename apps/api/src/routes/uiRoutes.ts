@@ -32,6 +32,11 @@ import {
   type BenchmarkRefreshAction
 } from "./uiRouteBenchmarkHandoffs";
 import { resolveBenchmarkScenarioHandoffStateWithNormalizer } from "./uiRouteBenchmarkScenarioHandoff";
+import {
+  collectBundleFixturePath as collectBundleFixturePathWithNormalizer,
+  collectRuntimePackIdsFromShotsDoc,
+  resolveRuntimeShotCharacterPackId
+} from "./uiRouteBenchmarkRuntimeArtifacts";
 export {
   buildBenchmarkRefreshActions,
   buildBenchmarkRefreshPlaybooksSection,
@@ -1587,53 +1592,8 @@ function collectBenchmarkViewerData(): {
   return { sources, backendScenarios, regressions };
 }
 
-function readRuntimeShotId(shot: unknown): string | null {
-  if (!isRecord(shot)) {
-    return null;
-  }
-  return str(shot.shot_id) ?? str(shot.shotId) ?? str(shot.id);
-}
-
-function readRuntimeShotCharacterPackId(shot: unknown): string | null {
-  if (!isRecord(shot)) {
-    return null;
-  }
-  const character = isRecord(shot.character) ? shot.character : {};
-  return str(character.pack_id) ?? str(character.packId);
-}
-
-function collectRuntimePackIdsFromShotsDoc(runtimeDoc: unknown): string[] {
-  if (!isShotsDocLike(runtimeDoc)) {
-    return [];
-  }
-  return uniqueStrings(recordList(runtimeDoc.shots).map((shot) => readRuntimeShotCharacterPackId(shot)));
-}
-
-function resolveRuntimeShotCharacterPackId(runtimeDoc: unknown, shotId: string): string | null {
-  if (!isShotsDocLike(runtimeDoc)) {
-    return null;
-  }
-  const matchingPackIds = uniqueStrings(
-    recordList(runtimeDoc.shots)
-      .filter((shot) => readRuntimeShotId(shot) === shotId)
-      .map((shot) => readRuntimeShotCharacterPackId(shot))
-  );
-  if (matchingPackIds.length === 1) {
-    return matchingPackIds[0];
-  }
-  if (matchingPackIds.length > 1) {
-    return null;
-  }
-  const bundlePackIds = collectRuntimePackIdsFromShotsDoc(runtimeDoc);
-  return bundlePackIds.length === 1 ? bundlePackIds[0] : null;
-}
-
 function collectBundleFixturePath(bundle: SmokeArtifactBundle): string | null {
-  return (
-    safeRolloutArtifactPath(bundle.smokeDoc.fixture_path) ??
-    safeRolloutArtifactPath(isRecord(bundle.renderLogDoc) ? bundle.renderLogDoc.shots_path : undefined) ??
-    bundle.runtimePath
-  );
+  return collectBundleFixturePathWithNormalizer(bundle, safeRolloutArtifactPath);
 }
 
 function collectSmokeArtifactBundles(): SmokeArtifactBundle[] {
