@@ -56,8 +56,6 @@ import {
   resolveFrontReferenceFromSession as resolveFrontReferenceFromSessionWithDelegate
 } from "./characterGenerationContinuityReference";
 import {
-  buildInitialProviderMeta,
-  buildInitialSelectionDiagnostics,
   handleHitlRequiredSelection
 } from "./characterGenerationInitialSelection";
 import { buildSelectionDecisionOutcome } from "./characterGenerationSelectionDecision";
@@ -66,6 +64,10 @@ import {
   handleSelectionReviewGate,
   prepareSelectionPersistenceContext
 } from "./characterGenerationSelectionAssessment";
+import {
+  buildInitialGenerationManifest,
+  loadRetainedManifestState
+} from "./characterGenerationCompletionFlow";
 import {
   getCharacterGenerationCandidateDelegate,
   getCharacterGenerationSessionDelegate,
@@ -16220,212 +16222,131 @@ export async function handleGenerateCharacterAssetsJob(input: {
     bestScores: summarizeBestScores(requestedViews)
   });
 
-  let retainedManifestCandidates: GenerationManifest["candidates"] = [];
-  let retainedSelectedByView: GenerationManifest["selectedByView"] = {};
-  if (generation.viewToGenerate && fs.existsSync(referenceSourceManifestPath)) {
-    const previousRaw = JSON.parse(fs.readFileSync(referenceSourceManifestPath, "utf8")) as unknown;
-    if (isRecord(previousRaw)) {
-      const previousCandidates = Array.isArray(previousRaw.candidates)
-        ? previousRaw.candidates
-            .map((candidate) => parseManifestCandidate(referenceSourceManifestPath, candidate))
-            .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
-        : [];
-
-      retainedManifestCandidates = previousCandidates
-        .filter((candidate) => candidate.view !== generation.viewToGenerate)
-        .map((entry) => ({
-          id: entry.id,
-          view: entry.view,
-          candidateIndex: entry.candidateIndex,
-          seed: entry.seed,
-          mimeType: entry.mimeType,
-          filePath: entry.filePath,
-        score: Number(entry.score.toFixed(4)),
-        styleScore: Number(entry.styleScore.toFixed(4)),
-        referenceSimilarity:
-          entry.referenceSimilarity === null ? null : Number(entry.referenceSimilarity.toFixed(4)),
-        consistencyScore: entry.consistencyScore === null ? null : Number(entry.consistencyScore.toFixed(4)),
-        warnings: entry.warnings,
-        rejections: entry.rejections,
-        ...(entry.breakdown ? { breakdown: entry.breakdown } : {}),
-        ...(entry.providerMeta ? { providerMeta: entry.providerMeta } : {})
-      }));
-
-      if (isRecord(previousRaw.selectedByView)) {
-        retainedSelectedByView = { ...previousRaw.selectedByView } as GenerationManifest["selectedByView"];
-        delete retainedSelectedByView[generation.viewToGenerate];
-      }
-    }
-  }
-
-  const selectedByView = selectionOutcome.selectedByView;
-  const missingGeneratedViews = selectionOutcome.missingGeneratedViews;
-  const lowQualityGeneratedViews = selectionOutcome.lowQualityGeneratedViews;
-  const packCoherence = selectionOutcome.packCoherence;
-  const initialRigStability = selectionOutcome.rigStability;
-  const coherenceIssues = selectionOutcome.coherenceIssues;
-  const initialSelectionRisk =
-    packCoherence && selectionOutcome.selectedByView && Object.keys(selectionOutcome.selectedByView).length > 0
-      ? assessAutoSelectionRisk({
-          selectedByView: selectionOutcome.selectedByView,
-          packCoherence,
-          rigStability: initialRigStability,
-          targetStyle: promptBundle.qualityProfile.targetStyle,
-          acceptedScoreThreshold,
-          autoReroute: autoRerouteDiagnostics,
-          speciesId: promptBundle.speciesId
-        })
-      : undefined;
-  const initialQualityEmbargo =
-    selectionOutcome.selectedByView && Object.keys(selectionOutcome.selectedByView).length > 0
-      ? assessQualityEmbargo({
-          selectedByView: selectionOutcome.selectedByView,
-          rigStability: initialRigStability,
-          targetStyle: promptBundle.qualityProfile.targetStyle,
-          acceptedScoreThreshold,
-          autoReroute: autoRerouteDiagnostics,
-          speciesId: promptBundle.speciesId
-        })
-      : undefined;
-  const initialPackDefectSummary =
-    selectionOutcome.selectedByView && Object.keys(selectionOutcome.selectedByView).length > 0
-      ? buildPackDefectSummary({
-          selectedByView: selectionOutcome.selectedByView,
-          workflowStages: workflowStageRuns,
-          speciesId: promptBundle.speciesId
-        })
-      : undefined;
-  const initialFinalQualityFirewall =
-    initialPackDefectSummary && selectionOutcome.selectedByView && Object.keys(selectionOutcome.selectedByView).length > 0
-      ? assessFinalQualityFirewall({
-          selectedByView: selectionOutcome.selectedByView,
-          targetStyle: promptBundle.qualityProfile.targetStyle,
-          acceptedScoreThreshold,
-          autoReroute: autoRerouteDiagnostics,
-          packCoherence,
-          rigStability: initialRigStability,
-          selectionRisk: initialSelectionRisk,
-          qualityEmbargo: initialQualityEmbargo,
-          packDefectSummary: initialPackDefectSummary,
-          speciesId: promptBundle.speciesId
-        })
-      : undefined;
-  const initialSelectedCandidateSummaryByView = summarizeSelectionCandidateSummaryByView({
-    selectedByView: selectionOutcome.selectedByView,
-    targetStyle: promptBundle.qualityProfile.targetStyle,
-    acceptedScoreThreshold
+  const { retainedManifestCandidates, retainedSelectedByView } = loadRetainedManifestState<GenerationManifest["selectedByView"]>({
+    referenceSourceManifestPath,
+    viewToGenerate: generation.viewToGenerate,
+    isRecord,
+    parseManifestCandidate
   });
-  const requiresHitl =
-    mascotReferenceBankReviewPlan.reviewOnly ||
-    generation.viewToGenerate !== undefined ||
-    generation.requireHitlPick === true ||
-    generation.autoPick === false ||
-    missingGeneratedViews.length > 0 ||
-    lowQualityGeneratedViews.length > 0 ||
-    initialRigStability?.reviewOnly === true ||
-    coherenceIssues.length > 0 ||
-    packCoherence?.severity === "block" ||
-    initialRigStability?.severity === "block" ||
-    initialFinalQualityFirewall?.level === "block";
-  const decisionOutcome = buildSelectionDecisionOutcome({
-    kind: requiresHitl ? "hitl_review" : "auto_selected",
-    sourceStage: workflowStageRuns.at(-1)?.stage,
+  const {
+    selectedByView,
     missingGeneratedViews,
     lowQualityGeneratedViews,
     packCoherence,
-    autoReroute: autoRerouteDiagnostics,
-    worstRuntimeBucket: resolveSelectionWorstRuntimeBucket({
-      selectedByView: selectionOutcome.selectedByView,
-      targetStyle: promptBundle.qualityProfile.targetStyle
-    }),
-    rigStability: initialRigStability,
-    selectionRisk: initialSelectionRisk,
-    qualityEmbargo: initialQualityEmbargo,
-    finalQualityFirewall: initialFinalQualityFirewall,
-    referenceBankReviewOnly: mascotReferenceBankReviewPlan.reviewOnly,
-    referenceBankHandoff: mascotReferenceBankReviewChecklist.handoff
-  });
-
-  const initialSelectionDiagnostics = buildInitialSelectionDiagnostics({
-    existingSelectionDiagnostics: providerRunMeta?.selectionDiagnostics,
-    workflowStages: workflowStageRuns,
+    initialRigStability,
     coherenceIssues,
-    packCoherence,
-    rigStability: initialRigStability,
-    selectionRisk: initialSelectionRisk,
-    qualityEmbargo: initialQualityEmbargo,
-    packDefectSummary: initialPackDefectSummary,
-    finalQualityFirewall: initialFinalQualityFirewall,
-    selectedCandidateSummaryByView: initialSelectedCandidateSummaryByView,
-    referenceBankDiagnostics: mascotReferenceBankDiagnostics,
-    referenceBankReviewPlan: mascotReferenceBankReviewPlan,
-    referenceBankReviewChecklist: mascotReferenceBankReviewChecklist,
-    decisionOutcome,
-    autoReroute: autoRerouteDiagnostics
-  });
-  const manifest = withManifestHashes({
-    schemaVersion: "1.0",
-    ...(ultraWorkflowEnabled ? { templateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION } : {}),
-    status: requiresHitl ? "PENDING_HITL" : "AUTO_SELECTED",
-    sessionId,
-    episodeId: payload.episodeId,
-    characterPackId: character.characterPackId,
-    provider: providerName,
-    providerRequested: requestedProvider,
-    providerWarning:
-      [providerWarning, ...clamped.warnings]
-        .filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
-        .join(" | ") || null,
-    workflowHash: providerWorkflowHash,
-    generatedAt: providerGeneratedAt,
-    mode: generation.mode,
-    promptPreset: promptBundle.presetId,
-    species: promptBundle.speciesId,
-    qualityProfileId: promptBundle.qualityProfile.id,
-    qualityProfile: promptBundle.qualityProfile,
-    positivePrompt: promptBundle.positivePrompt,
-    negativePrompt: promptBundle.negativePrompt,
-    guardrails: promptBundle.guardrails,
-    selectionHints: promptBundle.selectionHints,
-    ...(packCoherence ? { packCoherence } : {}),
-    ...(autoRerouteDiagnostics ? { autoReroute: autoRerouteDiagnostics } : {}),
-    providerMeta: buildInitialProviderMeta({
-      providerRunMeta,
-      workflowStages: workflowStageRuns,
-      workflowTemplateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION,
-      selectionDiagnostics: initialSelectionDiagnostics
-    }),
-    ...(workflowStageRuns.length > 0 ? { workflowStages: workflowStageRuns } : {}),
-    reference: {
-      assetId: generation.referenceAssetId ?? null,
-      sourceSessionId: continuityReferenceSessionId,
-      starterPath: starterReferencePath,
-      ...(starterReferencePathsByView ? { starterPathsByView: starterReferencePathsByView } : {}),
-      phash: referenceAnalysis?.phash ?? null,
-      palette: referenceAnalysis?.palette ?? null,
-      continuity: continuitySnapshot
+    initialSelectionRisk,
+    initialQualityEmbargo,
+    initialFinalQualityFirewall,
+    requiresHitl,
+    manifest
+  } = buildInitialGenerationManifest<GenerationManifest>({
+    selectionOutcome: {
+      selectedByView: selectionOutcome.selectedByView,
+      missingGeneratedViews: selectionOutcome.missingGeneratedViews,
+      lowQualityGeneratedViews: selectionOutcome.lowQualityGeneratedViews,
+      packCoherence: selectionOutcome.packCoherence,
+      rigStability: selectionOutcome.rigStability,
+      coherenceIssues: selectionOutcome.coherenceIssues
     },
-    candidates: [
-      ...retainedManifestCandidates,
-      ...scored.map((entry) => ({
-        id: entry.candidate.id,
-        provider: entry.candidate.provider,
-        view: entry.candidate.view,
-        candidateIndex: entry.candidate.candidateIndex,
-        seed: entry.candidate.seed,
-        mimeType: entry.candidate.mimeType,
-        filePath: asString(entry.candidate.providerMeta?.localCandidatePath),
-        score: Number(entry.score.toFixed(4)),
-        styleScore: Number(entry.styleScore.toFixed(4)),
-        referenceSimilarity: entry.referenceSimilarity === null ? null : Number(entry.referenceSimilarity.toFixed(4)),
-        consistencyScore: entry.consistencyScore === null ? null : Number(entry.consistencyScore.toFixed(4)),
-        warnings: entry.warnings,
-        rejections: entry.rejections,
-        breakdown: entry.breakdown,
-        ...(entry.candidate.providerMeta ? { providerMeta: entry.candidate.providerMeta } : {})
-      }))
-    ],
-    selectedByView: retainedSelectedByView
+    acceptedScoreThreshold,
+    autoRerouteDiagnostics,
+    workflowStageRuns: workflowStageRuns as Array<Record<string, unknown>>,
+    promptBundle,
+    mascotReferenceBankDiagnostics,
+    mascotReferenceBankReviewPlan,
+    mascotReferenceBankReviewChecklist,
+    providerRunMeta,
+    providerName,
+    requestedProvider,
+    providerWarning,
+    clampedWarnings: clamped.warnings,
+    providerWorkflowHash,
+    providerGeneratedAt,
+    generation,
+    ultraWorkflowEnabled,
+    workflowTemplateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION,
+    episodeId: payload.episodeId,
+    sessionId,
+    characterPackId: character.characterPackId,
+    retainedManifestCandidates,
+    retainedSelectedByView,
+    continuityReferenceSessionId,
+    starterReferencePath,
+    starterReferencePathsByView,
+    referenceAnalysis,
+    continuitySnapshot,
+    scored: scored as Array<{
+      score: number;
+      styleScore: number;
+      referenceSimilarity: number | null;
+      consistencyScore: number | null;
+      warnings: string[];
+      rejections: string[];
+      breakdown: unknown;
+      candidate: {
+        id: string;
+        provider?: string;
+        view: CharacterView;
+        candidateIndex: number;
+        seed: number;
+        mimeType: string;
+        providerMeta?: unknown;
+      };
+    }>,
+    resolveSelectionRisk: (flowInput) =>
+      assessAutoSelectionRisk({
+        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        packCoherence: flowInput.packCoherence as PackCoherenceDiagnostics,
+        rigStability: flowInput.rigStability as RigStabilityDiagnostics,
+        targetStyle: flowInput.targetStyle,
+        acceptedScoreThreshold: flowInput.acceptedScoreThreshold,
+        autoReroute: flowInput.autoReroute as AutoRerouteDiagnostics | undefined,
+        speciesId: flowInput.speciesId
+      }),
+    resolveQualityEmbargo: (flowInput) =>
+      assessQualityEmbargo({
+        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        rigStability: flowInput.rigStability as RigStabilityDiagnostics,
+        targetStyle: flowInput.targetStyle,
+        acceptedScoreThreshold: flowInput.acceptedScoreThreshold,
+        autoReroute: flowInput.autoReroute as AutoRerouteDiagnostics | undefined,
+        speciesId: flowInput.speciesId
+      }),
+    buildPackDefectSummary: (flowInput) =>
+      buildPackDefectSummary({
+        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        workflowStages: flowInput.workflowStages as StageRunSummary[],
+        speciesId: flowInput.speciesId
+      }),
+    resolveFinalQualityFirewall: (flowInput) =>
+      assessFinalQualityFirewall({
+        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        targetStyle: flowInput.targetStyle,
+        acceptedScoreThreshold: flowInput.acceptedScoreThreshold,
+        autoReroute: flowInput.autoReroute as AutoRerouteDiagnostics | undefined,
+        packCoherence: flowInput.packCoherence as PackCoherenceDiagnostics,
+        rigStability: flowInput.rigStability as RigStabilityDiagnostics,
+        selectionRisk: flowInput.selectionRisk as SelectionRiskAssessment,
+        qualityEmbargo: flowInput.qualityEmbargo as QualityEmbargoAssessment,
+        packDefectSummary: flowInput.packDefectSummary as PackDefectSummary,
+        speciesId: flowInput.speciesId
+      }),
+    summarizeSelectionCandidateSummaryByView: (flowInput) =>
+      summarizeSelectionCandidateSummaryByView({
+        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        targetStyle: flowInput.targetStyle,
+        acceptedScoreThreshold: flowInput.acceptedScoreThreshold
+      }),
+    resolveSelectionWorstRuntimeBucket: (flowInput) =>
+      resolveSelectionWorstRuntimeBucket({
+        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
+        targetStyle: flowInput.targetStyle
+      }),
+    withManifestHashes: (manifestToHash) =>
+      withManifestHashes(
+        manifestToHash as Omit<GenerationManifest, "inputHash" | "manifestHash">
+      )
   });
   await writeGenerationProgress(94, "manifest_built", {
     requiresHitl,
@@ -16458,11 +16379,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
       missingGeneratedViews,
       lowQualityGeneratedViews,
       coherenceIssues,
-      packCoherence,
-      rigStability: initialRigStability,
-      selectionRisk: initialSelectionRisk,
-      qualityEmbargo: initialQualityEmbargo,
-      finalQualityFirewall: initialFinalQualityFirewall,
+      packCoherence: packCoherence as PackCoherenceDiagnostics | undefined,
+      rigStability: initialRigStability as RigStabilityDiagnostics | undefined,
+      selectionRisk: initialSelectionRisk as SelectionRiskAssessment | undefined,
+      qualityEmbargo: initialQualityEmbargo as QualityEmbargoAssessment | undefined,
+      finalQualityFirewall: initialFinalQualityFirewall as QualityEmbargoAssessment | undefined,
       autoReroute: autoRerouteDiagnostics,
       viewToGenerate: generation.viewToGenerate,
       mode: generation.mode,
@@ -16527,9 +16448,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
     jobDbId,
     character,
     selectedByView: {
-      front: selected.front,
-      threeQuarter: selected.threeQuarter,
-      profile: selected.profile
+      front: selected.front as ScoredCandidate,
+      threeQuarter: selected.threeQuarter as ScoredCandidate,
+      profile: selected.profile as ScoredCandidate
     },
     manifest,
     manifestPath,
