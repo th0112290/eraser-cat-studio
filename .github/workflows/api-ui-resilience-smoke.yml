@@ -84,6 +84,9 @@ jobs:
       - name: Run benchmark character handoff smoke
         run: pnpm -C apps/api run smoke:ui:benchmark-character-handoff
 
+      - name: Run benchmark scenario handoff resolve smoke
+        run: pnpm -C apps/api run smoke:ui:benchmark-scenario-handoff-resolve
+
       - name: Run route character handoff smoke
         run: pnpm -C apps/api run smoke:ui:route-character-handoff
 

@@ -1374,18 +1374,7 @@ function buildBackendBenchmarkViews(source: RolloutArtifactSource): BenchmarkSce
       const cropOverridePresent =
         readBooleanOrNull(rawScenario.crop_override_present) ??
         readBooleanOrNull(rawScenario.cropOverridePresent);
-      const characterPackId =
-        str(rawScenario.character_pack_id) ??
-        str(rawScenario.characterPackId) ??
-        str(rawScenario.requested_character_pack_id) ??
-        str(rawScenario.requestedCharacterPackId);
-      const fixturePath =
-        safeRolloutArtifactPath(rawScenario.fixture_path) ??
-        safeRolloutArtifactPath(rawScenario.fixturePath) ??
-        safeRolloutArtifactPath(rawScenario.runtime_fixture_path) ??
-        safeRolloutArtifactPath(rawScenario.runtimeFixturePath) ??
-        safeRolloutArtifactPath(rawScenario.input_path) ??
-        safeRolloutArtifactPath(rawScenario.inputPath);
+      const handoffState = resolveBenchmarkScenarioHandoffState(doc, rawScenario);
       const note = compact([
         str(rawScenario.sidecar_status),
         compact([
@@ -1421,8 +1410,8 @@ function buildBackendBenchmarkViews(source: RolloutArtifactSource): BenchmarkSce
         directiveFamilySummary,
         anchorOverridePresent,
         cropOverridePresent,
-        characterPackId,
-        fixturePath,
+        characterPackId: handoffState.characterPackId,
+        fixturePath: handoffState.fixturePath,
         sourceLabel: source.label,
         sourcePath: source.outRoot,
         matrixArtifactPath: matrixPath,
@@ -4977,6 +4966,36 @@ export function buildRigRepairHandoffLinks(input: {
     actions.push(`<button type="button" class="secondary" data-copy="${esc(fixturePath)}">Copy fixture</button>`);
   }
   return actions.join("");
+}
+
+export function resolveBenchmarkScenarioHandoffState(doc: JsonRecord, rawScenario: JsonRecord): {
+  characterPackId: string | null;
+  fixturePath: string | null;
+} {
+  return {
+    characterPackId:
+      str(rawScenario.character_pack_id) ??
+      str(rawScenario.characterPackId) ??
+      str(rawScenario.requested_character_pack_id) ??
+      str(rawScenario.requestedCharacterPackId) ??
+      str(doc.character_pack_id) ??
+      str(doc.characterPackId) ??
+      str(doc.requested_character_pack_id) ??
+      str(doc.requestedCharacterPackId),
+    fixturePath:
+      safeRolloutArtifactPath(rawScenario.fixture_path) ??
+      safeRolloutArtifactPath(rawScenario.fixturePath) ??
+      safeRolloutArtifactPath(rawScenario.runtime_fixture_path) ??
+      safeRolloutArtifactPath(rawScenario.runtimeFixturePath) ??
+      safeRolloutArtifactPath(rawScenario.input_path) ??
+      safeRolloutArtifactPath(rawScenario.inputPath) ??
+      safeRolloutArtifactPath(doc.fixture_path) ??
+      safeRolloutArtifactPath(doc.fixturePath) ??
+      safeRolloutArtifactPath(doc.runtime_fixture_path) ??
+      safeRolloutArtifactPath(doc.runtimeFixturePath) ??
+      safeRolloutArtifactPath(doc.input_path) ??
+      safeRolloutArtifactPath(doc.inputPath)
+  };
 }
 
 function profileBrowserHref(values: Array<string | null | undefined>): string {

@@ -12,6 +12,7 @@
     "smoke:ui:artifact-freshness": "tsx src/routes/uiRoutesFreshness.smoke.ts",
     "smoke:ui:benchmark-refresh": "tsx src/routes/uiRoutesBenchmarkRefresh.smoke.ts",
     "smoke:ui:benchmark-character-handoff": "tsx src/routes/uiRoutesBenchmarkCharacterHandoff.smoke.ts",
+    "smoke:ui:benchmark-scenario-handoff-resolve": "tsx src/routes/uiRoutesBenchmarkScenarioHandoffResolve.smoke.ts",
     "smoke:ui:explorer-refresh-handoff": "tsx src/routes/uiRoutesExplorerRefreshHandoff.smoke.ts",
     "smoke:ui:lineage-character-handoff": "tsx src/routes/uiRoutesLineageCharacterHandoff.smoke.ts",
     "smoke:ui:repair-character-handoff": "tsx src/routes/uiRoutesRepairCharacterHandoff.smoke.ts",
