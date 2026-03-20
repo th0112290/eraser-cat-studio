@@ -42,6 +42,10 @@ import {
   collectReferenceLineageWithResolvers
 } from "./uiRouteBenchmarkReferenceArtifacts";
 import {
+  collectSmokeArtifactBundlesWithResolvers,
+  type SmokeArtifactBundle
+} from "./uiRouteBenchmarkSmokeBundles";
+import {
   collectBundleReviewState,
   reviewIssuesForShot,
   summarizeReviewIssues,
@@ -171,26 +175,6 @@ type RegressionReportView = {
   renderModeArtifactPath: string | null;
   candidateCompareItems: Array<{ label: string; path: string }>;
   artifactRelativePath: string;
-};
-
-type SmokeArtifactBundle = {
-  source: RolloutArtifactSource;
-  smokePath: string;
-  smokeDoc: JsonRecord;
-  generatedAt: string;
-  scenario: string;
-  bundle: string;
-  episodeId: string;
-  runtimePath: string | null;
-  runtimeDoc: unknown | null;
-  sidecarPlanPath: string | null;
-  sidecarPlanDoc: unknown | null;
-  renderModePath: string | null;
-  renderModeDoc: unknown | null;
-  qcPath: string | null;
-  qcDoc: unknown | null;
-  renderLogPath: string | null;
-  renderLogDoc: unknown | null;
 };
 
 type RepairAcceptanceRow = {
@@ -1561,63 +1545,14 @@ function collectBundleFixturePath(bundle: SmokeArtifactBundle): string | null {
 }
 
 function collectSmokeArtifactBundles(): SmokeArtifactBundle[] {
-  const bundles: SmokeArtifactBundle[] = [];
-  const seen = new Set<string>();
-  for (const source of getRolloutArtifactSources()) {
-    if (!fs.existsSync(source.outRoot)) {
-      continue;
-    }
-    const smokePaths = findFilesByName(source.outRoot, "smoke_report.json", 8);
-    for (const smokePath of smokePaths) {
-      const key = path.resolve(smokePath).toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      const smokeDoc = readJsonFileSafe(smokePath);
-      if (!isRecord(smokeDoc)) {
-        continue;
-      }
-      const runtimePath =
-        safeJsonArtifactPath(source, smokeDoc.runtime_fixture_path) ??
-        safeJsonArtifactPath(source, smokeDoc.input_path);
-      const sidecarPlanPath = safeJsonArtifactPath(source, smokeDoc.sidecar_plan_path);
-      const renderModePath = safeJsonArtifactPath(source, smokeDoc.shot_render_mode_report_path);
-      const qcPath = safeJsonArtifactPath(source, smokeDoc.qc_report_path);
-      const renderLogPath = safeJsonArtifactPath(source, smokeDoc.render_log_path);
-      bundles.push({
-        source,
-        smokePath,
-        smokeDoc,
-        generatedAt: str(smokeDoc.generated_at) ?? "-",
-        scenario: str(smokeDoc.smoke_label) ?? artifactRelativePath(source.outRoot, path.dirname(smokePath)),
-        bundle: str(smokeDoc.profile_bundle) ?? str(smokeDoc.channel_domain) ?? "-",
-        episodeId: str(smokeDoc.episode_id) ?? "-",
-        runtimePath,
-        runtimeDoc: runtimePath ? readJsonFileSafe(runtimePath) : null,
-        sidecarPlanPath,
-        sidecarPlanDoc: sidecarPlanPath ? readJsonFileSafe(sidecarPlanPath) : null,
-        renderModePath,
-        renderModeDoc: renderModePath ? readJsonFileSafe(renderModePath) : null,
-        qcPath,
-        qcDoc: qcPath ? readJsonFileSafe(qcPath) : null,
-        renderLogPath,
-        renderLogDoc: renderLogPath ? readJsonFileSafe(renderLogPath) : null
-      });
-    }
-  }
-  bundles.sort((left, right) => {
-    const leftTime = new Date(left.generatedAt).getTime();
-    const rightTime = new Date(right.generatedAt).getTime();
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    if (left.bundle !== right.bundle) {
-      return left.bundle.localeCompare(right.bundle);
-    }
-    return left.scenario.localeCompare(right.scenario);
+  return collectSmokeArtifactBundlesWithResolvers({
+    sources: getRolloutArtifactSources(),
+    pathExists: (filePath) => fs.existsSync(filePath),
+    findFilesByName,
+    readJsonFileSafe,
+    normalizeJsonArtifactPath: (source, candidatePath) => safeJsonArtifactPath(source, candidatePath),
+    artifactRelativePath
   });
-  return bundles;
 }
 
 function readBooleanOrNull(value: unknown): boolean | null {
