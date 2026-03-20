@@ -14,6 +14,7 @@ import {
 } from "./mascotReferenceBank";
 import { materializeGeneratedCharacterPack } from "./generatedCharacterPackBuild";
 import { collectCharacterPipelinePackQcChecks } from "./generatedCharacterPipelinePackQc";
+import { materializeCharacterPipelineQcArtifacts } from "./generatedCharacterPipelineQcMaterialize";
 import {
   resolveMascotAnchorHeuristics,
   resolveMascotSpeciesProfile,
@@ -5530,72 +5531,19 @@ export async function runCharacterAnimationSafeQc(input: {
     }))
   );
 
-  const acceptance = resolveAcceptanceFromChecks(checks);
-  const passed = acceptance.errorCount === 0;
-  const report: CharacterPipelineQcReport = {
-    schema_version: "1.0",
-    generated_at: new Date().toISOString(),
-    character_id: input.characterId,
-    approved_front_master_present: Boolean(manifest.approved_front_master),
+  return materializeCharacterPipelineQcArtifacts({
+    characterId: input.characterId,
+    manifest,
     checks,
-    passed,
-    acceptance_status: acceptance.status,
-    error_count: acceptance.errorCount,
-    warning_count: acceptance.warningCount,
-    blocker_count: acceptance.blockerCount,
-    blocking_check_codes: acceptance.blockingCheckCodes,
-    reference_bank: referenceBank
-  };
-  const repairTasks = {
-    schema_version: "1.0",
-    generated_at: new Date().toISOString(),
-    character_id: input.characterId,
-    acceptance_status: acceptance.status,
-    tasks: checks
-      .filter((entry): entry is CharacterPipelineQcCheck & { severity: "WARN" | "ERROR" } => !entry.passed && entry.severity !== "INFO")
-      .map(
-        (entry): CharacterPipelineRepairTask => ({
-          code: entry.code,
-          severity: entry.severity,
-          action: repairActionForCode(entry.code),
-          reason: entry.message,
-          asset_paths: entry.asset_paths,
-          status: "open"
-        })
-      )
-  };
-  const reportPath = path.join(characterRootDir(input.characterId), "qc", "qc_report.json");
-  const repairTasksPath = path.join(characterRootDir(input.characterId), "qc", "repair_tasks.json");
-  writeJson(reportPath, report);
-  writeJson(repairTasksPath, repairTasks);
-  manifest.qc = {
-    report_path: reportPath,
-    repair_tasks_path: repairTasksPath,
-    passed,
-    generated_at: new Date().toISOString(),
-    acceptance_status: acceptance.status,
-    blocker_count: acceptance.blockerCount,
-    error_count: acceptance.errorCount,
-    warning_count: acceptance.warningCount,
-    reference_bank: referenceBank
-  };
-  manifest.acceptance = {
-    status: acceptance.status,
-    accepted: acceptance.status === "accepted",
-    updated_at: new Date().toISOString(),
-    report_path: reportPath,
-    repair_tasks_path: repairTasksPath,
-    blocking_check_codes: acceptance.blockingCheckCodes,
-    repair_task_count: repairTasks.tasks.length,
-    reference_bank: referenceBank
-  };
-  saveManifest(manifest);
-  return {
-    reportPath,
-    repairTasksPath,
-    passed,
-    acceptanceStatus: acceptance.status
-  };
+    referenceBank,
+    deps: {
+      characterRootDir,
+      writeJson,
+      saveManifest,
+      resolveAcceptanceFromChecks,
+      repairActionForCode
+    }
+  });
 }
 
 export function resolveCharacterPipelineAcceptance(characterId: string): CharacterPipelineAcceptance {
