@@ -59,6 +59,10 @@ import {
   parseManifestCandidate,
   resolveFrontReferenceFromManifest
 } from "./characterGenerationManifestCandidates";
+import {
+  resolveAutoContinuityReference as resolveAutoContinuityReferenceWithDelegates,
+  resolveFrontReferenceFromSession as resolveFrontReferenceFromSessionWithDelegate
+} from "./characterGenerationContinuityReference";
 
 export {
   buildManifestSelectedByView,
@@ -12286,114 +12290,11 @@ async function resolveFrontReferenceFromSession(
   rejectionCount: number;
   updatedAtMs: number;
 } | undefined> {
-  const candidateDelegate = getCharacterGenerationCandidateDelegate(prisma);
-  if (!candidateDelegate) {
-    return undefined;
-  }
-
-  const rows = await candidateDelegate.findMany({
-    where: {
-      sessionId,
-      view: "FRONT",
-      ...(config.requirePicked ? { picked: true } : {})
-    },
-    orderBy: [{ picked: "desc" }, { updatedAt: "desc" }],
-    take: config.candidateTake,
-    select: {
-      localPath: true,
-      picked: true,
-      updatedAt: true,
-      scoreJson: true,
-      qcJson: true
-    }
+  return resolveFrontReferenceFromSessionWithDelegate({
+    candidateDelegate: getCharacterGenerationCandidateDelegate(prisma),
+    sessionId,
+    config
   });
-
-  type RankedReference = {
-    referenceImageBase64: string;
-    referenceMimeType: string;
-    picked: boolean;
-    score: number | null;
-    rankScore: number;
-    rejectionCount: number;
-    updatedAtMs: number;
-  };
-  let best: RankedReference | null = null;
-
-  for (const row of rows) {
-    const localPath = typeof row.localPath === "string" ? row.localPath.trim() : "";
-    if (!localPath || !fs.existsSync(localPath)) {
-      continue;
-    }
-
-    const score = extractCandidateScore(row.scoreJson);
-    if (score === null && config.requireScore) {
-      continue;
-    }
-    if (score !== null && score < config.minScore) {
-      continue;
-    }
-
-    const qc = isRecord(row.qcJson) ? row.qcJson : null;
-    const rejectionCount = extractCandidateRejectionCount(qc);
-    if (rejectionCount > config.maxRejections) {
-      continue;
-    }
-
-    const mimeType =
-      qc && typeof qc.mime === "string" && qc.mime.trim().length > 0
-        ? qc.mime.trim()
-        : "image/png";
-    let data: Buffer;
-    try {
-      data = fs.readFileSync(localPath);
-    } catch {
-      continue;
-    }
-    const candidate: RankedReference = {
-      referenceImageBase64: data.toString("base64"),
-      referenceMimeType: mimeType,
-      picked: row.picked,
-      score,
-      rankScore: score ?? -1,
-      rejectionCount,
-      updatedAtMs: row.updatedAt.getTime()
-    };
-    if (!best) {
-      best = candidate;
-      continue;
-    }
-    if (isBetterContinuityCandidate(candidate, best)) {
-      best = candidate;
-    }
-  }
-
-  if (!best) {
-    return undefined;
-  }
-  return {
-    referenceImageBase64: best.referenceImageBase64,
-    referenceMimeType: best.referenceMimeType,
-    picked: best.picked,
-    score: best.score,
-    rejectionCount: best.rejectionCount,
-    updatedAtMs: best.updatedAtMs
-  };
-}
-
-function isBetterContinuityCandidate(
-  next: { picked: boolean; rankScore: number; rejectionCount: number; updatedAtMs: number },
-  current: { picked: boolean; rankScore: number; rejectionCount: number; updatedAtMs: number }
-): boolean {
-  if (next.picked !== current.picked) {
-    return next.picked;
-  }
-  if (next.rankScore !== current.rankScore) {
-    return next.rankScore > current.rankScore;
-  }
-  if (next.rejectionCount !== current.rejectionCount) {
-    return next.rejectionCount < current.rejectionCount;
-  }
-  return next.updatedAtMs > current.updatedAtMs;
 }
 
 async function resolveAutoContinuityReference(input: {
@@ -12428,147 +12329,16 @@ async function resolveAutoContinuityReference(input: {
     reason?: "matched" | "no_recent_ready_session" | "no_eligible_front_candidate";
   };
 }> {
-  const sessionDelegate = getCharacterGenerationSessionDelegate(input.prisma);
-  if (!sessionDelegate) {
-    return {
-      diagnostics: {
-        cutoffUpdatedAt: new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000).toISOString(),
-        queuedSessionCount: 0,
-        uniqueQueuedSessionCount: 0,
-        duplicateSessionCount: 0,
-        searchedSessionCount: 0,
-        searchedSessionIdsPreview: [],
-        preferredPoolCount: 0,
-        fallbackPoolCount: 0,
-        reason: "no_recent_ready_session"
-      }
-    };
-  }
-
-  const cutoffDate = new Date(Date.now() - input.config.maxSessionAgeHours * 60 * 60 * 1000);
-  const whereBase: Record<string, unknown> = {
-    status: "READY",
-    NOT: {
-      episodeId: input.episodeId
-    },
-    updatedAt: {
-      gte: cutoffDate
-    },
-    ...(input.currentSessionId ? { id: { not: input.currentSessionId } } : {})
-  };
-
-  const preferred = await sessionDelegate.findMany({
-    where: {
-      ...whereBase,
-      characterPackId: input.characterPackId
-    },
-    orderBy: {
-      updatedAt: "desc"
-    },
-    select: {
-      id: true
-    },
-    take: input.config.preferredSessionTake
+  return resolveAutoContinuityReferenceWithDelegates({
+    sessionDelegate: getCharacterGenerationSessionDelegate(input.prisma),
+    episodeId: input.episodeId,
+    channelId: input.channelId,
+    characterPackId: input.characterPackId,
+    currentSessionId: input.currentSessionId,
+    config: input.config,
+    resolveFrontReferenceFromSession: (sessionId) =>
+      resolveFrontReferenceFromSession(input.prisma, sessionId, input.config)
   });
-
-  const fallback = await sessionDelegate.findMany({
-    where: {
-      ...whereBase,
-      episode: {
-        is: {
-          channelId: input.channelId
-        }
-      }
-    },
-    orderBy: {
-      updatedAt: "desc"
-    },
-    select: {
-      id: true
-    },
-    take: input.config.fallbackSessionTake
-  });
-
-  const queue = [...preferred.map((row) => row.id), ...fallback.map((row) => row.id)];
-  const uniqueQueuedSessionIds = new Set(queue);
-  const uniqueQueuedSessionCount = uniqueQueuedSessionIds.size;
-  const duplicateSessionCount = Math.max(0, queue.length - uniqueQueuedSessionCount);
-  const preferredSet = new Set(preferred.map((row) => row.id));
-  const visited = new Set<string>();
-  const visitedOrder: string[] = [];
-  for (const sessionId of queue) {
-    if (visited.has(sessionId)) {
-      continue;
-    }
-    visited.add(sessionId);
-    visitedOrder.push(sessionId);
-    const resolved = await resolveFrontReferenceFromSession(input.prisma, sessionId, input.config);
-    if (resolved) {
-      return {
-        match: {
-          sessionId,
-          referenceImageBase64: resolved.referenceImageBase64,
-          referenceMimeType: resolved.referenceMimeType,
-          sourcePool: preferredSet.has(sessionId) ? "preferred" : "fallback",
-          candidatePicked: resolved.picked,
-          candidateScore: resolved.score,
-          candidateRejectionCount: resolved.rejectionCount,
-          candidateUpdatedAt: new Date(resolved.updatedAtMs).toISOString()
-        },
-        diagnostics: {
-          cutoffUpdatedAt: cutoffDate.toISOString(),
-          queuedSessionCount: queue.length,
-          uniqueQueuedSessionCount,
-          duplicateSessionCount,
-          searchedSessionCount: visited.size,
-          searchedSessionIdsPreview: visitedOrder.slice(0, 5),
-          preferredPoolCount: preferred.length,
-          fallbackPoolCount: fallback.length,
-          reason: "matched"
-        }
-      };
-    }
-  }
-
-  const reason =
-    queue.length === 0
-      ? ("no_recent_ready_session" as const)
-      : ("no_eligible_front_candidate" as const);
-  return {
-    diagnostics: {
-      cutoffUpdatedAt: cutoffDate.toISOString(),
-      queuedSessionCount: queue.length,
-      uniqueQueuedSessionCount,
-      duplicateSessionCount,
-      searchedSessionCount: visited.size,
-      searchedSessionIdsPreview: visitedOrder.slice(0, 5),
-      preferredPoolCount: preferred.length,
-      fallbackPoolCount: fallback.length,
-      reason
-    }
-  };
-}
-
-function extractCandidateScore(value: unknown): number | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const raw = value.score;
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
-    return null;
-  }
-  return clamp01(raw);
-}
-
-function extractCandidateRejectionCount(value: unknown): number {
-  if (!isRecord(value)) {
-    return 0;
-  }
-  const raw = value.rejections;
-  if (!Array.isArray(raw)) {
-    return 0;
-  }
-  return raw.filter((item) => typeof item === "string" && item.trim().length > 0).length;
 }
 
 function buildHitlSessionStatusMessage(input: {
