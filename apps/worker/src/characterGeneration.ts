@@ -7643,6 +7643,64 @@ export function shouldDowngradeCatFrontHeadShapeBreakdownRisk(input: {
   );
 }
 
+export function deriveSparseCatFrontAnchorScoreFallback(input: {
+  candidate: ScoredCandidate | undefined;
+  acceptedScoreThreshold?: number;
+  speciesId?: string;
+}): number | null {
+  const candidate = input.candidate;
+  if (!candidate || candidate.candidate.view !== "front" || normalizeGenerationSpecies(input.speciesId) !== "cat") {
+    return null;
+  }
+
+  const breakdown = candidate.breakdown ?? {};
+  const hasRichFrontMetrics =
+    typeof breakdown.frontSymmetryScore === "number" ||
+    typeof breakdown.headSquarenessScore === "number" ||
+    typeof breakdown.speciesScore === "number" ||
+    typeof breakdown.targetStyleScore === "number";
+  if (hasRichFrontMetrics) {
+    return null;
+  }
+
+  const profileThresholds = resolveMascotQcThresholds(input.speciesId);
+  const disqualifyingPattern =
+    /fragmented_or_multi_object_front|text_or_watermark_high_risk|subject_isolation_low|head_shape_breakdown|face_or_eyes_region_unstable|species_breakdown|mascot_identity_too_weak/i;
+  if (candidate.rejections.length > 0 || candidate.warnings.some((reason) => disqualifyingPattern.test(reason))) {
+    return null;
+  }
+
+  const minimumFrontScore = Math.max(
+    0.9,
+    (typeof input.acceptedScoreThreshold === "number"
+      ? input.acceptedScoreThreshold
+      : profileThresholds.frontMasterMinScore) + 0.28
+  );
+  if (
+    candidate.score < minimumFrontScore ||
+    (candidate.consistencyScore ?? 0) < 0.95 ||
+    (breakdown.styleScore ?? 0) < 0.92 ||
+    (breakdown.qualityScore ?? 0) < 0.62 ||
+    (breakdown.referenceScore ?? 0) < 0.58 ||
+    (breakdown.alphaScore ?? 0) < 0.95 ||
+    (breakdown.occupancyScore ?? 0) < 0.68
+  ) {
+    return null;
+  }
+
+  return clamp01(
+    Math.min(
+      0.78,
+      candidate.score * 0.34 +
+        (breakdown.styleScore ?? 0) * 0.18 +
+        (breakdown.qualityScore ?? 0) * 0.14 +
+        (breakdown.referenceScore ?? 0) * 0.12 +
+        (breakdown.alphaScore ?? 0) * 0.08 +
+        (breakdown.occupancyScore ?? 0) * 0.06
+    )
+  );
+}
+
 export function shouldDowngradeCatThreeQuarterFrontCollapseRisk(input: {
   speciesId?: string;
   view: CharacterView;
@@ -8150,10 +8208,15 @@ function summarizeCandidateRigStability(input: {
   const geometryCue = computeMascotGeometryCue(candidate);
   const anchorFromMeta = resolveCandidateAnchorConfidenceFromMeta(candidate);
   const landmarkFromMeta = resolveCandidateLandmarkConsistencyFromMeta(candidate);
+  const sparseCatFrontAnchorScore = deriveSparseCatFrontAnchorScoreFallback({
+    candidate,
+    speciesId: input.speciesId
+  });
   const anchorConfidence =
     anchorFromMeta?.value ??
     (view === "front"
-      ? clamp01(
+      ? sparseCatFrontAnchorScore ??
+        clamp01(
           (candidate.score ?? 0) * 0.28 +
             (candidate.breakdown.frontSymmetryScore ?? 0) * 0.24 +
             (candidate.breakdown.headSquarenessScore ?? 0) * 0.16 +
@@ -8604,6 +8667,15 @@ export function isStrongFrontMasterCandidate(
   if (!candidate || candidate.candidate.view !== "front") {
     return false;
   }
+  if (
+    deriveSparseCatFrontAnchorScoreFallback({
+      candidate,
+      acceptedScoreThreshold,
+      speciesId
+    }) !== null
+  ) {
+    return true;
+  }
   const mascotSpecies = normalizeGenerationSpecies(speciesId);
   const profileThresholds = resolveMascotQcThresholds(speciesId);
   const minimumFrontScore = Math.max(acceptedScoreThreshold, profileThresholds.frontMasterMinScore);
@@ -8798,7 +8870,12 @@ export function buildPackCoherenceDiagnostics(input: {
     }
   };
 
-  const frontAnchorScore =
+  const sparseCatFrontAnchorScore = deriveSparseCatFrontAnchorScoreFallback({
+    candidate: front,
+    acceptedScoreThreshold: input.acceptedScoreThreshold,
+    speciesId: input.speciesId
+  });
+  const rawFrontAnchorScore =
     front
       ? clamp01(
           (front.score ?? 0) * 0.28 +
@@ -8808,6 +8885,10 @@ export function buildPackCoherenceDiagnostics(input: {
             (front.breakdown.targetStyleScore ?? 0) * 0.16
         )
       : null;
+  const frontAnchorScore =
+    typeof sparseCatFrontAnchorScore === "number"
+      ? Math.max(rawFrontAnchorScore ?? 0, sparseCatFrontAnchorScore)
+      : rawFrontAnchorScore;
   const frontSymmetryScore = typeof front?.breakdown.frontSymmetryScore === "number" ? front.breakdown.frontSymmetryScore : null;
   const frontHeadSquarenessScore =
     typeof front?.breakdown.headSquarenessScore === "number" ? front.breakdown.headSquarenessScore : null;

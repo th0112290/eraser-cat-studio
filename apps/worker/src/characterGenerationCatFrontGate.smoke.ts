@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  deriveSparseCatFrontAnchorScoreFallback,
   deriveRetryAdjustmentForCandidate,
   isStrongFrontMasterCandidate,
   scoreCandidate,
@@ -316,6 +317,47 @@ assert.equal(
   ),
   true,
   "cat sparse-outline fronts with strong symmetry and identity cues should still count as a strong front baseline"
+);
+
+const sparseRepairFrontCandidate = {
+  candidate: {
+    id: "cat-front-sparse-repair",
+    view: "front",
+    providerMeta: {
+      workflowStage: "repair_refine"
+    }
+  },
+  rejections: [],
+  warnings: ["palette_too_complex_for_mascot"],
+  score: 0.9997,
+  consistencyScore: 1,
+  breakdown: {
+    alphaScore: 0.9888,
+    occupancyScore: 0.7383,
+    qualityScore: 0.6866,
+    referenceScore: 0.6223,
+    styleScore: 1
+  }
+} as any;
+
+assert.ok(
+  (deriveSparseCatFrontAnchorScoreFallback({
+    candidate: sparseRepairFrontCandidate,
+    acceptedScoreThreshold: 0.58,
+    speciesId: "cat"
+  }) ?? 0) >= 0.7,
+  "cat repair-refine fronts with sparse generic metrics should derive a conservative front-anchor fallback"
+);
+
+assert.equal(
+  isStrongFrontMasterCandidate(
+    sparseRepairFrontCandidate,
+    "eraser-cat-mascot-production",
+    0.58,
+    "cat"
+  ),
+  true,
+  "cat repair-refine fronts should still count as a strong front baseline when generic quality/reference signals are very strong"
 );
 
 const duplicateFrontGateCandidate = scoreCandidate({
