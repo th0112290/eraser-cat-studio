@@ -4731,9 +4731,14 @@ type BenchmarkRefreshAction = {
 export function buildBenchmarkRefreshActions(input: {
   staleSourceCount: number;
   agingSourceCount: number;
+  packIds?: string[] | null;
 }): BenchmarkRefreshAction[] {
   const tone: UiBadgeTone =
     input.staleSourceCount > 0 ? "bad" : input.agingSourceCount > 0 ? "warn" : "muted";
+  const resolvedPackIds = uniqueStrings(input.packIds ?? []);
+  const primaryPackId = resolvedPackIds[0] ?? "<packId>";
+  const economyPackId = resolvedPackIds[0] ?? "<packId>";
+  const medicalPackId = resolvedPackIds[1] ?? resolvedPackIds[0] ?? "<packId>";
   return [
     {
       label: "Motion preset benchmark",
@@ -4751,16 +4756,23 @@ export function buildBenchmarkRefreshActions(input: {
     },
     {
       label: "Preset rollout refresh",
-      command: "pnpm rollout:video-i2v-preset -- --character-pack-id=<packId>",
-      hint: "Rebuilds preset benchmark matrix and rollout artifacts for the current mascot pack when benchmark rows are stale.",
+      command: `pnpm rollout:video-i2v-preset -- --character-pack-id=${primaryPackId}`,
+      hint:
+        resolvedPackIds.length > 0
+          ? `Rebuilds preset benchmark matrix and rollout artifacts for ${primaryPackId} using the pack id inferred from current lineage rows.`
+          : "Rebuilds preset benchmark matrix and rollout artifacts for the current mascot pack when benchmark rows are stale.",
       tone,
       badge: "rollout"
     },
     {
       label: "Multichannel rollout refresh",
-      command:
-        "pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=<packId> --medical-character-pack-id=<packId>",
-      hint: "Refreshes cross-channel preset benchmark summary, validation, and rollout artifacts for broader review. Use one shared pack id in both placeholders when both channels should point at the same mascot pack.",
+      command: `pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=${economyPackId} --medical-character-pack-id=${medicalPackId}`,
+      hint:
+        resolvedPackIds.length > 1
+          ? `Refreshes cross-channel preset benchmark summary with inferred pack ids ${economyPackId} and ${medicalPackId}.`
+          : resolvedPackIds.length === 1
+            ? `Refreshes cross-channel preset benchmark summary with ${economyPackId} in both channel slots.`
+            : "Refreshes cross-channel preset benchmark summary, validation, and rollout artifacts for broader review. Use one shared pack id in both placeholders when both channels should point at the same mascot pack.",
       tone,
       badge: "multichannel"
     }
@@ -8916,6 +8928,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      values.some((value) => benchmarkFocusValue === decisionToken(value));
 	    const { sources, backendScenarios, regressions } = collectBenchmarkViewerData();
       const benchmarkRigRows = collectRepairAcceptanceRows();
+      const benchmarkLineageRows = collectDatasetLineageRows();
+      const benchmarkPackIds = uniqueStrings(benchmarkLineageRows.flatMap((row) => row.packIds));
       const rigAttentionRows = benchmarkRigRows.filter(
         (row) => row.rig.rigBlocked || row.rig.reviewOnly || row.rig.lowAnchorConfidence || row.rig.recreateRecommended
       );
@@ -8987,7 +9001,8 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       const agingSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isAging).length;
       const benchmarkRefreshActions = buildBenchmarkRefreshActions({
         staleSourceCount,
-        agingSourceCount
+        agingSourceCount,
+        packIds: benchmarkPackIds
       });
 	    const benchmarkSummaryCards: DecisionStat[] = [
 	      { label: "Backend Objects", value: String(backendScenarios.length), hint: `${availableSources}/${sources.length} artifact roots available`, tone: "muted" },

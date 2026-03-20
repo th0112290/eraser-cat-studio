@@ -8,25 +8,38 @@ function assert(condition: boolean, message: string): void {
 
 const stale = buildBenchmarkRefreshActions({
   staleSourceCount: 2,
-  agingSourceCount: 1
+  agingSourceCount: 1,
+  packIds: ["pack-alpha", "pack-beta"]
 });
 assert(stale.length === 4, "expected four benchmark refresh actions");
 assert(stale.every((entry) => entry.tone === "bad"), "expected stale refresh actions to use bad tone");
 assert(stale.some((entry) => entry.command === "pnpm benchmark:motion-presets"), "missing motion preset refresh command");
 assert(
+  stale.some((entry) => entry.command === "pnpm rollout:video-i2v-preset -- --character-pack-id=pack-alpha"),
+  "missing inferred preset rollout command"
+);
+assert(
   stale.some(
     (entry) =>
       entry.command ===
-      "pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=<packId> --medical-character-pack-id=<packId>"
+      "pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=pack-alpha --medical-character-pack-id=pack-beta"
   ),
   "missing multichannel rollout refresh command"
 );
 
 const agingOnly = buildBenchmarkRefreshActions({
   staleSourceCount: 0,
-  agingSourceCount: 1
+  agingSourceCount: 1,
+  packIds: ["pack-solo"]
 });
 assert(agingOnly.every((entry) => entry.tone === "warn"), "expected aging refresh actions to use warn tone");
+assert(
+  agingOnly.some(
+    (entry) =>
+      entry.command === "pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=pack-solo --medical-character-pack-id=pack-solo"
+  ),
+  "expected solo pack to fill both multichannel placeholders"
+);
 
 const fresh = buildBenchmarkRefreshActions({
   staleSourceCount: 0,
