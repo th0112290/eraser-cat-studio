@@ -32,15 +32,13 @@ import {
 import {
   BUILD_CHARACTER_PACK_JOB_NAME,
   REPO_ROOT,
-  type CharacterAssetSelection,
   type CharacterGenerationPayload,
   type CharacterGenerationSelection,
   type CharacterGenerationView,
   type CharacterPackJobPayload,
   type EpisodeJobPayload
 } from "./queue";
-import { getAssetObject, makeStorageKey, putAssetObject } from "./assetStorage";
-import { handleAssetIngestJob, type AssetIngestJobPayload } from "./assetIngest";
+import { getAssetObject } from "./assetStorage";
 import {
   buildManifestSelectedByView,
   formatContinuityDescriptor,
@@ -82,6 +80,7 @@ import {
   resolveSelectedCandidateIds,
   resolveSelectedSeed
 } from "./characterGenerationSelectionQueue";
+import { persistSelectedCandidateAssets } from "./characterGenerationSelectionAssets";
 
 export {
   buildManifestSelectedByView,
@@ -12462,81 +12461,21 @@ async function persistSelectedCandidates(input: {
     });
   }
 
-  const selectedAssets = new Map<CharacterView, { assetId: string; originalKey: string; ingestJobId: string }>();
+  const selectedAssets = await persistSelectedCandidateAssets({
+    prisma,
+    episodeChannelId,
+    episodeId,
+    jobDbId,
+    source,
+    qualityProfileId: manifest.qualityProfileId,
+    selectedByView
+  });
   const allViews: CharacterView[] = ["front", "threeQuarter", "profile"];
-
-  for (const [view, scoredCandidate] of Object.entries(selectedByView) as Array<[CharacterView, ScoredCandidate]>) {
-    const candidate = scoredCandidate.candidate;
-    const extension = candidate.mimeType.includes("svg") ? "svg" : "png";
-    const originalKey = makeStorageKey(
-      `characters/generated/${episodeId}/${jobDbId}`,
-      `${view}_candidate_${candidate.candidateIndex}.${extension}`
-    );
-
-    const putResult = await putAssetObject(originalKey, candidate.data, candidate.mimeType);
-
-    const assetData = {
-      channelId: episodeChannelId,
-      type: "IMAGE" as const,
-      assetType: "CHARACTER_VIEW" as const,
-      status: "QUEUED" as const,
-      mime: candidate.mimeType,
-      sizeBytes: BigInt(candidate.data.byteLength),
-      storageKey: originalKey,
-      originalKey,
-      contentType: candidate.mimeType,
-      bytes: BigInt(candidate.data.byteLength),
-      sha256: null,
-      qcJson: toPrismaJson({
-        ok: true,
-        stage: source === "hitl" ? "generated_selected" : "generated",
-        provider: candidate.provider,
-        candidateId: candidate.id,
-        qualityProfileId: manifest.qualityProfileId ?? null,
-        score: scoredCandidate.score,
-        scoreBreakdown: scoredCandidate.breakdown,
-        warnings: scoredCandidate.warnings,
-        rejections: scoredCandidate.rejections,
-        providerMeta: candidate.providerMeta ?? null,
-        minioWarning: putResult.minioError ?? null
-      })
-    };
-
-    let asset = await prisma.asset.findFirst({
-      where: {
-        storageKey: originalKey
-      }
-    });
-    if (!asset) {
-      asset = await prisma.asset.create({
-        data: assetData
-      });
-    }
-
-    const ingestPayload: AssetIngestJobPayload = {
-      assetId: asset.id,
-      assetType: "character_view",
-      originalKey,
-      mime: candidate.mimeType
-    };
-
-    await handleAssetIngestJob({
-      prisma,
-      payload: ingestPayload,
-      bullmqJobId: `inline-asset-ingest-${asset.id}`
-    });
-    const ingestJobId = `inline-asset-ingest-${asset.id}`;
-
-    selectedAssets.set(view, {
-      assetId: asset.id,
-      originalKey,
-      ingestJobId
-    });
-
+  for (const [view, persistedAsset] of selectedAssets) {
     manifest.selectedByView[view] = {
-      candidateId: candidate.id,
-      assetId: asset.id,
-      assetIngestJobId: ingestJobId
+      candidateId: persistedAsset.candidateId,
+      assetId: persistedAsset.assetId,
+      assetIngestJobId: persistedAsset.ingestJobId
     };
   }
 
