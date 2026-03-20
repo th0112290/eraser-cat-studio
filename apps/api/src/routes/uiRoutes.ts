@@ -50,6 +50,10 @@ import {
   type RouteReasonExplorerRow
 } from "./uiRouteBenchmarkRouteReasons";
 import {
+  collectRepairAcceptanceRowsFromBundles,
+  type RepairAcceptanceRow
+} from "./uiRouteBenchmarkRepairAcceptance";
+import {
   collectSmokeArtifactBundlesWithResolvers,
   type SmokeArtifactBundle
 } from "./uiRouteBenchmarkSmokeBundles";
@@ -183,49 +187,6 @@ type RegressionReportView = {
   renderModeArtifactPath: string | null;
   candidateCompareItems: Array<{ label: string; path: string }>;
   artifactRelativePath: string;
-};
-
-type RepairAcceptanceRow = {
-  scenario: string;
-  bundle: string;
-  episodeId: string;
-  shotId: string;
-  shotType: string;
-  backend: string;
-  renderer: string;
-  providerSummary: string;
-  policySummary: string;
-  attemptSummary: string;
-  selectedCandidateId: string;
-  acceptanceStatus: string;
-  acceptanceTone: UiBadgeTone;
-  qcStatus: string;
-  qcTone: UiBadgeTone;
-  judgeSummary: string;
-  repairSignals: string[];
-  repairSummary: string;
-  qcSummary: string;
-  issueSummary: string;
-  issueCount: number;
-  finalPassed: boolean | null;
-  finalStage: string | null;
-  fallbackSteps: string[];
-  fallbackSummary: string;
-  failureSummary: string;
-  generatedAt: string;
-  characterPackId: string | null;
-  fixturePath: string | null;
-  sourceLabel: string;
-  sourcePath: string;
-  smokeArtifactPath: string;
-  planArtifactPath: string | null;
-  qcArtifactPath: string | null;
-  renderLogPath: string | null;
-  actualJudgePath: string | null;
-  visualJudgePath: string | null;
-  candidateComparePath: string | null;
-  artifactRelativePath: string;
-  rig: RigReviewState;
 };
 
 type SidecarPlanReviewEntry = {
@@ -1662,136 +1623,35 @@ function qcStatusFromArtifact(raw: JsonRecord): { status: string; tone: UiBadgeT
 }
 
 function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
-  const rows: RepairAcceptanceRow[] = [];
-  for (const bundle of collectSmokeArtifactBundles()) {
-    const baseDir = path.dirname(bundle.sidecarPlanPath ?? bundle.smokePath);
-    const compareMap = buildCandidateCompareMap(bundle.source, baseDir);
-    const planReviewByShot = buildSidecarPlanReviewMap(bundle.source, bundle.sidecarPlanDoc);
-    const bundleFixturePath = collectBundleFixturePath(bundle);
-    const bundleReview = collectBundleReviewState({
-      qcDoc: bundle.qcDoc,
-      renderLogDoc: bundle.renderLogDoc,
-      qcArtifactPath: bundle.qcPath,
-      renderLogPath: bundle.renderLogPath
-    });
-    for (const raw of recordList(bundle.smokeDoc.sidecar_artifacts)) {
-      const shotId = str(raw.shot_id);
-      if (!shotId) continue;
-      const qcState = qcStatusFromArtifact(raw);
-      const planReview = planReviewByShot.get(shotId);
-      const issueEntries = reviewIssuesForShot(bundleReview.issuesByShot, shotId);
-      const repairSignals = uniqueStrings([
-        str(raw.impact_preset),
-        ...(Array.isArray(raw.preset_policy_tags) ? raw.preset_policy_tags : []).map((item) => str(item)),
-        ...(Array.isArray(raw.premium_actual_policy_rejection_reasons) ? raw.premium_actual_policy_rejection_reasons : []).map((item) => str(item)),
-        ...(qcState.summary !== "-" ? [qcState.summary] : [])
-      ])
-        .filter((value) => value.toLowerCase().includes("repair") || value.toLowerCase().includes("identity") || value.toLowerCase().includes("reject"));
-      const failureSummary = compact([
-        str(raw.failure),
-        str(raw.error),
-        Array.isArray(raw.visual_signal_warnings) && raw.visual_signal_warnings.length > 0
-          ? summarizeValues((raw.visual_signal_warnings as unknown[]).map((item) => str(item)), 2)
-          : null
-      ]);
-      const acceptanceStatus = acceptanceStatusFromArtifact(raw);
-      const selectedCandidateId =
-        str(raw.premium_actual_selected_candidate_id) ??
-        str(raw.premium_selected_candidate_id) ??
-        (planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : null) ??
-        "-";
-      const actualJudgePath =
-        safeJsonArtifactPath(bundle.source, raw.premium_actual_judge_path) ?? planReview?.actualJudgePath ?? null;
-      const visualJudgePath =
-        safeJsonArtifactPath(bundle.source, raw.premium_actual_visual_signal_report_path) ?? planReview?.visualJudgePath ?? null;
-      const rig = mergeRigReviewStates(
-        extractRigReviewState(raw, selectedCandidateId === "-" ? null : selectedCandidateId),
-        readRigReviewStateFromArtifactPath(actualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId),
-        readRigReviewStateFromArtifactPath(visualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId)
-      );
-      rows.push({
-        scenario: bundle.scenario,
-        bundle: bundle.bundle,
-        episodeId: bundle.episodeId,
-        shotId,
-        shotType: str(raw.shot_type) ?? "-",
-        backend: str(raw.backend) ?? str(raw.actual_backend) ?? "-",
-        renderer: str(raw.renderer) ?? str(raw.expected_renderer) ?? "-",
-        providerSummary:
-          planReview?.providerSummary && planReview.providerSummary !== "-"
-            ? planReview.providerSummary
-            : compact([str(raw.actual_backend) ?? str(raw.backend), str(raw.renderer) ?? str(raw.expected_renderer)], " / ") || "-",
-        policySummary:
-          planReview?.policySummary && planReview.policySummary !== "-"
-            ? planReview.policySummary
-            : compact(
-                [
-                  str(raw.controlnet_preset),
-                  str(raw.impact_preset),
-                  str(raw.qc_preset),
-                  Array.isArray(raw.preset_policy_tags) && raw.preset_policy_tags.length > 0
-                    ? `tags ${summarizeValues((raw.preset_policy_tags as unknown[]).map((item) => str(item)), 3)}`
-                    : null
-                ],
-                " | "
-              ) || "-",
-        attemptSummary: planReview?.attemptSummary && planReview.attemptSummary !== "-" ? planReview.attemptSummary : "-",
-        selectedCandidateId,
-        acceptanceStatus,
-        acceptanceTone: acceptanceTone(acceptanceStatus),
-        qcStatus: qcState.status,
-        qcTone: qcState.tone,
-        judgeSummary: compact([
-          str(raw.judge_decision),
-          num(raw.judge_score) === null ? null : `score ${formatNumber(raw.judge_score)}`,
-          num(raw.retake_count) === null ? null : `${formatNumber(raw.retake_count, 0)} retake`
-        ]),
-        repairSignals,
-        repairSummary: summarizeValues(repairSignals, 4),
-        qcSummary: qcState.summary,
-        issueSummary: summarizeReviewIssues(issueEntries, 2),
-        issueCount: issueEntries.length,
-        finalPassed: bundleReview.finalPassed,
-        finalStage: bundleReview.finalStage,
-        fallbackSteps: bundleReview.fallbackSteps,
-        fallbackSummary: summarizeValues(bundleReview.fallbackSteps, 4),
-        failureSummary: failureSummary || "-",
-        generatedAt: bundle.generatedAt,
-        characterPackId: resolveRuntimeShotCharacterPackId(bundle.runtimeDoc, shotId),
-        fixturePath: bundleFixturePath,
-        sourceLabel: bundle.source.label,
-        sourcePath: bundle.source.outRoot,
-        smokeArtifactPath: bundle.smokePath,
-        planArtifactPath: bundle.sidecarPlanPath,
-        qcArtifactPath: bundleReview.qcArtifactPath,
-        renderLogPath: bundleReview.renderLogPath,
-        actualJudgePath,
-        visualJudgePath,
-        candidateComparePath: compareMap.get(shotId) ?? null,
-        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath),
-        rig
-      });
-    }
-  }
-
-  rows.sort((left, right) => {
-    const toneOrder = new Map<UiBadgeTone, number>([
-      ["bad", 0],
-      ["warn", 1],
-      ["ok", 2],
-      ["muted", 3]
-    ]);
-    const leftTone = toneOrder.get(left.acceptanceTone) ?? 9;
-    const rightTone = toneOrder.get(right.acceptanceTone) ?? 9;
-    if (leftTone !== rightTone) return leftTone - rightTone;
-    const leftTime = new Date(left.generatedAt).getTime();
-    const rightTime = new Date(right.generatedAt).getTime();
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    return left.shotId.localeCompare(right.shotId);
+  const bundles = collectSmokeArtifactBundles();
+  return collectRepairAcceptanceRowsFromBundles({
+    bundles,
+    buildCandidateCompareMap: (bundle, baseDir) =>
+      buildCandidateCompareMap(bundle.source, path.dirname(baseDir)),
+    buildSidecarPlanReviewMap: (bundle) => buildSidecarPlanReviewMap(bundle.source, bundle.sidecarPlanDoc),
+    collectBundleFixturePath,
+    collectBundleReviewState: (bundle) =>
+      collectBundleReviewState({
+        qcDoc: bundle.qcDoc,
+        renderLogDoc: bundle.renderLogDoc,
+        qcArtifactPath: bundle.qcPath,
+        renderLogPath: bundle.renderLogPath
+      }),
+    reviewIssuesForShot,
+    summarizeReviewIssues,
+    acceptanceStatusFromArtifact,
+    acceptanceTone,
+    qcStatusFromArtifact,
+    resolveRuntimeShotCharacterPackId,
+    safeActualJudgePath: (bundle, raw, planReview) =>
+      safeJsonArtifactPath(bundle.source, raw.premium_actual_judge_path) ?? planReview?.actualJudgePath ?? null,
+    safeVisualJudgePath: (bundle, raw, planReview) =>
+      safeJsonArtifactPath(bundle.source, raw.premium_actual_visual_signal_report_path) ?? planReview?.visualJudgePath ?? null,
+    artifactRelativePath,
+    mergeRigReviewStates,
+    extractRigReviewState,
+    readRigReviewStateFromArtifactPath
   });
-  return rows;
 }
 
 function collectRouteReasonRows(): RouteReasonExplorerRow[] {
