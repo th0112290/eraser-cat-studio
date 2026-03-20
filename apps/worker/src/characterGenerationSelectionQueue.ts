@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type { PrismaClient } from "@prisma/client";
 import type { CharacterView } from "@ec/image-gen";
 import type {
@@ -45,6 +46,13 @@ type SelectionQueueHelpers = {
   addEpisodeJob: AddEpisodeJob;
   logJob: JobLogger;
 };
+
+type SessionPickedUpdater = (input: {
+  sessionId: string;
+  selectedByView: SessionPickedCandidateMap;
+}) => Promise<void>;
+
+type SessionReadyUpdater = (input: { sessionId: string; statusMessage: string }) => Promise<void>;
 
 export function resolveSelectedAssetIds(input: {
   views: CharacterView[];
@@ -229,4 +237,73 @@ export async function enqueueSelectionBuild(input: {
   });
 
   return buildBullmqJobId;
+}
+
+export async function writeQueuedSelectionManifestAndLog<TManifest extends { reference: { continuity?: ManifestContinuity } }>(
+  input: {
+    manifest: TManifest;
+    manifestPath: string;
+    withManifestHashes: (manifest: TManifest) => TManifest & { inputHash: string; manifestHash: string };
+    helpers: Pick<SelectionQueueHelpers, "logJob">;
+    jobDbId: string;
+    source: "auto" | "hitl";
+    providerName: string;
+    workflowHash: string;
+    flattenContinuityFields: (continuity: ManifestContinuity | undefined) => Record<string, unknown>;
+    assetIds: CharacterAssetSelection;
+    buildJobId: string;
+    buildBullmqJobId: string;
+  }
+): Promise<TManifest & { inputHash: string; manifestHash: string }> {
+  const hashedManifest = input.withManifestHashes(input.manifest);
+  fs.writeFileSync(input.manifestPath, `${JSON.stringify(hashedManifest, null, 2)}\n`, "utf8");
+
+  await input.helpers.logJob(
+    input.jobDbId,
+    "info",
+    input.source === "hitl" ? "Character assets selected from HITL and queued" : "Character assets generated and auto-selected",
+    {
+      provider: input.providerName,
+      workflowHash: input.workflowHash,
+      inputHash: hashedManifest.inputHash,
+      manifestHash: hashedManifest.manifestHash,
+      ...input.flattenContinuityFields(hashedManifest.reference.continuity),
+      manifestPath: input.manifestPath,
+      selectedAssetIds: input.assetIds,
+      buildJobDbId: input.buildJobId,
+      buildBullmqJobId: input.buildBullmqJobId
+    }
+  );
+
+  return hashedManifest;
+}
+
+export async function finalizeSelectionSessionReady(input: {
+  sessionId?: string;
+  source: "auto" | "hitl";
+  continuity: ManifestContinuity | undefined;
+  assetIds: CharacterAssetSelection;
+  selectedCandidateIds: SelectedCandidateIdMap;
+  markPicked: SessionPickedUpdater;
+  updateReadyStatus: SessionReadyUpdater;
+}): Promise<void> {
+  if (!input.sessionId) {
+    return;
+  }
+
+  await input.markPicked({
+    sessionId: input.sessionId,
+    selectedByView: buildSelectionSessionPickedMap({
+      assetIds: input.assetIds,
+      selectedCandidateIds: input.selectedCandidateIds
+    })
+  });
+
+  await input.updateReadyStatus({
+    sessionId: input.sessionId,
+    statusMessage: buildSelectionQueuedStatusMessage({
+      source: input.source,
+      continuity: input.continuity
+    })
+  });
 }

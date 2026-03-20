@@ -73,12 +73,12 @@ import {
 } from "./characterGenerationSelectionDecision";
 import {
   buildSelectionBuildPayload,
-  buildSelectionQueuedStatusMessage,
-  buildSelectionSessionPickedMap,
   enqueueSelectionBuild,
+  finalizeSelectionSessionReady,
   resolveSelectedAssetIds,
   resolveSelectedCandidateIds,
-  resolveSelectedSeed
+  resolveSelectedSeed,
+  writeQueuedSelectionManifestAndLog
 } from "./characterGenerationSelectionQueue";
 import { persistSelectedCandidateAssets } from "./characterGenerationSelectionAssets";
 
@@ -12533,53 +12533,50 @@ async function persistSelectedCandidates(input: {
     retryBackoffMs
   });
 
-  const hashedManifest = withManifestHashes({
-    ...manifest,
-    schemaVersion: "1.0"
-  });
-  fs.writeFileSync(manifestPath, `${JSON.stringify(hashedManifest, null, 2)}\n`, "utf8");
-
-  await helpers.logJob(
+  const hashedManifest = await writeQueuedSelectionManifestAndLog({
+    manifest: {
+      ...manifest,
+      schemaVersion: "1.0"
+    },
+    manifestPath,
+    withManifestHashes,
+    helpers,
     jobDbId,
-    "info",
-    source === "hitl" ? "Character assets selected from HITL and queued" : "Character assets generated and auto-selected",
-    {
-      provider: providerName,
-      workflowHash,
-      inputHash: hashedManifest.inputHash,
-      manifestHash: hashedManifest.manifestHash,
-      ...toFlatContinuityFields(hashedManifest.reference.continuity),
-      manifestPath,
-      selectedAssetIds: assetIds,
-      buildJobDbId: buildJobId,
-      buildBullmqJobId
-    }
-  );
+    source,
+    providerName,
+    workflowHash,
+    flattenContinuityFields: toFlatContinuityFields,
+    assetIds,
+    buildJobId,
+    buildBullmqJobId
+  });
 
-  if (sessionId) {
-    await markSessionCandidatesPicked({
-      prisma,
-      sessionId,
-      selectedByView: buildSelectionSessionPickedMap({
-        assetIds,
-        selectedCandidateIds: resolvedSelectedCandidateIds
-      })
-    });
-
-    const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
-    if (sessionDelegate) {
+  await finalizeSelectionSessionReady({
+    sessionId,
+    source,
+    continuity: hashedManifest.reference.continuity,
+    assetIds,
+    selectedCandidateIds: resolvedSelectedCandidateIds,
+    markPicked: async ({ sessionId: targetSessionId, selectedByView: pickedMap }) =>
+      markSessionCandidatesPicked({
+        prisma,
+        sessionId: targetSessionId,
+        selectedByView: pickedMap
+      }),
+    updateReadyStatus: async ({ sessionId: targetSessionId, statusMessage }) => {
+      const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+      if (!sessionDelegate) {
+        return;
+      }
       await sessionDelegate.update({
-        where: { id: sessionId },
+        where: { id: targetSessionId },
         data: {
           status: "READY",
-          statusMessage: buildSelectionQueuedStatusMessage({
-            source,
-            continuity: manifest.reference.continuity
-          })
+          statusMessage
         }
       });
     }
-  }
+  });
 }
 
 export async function handleGenerateCharacterAssetsJob(input: {
