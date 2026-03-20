@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildManifestSelectedByView,
+  shouldContinueBlockedSelectionBuild,
   shouldRetainSelectedByViewOnSelectionBlock
 } from "./characterGeneration";
 
@@ -24,6 +25,8 @@ assert.deepEqual(buildManifestSelectedByView(selectedByView as never), {
 
 assert.equal(shouldRetainSelectedByViewOnSelectionBlock("hitl"), true);
 assert.equal(shouldRetainSelectedByViewOnSelectionBlock("auto"), false);
+assert.equal(shouldContinueBlockedSelectionBuild("hitl"), true);
+assert.equal(shouldContinueBlockedSelectionBuild("auto"), false);
 
 console.log("[characterGenerationHitlSelectionBlock.smoke] PASS");
 process.exit(0);

@@ -11956,6 +11956,10 @@ export function shouldRetainSelectedByViewOnSelectionBlock(source: "auto" | "hit
   return source === "hitl";
 }
 
+export function shouldContinueBlockedSelectionBuild(source: "auto" | "hitl"): boolean {
+  return source === "hitl";
+}
+
 function getComfyUiUrl(): string | undefined {
   const adapter = process.env.COMFY_ADAPTER_URL?.trim();
   if (adapter && adapter.length > 0) {
@@ -12832,7 +12836,8 @@ async function persistSelectedCandidates(input: {
   manifest.selectedByView = buildManifestSelectedByView(selectedByView);
 
   if (requiresSelectionReview) {
-    manifest.status = "PENDING_HITL";
+    const continueBlockedSelectionBuild = shouldContinueBlockedSelectionBuild(source);
+    manifest.status = continueBlockedSelectionBuild ? "HITL_SELECTED" : "PENDING_HITL";
     if (!shouldRetainSelectedByViewOnSelectionBlock(source)) {
       manifest.selectedByView = {};
     }
@@ -12864,6 +12869,7 @@ async function persistSelectedCandidates(input: {
       source,
       provider: providerName,
       manifestPath,
+      continueBlockedSelectionBuild,
       rigStability,
       packCoherence,
       selectionRisk,
@@ -12873,7 +12879,7 @@ async function persistSelectedCandidates(input: {
       selectedCandidateSummaryByView: attemptedSelectionSummary
     });
 
-    if (character.buildJobDbId) {
+    if (!continueBlockedSelectionBuild && character.buildJobDbId) {
       await helpers.setJobStatus(character.buildJobDbId, "CANCELLED", {
         lastError: blockedMessage,
         finishedAt: new Date()
@@ -12889,7 +12895,7 @@ async function persistSelectedCandidates(input: {
       });
     }
 
-    if (character.previewJobDbId) {
+    if (!continueBlockedSelectionBuild && character.previewJobDbId) {
       await helpers.setJobStatus(character.previewJobDbId, "CANCELLED", {
         lastError: blockedMessage,
         finishedAt: new Date()
@@ -12938,7 +12944,7 @@ async function persistSelectedCandidates(input: {
       }
     });
 
-    if (sessionId) {
+    if (!continueBlockedSelectionBuild && sessionId) {
       const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
       if (sessionDelegate) {
         await sessionDelegate.update({
@@ -12962,7 +12968,20 @@ async function persistSelectedCandidates(input: {
       }
     }
 
-    throw new Error(blockedMessage);
+    if (!continueBlockedSelectionBuild) {
+      throw new Error(blockedMessage);
+    }
+
+    await helpers.logJob(jobDbId, "info", "Continuing blocked HITL-selected rebuild for evidence generation", {
+      source,
+      manifestPath,
+      rigStability,
+      packCoherence,
+      selectionRisk,
+      qualityEmbargo,
+      packDefectSummary,
+      finalQualityFirewall
+    });
   }
 
   const selectedAssets = new Map<CharacterView, { assetId: string; originalKey: string; ingestJobId: string }>();
