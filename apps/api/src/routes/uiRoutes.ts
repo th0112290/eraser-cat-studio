@@ -4829,6 +4829,36 @@ export function buildRolloutRefreshPlaybooksSection(input: {
   });
 }
 
+export function buildCompactRefreshPlaybookHandoff(input: {
+  staleSourceCount: number;
+  agingSourceCount: number;
+  unknownCount?: number;
+  benchmarkRepairHref: string;
+  benchmarkRolloutsHref: string;
+  packIds?: string[] | null;
+}): string {
+  const actions = buildBenchmarkRefreshActions({
+    staleSourceCount: input.staleSourceCount,
+    agingSourceCount: input.agingSourceCount,
+    packIds: input.packIds
+  });
+  const intro =
+    input.staleSourceCount > 0
+      ? `${input.staleSourceCount} stale artifact rows need refreshed benchmark evidence before promotion or route acceptance stays trustworthy.`
+      : input.agingSourceCount > 0
+        ? `${input.agingSourceCount} aging artifact rows should be refreshed soon if review signals still disagree.`
+        : (input.unknownCount ?? 0) > 0
+          ? `${input.unknownCount} artifact rows are missing parseable timestamps. Keep refresh playbooks adjacent until provenance is re-materialized.`
+          : "Refresh playbooks stay attached here so operators can renew evidence without leaving the current explorer.";
+  const rows = actions
+    .map(
+      (action) =>
+        `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(action.label)}</strong></span><span class="mono">${esc(action.command)}</span><span class="muted-text">${esc(action.hint)}</span></div><div class="inline-actions"><span class="badge ${action.tone}">${esc(action.badge)}</span><button type="button" class="secondary" data-copy="${esc(action.command)}">Copy command</button></div></div>`
+    )
+    .join("");
+  return `<div class="ops-review-note ops-review-jump-target"><strong>Refresh handoff</strong><span class="muted-text">${esc(intro)}</span><div class="quick-links"><a href="#benchmark-refresh-playbooks">Open playbooks</a><a href="${input.benchmarkRepairHref}">Acceptance</a><a href="${input.benchmarkRolloutsHref}">Rollouts</a></div><details class="ops-review-drawer" id="benchmark-refresh-playbooks"><summary>Open refresh playbooks</summary><div class="ops-review-drawer-body"><div class="status-list">${rows}</div></div></details></div>`;
+}
+
 function profileBrowserHref(values: Array<string | null | undefined>): string {
   const query = values
     .map((value) => str(value))
@@ -9569,6 +9599,26 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       },
       hash: "dataset-lineage-table-decision"
     });
+    const repairPlaybooksHref = uiHref("/ui/benchmarks/repair-acceptance", {
+      params: {
+        status: statusFilter || null,
+        repair: repairFilter || null,
+        source: sourceFilter || null,
+        backend: backendFilter || null,
+        bundle: bundleFilter || null,
+        fallback: fallbackFilter || null,
+        species: speciesFilter || null,
+        view: viewFilter || null,
+        rig: rigFilter || null,
+        reviewOnly: reviewOnlyFilter ? "1" : null,
+        lowAnchor: lowAnchorFilter ? "1" : null,
+        recreate: recreateFilter ? "1" : null,
+        repairable: repairableFilter ? "1" : null,
+        q: queryFilter || null,
+        ...decisionStateParams(decisionState)
+      },
+      hash: "benchmark-refresh-playbooks"
+    });
     const repairReturnHref = decisionState.returnTo ?? repairBenchmarksHref;
     const repairReturnLabel = decisionState.returnTo
       ? decisionState.returnTo.includes("/candidates") || decisionState.returnTo.includes("/ab-compare")
@@ -9830,7 +9880,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       title: "Deep-link handoff",
       intro: "Selection, compare context, and return path stay visible so the acceptance explorer reads as a continuation of the benchmark flow.",
       facts: repairJumpFacts,
-      linksHtml: `<a href="${repairReturnHref}">${repairReturnLabel}</a><a href="${repairBenchmarksHref}">Benchmark Queue</a><a href="${currentRepairHref}">Refresh handoff</a>`
+      linksHtml: `<a href="${repairReturnHref}">${repairReturnLabel}</a><a href="${repairBenchmarksHref}">Benchmark Queue</a><a href="${repairPlaybooksHref}">Refresh handoff</a>`
+    });
+    const repairRefreshHandoff = buildCompactRefreshPlaybookHandoff({
+      staleSourceCount: freshnessSummary.staleCount,
+      agingSourceCount: freshnessSummary.agingCount,
+      unknownCount: freshnessSummary.unknownCount,
+      benchmarkRepairHref: currentRepairHref,
+      benchmarkRolloutsHref: repairRolloutsHref
     });
     const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Some artifacts do not emit an explicit <code>acceptance_status</code> or normalized <code>repair_reasons[]</code>. This explorer derives acceptance from <code>accepted</code>, <code>judge_accepted</code>, and <code>judge_decision</code>, and derives repair signals from presets, rejection reasons, and QC output.</span></div><div class="ops-review-note"><strong>Freshness</strong><span class="muted-text">${
       freshnessSummary.staleCount > 0
@@ -9840,7 +9897,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           : freshnessSummary.agingCount > 0
           ? `${freshnessSummary.agingCount} rows are aging. Refresh soon if a repair decision still looks ambiguous.`
           : `Artifacts are fresh enough for queue review. ${freshnessSummary.newestDetail}.`
-    }</span></div>`;
+    }</span></div>${repairRefreshHandoff}`;
     const body = buildRepairAcceptancePageBody({
       flash: `${flashHtml(request.query)}${repairJumpBanner}`,
       filters,
@@ -9984,6 +10041,26 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         returnTo: currentRouteHref
       },
       hash: "dataset-lineage-table-decision"
+    });
+    const routePlaybooksHref = uiHref("/ui/benchmarks/route-reasons", {
+      params: {
+        reason: reasonFilter || null,
+        acceptance: acceptanceFilter || null,
+        backend: backendFilter || null,
+        bundle: bundleFilter || null,
+        source: sourceFilter || null,
+        species: speciesFilter || null,
+        view: viewFilter || null,
+        rig: rigFilter || null,
+        fallback: fallbackFilter || null,
+        reviewOnly: reviewOnlyFilter ? "1" : null,
+        lowAnchor: lowAnchorFilter ? "1" : null,
+        recreate: recreateFilter ? "1" : null,
+        repairable: repairableFilter ? "1" : null,
+        q: queryFilter || null,
+        ...decisionStateParams(decisionState)
+      },
+      hash: "benchmark-refresh-playbooks"
     });
     const routeReturnHref = decisionState.returnTo ?? routeBenchmarksHref;
     const routeReturnLabel = decisionState.returnTo
@@ -10267,7 +10344,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       title: "Deep-link handoff",
       intro: "Selection, compare context, and return path stay visible so the route explorer reads as a continuation of the benchmark flow.",
       facts: routeJumpFacts,
-      linksHtml: `<a href="${routeReturnHref}">${routeReturnLabel}</a><a href="${routeBenchmarksHref}">Benchmark Queue</a><a href="${currentRouteHref}">Refresh handoff</a>`
+      linksHtml: `<a href="${routeReturnHref}">${routeReturnLabel}</a><a href="${routeBenchmarksHref}">Benchmark Queue</a><a href="${routePlaybooksHref}">Refresh handoff</a>`
+    });
+    const routeRefreshHandoff = buildCompactRefreshPlaybookHandoff({
+      staleSourceCount: freshnessSummary.staleCount,
+      agingSourceCount: freshnessSummary.agingCount,
+      unknownCount: freshnessSummary.unknownCount,
+      benchmarkRepairHref: routeAcceptanceHref,
+      benchmarkRolloutsHref: routeRolloutsHref
     });
     const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">This explorer depends on <code>shot_grammar.route_reason</code> inside runtime shots. If route reasons are missing, benchmark smoke output needs to persist that field for every shot, not only episode-local previews.</span></div><div class="ops-review-note"><strong>Freshness</strong><span class="muted-text">${
       freshnessSummary.staleCount > 0
@@ -10277,7 +10361,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           : freshnessSummary.agingCount > 0
           ? `${freshnessSummary.agingCount} routed rows are aging. Refresh soon if drift and compare evidence still disagree.`
           : `Artifacts are fresh enough for route review. ${freshnessSummary.newestDetail}.`
-    }</span></div>`;
+    }</span></div>${routeRefreshHandoff}`;
     const body = buildRouteReasonPageBody({
       flash: `${flashHtml(request.query)}${routeJumpBanner}`,
       filters,
@@ -10416,6 +10500,25 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         returnTo: currentLineageHref
       },
       hash: "repair-acceptance-table-decision"
+    });
+    const lineagePlaybooksHref = uiHref("/ui/benchmarks/dataset-lineage", {
+      params: {
+        episodeId: episodeFilter || null,
+        dataset: datasetFilter || null,
+        pack: packFilter || null,
+        source: sourceFilter || null,
+        species: speciesFilter || null,
+        view: viewFilter || null,
+        rig: rigFilter || null,
+        fallback: fallbackFilter || null,
+        reviewOnly: reviewOnlyFilter ? "1" : null,
+        lowAnchor: lowAnchorFilter ? "1" : null,
+        recreate: recreateFilter ? "1" : null,
+        repairable: repairableFilter ? "1" : null,
+        q: queryFilter || null,
+        ...decisionStateParams(decisionState)
+      },
+      hash: "benchmark-refresh-playbooks"
     });
     const lineageReturnHref = decisionState.returnTo ?? lineageBenchmarksHref;
     const lineageReturnLabel = decisionState.returnTo
@@ -10669,7 +10772,15 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       title: "Deep-link handoff",
       intro: "Selection, compare context, and return path stay visible so the lineage explorer reads as a continuation of the benchmark flow.",
       facts: lineageJumpFacts,
-      linksHtml: `<a href="${lineageReturnHref}">${lineageReturnLabel}</a><a href="${lineageBenchmarksHref}">Benchmark Queue</a><a href="${currentLineageHref}">Refresh handoff</a>`
+      linksHtml: `<a href="${lineageReturnHref}">${lineageReturnLabel}</a><a href="${lineageBenchmarksHref}">Benchmark Queue</a><a href="${lineagePlaybooksHref}">Refresh handoff</a>`
+    });
+    const lineageRefreshHandoff = buildCompactRefreshPlaybookHandoff({
+      staleSourceCount: freshnessSummary.staleCount,
+      agingSourceCount: freshnessSummary.agingCount,
+      unknownCount: freshnessSummary.unknownCount,
+      benchmarkRepairHref: lineageAcceptanceHref,
+      benchmarkRolloutsHref: lineageRolloutsHref,
+      packIds: uniqueStrings(rows.flatMap((row) => row.packIds))
     });
     const notes = `<div class="ops-review-note"><strong>Required schema memo</strong><span class="muted-text">Current artifacts expose <code>dataset_id</code>, <code>pack_id</code>, <code>bible_ref</code>, and sidecar reference manifest paths. They do not consistently expose <code>dataset_version_id</code>, source URIs, or manifest versions, so this viewer cannot prove lossless dataset revisions yet.</span></div><div class="ops-review-note"><strong>Freshness</strong><span class="muted-text">${
       freshnessSummary.staleCount > 0
@@ -10679,7 +10790,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           : freshnessSummary.agingCount > 0
           ? `${freshnessSummary.agingCount} lineage rows are aging. Refresh if schema gaps or review_only tags still look ambiguous.`
           : `Artifacts are fresh enough for lineage review. ${freshnessSummary.newestDetail}.`
-    }</span></div>`;
+    }</span></div>${lineageRefreshHandoff}`;
     const body = buildDatasetLineagePageBody({
       flash: `${flashHtml(request.query)}${lineageJumpBanner}`,
       filters,

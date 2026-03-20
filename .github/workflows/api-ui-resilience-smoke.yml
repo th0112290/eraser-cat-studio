@@ -84,6 +84,9 @@ jobs:
       - name: Run rollout refresh helper smoke
         run: pnpm -C apps/api run smoke:ui:rollout-refresh
 
+      - name: Run explorer refresh handoff smoke
+        run: pnpm -C apps/api run smoke:ui:explorer-refresh-handoff
+
       - name: Run character action contract smoke
         run: pnpm -C apps/api run smoke:character-action-contracts
 
