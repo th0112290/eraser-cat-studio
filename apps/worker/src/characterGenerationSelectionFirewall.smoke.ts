@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   assessFinalQualityFirewall,
+  assessQualityEmbargo,
   buildPackDefectSummary,
   groupBestByViewForSelection,
   mergePreferredSelectionByViewForSelection
@@ -169,6 +170,88 @@ assert.ok(repeatedSoftFirewall.warningViews?.includes("threeQuarter"));
 assert.ok(repeatedSoftFirewall.warningViews?.includes("profile"));
 assert.ok(repeatedSoftFirewall.reasonCodes.includes("repeated-soft:style"));
 assert.ok(repeatedSoftFirewall.reasonCodes.includes("repeated-soft:paws"));
+
+const selectedRepairThreeQuarterSelectedByView = {
+  front: makeCandidate("front"),
+  threeQuarter: {
+    candidate: {
+      id: "selected_like_threequarter",
+      view: "threeQuarter",
+      providerMeta: {
+        workflowStage: "repair_refine"
+      }
+    },
+    analysis: {},
+    score: 0.7243,
+    styleScore: 1,
+    referenceSimilarity: null,
+    consistencyScore: 0.7555,
+    warnings: [
+      "text_or_watermark_suspected",
+      "text_or_watermark_high_risk",
+      "palette_too_complex_for_mascot",
+      "species_readability_low"
+    ],
+    rejections: ["threequarter_front_collapse"],
+    breakdown: {
+      alphaScore: 0.7725,
+      occupancyScore: 0.5493,
+      qualityScore: 0.548,
+      referenceScore: 0.8379,
+      styleScore: 1
+    }
+  } as any,
+  profile: makeCandidate("profile")
+};
+
+const selectedRepairThreeQuarterPackDefectSummary = buildPackDefectSummary({
+  selectedByView: selectedRepairThreeQuarterSelectedByView,
+  workflowStages: [
+    {
+      stage: "repair_refine",
+      templateVersion: "ultra_repair_refine_v1",
+      views: ["threeQuarter"],
+      candidateCount: 4,
+      acceptedScoreThreshold: 0.58,
+      roundsAttempted: 1,
+      observedDefectFamiliesByView: {
+        threeQuarter: ["head", "style"]
+      }
+    }
+  ] as any,
+  speciesId: "cat"
+});
+
+const selectedRepairThreeQuarterEmbargo = assessQualityEmbargo({
+  selectedByView: selectedRepairThreeQuarterSelectedByView,
+  targetStyle: "mascot",
+  acceptedScoreThreshold: 0.58,
+  speciesId: "cat",
+  autoReroute: {
+    attempted: true,
+    recovered: true,
+    triggers: ["pack_coherence_review"],
+    targetViews: ["threeQuarter"],
+    notes: ["selected three-quarter repair candidate remains soft but viable"],
+    initialMissingViews: [],
+    initialLowQualityViews: []
+  }
+});
+
+const selectedRepairThreeQuarterFirewall = assessFinalQualityFirewall({
+  selectedByView: selectedRepairThreeQuarterSelectedByView,
+  targetStyle: "mascot",
+  acceptedScoreThreshold: 0.58,
+  speciesId: "cat",
+  qualityEmbargo: selectedRepairThreeQuarterEmbargo,
+  packDefectSummary: selectedRepairThreeQuarterPackDefectSummary
+});
+
+assert.equal(selectedRepairThreeQuarterEmbargo.level, "review");
+assert.equal(selectedRepairThreeQuarterFirewall.level, "review");
+assert.ok(selectedRepairThreeQuarterFirewall.warningViews?.includes("threeQuarter"));
+assert.ok(!selectedRepairThreeQuarterFirewall.blockingViews?.includes("threeQuarter"));
+assert.ok(!selectedRepairThreeQuarterFirewall.reasonCodes.includes("rejected-critical:threeQuarter"));
 
 const runtimeFrontSelectedByView = {
   front: makeCandidate("front", {

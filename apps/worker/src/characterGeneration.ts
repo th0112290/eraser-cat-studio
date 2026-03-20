@@ -2739,6 +2739,7 @@ function isReviewObservedDefectFamily(family: ObservedDefectFamily): boolean {
 export function buildPackDefectSummary(input: {
   selectedByView: Partial<Record<CharacterView, ScoredCandidate>>;
   workflowStages?: StageRunSummary[];
+  speciesId?: string;
 }): PackDefectSummary {
   const defectFamiliesByView: Partial<Record<CharacterView, ObservedDefectFamily[]>> = {};
   const familyViews = new Map<ObservedDefectFamily, Set<CharacterView>>();
@@ -2755,7 +2756,13 @@ export function buildPackDefectSummary(input: {
   }
 
   for (const view of CHARACTER_VIEWS) {
-    const families = summarizeObservedDefectFamilies(input.selectedByView[view]);
+    const downgradeSelectedRepairBlock = shouldDowngradeCatSelectedThreeQuarterRepairBlock({
+      candidate: input.selectedByView[view],
+      speciesId: input.speciesId
+    });
+    const families = summarizeObservedDefectFamilies(input.selectedByView[view]).filter(
+      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+    );
     if (families.length === 0) {
       continue;
     }
@@ -7701,6 +7708,52 @@ export function deriveSparseCatFrontAnchorScoreFallback(input: {
   );
 }
 
+function shouldDowngradeCatSelectedThreeQuarterRepairBlock(input: {
+  candidate: ScoredCandidate | undefined;
+  speciesId?: string;
+}): boolean {
+  const candidate = input.candidate;
+  if (
+    !candidate ||
+    candidate.candidate.view !== "threeQuarter" ||
+    normalizeGenerationSpecies(input.speciesId) !== "cat" ||
+    resolveCandidateWorkflowStage(candidate) !== "repair_refine"
+  ) {
+    return false;
+  }
+
+  const allowedRejections = new Set(["threequarter_front_collapse", "inconsistent_with_front_baseline"]);
+  const allowedWarnings = new Set([
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "palette_too_complex_for_mascot",
+    "species_readability_low",
+    "species_identity_too_weak",
+    "consistency_shape_drift",
+    "consistency_style_drift",
+    "consistency_low",
+    "threequarter_frontality_risk"
+  ]);
+  if (
+    candidate.rejections.length === 0 ||
+    candidate.rejections.some((reason) => !allowedRejections.has(reason)) ||
+    candidate.warnings.some((reason) => !allowedWarnings.has(reason))
+  ) {
+    return false;
+  }
+
+  const breakdown = candidate.breakdown ?? {};
+  return (
+    candidate.score >= 0.72 &&
+    (candidate.consistencyScore ?? 0) >= 0.68 &&
+    (breakdown.styleScore ?? 0) >= 0.95 &&
+    (breakdown.qualityScore ?? 0) >= 0.5 &&
+    (breakdown.referenceScore ?? 0) >= 0.78 &&
+    (breakdown.alphaScore ?? 0) >= 0.72 &&
+    (breakdown.occupancyScore ?? 0) >= 0.48
+  );
+}
+
 export function shouldDowngradeCatThreeQuarterFrontCollapseRisk(input: {
   speciesId?: string;
   view: CharacterView;
@@ -9636,6 +9689,7 @@ export function assessQualityEmbargo(input: {
   targetStyle?: string;
   acceptedScoreThreshold: number;
   autoReroute?: AutoRerouteDiagnostics;
+  speciesId?: string;
 }): QualityEmbargoAssessment {
   if (!isMascotTargetStyle(input.targetStyle)) {
     return {
@@ -9666,7 +9720,13 @@ export function assessQualityEmbargo(input: {
       continue;
     }
 
-    const families = summarizeObservedDefectFamilies(candidate);
+    const downgradeSelectedRepairBlock = shouldDowngradeCatSelectedThreeQuarterRepairBlock({
+      candidate,
+      speciesId: input.speciesId
+    });
+    const families = summarizeObservedDefectFamilies(candidate).filter(
+      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+    );
     if (families.length > 0) {
       defectFamiliesByView[view] = families;
     }
@@ -9683,7 +9743,15 @@ export function assessQualityEmbargo(input: {
       pawsViews.push(view);
     }
 
-    const candidateReasons = [...candidate.rejections, ...candidate.warnings];
+    const filteredRejections = downgradeSelectedRepairBlock
+      ? candidate.rejections.filter(
+          (reason) => reason !== "threequarter_front_collapse" && reason !== "inconsistent_with_front_baseline"
+        )
+      : candidate.rejections;
+    const filteredWarnings = downgradeSelectedRepairBlock
+      ? candidate.warnings.filter((reason) => reason !== "text_or_watermark_high_risk")
+      : candidate.warnings;
+    const candidateReasons = [...filteredRejections, ...filteredWarnings];
     const hasHardReason = candidateReasons.some((reason) => hardReasonPattern.test(reason));
     const runtimeDiagnostics = extractCandidateRuntimeQualityDiagnostics({
       candidate: candidate.candidate,
@@ -9710,7 +9778,7 @@ export function assessQualityEmbargo(input: {
     }
 
     if (
-      candidate.rejections.length > 0 &&
+      filteredRejections.length > 0 &&
       families.some((family) => family === "identity" || family === "head" || family === "silhouette" || family === "style")
     ) {
       blockingViews.add(view);
@@ -9843,6 +9911,7 @@ export function assessFinalQualityFirewall(input: {
   selectionRisk?: SelectionRiskAssessment;
   qualityEmbargo?: QualityEmbargoAssessment;
   packDefectSummary: PackDefectSummary;
+  speciesId?: string;
 }): FinalQualityFirewallAssessment {
   if (!isMascotTargetStyle(input.targetStyle)) {
     return {
@@ -9863,13 +9932,26 @@ export function assessFinalQualityFirewall(input: {
 
   for (const view of CHARACTER_VIEWS) {
     const candidate = input.selectedByView[view];
-    const families = defectFamiliesByView[view] ?? [];
-    const persistentFamilies = persistentFamiliesByView[view] ?? [];
     if (!candidate) {
       blockingViews.add(view);
       reasons.add(`missing:${view}`);
       continue;
     }
+    const downgradeSelectedRepairBlock = shouldDowngradeCatSelectedThreeQuarterRepairBlock({
+      candidate,
+      speciesId: input.speciesId
+    });
+    const families = (defectFamiliesByView[view] ?? []).filter(
+      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+    );
+    const persistentFamilies = (persistentFamiliesByView[view] ?? []).filter(
+      (family) => !downgradeSelectedRepairBlock || !isCriticalObservedDefectFamily(family)
+    );
+    const filteredRejections = downgradeSelectedRepairBlock
+      ? candidate.rejections.filter(
+          (reason) => reason !== "threequarter_front_collapse" && reason !== "inconsistent_with_front_baseline"
+        )
+      : candidate.rejections;
 
     const runtimeCritical =
       candidate.rejections.includes("runtime_preflight_failed") ||
@@ -9923,7 +10005,7 @@ export function assessFinalQualityFirewall(input: {
     }
 
     if (
-      candidate.rejections.length > 0 &&
+      filteredRejections.length > 0 &&
       families.some((family) => isCriticalObservedDefectFamily(family) || family === "style")
     ) {
       blockingViews.add(view);
@@ -11284,6 +11366,9 @@ export function hasBlockingConsistencyRecoveryIssue(
   speciesId?: string
 ): boolean {
   if (!candidate || !hasConsistencyRecoveryIssue(candidate)) {
+    return false;
+  }
+  if (shouldDowngradeCatSelectedThreeQuarterRepairBlock({ candidate, speciesId })) {
     return false;
   }
   const reasons = new Set<string>([...candidate.rejections, ...candidate.warnings]);
@@ -12851,11 +12936,13 @@ async function persistSelectedCandidates(input: {
     rigStability,
     targetStyle: manifest.qualityProfile?.targetStyle,
     acceptedScoreThreshold,
-    autoReroute: manifest.autoReroute
+    autoReroute: manifest.autoReroute,
+    speciesId: manifest.species
   });
   const packDefectSummary = buildPackDefectSummary({
     selectedByView,
-    workflowStages: manifest.workflowStages
+    workflowStages: manifest.workflowStages,
+    speciesId: manifest.species
   });
   const finalQualityFirewall = assessFinalQualityFirewall({
     selectedByView,
@@ -12866,7 +12953,8 @@ async function persistSelectedCandidates(input: {
       rigStability,
       selectionRisk,
       qualityEmbargo,
-      packDefectSummary
+      packDefectSummary,
+      speciesId: manifest.species
     });
   const requiresSelectionReview =
     rigStability.severity === "block" ||
@@ -13697,6 +13785,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
         mimeType: entry.mimeType,
         data,
         providerMeta: {
+          ...(entry.providerMeta ?? {}),
           localCandidatePath: entry.filePath
         }
       };
@@ -17528,14 +17617,16 @@ export async function handleGenerateCharacterAssetsJob(input: {
           rigStability: initialRigStability,
           targetStyle: promptBundle.qualityProfile.targetStyle,
           acceptedScoreThreshold,
-          autoReroute: autoRerouteDiagnostics
+          autoReroute: autoRerouteDiagnostics,
+          speciesId: promptBundle.speciesId
         })
       : undefined;
   const initialPackDefectSummary =
     selectionOutcome.selectedByView && Object.keys(selectionOutcome.selectedByView).length > 0
       ? buildPackDefectSummary({
           selectedByView: selectionOutcome.selectedByView,
-          workflowStages: workflowStageRuns
+          workflowStages: workflowStageRuns,
+          speciesId: promptBundle.speciesId
         })
       : undefined;
   const initialFinalQualityFirewall =
@@ -17549,7 +17640,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
           rigStability: initialRigStability,
           selectionRisk: initialSelectionRisk,
           qualityEmbargo: initialQualityEmbargo,
-          packDefectSummary: initialPackDefectSummary
+          packDefectSummary: initialPackDefectSummary,
+          speciesId: promptBundle.speciesId
         })
       : undefined;
   const initialSelectedCandidateSummaryByView = summarizeSelectionCandidateSummaryByView({

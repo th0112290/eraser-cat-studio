@@ -276,6 +276,37 @@ assert.equal(
   "high-score cat three-quarter candidates with consistency low + mixed drift warnings should remain recoverable"
 );
 
+const repairRefineCatThreeQuarterSelectedLike = {
+  candidate: {
+    view: "threeQuarter",
+    providerMeta: {
+      workflowStage: "repair_refine"
+    }
+  },
+  score: 0.7243,
+  consistencyScore: 0.7555,
+  warnings: [
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "palette_too_complex_for_mascot",
+    "species_readability_low"
+  ],
+  rejections: ["threequarter_front_collapse"],
+  breakdown: {
+    alphaScore: 0.7725,
+    occupancyScore: 0.5493,
+    qualityScore: 0.548,
+    referenceScore: 0.8379,
+    styleScore: 1
+  }
+} as any;
+
+assert.equal(
+  hasBlockingConsistencyRecoveryIssue(repairRefineCatThreeQuarterSelectedLike, "cat"),
+  false,
+  "selected-like cat three-quarter repair candidates should stay recoverable when collapse/style issues remain soft and generic repair metrics are strong"
+);
+
 const highScoreProfileWarningOnlyShapeDrift = {
   candidate: { view: "profile" },
   score: 0.8472,

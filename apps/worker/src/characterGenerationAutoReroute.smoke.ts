@@ -782,5 +782,56 @@ assert.equal(
   true
 );
 
+const selectedRepairThreeQuarterEmbargo = assessQualityEmbargo({
+  selectedByView: {
+    front: makeCandidate("front"),
+    threeQuarter: {
+      candidate: {
+        id: "selected_like_threequarter",
+        view: "threeQuarter",
+        providerMeta: {
+          workflowStage: "repair_refine"
+        }
+      },
+      analysis: {},
+      score: 0.7243,
+      styleScore: 1,
+      referenceSimilarity: null,
+      consistencyScore: 0.7555,
+      warnings: [
+        "text_or_watermark_suspected",
+        "text_or_watermark_high_risk",
+        "palette_too_complex_for_mascot",
+        "species_readability_low"
+      ],
+      rejections: ["threequarter_front_collapse"],
+      breakdown: {
+        alphaScore: 0.7725,
+        occupancyScore: 0.5493,
+        qualityScore: 0.548,
+        referenceScore: 0.8379,
+        styleScore: 1
+      }
+    } as any,
+    profile: makeCandidate("profile")
+  },
+  targetStyle: "mascot",
+  acceptedScoreThreshold: 0.58,
+  speciesId: "cat",
+  autoReroute: {
+    attempted: true,
+    recovered: true,
+    triggers: ["pack_coherence_review"],
+    targetViews: ["threeQuarter"],
+    notes: ["selected three-quarter repair candidate remains soft but viable"],
+    initialMissingViews: [],
+    initialLowQualityViews: []
+  }
+});
+
+assert.equal(selectedRepairThreeQuarterEmbargo.level, "review");
+assert.ok(selectedRepairThreeQuarterEmbargo.warningViews?.includes("threeQuarter"));
+assert.ok(!selectedRepairThreeQuarterEmbargo.blockingViews?.includes("threeQuarter"));
+
 console.log("[characterGenerationAutoReroute.smoke] PASS");
 process.exit(0);
