@@ -1,4 +1,8 @@
-import { buildCharacterGeneratorPageBody, buildCharacterGeneratorStatusScript } from "./characterGeneratorPage";
+import {
+  buildCharacterGeneratorPageBody,
+  buildCharacterGeneratorStatusScript,
+  buildCharacterGeneratorTopSection
+} from "./characterGeneratorPage";
 
 function assertIncludes(haystack: string, needle: string, label: string): void {
   if (!haystack.includes(needle)) {
@@ -7,7 +11,14 @@ function assertIncludes(haystack: string, needle: string, label: string): void {
 }
 
 const html = buildCharacterGeneratorPageBody({
-  topSection: "<section>top</section>",
+  topSection: buildCharacterGeneratorTopSection({
+    styleOptions: '<option value="preset">Preset</option>',
+    speciesOptions: '<option value="cat">Cat</option>',
+    referenceOptions: '<option value="asset-1">Asset 1</option>',
+    defaultSeed: 101,
+    forbiddenTermsSummary: "none",
+    negativeTermsSummary: "none"
+  }),
   selectedSection: '<section id="selected">selected</section>',
   recommendedActionsSection: '<section id="recommended-actions">recommended</section>',
   regenerateSection: '<section id="regenerate-view">regenerate</section>',
@@ -26,6 +37,10 @@ assertIncludes(html, 'id="regenerate-view"', "regenerate section");
 assertIncludes(html, 'id="recreate-pack"', "recreate section");
 assertIncludes(html, 'id="pick-candidates"', "pick section");
 assertIncludes(html, "Recent Generation Runs", "jobs section heading");
+assertIncludes(html, "Inputs -> References -> Workflow Policy -> Candidates -> Compare -> Approve / Rollback", "stage rail heading");
+assertIncludes(html, "Characters handoff", "characters handoff card");
+assertIncludes(html, "Characters", "characters stage link");
+assertIncludes(html, "Studio dispatch", "studio dispatch link");
 
 const statusScript = buildCharacterGeneratorStatusScript();
 assertIncludes(statusScript, "coherence=", "coherence status fragment");
