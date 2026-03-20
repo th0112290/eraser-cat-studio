@@ -1622,6 +1622,41 @@ function summarizeAnchorDiagnosisForView(
   return `${present} / ${missing}${note}`;
 }
 
+function inferRigRepairOverrideKind(input: {
+  anchorDiagnosis: string;
+  reasonCodes: string[];
+  defectFamilies: string[];
+  anchorConfidence: number | null | undefined;
+  landmarkConsistency: number | null | undefined;
+}): "anchors" | "cropBoxes" | null {
+  const reasonText = input.reasonCodes.join(" ").toLowerCase();
+  const defectText = input.defectFamilies.join(" ").toLowerCase();
+  const anchorDiagnosis = input.anchorDiagnosis.toLowerCase();
+  if (
+    anchorDiagnosis.includes("missing") ||
+    reasonText.includes("anchor") ||
+    reasonText.includes("landmark") ||
+    reasonText.includes("head_pose") ||
+    reasonText.includes("eye_drift") ||
+    reasonText.includes("mouth_readability") ||
+    (typeof input.anchorConfidence === "number" && input.anchorConfidence < 0.7) ||
+    (typeof input.landmarkConsistency === "number" && input.landmarkConsistency < 0.7)
+  ) {
+    return "anchors";
+  }
+  if (
+    defectText.includes("crop") ||
+    defectText.includes("bbox") ||
+    defectText.includes("eye") ||
+    defectText.includes("mouth") ||
+    defectText.includes("torso") ||
+    defectText.includes("head")
+  ) {
+    return "cropBoxes";
+  }
+  return null;
+}
+
 function summarizeRepairTriageDecision(
   triage: GenerationManifestStageRepairTriageDecision | undefined
 ): string {
@@ -1677,6 +1712,10 @@ function summarizeWorkflowStages(stages: GenerationManifestWorkflowStage[] | und
 
 function shortView(view: CharacterGenerationView): string {
   return view === "front" ? "f" : view === "threeQuarter" ? "t" : "p";
+}
+
+function displayView(view: CharacterGenerationView): string {
+  return view === "threeQuarter" ? "three-quarter" : view;
 }
 
 function compactModeToken(mode: string | undefined): string {
@@ -7393,6 +7432,100 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         }</td></tr>`;
       })
       .join("");
+    const selectedRigRepairPlanCards = (["front", "threeQuarter", "profile"] as const)
+      .map((view) => {
+        const viewState = summarizeRigViewState(view, selectedRigStability);
+        const selectedSummary = selectedSelectionDiagnostics?.selectedCandidateSummaryByView?.[view];
+        const action = selectedRecommendedActions.find((entry) => entry.view === view);
+        if (viewState.label === "clear" && !action) {
+          return "";
+        }
+        const defects =
+          selectedPackDefectSummary?.persistentFamiliesByView?.[view] ??
+          selectedPackDefectSummary?.defectFamiliesByView?.[view] ??
+          [];
+        const anchorDiagnosis = summarizeAnchorDiagnosisForView(selectedPackRigSummary, view);
+        const anchorConfidence = selectedRigStability?.anchorConfidenceByView?.[view] ?? selectedSummary?.anchorConfidence;
+        const landmarkConsistency =
+          selectedRigStability?.landmarkConsistencyByView?.[view] ?? selectedSummary?.landmarkConsistency;
+        const fallbackSummary = summarizeRigFallbackReasonCodes(selectedSummary?.rigFallbackReasonCodes);
+        const overrideKind = inferRigRepairOverrideKind({
+          anchorDiagnosis,
+          reasonCodes: [...(selectedRigStability?.reasonCodes ?? []), ...(selectedSummary?.rigFallbackReasonCodes ?? [])],
+          defectFamilies: defects,
+          anchorConfidence,
+          landmarkConsistency
+        });
+        const defaultPriority: CharacterGenerationRecommendedAction["priority"] = viewState.label === "block" ? "high" : "medium";
+        const smallestSafeAction =
+          action?.label ??
+          (viewState.label === "block" ? `Regenerate ${displayView(view)}` : `Manual compare ${displayView(view)}`);
+        const actionCopy =
+          action?.description ??
+          (viewState.label === "block"
+            ? `${displayView(view)} still blocks the pack. Start with the narrowest repair lane before a full recreate.`
+            : `${displayView(view)} is still reviewable. Validate the repaired lane before approval.`);
+        const overrideHeading =
+          overrideKind === "anchors"
+            ? "Start with anchors.json"
+            : overrideKind === "cropBoxes"
+              ? "Start with crop-boxes.json"
+              : selectedHasRebuildSelection
+                ? "Rebuild after compare"
+                : "Materialize selection first";
+        const overrideCopy =
+          overrideKind === "anchors"
+            ? `Anchor or landmark evidence is the main risk here. Save anchors.json, then ${
+                selectedHasRebuildSelection ? "rebuild current selection." : "return to compare/pick first, then rebuild."
+              }`
+            : overrideKind === "cropBoxes"
+              ? `Crop framing looks like the smallest safe fix. Save crop-boxes.json, then ${
+                  selectedHasRebuildSelection ? "rebuild current selection." : "materialize front/three-quarter/profile picks before rebuild."
+                }`
+              : selectedHasRebuildSelection
+                ? "No direct override hint is stronger than compare right now. Keep the current selection, validate the repaired lane, then rebuild."
+                : "This run still needs a complete selected set before a rebuild lane opens. Use manual compare or pick first.";
+        const evidence = [
+          `anchor=${formatMetric(anchorConfidence)}`,
+          `landmark=${formatMetric(landmarkConsistency)}`,
+          fallbackSummary !== "none" ? `fallback=${fallbackSummary}` : "",
+          defects.length > 0 ? `defects=${defects.slice(0, 3).join("+")}` : ""
+        ]
+          .filter((value) => value.length > 0)
+          .join(" / ");
+        const primaryHref =
+          action?.action === "regenerate-view"
+            ? "#regenerate-view"
+            : action?.action === "recreate"
+              ? "#recreate-pack"
+              : "#pick-candidates";
+        const primaryLabel =
+          action?.action === "recreate"
+            ? "Open recreate lane"
+            : action?.action === "regenerate-view"
+              ? "Open regenerate lane"
+              : "Open compare lane";
+        const charactersHref = selectedManifest?.characterPackId
+          ? `/ui/characters?characterPackId=${encodeURIComponent(selectedManifest.characterPackId)}`
+          : "";
+        return `<article class="cg-repair-plan-card ${viewState.tone}"><div class="cg-rig-kicker">${escHtml(
+          displayView(view)
+        )}</div><div class="cg-rig-meta"><span class="badge ${viewState.tone}">${escHtml(
+          viewState.label
+        )}</span><span class="badge ${recommendedPriorityBadge(action?.priority ?? defaultPriority)}">${escHtml(
+          action?.priority ?? defaultPriority
+        )}</span></div><h4>${escHtml(smallestSafeAction)}</h4><p class="cg-repair-plan-copy">${escHtml(
+          actionCopy
+        )}</p><p class="cg-repair-plan-copy"><strong>${escHtml(overrideHeading)}</strong> ${escHtml(
+          overrideCopy
+        )}</p><p class="cg-override-meta">${escHtml(anchorDiagnosis)}</p><p class="cg-override-meta">${escHtml(
+          evidence
+        )}</p><div class="cg-inline-links"><a href="${primaryHref}">${escHtml(primaryLabel)}</a><a href="#cg-manual-overrides">Manual overrides</a>${
+          charactersHref ? `<a href="${escHtml(charactersHref)}">Characters</a>` : ""
+        }</div></article>`;
+      })
+      .filter((value) => value.length > 0)
+      .join("");
     const selectedRigRepairConsoleSection =
       selectedManifest && selectedRigStability
         ? `<div class="cg-diagnostic-grid"><article class="cg-diagnostic-card"><div class="cg-rig-kicker">Reason Families</div><h4>${escHtml(
@@ -7409,7 +7542,11 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
             selectedGeneratedLineage
               ? `${selectedGeneratedLineage.qcFailedCount}/${selectedGeneratedLineage.qcTotalCount} QC checks failed. Approval status=${selectedGeneratedLineage.acceptanceStatus ?? "-"}`
               : "Repair tasks and pack-level QC appear only after pack artifacts are materialized."
-          )}</p></article></div><div class="cg-signal-table" style="margin-top:12px"><table><thead><tr><th>View</th><th>State</th><th>Anchor diagnosis</th><th>Metrics</th><th>Repair triage</th><th>Repair acceptance</th><th>Directive</th><th>Defects</th><th>Suggested path</th><th>Evidence</th></tr></thead><tbody>${selectedRigRepairRows}</tbody></table></div>${
+          )}</p></article></div>${
+            selectedRigRepairPlanCards
+              ? `<section class="cg-repair-plan-grid"><article class="cg-repair-plan-summary"><div class="cg-rig-kicker">Smallest Safe Repair Path</div><h4>Do the least destructive thing first</h4><p>Use per-view suggestions to decide whether this lane needs manual compare, anchors.json, crop-boxes.json, or a full recreate. Save overrides only after the repair console has narrowed the fault.</p></article>${selectedRigRepairPlanCards}</section>`
+              : ""
+          }<div class="cg-signal-table" style="margin-top:12px"><table><thead><tr><th>View</th><th>State</th><th>Anchor diagnosis</th><th>Metrics</th><th>Repair triage</th><th>Repair acceptance</th><th>Directive</th><th>Defects</th><th>Suggested path</th><th>Evidence</th></tr></thead><tbody>${selectedRigRepairRows}</tbody></table></div>${
             selectedJob && selectedGeneratedLineage && selectedAnchorsOverrideSeed && selectedCropBoxesOverrideSeed
               ? `<section class="cg-override-console" id="cg-manual-overrides"><div class="cg-section-head"><div><div class="cg-section-kicker">Manual Repair / Override</div><h3>Save override files and rebuild the current pack without a full recreate</h3></div><p>Use this lane only after the repair console has narrowed the fault to anchors or crop boxes. Save the override file, then rebuild the current selected candidates to refresh pack evidence, preview, and compare.</p></div><div class="cg-override-grid"><article class="cg-override-editor"><div class="cg-rig-kicker">anchors.json</div><h4>Per-view anchor override</h4><p>Seeded from ${escHtml(
                   selectedAnchorsOverrideSeed.source === "override"
@@ -7456,12 +7593,12 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                 )}</p><div class="notice">${
                   selectedHasRebuildSelection
                     ? "The current run has a complete selected candidate set. Rebuild is available now."
-                    : "Current run does not yet record front, threeQuarter, and profile selections. Save overrides first, then rebuild after compare or pick has materialized the selected set."
+                    : "Current run does not yet record front, threeQuarter, and profile selections. Open compare first, materialize the selected set, then return here for rebuild."
                 }</div><div class="cg-override-actions"><form method="post" action="/ui/character-generator/rebuild-selected">${renderCreationNavHiddenFields(
                   creationNav
                 )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><button type="submit"${
                   selectedHasRebuildSelection ? "" : ' class="secondary" disabled'
-                }>Rebuild current selection</button></form></div><p class="cg-override-meta">Prefer this narrow rebuild before view regenerate or full pack recreate whenever the current images are good and only rig/crop interpretation needs manual correction.</p></article></div></section>`
+                }>Rebuild current selection</button></form></div><p class="cg-override-meta">Prefer this narrow rebuild before view regenerate or full pack recreate whenever the current images are good and only rig/crop interpretation needs manual correction.</p><div class="cg-inline-links"><a href="#pick-candidates">Manual compare</a><a href="#recommended-actions">Next safe actions</a></div></article></div></section>`
               : ""
           }`
         : "";

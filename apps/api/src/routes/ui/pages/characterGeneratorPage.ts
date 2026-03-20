@@ -95,6 +95,13 @@ function buildCharacterGeneratorPageStyles(): string {
 .cg-diagnostic-card h4{margin:0;font-size:15px}
 .cg-diagnostic-card p{margin:0;color:#4f6270;font-size:13px;line-height:1.55}
 .cg-diagnostic-card a{font-weight:800}
+.cg-repair-plan-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:12px}
+.cg-repair-plan-summary,.cg-repair-plan-card{display:grid;gap:10px;padding:15px 16px;border:1px solid #d6e4ea;border-radius:16px;background:linear-gradient(180deg,#ffffff,#f5fafc)}
+.cg-repair-plan-card.bad{border-color:#f0c7c7;background:linear-gradient(180deg,#fff8f8,#fdf0f0)}
+.cg-repair-plan-card.warn{border-color:#eadab0;background:linear-gradient(180deg,#fffdf8,#faf6eb)}
+.cg-repair-plan-card.ok{border-color:#c9e7d8;background:linear-gradient(180deg,#f8fffb,#edf9f1)}
+.cg-repair-plan-summary h4,.cg-repair-plan-card h4{margin:0;font-size:15px}
+.cg-repair-plan-summary p,.cg-repair-plan-copy{margin:0;color:#4f6270;font-size:13px;line-height:1.55}
 .cg-override-console{display:grid;gap:14px}
 .cg-override-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 .cg-override-editor{display:grid;gap:10px;padding:15px 16px;border:1px solid #d6e4ea;border-radius:16px;background:linear-gradient(180deg,#ffffff,#f5fafc)}

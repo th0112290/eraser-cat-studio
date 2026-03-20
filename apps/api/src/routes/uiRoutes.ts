@@ -4635,6 +4635,72 @@ function fmtDate(value: unknown): string {
   return date.toLocaleString("ko-KR", { hour12: false });
 }
 
+const DEFAULT_BENCHMARK_ARTIFACT_MAX_AGE_HOURS = 168;
+
+function describeArtifactFreshness(
+  generatedAt: string | null,
+  maxAgeHours = DEFAULT_BENCHMARK_ARTIFACT_MAX_AGE_HOURS
+): {
+  tone: UiBadgeTone;
+  label: string;
+  detail: string;
+  ageHours: number | null;
+  isStale: boolean;
+  isAging: boolean;
+} {
+  if (!generatedAt) {
+    return {
+      tone: "warn",
+      label: "no data",
+      detail: "No recent artifact timestamp was recorded.",
+      ageHours: null,
+      isStale: false,
+      isAging: false
+    };
+  }
+  const generatedMs = new Date(generatedAt).getTime();
+  if (!Number.isFinite(generatedMs)) {
+    return {
+      tone: "warn",
+      label: "unknown age",
+      detail: "Artifact timestamp could not be parsed.",
+      ageHours: null,
+      isStale: false,
+      isAging: false
+    };
+  }
+  const ageHours = Math.max(0, (Date.now() - generatedMs) / (60 * 60 * 1000));
+  const roundedAgeHours = ageHours >= 10 ? ageHours.toFixed(0) : ageHours.toFixed(1);
+  if (ageHours > maxAgeHours) {
+    return {
+      tone: "bad",
+      label: "stale",
+      detail: `${roundedAgeHours}h old; refresh the benchmark or rollout artifact before trusting this queue.`,
+      ageHours,
+      isStale: true,
+      isAging: false
+    };
+  }
+  if (ageHours > maxAgeHours / 2) {
+    return {
+      tone: "warn",
+      label: "aging",
+      detail: `${roundedAgeHours}h old; refresh soon to keep rig regressions current.`,
+      ageHours,
+      isStale: false,
+      isAging: true
+    };
+  }
+  return {
+    tone: "ok",
+    label: "fresh",
+    detail: `${roundedAgeHours}h old; current enough for queue review.`,
+    ageHours,
+    isStale: false,
+    isAging: false
+  };
+}
+
 function profileBrowserHref(values: Array<string | null | undefined>): string {
   const query = values
     .map((value) => str(value))
@@ -5409,6 +5475,9 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
     const bundleCount = new Set(filteredBundleCards.map((card) => card.bundle)).size;
     const blockedEvidenceCount = filteredEvidenceRows.filter((row) => row.tone === "bad").length;
     const warnEvidenceCount = filteredEvidenceRows.filter((row) => row.tone === "warn").length;
+    const sourceFreshness = sources.map((source) => ({ source, freshness: describeArtifactFreshness(source.latestGeneratedAt) }));
+    const staleSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isStale).length;
+    const agingSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isAging).length;
     const profileSummaryStats: DecisionStat[] = [
       {
         label: "Runtime Combos",
@@ -5423,6 +5492,12 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         hint: `${sources.filter((source) => source.exists).length}/${sources.length} artifact roots available`
       },
       {
+        label: "Freshness",
+        value: `${staleSourceCount} stale / ${agingSourceCount} aging`,
+        tone: staleSourceCount > 0 ? "bad" : agingSourceCount > 0 ? "warn" : "ok",
+        hint: "artifact age relative to the 168h freshness window"
+      },
+      {
         label: "Active Bibles",
         value: String(activeBibleCount),
         tone: activeBibleCount > 0 ? "ok" : "warn",
@@ -5435,15 +5510,16 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
         hint: "runtime profile evidence with QC-reported blockers"
       }
     ];
-    const sourceRows = sources
-      .map((source) => {
+    const sourceRows = sourceFreshness
+      .map(({ source, freshness }) => {
         const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
         const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} smoke reports` : "empty";
         const meta = compact([
           source.exists ? "scan ok" : "root missing",
-          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no profile evidence"
+          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no profile evidence",
+          source.exists ? freshness.detail : ""
         ]);
-        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span><button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
       })
       .join("");
 
@@ -8840,10 +8916,14 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	        ? "Reopen Compare"
 	        : "Back to list"
 	      : "Rollouts";
+      const sourceFreshness = sources.map((source) => ({ source, freshness: describeArtifactFreshness(source.latestGeneratedAt) }));
+      const staleSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isStale).length;
+      const agingSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isAging).length;
 	    const benchmarkSummaryCards: DecisionStat[] = [
 	      { label: "Backend Objects", value: String(backendScenarios.length), hint: `${availableSources}/${sources.length} artifact roots available`, tone: "muted" },
 	      { label: "Ready Backends", value: String(backendReady), hint: "usable benchmark scenarios", tone: backendReady > 0 ? "ok" : "warn" },
 	      { label: "Regression Queue", value: String(regressions.length), hint: `${regressionBlocked} blocked / ${regressionWarn} warn`, tone: benchmarkTone },
+        { label: "Freshness", value: `${staleSourceCount} stale / ${agingSourceCount} aging`, hint: "artifact age relative to the 168h benchmark freshness window", tone: staleSourceCount > 0 ? "bad" : agingSourceCount > 0 ? "warn" : "ok" },
 	      { label: "Compare Links", value: String(benchmarkCompareLinks), hint: "candidate compare surfaces adjacent to queue review", tone: benchmarkCompareLinks > 0 ? "warn" : "muted" },
 	      { label: "Render Drift", value: String(mismatchTotal), hint: "stored vs recommended render-mode mismatches", tone: mismatchTotal > 0 ? "warn" : "ok" },
         { label: "Rig Blocked", value: String(rigBlockedCount), hint: "selected winners with fail-level rig signals", tone: rigBlockedCount > 0 ? "bad" : "ok" },
@@ -8853,15 +8933,16 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         { label: "Recreate Needed", value: String(recreateCount), hint: rigViewSummary === "-" ? "recreate-required rig rows" : rigViewSummary, tone: recreateCount > 0 ? "bad" : "ok" }
 	    ];
 
-	    const sourceRows = sources
-	      .map((source) => {
+	    const sourceRows = sourceFreshness
+	      .map(({ source, freshness }) => {
 	        const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
         const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} artifacts` : "empty";
         const meta = compact([
           source.exists ? "scan ok" : "root missing",
-          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts"
+          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts",
+          source.exists ? freshness.detail : ""
         ]);
-        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span><button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}${freshness.isStale ? `<a class="secondary" href="${benchmarkRepairHref}">Open repair queue</a>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
       })
       .join("");
 
@@ -11450,23 +11531,28 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	        ? "Reopen Compare"
 	        : "Back to list"
 	      : "Benchmark Queue";
+      const sourceFreshness = sources.map((source) => ({ source, freshness: describeArtifactFreshness(source.latestGeneratedAt) }));
+      const staleSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isStale).length;
+      const agingSourceCount = sourceFreshness.filter((entry) => entry.source.exists && entry.freshness.isAging).length;
 	    const rolloutSummaryCards: DecisionStat[] = [
 	      { label: "Signals", value: String(stats.total), hint: `${availableSources}/${sources.length} artifact roots available`, tone: "muted" },
+        { label: "Freshness", value: `${staleSourceCount} stale / ${agingSourceCount} aging`, hint: "artifact age relative to the 168h rollout freshness window", tone: staleSourceCount > 0 ? "bad" : agingSourceCount > 0 ? "warn" : "ok" },
 	      { label: "Ready", value: String(stats.ready), hint: "usable or no-change rollout states", tone: stats.ready > 0 ? "ok" : "warn" },
 	      { label: "Blocked", value: String(stats.blocked), hint: "failed promotion or inspection states", tone: stats.blocked > 0 ? "bad" : "ok" },
 	      { label: "Below Min", value: String(stats.belowMinScore), hint: "scores under rollout threshold", tone: stats.belowMinScore > 0 ? "bad" : "ok" },
 	      { label: "Divergence", value: String(stats.divergence), hint: "cross-channel drift to inspect", tone: stats.divergence > 0 ? "warn" : "ok" }
 	    ];
 
-	    const sourceRows = sources
-	      .map((source) => {
+	    const sourceRows = sourceFreshness
+	      .map(({ source, freshness }) => {
         const tone: UiBadgeTone = !source.exists ? "bad" : source.recordCount > 0 ? "ok" : "warn";
         const label = !source.exists ? "missing" : source.recordCount > 0 ? `${source.recordCount} signals` : "empty";
         const meta = compact([
           source.exists ? "scan ok" : "root missing",
-          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts"
+          source.latestGeneratedAt ? `latest ${fmtDate(source.latestGeneratedAt)}` : "no benchmark artifacts",
+          source.exists ? freshness.detail : ""
         ]);
-        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span><button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
+        return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
       })
       .join("");
 
