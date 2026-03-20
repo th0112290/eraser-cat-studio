@@ -1378,6 +1378,137 @@ function hrefWithCreationNav(
   });
 }
 
+export function buildCharacterProposalApplyUiHref(input: {
+  pathname?: string;
+  generateJobId: string;
+  rebuiltGenerateJobId?: string | null;
+  appliedKinds: CharacterOverrideKind[];
+  creationNav: CreationNavState;
+}): string {
+  const pathname = input.pathname ?? "/ui/character-generator";
+  const appliedKindsLabel = input.appliedKinds.join(" + ");
+  if (input.rebuiltGenerateJobId) {
+    return hrefWithCreationNav(
+      pathname,
+      {
+        jobId: input.rebuiltGenerateJobId,
+        message: `Applied proposal ${appliedKindsLabel} and queued current-selection rebuild.`
+      },
+      {
+        ...input.creationNav,
+        currentObject: `run:${input.rebuiltGenerateJobId}`,
+        focus: "cg-apply-proposal"
+      }
+    );
+  }
+  return hrefWithCreationNav(
+    pathname,
+    {
+      jobId: input.generateJobId,
+      message: `Applied proposal ${appliedKindsLabel} to override files. Rebuild current selection when you want fresh pack evidence.`
+    },
+    {
+      ...input.creationNav,
+      currentObject: input.creationNav.currentObject ?? `run:${input.generateJobId}`,
+      focus: "cg-apply-proposal"
+    }
+  );
+}
+
+export function buildCharacterRebuildSelectedUiHref(input: {
+  pathname?: string;
+  rebuiltGenerateJobId: string;
+  creationNav: CreationNavState;
+}): string {
+  return hrefWithCreationNav(
+    input.pathname ?? "/ui/character-generator",
+    {
+      jobId: input.rebuiltGenerateJobId,
+      message: "Current selection rebuild queued. The same selected candidates will rebuild the Character Pack with your latest override files."
+    },
+    {
+      ...input.creationNav,
+      currentObject: `run:${input.rebuiltGenerateJobId}`,
+      focus: "cg-manual-overrides"
+    }
+  );
+}
+
+export function buildCharacterProposalApplyApiResponse(input: {
+  applyMode: CharacterProposalApplyMode;
+  appliedKinds: CharacterOverrideKind[];
+  characterPackId: string;
+  anchorsOverridePath: string | null;
+  cropBoxesOverridePath: string | null;
+  rebuilt: {
+    sessionId: string;
+    episodeId: string;
+    generateJobId: string;
+    buildJobId: string;
+    previewJobId: string;
+    bullmqJobId: string;
+    manifestPath: string;
+    selection: CharacterGenerationSelection;
+  } | null;
+}): {
+  data: {
+    applyMode: CharacterProposalApplyMode;
+    appliedKinds: CharacterOverrideKind[];
+    characterPackId: string;
+    anchorsOverridePath: string | null;
+    cropBoxesOverridePath: string | null;
+    rebuilt: {
+      sessionId: string;
+      episodeId: string;
+      generateJobId: string;
+      buildJobId: string;
+      previewJobId: string;
+      bullmqJobId: string;
+      manifestPath: string;
+      selection: CharacterGenerationSelection;
+    } | null;
+  };
+} {
+  return {
+    data: {
+      applyMode: input.applyMode,
+      appliedKinds: input.appliedKinds,
+      characterPackId: input.characterPackId,
+      anchorsOverridePath: input.anchorsOverridePath,
+      cropBoxesOverridePath: input.cropBoxesOverridePath,
+      rebuilt: input.rebuilt
+    }
+  };
+}
+
+export function buildCharacterRebuildSelectedApiResponse(input: {
+  created: {
+    sessionId: string;
+    episodeId: string;
+    generateJobId: string;
+    buildJobId: string;
+    previewJobId: string;
+    bullmqJobId: string;
+    manifestPath: string;
+    selection: CharacterGenerationSelection;
+  };
+}): {
+  data: {
+    sessionId: string;
+    episodeId: string;
+    generateJobId: string;
+    buildJobId: string;
+    previewJobId: string;
+    bullmqJobId: string;
+    manifestPath: string;
+    selection: CharacterGenerationSelection;
+  };
+} {
+  return {
+    data: input.created
+  };
+}
+
 function renderCreationNavHiddenFields(nav: CreationNavState): string {
   return [
     ["returnTo", nav.returnTo],
@@ -3227,17 +3358,37 @@ function applyProposalOverridesToCharacterPack(input: {
     proposalPath: input.context.lineage.proposalPath,
     applyMode: input.applyMode
   });
-  fs.mkdirSync(path.dirname(input.context.anchorsOverridePath), { recursive: true });
-  if (documents.anchorsText) {
-    fs.writeFileSync(input.context.anchorsOverridePath, documents.anchorsText, "utf8");
+  return materializeCharacterOverrideDocuments({
+    appliedKinds: documents.appliedKinds,
+    anchorsText: documents.anchorsText,
+    cropBoxesText: documents.cropBoxesText,
+    anchorsOverridePath: input.context.anchorsOverridePath,
+    cropBoxesOverridePath: input.context.cropBoxesOverridePath
+  });
+}
+
+export function materializeCharacterOverrideDocuments(input: {
+  appliedKinds: CharacterOverrideKind[];
+  anchorsText: string | null;
+  cropBoxesText: string | null;
+  anchorsOverridePath: string;
+  cropBoxesOverridePath: string;
+}): {
+  appliedKinds: CharacterOverrideKind[];
+  anchorsOverridePath: string | null;
+  cropBoxesOverridePath: string | null;
+} {
+  fs.mkdirSync(path.dirname(input.anchorsOverridePath), { recursive: true });
+  if (input.anchorsText) {
+    fs.writeFileSync(input.anchorsOverridePath, input.anchorsText, "utf8");
   }
-  if (documents.cropBoxesText) {
-    fs.writeFileSync(input.context.cropBoxesOverridePath, documents.cropBoxesText, "utf8");
+  if (input.cropBoxesText) {
+    fs.writeFileSync(input.cropBoxesOverridePath, input.cropBoxesText, "utf8");
   }
   return {
-    appliedKinds: documents.appliedKinds,
-    anchorsOverridePath: documents.anchorsText ? input.context.anchorsOverridePath : null,
-    cropBoxesOverridePath: documents.cropBoxesText ? input.context.cropBoxesOverridePath : null
+    appliedKinds: input.appliedKinds,
+    anchorsOverridePath: input.anchorsText ? input.anchorsOverridePath : null,
+    cropBoxesOverridePath: input.cropBoxesText ? input.cropBoxesOverridePath : null
   };
 }
 
@@ -7117,9 +7268,11 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
       generateJobId
     });
 
-    return reply.code(201).send({
-      data: created
-    });
+    return reply.code(201).send(
+      buildCharacterRebuildSelectedApiResponse({
+        created
+      })
+    );
   });
 
   app.post("/api/character-generator/overrides/save", async (request, reply) => {
@@ -7194,16 +7347,16 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         })
       : null;
 
-    return reply.code(201).send({
-      data: {
+    return reply.code(201).send(
+      buildCharacterProposalApplyApiResponse({
         applyMode,
         appliedKinds: applied.appliedKinds,
         characterPackId: context.characterPackId,
         anchorsOverridePath: applied.anchorsOverridePath,
         cropBoxesOverridePath: applied.cropBoxesOverridePath,
         rebuilt
-      }
-    });
+      })
+    );
   });
 
   app.get("/ui/studio", async (request, reply) => {
@@ -9394,34 +9547,21 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           generateJobId
         });
         return reply.redirect(
-          hrefWithCreationNav(
-            "/ui/character-generator",
-            {
-              jobId: rebuilt.generateJobId,
-              message: `Applied proposal ${applied.appliedKinds.join(" + ")} and queued current-selection rebuild.`
-            },
-            {
-              ...creationNav,
-              currentObject: `run:${rebuilt.generateJobId}`,
-              focus: "cg-apply-proposal"
-            }
-          )
+          buildCharacterProposalApplyUiHref({
+            generateJobId,
+            rebuiltGenerateJobId: rebuilt.generateJobId,
+            appliedKinds: applied.appliedKinds,
+            creationNav
+          })
         );
       }
 
       return reply.redirect(
-        hrefWithCreationNav(
-          "/ui/character-generator",
-          {
-            jobId: generateJobId,
-            message: `Applied proposal ${applied.appliedKinds.join(" + ")} to override files. Rebuild current selection when you want fresh pack evidence.`
-          },
-          {
-            ...creationNav,
-            currentObject: creationNav.currentObject ?? `run:${generateJobId}`,
-            focus: "cg-apply-proposal"
-          }
-        )
+        buildCharacterProposalApplyUiHref({
+          generateJobId,
+          appliedKinds: applied.appliedKinds,
+          creationNav
+        })
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);
@@ -9448,18 +9588,10 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
         generateJobId
       });
       return reply.redirect(
-        hrefWithCreationNav(
-          "/ui/character-generator",
-          {
-            jobId: rebuilt.generateJobId,
-            message: "Current selection rebuild queued. The same selected candidates will rebuild the Character Pack with your latest override files."
-          },
-          {
-            ...creationNav,
-            currentObject: `run:${rebuilt.generateJobId}`,
-            focus: "cg-manual-overrides"
-          }
-        )
+        buildCharacterRebuildSelectedUiHref({
+          rebuiltGenerateJobId: rebuilt.generateJobId,
+          creationNav
+        })
       );
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : String(routeError);

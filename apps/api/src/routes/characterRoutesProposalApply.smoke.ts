@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildProposalApplyOverrideDocuments } from "./characterRoutes";
+import { buildProposalApplyOverrideDocuments, materializeCharacterOverrideDocuments } from "./characterRoutes";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -55,6 +55,40 @@ const anchorsOnly = buildProposalApplyOverrideDocuments({
 });
 assert(anchorsOnly.appliedKinds.length === 1 && anchorsOnly.appliedKinds[0] === "anchors", "expected anchors-only apply");
 assert(anchorsOnly.cropBoxesText === null, "expected anchors-only apply to skip crop boxes");
+
+const overridesRoot = path.join(tempRoot, "pack", "overrides");
+const anchorsOverridePath = path.join(overridesRoot, "anchors.json");
+const cropBoxesOverridePath = path.join(overridesRoot, "crop-boxes.json");
+fs.mkdirSync(overridesRoot, { recursive: true });
+fs.writeFileSync(anchorsOverridePath, "{\n  \"seed\": \"keep\"\n}\n", "utf8");
+fs.writeFileSync(cropBoxesOverridePath, "{\n  \"seed\": \"keep\"\n}\n", "utf8");
+
+const anchorsMaterialized = materializeCharacterOverrideDocuments({
+  appliedKinds: anchorsOnly.appliedKinds,
+  anchorsText: anchorsOnly.anchorsText,
+  cropBoxesText: anchorsOnly.cropBoxesText,
+  anchorsOverridePath,
+  cropBoxesOverridePath
+});
+assert(anchorsMaterialized.anchorsOverridePath === anchorsOverridePath, "expected anchors materialization path");
+assert(anchorsMaterialized.cropBoxesOverridePath === null, "expected anchors-only materialization to skip crop boxes");
+assert(fs.readFileSync(anchorsOverridePath, "utf8").includes("\"views\""), "expected anchors override file to be rewritten");
+assert(fs.readFileSync(cropBoxesOverridePath, "utf8").includes("\"seed\""), "expected crop-box override file to remain untouched");
+
+const cropBoxesOnly = buildProposalApplyOverrideDocuments({
+  proposalPath,
+  applyMode: "cropBoxes"
+});
+const cropMaterialized = materializeCharacterOverrideDocuments({
+  appliedKinds: cropBoxesOnly.appliedKinds,
+  anchorsText: cropBoxesOnly.anchorsText,
+  cropBoxesText: cropBoxesOnly.cropBoxesText,
+  anchorsOverridePath,
+  cropBoxesOverridePath
+});
+assert(cropMaterialized.anchorsOverridePath === null, "expected crop-only materialization to skip anchors");
+assert(cropMaterialized.cropBoxesOverridePath === cropBoxesOverridePath, "expected crop-box materialization path");
+assert(fs.readFileSync(cropBoxesOverridePath, "utf8").includes("\"head\""), "expected crop-box override file to be rewritten");
 
 const missingProposalPath = path.join(tempRoot, "missing-proposal.json");
 let missingFailed = false;

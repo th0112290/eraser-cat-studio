@@ -84,6 +84,12 @@ jobs:
       - name: Run character action contract smoke
         run: pnpm -C apps/api run smoke:character-action-contracts
 
+      - name: Run character UI action smoke
+        run: pnpm -C apps/api run smoke:character-ui-actions
+
+      - name: Run character practical smoke
+        run: pnpm -C apps/api run smoke:character-practical
+
       - name: Start infra and migrate DB
         run: |
           pnpm docker:up
