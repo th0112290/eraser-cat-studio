@@ -11,7 +11,6 @@ import {
   deriveStyleHintsFromChannelBible,
   resolveEffectiveMascotReferenceBankStatus,
   resolveMascotSpeciesProfile,
-  resolveProviderName,
   type CharacterCandidateProviderMeta,
   type CharacterGenerationCandidate,
   type CharacterReferenceBankEntry,
@@ -60,6 +59,10 @@ import {
 } from "./characterGenerationInitialSelection";
 import { handleHitlSelectedGeneration } from "./characterGenerationHitlSelected";
 import { initializeCharacterGenerationBootstrap } from "./characterGenerationBootstrap";
+import {
+  initializeGenerationProviderRuntime,
+  runProviderGenerateWithFallback
+} from "./characterGenerationProviderRuntime";
 import { buildSelectionDecisionOutcome } from "./characterGenerationSelectionDecision";
 import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
 import {
@@ -12258,111 +12261,63 @@ export async function handleGenerateCharacterAssetsJob(input: {
 
   const comfyUiUrl = getComfyUiUrl();
   const remoteApiConfig = getRemoteApiConfig();
-  const requestedProvider =
-    generation.provider ??
-    (comfyUiUrl ? "comfyui" : remoteApiConfig.baseUrl ? "remoteApi" : "mock");
-
-  let providerName = resolveProviderName({
-    requestedProvider,
+  const runtime = await initializeGenerationProviderRuntime({
+    prisma,
+    totalImages: clamped.totalImages,
+    limits,
     comfyUiUrl,
-    remoteApiBaseUrl: remoteApiConfig.baseUrl
+    remoteApiConfig,
+    generationProvider: generation.provider ?? null,
+    promptBundle: promptBundle as {
+      speciesId?: string;
+      qualityProfile: { targetStyle?: string };
+      selectionHints: {
+        minAcceptedScore?: number;
+        frontMasterMinAcceptedScore?: number;
+        autoRetryRounds?: number;
+        sequentialReference?: boolean;
+      };
+    },
+    mascotReferenceBankDiagnostics: mascotReferenceBankDiagnostics as {
+      status: string;
+      missingRoles: string[];
+      statusMismatch?: boolean;
+      declaredStatus?: string;
+      requiredAssetSlots: string[];
+    },
+    mascotReferenceBankReviewPlan: mascotReferenceBankReviewPlan as {
+      requiredManualSlots: string[];
+    },
+    manifestPath,
+    readGenerationQualityConfig,
+    readAutoRerouteConfig,
+    evaluateBudget: (targetPrisma, totalImages, targetLimits) =>
+      evaluateBudget(
+        targetPrisma as PrismaClient,
+        totalImages,
+        targetLimits as ReturnType<typeof readGenerationLimits>
+      ),
+    isMascotTargetStyle,
+    toPositiveInt
   });
-  let providerWarning: string | null = null;
-  if (mascotReferenceBankDiagnostics.status === "scaffold_only") {
-    const reviewSlotsSummary =
-      mascotReferenceBankReviewPlan.requiredManualSlots.length > 4
-        ? `${mascotReferenceBankReviewPlan.requiredManualSlots.slice(0, 4).join(", ")} +${mascotReferenceBankReviewPlan.requiredManualSlots.length - 4} more`
-        : mascotReferenceBankReviewPlan.requiredManualSlots.join(", ");
-    const requiredAssetsSummary =
-      mascotReferenceBankDiagnostics.requiredAssetSlots.length > 3
-        ? `${mascotReferenceBankDiagnostics.requiredAssetSlots.slice(0, 3).join(", ")} +${mascotReferenceBankDiagnostics.requiredAssetSlots.length - 3} more`
-        : mascotReferenceBankDiagnostics.requiredAssetSlots.join(", ");
-    providerWarning =
-      `${promptBundle.speciesId} reference bank is scaffold-only (missing roles: ${mascotReferenceBankDiagnostics.missingRoles.join(", ") || "none"}). ` +
-      `${mascotReferenceBankDiagnostics.statusMismatch ? `Declared status ${mascotReferenceBankDiagnostics.declaredStatus} is being downgraded. ` : ""}` +
-      `Review-only pack guidance applies${reviewSlotsSummary.length > 0 ? `; manual slots: ${reviewSlotsSummary}` : ""}` +
-      `${requiredAssetsSummary.length > 0 ? `; required assets: ${requiredAssetsSummary}` : ""}.`;
-  }
-
-  if (requestedProvider === "comfyui" && !comfyUiUrl && remoteApiConfig.baseUrl) {
-    providerWarning = [
-      providerWarning,
-      "COMFY_ADAPTER_URL/COMFYUI_BASE_URL is not configured. Falling back to remoteApi provider."
-    ]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .join(" | ");
-  } else if (requestedProvider === "comfyui" && !comfyUiUrl) {
-    providerName = "mock";
-    providerWarning = [
-      providerWarning,
-      "COMFY_ADAPTER_URL/COMFYUI_BASE_URL is not configured. Falling back to mock provider."
-    ]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .join(" | ");
-  } else if (requestedProvider === "remoteApi" && !remoteApiConfig.baseUrl) {
-    providerName = "mock";
-    providerWarning = [providerWarning, "IMAGEGEN_REMOTE_BASE_URL is not configured. Falling back to mock provider."]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .join(" | ");
-  }
-
-  const budget = await evaluateBudget(prisma, clamped.totalImages, limits);
-  if (budget.wouldExceed) {
-    if (limits.budgetFallbackToMock && providerName !== "mock") {
-      providerWarning = `Budget exceeded (${budget.monthSpentUsd.toFixed(2)} / ${budget.monthBudgetUsd.toFixed(
-        2
-      )} USD). Falling back to mock provider.`;
-      providerName = "mock";
-    } else if (budget.wouldExceed) {
-      throw new Error(
-        `Image generation rejected by budget limit (monthSpent=${budget.monthSpentUsd.toFixed(
-          2
-        )}, estimatedRun=${budget.estimatedCostThisRunUsd.toFixed(2)}, budget=${budget.monthBudgetUsd.toFixed(2)})`
-      );
-    }
-  }
-
-  let provider = createCharacterProvider({
-    provider: providerName,
-    comfyUiUrl,
-    remoteApi: {
-      ...remoteApiConfig,
-      maxRetries: limits.maxRetries,
-      estimatedCostUsdPerImage: limits.costPerImageUsd
-    }
-  });
-
-  const qualityConfig = readGenerationQualityConfig();
-  const autoRerouteConfig = readAutoRerouteConfig();
-  const acceptedScoreThreshold = Math.max(
-    qualityConfig.minAcceptedScore,
-    promptBundle.selectionHints.minAcceptedScore ?? 0
-  );
-  const frontAnchorAcceptedScoreThreshold =
-    typeof promptBundle.selectionHints.frontMasterMinAcceptedScore === "number"
-      ? promptBundle.selectionHints.frontMasterMinAcceptedScore
-      : acceptedScoreThreshold;
-  const allowLowQualityMockFallback =
-    qualityConfig.lowQualityFallbackToMock && !isMascotTargetStyle(promptBundle.qualityProfile.targetStyle);
-  const strictRealProvider =
-    isMascotTargetStyle(promptBundle.qualityProfile.targetStyle) && requestedProvider === "comfyui";
-  const providerRequestTimeoutMs = toPositiveInt(process.env.COMFY_ADAPTER_TIMEOUT_MS, 360_000);
-  const providerStageTimeoutOverrideMs = toPositiveInt(process.env.CHARACTER_PROVIDER_STAGE_TIMEOUT_MS, 0);
-  const candidatePostprocessTimeoutMs = toPositiveInt(
-    process.env.CHARACTER_CANDIDATE_POSTPROCESS_TIMEOUT_MS,
-    120_000
-  );
-  const candidateAnalysisTimeoutMs = toPositiveInt(
-    process.env.CHARACTER_CANDIDATE_ANALYSIS_TIMEOUT_MS,
-    120_000
-  );
-  const speciesRetryBonus = promptBundle.speciesId === "wolf" ? 1 : 0;
-  const autoRetryRounds =
-    Math.max(qualityConfig.autoRetryRounds, promptBundle.selectionHints.autoRetryRounds ?? 0) + speciesRetryBonus;
-  const sequentialReferenceEnabled =
-    (promptBundle.selectionHints.sequentialReference ?? qualityConfig.sequentialReference) === true;
-  const candidatesDir = path.join(path.dirname(manifestPath), "candidates");
-  fs.mkdirSync(candidatesDir, { recursive: true });
+  const requestedProvider = runtime.requestedProvider;
+  let providerName = runtime.providerName;
+  let providerWarning = runtime.providerWarning;
+  let provider = runtime.provider;
+  const budget = runtime.budget;
+  const qualityConfig = runtime.qualityConfig;
+  const autoRerouteConfig = runtime.autoRerouteConfig as ReturnType<typeof readAutoRerouteConfig>;
+  const acceptedScoreThreshold = runtime.acceptedScoreThreshold;
+  const frontAnchorAcceptedScoreThreshold = runtime.frontAnchorAcceptedScoreThreshold;
+  const allowLowQualityMockFallback = runtime.allowLowQualityMockFallback;
+  const strictRealProvider = runtime.strictRealProvider;
+  const providerRequestTimeoutMs = runtime.providerRequestTimeoutMs;
+  const providerStageTimeoutOverrideMs = runtime.providerStageTimeoutOverrideMs;
+  const candidatePostprocessTimeoutMs = runtime.candidatePostprocessTimeoutMs;
+  const candidateAnalysisTimeoutMs = runtime.candidateAnalysisTimeoutMs;
+  const autoRetryRounds = runtime.autoRetryRounds;
+  const sequentialReferenceEnabled = runtime.sequentialReferenceEnabled;
+  const candidatesDir = runtime.candidatesDir;
 
   const scored: ScoredCandidate[] = [];
   let autoRerouteDiagnostics: AutoRerouteDiagnostics | undefined;
@@ -12632,69 +12587,31 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const runProviderGenerate = async (
     providerInput: CharacterProviderGenerateInput
   ): Promise<CharacterGenerationCandidate[]> => {
-    try {
-      const result = await provider.generate(providerInput);
-      if (Array.isArray((result as { callLogs?: unknown }).callLogs)) {
-        providerCallLogs.push(...((result as { callLogs?: CharacterProviderCallLog[] }).callLogs ?? []));
-      }
-      providerWorkflowHash = result.workflowHash;
-      providerGeneratedAt = result.generatedAt;
-      if (result.providerMeta) {
-        providerRunMeta = result.providerMeta;
-      }
-      return result.candidates;
-    } catch (error) {
-      if (providerName === "mock") {
-        throw error;
-      }
-
-      const firstErrorSummary = errorMessage(error);
-      if (isTransientProviderFailure(error)) {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        try {
-          const retryResult = await provider.generate(providerInput);
-          if (Array.isArray((retryResult as { callLogs?: unknown }).callLogs)) {
-            providerCallLogs.push(...((retryResult as { callLogs?: CharacterProviderCallLog[] }).callLogs ?? []));
-          }
-          providerWorkflowHash = retryResult.workflowHash;
-          providerGeneratedAt = retryResult.generatedAt;
-          if (retryResult.providerMeta) {
-            providerRunMeta = retryResult.providerMeta;
-          }
-          providerWarning = providerWarning
-            ? `${providerWarning} | ${providerName} transient failure recovered after retry (${firstErrorSummary}).`
-            : `${providerName} transient failure recovered after retry (${firstErrorSummary}).`;
-          return retryResult.candidates;
-        } catch (retryError) {
-          if (strictRealProvider) {
-            throw new Error(
-              `${providerName} unavailable after retry (${firstErrorSummary}; retry=${errorMessage(retryError)})`
-            );
-          }
-          error = retryError;
-        }
-      } else if (strictRealProvider) {
-        throw error;
-      }
-
-      providerWarning = `${providerName} unavailable (${errorMessage(error)}). Falling back to mock provider.`;
-      providerName = "mock";
-      provider = createCharacterProvider({
-        provider: "mock"
-      });
-      const fallbackResult = await provider.generate(providerInput);
-      if (Array.isArray((fallbackResult as { callLogs?: unknown }).callLogs)) {
-        providerCallLogs.push(
-          ...((fallbackResult as { callLogs?: CharacterProviderCallLog[] }).callLogs ?? [])
-        );
-      }
-      providerWorkflowHash = fallbackResult.workflowHash;
-      providerGeneratedAt = fallbackResult.generatedAt;
-      if (fallbackResult.providerMeta) {
-        providerRunMeta = fallbackResult.providerMeta;
-      }
-      return fallbackResult.candidates;
-    }
+    const result = await runProviderGenerateWithFallback({
+      provider: provider as {
+        generate: (input: CharacterProviderGenerateInput) => Promise<{
+          candidates: CharacterGenerationCandidate[];
+          workflowHash: string;
+          generatedAt: string;
+          providerMeta?: Record<string, unknown>;
+          callLogs?: CharacterProviderCallLog[];
+        }>;
+      },
+      providerName,
+      providerWarning,
+      strictRealProvider,
+      providerInput,
+      isTransientProviderFailure,
+      errorMessage
+    });
+    provider = result.provider;
+    providerName = result.providerName;
+    providerWarning = result.providerWarning;
+    providerWorkflowHash = result.workflowHash;
+    providerGeneratedAt = result.generatedAt;
+    providerRunMeta = result.providerMeta;
+    providerCallLogs.push(...result.callLogs);
+    return result.candidates;
   };
 
   const runViewGeneration = async (input: {
@@ -15186,7 +15103,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const autoRerouteDecision = decideAutoReroute({
     config: autoRerouteConfig,
     generationViewToGenerate: generation.viewToGenerate,
-    providerName,
+    providerName: providerName as CharacterProviderName,
     requestedViews,
     packCoherence: selectionOutcome.packCoherence,
     rigStability: selectionOutcome.rigStability,
