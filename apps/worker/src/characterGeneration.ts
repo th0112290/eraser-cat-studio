@@ -41,6 +41,33 @@ import {
 } from "./queue";
 import { getAssetObject, makeStorageKey, putAssetObject } from "./assetStorage";
 import { handleAssetIngestJob, type AssetIngestJobPayload } from "./assetIngest";
+import {
+  buildManifestSelectedByView,
+  formatContinuityDescriptor,
+  formatContinuityQueueStats,
+  formatContinuitySentence,
+  manifestBasePath,
+  parseManifestContinuity,
+  resolveHitlSelectionManifestReadPath,
+  resolveManifestAcceptedScoreThreshold,
+  resolveManifestReadPath,
+  shouldContinueBlockedSelectionBuild,
+  shouldRetainSelectedByViewOnSelectionBlock,
+  toFlatContinuityFields
+} from "./characterGenerationManifestState";
+import {
+  parseManifestCandidate,
+  resolveFrontReferenceFromManifest
+} from "./characterGenerationManifestCandidates";
+
+export {
+  buildManifestSelectedByView,
+  parseManifestContinuity,
+  resolveHitlSelectionManifestReadPath,
+  resolveManifestReadPath,
+  shouldContinueBlockedSelectionBuild,
+  shouldRetainSelectedByViewOnSelectionBlock
+} from "./characterGenerationManifestState";
 
 type JobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
 
@@ -12203,59 +12230,6 @@ async function markSessionCandidatesPicked(input: {
   }
 }
 
-function manifestBasePath(jobDbId: string, manifestPath?: string): string {
-  if (manifestPath && manifestPath.trim().length > 0) {
-    return path.resolve(manifestPath);
-  }
-
-  return path.join(REPO_ROOT, "out", "characters", "generations", jobDbId, "generation_manifest.json");
-}
-
-export function buildManifestSelectedByView(
-  selectedByView: Partial<Record<CharacterView, ScoredCandidate>>
-): GenerationManifest["selectedByView"] {
-  const manifestSelectedByView: GenerationManifest["selectedByView"] = {};
-  for (const [view, candidate] of Object.entries(selectedByView) as Array<[CharacterView, ScoredCandidate | undefined]>) {
-    const candidateId = candidate?.candidate?.id?.trim();
-    if (candidateId) {
-      manifestSelectedByView[view] = { candidateId };
-    }
-  }
-  return manifestSelectedByView;
-}
-
-export function resolveManifestReadPath(
-  jobDbId: string,
-  paths: {
-    manifestPath?: string;
-    sourceManifestPath?: string;
-  }
-): string {
-  if (typeof paths.sourceManifestPath === "string" && paths.sourceManifestPath.trim().length > 0) {
-    return path.resolve(paths.sourceManifestPath);
-  }
-
-  return manifestBasePath(jobDbId, paths.manifestPath);
-}
-
-export function resolveHitlSelectionManifestReadPath(
-  jobDbId: string,
-  paths: {
-    manifestPath?: string;
-    sourceManifestPath?: string;
-  }
-): string {
-  return resolveManifestReadPath(jobDbId, paths);
-}
-
-export function shouldRetainSelectedByViewOnSelectionBlock(source: "auto" | "hitl"): boolean {
-  return source === "hitl";
-}
-
-export function shouldContinueBlockedSelectionBuild(source: "auto" | "hitl"): boolean {
-  return source === "hitl";
-}
-
 function getComfyUiUrl(): string | undefined {
   const adapter = process.env.COMFY_ADAPTER_URL?.trim();
   if (adapter && adapter.length > 0) {
@@ -12297,134 +12271,6 @@ function normalizeSelectedCandidateIds(value: CharacterGenerationSelection): Cha
     front: value.front.trim(),
     threeQuarter: value.threeQuarter.trim(),
     profile: value.profile.trim()
-  };
-}
-
-function parseManifestCandidate(manifestPath: string, candidate: unknown): {
-  id: string;
-  provider?: string;
-  view: CharacterView;
-  candidateIndex: number;
-  seed: number;
-  mimeType: string;
-  filePath: string;
-  score: number;
-  styleScore: number;
-  referenceSimilarity: number | null;
-  consistencyScore: number | null;
-  warnings: string[];
-  rejections: string[];
-  breakdown?: CandidateScoreBreakdown;
-  providerMeta?: CharacterCandidateProviderMeta;
-} | null {
-  if (!isRecord(candidate)) {
-    return null;
-  }
-
-  const id = asString(candidate.id).trim();
-  const viewRaw = asString(candidate.view).trim();
-  const provider = asString(candidate.provider).trim();
-  const candidateIndex = typeof candidate.candidateIndex === "number" ? candidate.candidateIndex : 0;
-  const seed = typeof candidate.seed === "number" ? candidate.seed : 0;
-  const mimeType = asString(candidate.mimeType).trim() || "image/png";
-  const filePathRaw = asString(candidate.filePath).trim();
-  if (!id || !filePathRaw) {
-    return null;
-  }
-
-  let view: CharacterView;
-  if (viewRaw === "front" || viewRaw === "threeQuarter" || viewRaw === "profile") {
-    view = viewRaw;
-  } else {
-    return null;
-  }
-
-  const filePath = path.resolve(path.dirname(manifestPath), filePathRaw);
-  const score = typeof candidate.score === "number" ? candidate.score : 0.5;
-  const styleScore = typeof candidate.styleScore === "number" ? candidate.styleScore : 0.5;
-  const referenceSimilarity = typeof candidate.referenceSimilarity === "number" ? candidate.referenceSimilarity : null;
-  const consistencyScore = typeof candidate.consistencyScore === "number" ? candidate.consistencyScore : null;
-  const warnings = Array.isArray(candidate.warnings)
-    ? candidate.warnings.filter((item): item is string => typeof item === "string")
-    : [];
-  const rejections = Array.isArray(candidate.rejections)
-    ? candidate.rejections.filter((item): item is string => typeof item === "string")
-    : [];
-  const breakdown = isRecord(candidate.breakdown) ? (candidate.breakdown as CandidateScoreBreakdown) : undefined;
-  const providerMeta = isRecord(candidate.providerMeta)
-    ? (candidate.providerMeta as CharacterCandidateProviderMeta)
-    : undefined;
-
-  return {
-    id,
-    ...(provider ? { provider } : {}),
-    view,
-    candidateIndex,
-    seed,
-    mimeType,
-    filePath,
-    score,
-    styleScore,
-    referenceSimilarity,
-    consistencyScore,
-    warnings,
-    rejections,
-    ...(breakdown ? { breakdown } : {}),
-    ...(providerMeta ? { providerMeta } : {})
-  };
-}
-
-async function resolveFrontReferenceFromManifest(manifestPath: string): Promise<{
-  referenceImageBase64: string;
-  referenceMimeType: string;
-} | undefined> {
-  if (!fs.existsSync(manifestPath)) {
-    return undefined;
-  }
-
-  let parsedRaw: unknown;
-  try {
-    parsedRaw = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as unknown;
-  } catch {
-    return undefined;
-  }
-
-  if (!isRecord(parsedRaw)) {
-    return undefined;
-  }
-
-  const manifestCandidates = Array.isArray(parsedRaw.candidates) ? parsedRaw.candidates : [];
-  const parsedCandidates = manifestCandidates
-    .map((candidate) => parseManifestCandidate(manifestPath, candidate))
-    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
-    .filter((candidate) => candidate.view === "front")
-    .sort((a, b) => b.score - a.score);
-
-  const selectedByView = isRecord(parsedRaw.selectedByView) ? parsedRaw.selectedByView : null;
-  const selectedFrontCandidateId =
-    selectedByView &&
-    isRecord(selectedByView.front) &&
-    typeof selectedByView.front.candidateId === "string" &&
-    selectedByView.front.candidateId.trim().length > 0
-      ? selectedByView.front.candidateId.trim()
-      : null;
-
-  const selected = selectedFrontCandidateId
-    ? parsedCandidates.find((candidate) => candidate.id === selectedFrontCandidateId)
-    : null;
-  const chosen = selected ?? parsedCandidates[0];
-  if (!chosen) {
-    return undefined;
-  }
-
-  if (!fs.existsSync(chosen.filePath)) {
-    return undefined;
-  }
-
-  const data = fs.readFileSync(chosen.filePath);
-  return {
-    referenceImageBase64: data.toString("base64"),
-    referenceMimeType: chosen.mimeType
   };
 }
 
@@ -12725,220 +12571,6 @@ function extractCandidateRejectionCount(value: unknown): number {
   return raw.filter((item) => typeof item === "string" && item.trim().length > 0).length;
 }
 
-function parseManifestContinuity(value: unknown): GenerationManifest["reference"]["continuity"] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
-  const attempted = typeof value.attempted === "boolean" ? value.attempted : undefined;
-  const applied = typeof value.applied === "boolean" ? value.applied : undefined;
-  const reason = typeof value.reason === "string" ? value.reason.trim() : "";
-  if (enabled === undefined || attempted === undefined || applied === undefined || reason.length === 0) {
-    return undefined;
-  }
-  const asOptionalNumber = (input: unknown): number | undefined =>
-    typeof input === "number" && Number.isFinite(input) ? input : undefined;
-  const asOptionalNullableNumber = (input: unknown): number | null | undefined =>
-    input === null ? null : typeof input === "number" && Number.isFinite(input) ? input : undefined;
-  const asOptionalNullableString = (input: unknown): string | null | undefined =>
-    input === null ? null : typeof input === "string" && input.trim().length > 0 ? input.trim() : undefined;
-  const asOptionalString = (input: unknown): string | undefined =>
-    typeof input === "string" && input.trim().length > 0 ? input.trim() : undefined;
-  const asOptionalStringArray = (input: unknown): string[] | undefined => {
-    if (!Array.isArray(input)) {
-      return undefined;
-    }
-    const out = input
-      .map((item) => (typeof item === "string" ? item.trim() : ""))
-      .filter((item) => item.length > 0);
-    return out.length > 0 ? out : undefined;
-  };
-
-  const policyRaw = isRecord(value.policy) ? value.policy : undefined;
-  const parsedPolicy =
-    policyRaw &&
-    typeof policyRaw.maxSessionAgeHours === "number" &&
-    Number.isFinite(policyRaw.maxSessionAgeHours) &&
-    typeof policyRaw.minScore === "number" &&
-    Number.isFinite(policyRaw.minScore) &&
-    typeof policyRaw.maxRejections === "number" &&
-    Number.isFinite(policyRaw.maxRejections) &&
-    typeof policyRaw.requirePicked === "boolean" &&
-    typeof policyRaw.requireScore === "boolean" &&
-    typeof policyRaw.candidateTake === "number" &&
-    Number.isFinite(policyRaw.candidateTake) &&
-    typeof policyRaw.preferredSessionTake === "number" &&
-    Number.isFinite(policyRaw.preferredSessionTake) &&
-    typeof policyRaw.fallbackSessionTake === "number" &&
-    Number.isFinite(policyRaw.fallbackSessionTake)
-      ? {
-          maxSessionAgeHours: policyRaw.maxSessionAgeHours,
-          minScore: policyRaw.minScore,
-          maxRejections: policyRaw.maxRejections,
-          requirePicked: policyRaw.requirePicked,
-          requireScore: policyRaw.requireScore,
-          candidateTake: policyRaw.candidateTake,
-          preferredSessionTake: policyRaw.preferredSessionTake,
-          fallbackSessionTake: policyRaw.fallbackSessionTake,
-          requestOverride:
-            typeof policyRaw.requestOverride === "boolean" || policyRaw.requestOverride === null
-              ? policyRaw.requestOverride
-              : null
-        }
-      : undefined;
-
-  return {
-    enabled,
-    attempted,
-    applied,
-    reason,
-    ...(asOptionalString(value.attemptedSourceSessionId)
-      ? { attemptedSourceSessionId: asOptionalString(value.attemptedSourceSessionId) }
-      : {}),
-    ...(asOptionalString(value.cutoffUpdatedAt) ? { cutoffUpdatedAt: asOptionalString(value.cutoffUpdatedAt) } : {}),
-    ...(asOptionalNumber(value.queuedSessionCount) !== undefined
-      ? { queuedSessionCount: asOptionalNumber(value.queuedSessionCount) }
-      : {}),
-    ...(asOptionalNumber(value.uniqueQueuedSessionCount) !== undefined
-      ? { uniqueQueuedSessionCount: asOptionalNumber(value.uniqueQueuedSessionCount) }
-      : {}),
-    ...(asOptionalNumber(value.duplicateSessionCount) !== undefined
-      ? { duplicateSessionCount: asOptionalNumber(value.duplicateSessionCount) }
-      : {}),
-    ...(asOptionalNumber(value.searchedSessionCount) !== undefined
-      ? { searchedSessionCount: asOptionalNumber(value.searchedSessionCount) }
-      : {}),
-    ...(asOptionalStringArray(value.searchedSessionIdsPreview)
-      ? { searchedSessionIdsPreview: asOptionalStringArray(value.searchedSessionIdsPreview) }
-      : {}),
-    ...(asOptionalNumber(value.preferredPoolCount) !== undefined
-      ? { preferredPoolCount: asOptionalNumber(value.preferredPoolCount) }
-      : {}),
-    ...(asOptionalNumber(value.fallbackPoolCount) !== undefined
-      ? { fallbackPoolCount: asOptionalNumber(value.fallbackPoolCount) }
-      : {}),
-    ...(value.sourcePool === "preferred" || value.sourcePool === "fallback" ? { sourcePool: value.sourcePool } : {}),
-    ...(typeof value.candidatePicked === "boolean" ? { candidatePicked: value.candidatePicked } : {}),
-    ...(asOptionalNullableNumber(value.candidateScore) !== undefined
-      ? { candidateScore: asOptionalNullableNumber(value.candidateScore) }
-      : {}),
-    ...(asOptionalNullableNumber(value.candidateRejectionCount) !== undefined
-      ? { candidateRejectionCount: asOptionalNullableNumber(value.candidateRejectionCount) }
-      : {}),
-    ...(asOptionalNullableString(value.candidateUpdatedAt) !== undefined
-      ? { candidateUpdatedAt: asOptionalNullableString(value.candidateUpdatedAt) }
-      : {}),
-    ...(parsedPolicy ? { policy: parsedPolicy } : {})
-  };
-}
-
-function formatContinuityDescriptor(
-  continuity: GenerationManifest["reference"]["continuity"] | undefined,
-  options?: {
-    includeQueueStats?: boolean;
-  }
-): string | null {
-  if (!continuity?.reason) {
-    return null;
-  }
-  const parts = [`Continuity=${continuity.reason}`];
-  if (continuity.attemptedSourceSessionId) {
-    parts.push(`source=${continuity.attemptedSourceSessionId}`);
-  }
-  if (continuity.sourcePool) {
-    parts.push(`pool=${continuity.sourcePool}`);
-  }
-  if (options?.includeQueueStats) {
-    const queueStats = formatContinuityQueueStats(continuity);
-    if (queueStats) {
-      parts.push(queueStats);
-    }
-  }
-  return parts.join(" ");
-}
-
-function formatContinuitySentence(
-  continuity: GenerationManifest["reference"]["continuity"] | undefined
-): string {
-  const descriptor = formatContinuityDescriptor(continuity);
-  if (!descriptor) {
-    return "";
-  }
-  return ` ${descriptor}.`;
-}
-
-function formatContinuityQueueStats(
-  continuity: GenerationManifest["reference"]["continuity"] | undefined
-): string | null {
-  if (!continuity?.attempted) {
-    return null;
-  }
-  const queued = continuity.queuedSessionCount;
-  const unique = continuity.uniqueQueuedSessionCount;
-  const duplicates = continuity.duplicateSessionCount;
-  const searched = continuity.searchedSessionCount;
-  if (
-    typeof queued !== "number" ||
-    !Number.isFinite(queued) ||
-    typeof unique !== "number" ||
-    !Number.isFinite(unique) ||
-    typeof duplicates !== "number" ||
-    !Number.isFinite(duplicates)
-  ) {
-    return null;
-  }
-  const parts = [`queue=${queued}`, `unique=${unique}`, `dup=${duplicates}`];
-  if (typeof searched === "number" && Number.isFinite(searched)) {
-    parts.push(`searched=${searched}`);
-  }
-  return parts.join(" ");
-}
-
-function toFlatContinuityFields(continuity: GenerationManifest["reference"]["continuity"] | undefined): {
-  continuitySummary: GenerationManifest["reference"]["continuity"] | null;
-  continuityDescriptor: string | null;
-  continuityDescriptorWithQueue: string | null;
-  continuityReason: string | null;
-  continuityApplied: boolean | null;
-  continuityAttempted: boolean | null;
-  continuitySourceSessionId: string | null;
-  continuitySourcePool: "preferred" | "fallback" | null;
-  continuityQueuedSessionCount: number | null;
-  continuityUniqueQueuedSessionCount: number | null;
-  continuityDuplicateSessionCount: number | null;
-  continuitySearchedSessionCount: number | null;
-  continuityQueueStats: string | null;
-} {
-  const descriptor = formatContinuityDescriptor(continuity);
-  const descriptorWithQueue = formatContinuityDescriptor(continuity, { includeQueueStats: true });
-  const queueStats = formatContinuityQueueStats(continuity);
-  return {
-    continuitySummary: continuity ?? null,
-    continuityDescriptor: descriptor,
-    continuityDescriptorWithQueue: descriptorWithQueue,
-    continuityReason: continuity?.reason ?? null,
-    continuityApplied: continuity?.applied ?? null,
-    continuityAttempted: continuity?.attempted ?? null,
-    continuitySourceSessionId: continuity?.attemptedSourceSessionId ?? null,
-    continuitySourcePool: continuity?.sourcePool ?? null,
-    continuityQueuedSessionCount: continuity?.queuedSessionCount ?? null,
-    continuityUniqueQueuedSessionCount: continuity?.uniqueQueuedSessionCount ?? null,
-    continuityDuplicateSessionCount: continuity?.duplicateSessionCount ?? null,
-    continuitySearchedSessionCount: continuity?.searchedSessionCount ?? null,
-    continuityQueueStats: queueStats
-  };
-}
-
-function resolveManifestAcceptedScoreThreshold(manifest: GenerationManifest): number {
-  if (typeof manifest.selectionHints?.minAcceptedScore === "number") {
-    return manifest.selectionHints.minAcceptedScore;
-  }
-  if (isMascotTargetStyle(manifest.qualityProfile?.targetStyle)) {
-    return 0.58;
-  }
-  return manifest.qualityProfile?.qualityTier === "production" ? 0.74 : 0.67;
-}
-
 function buildHitlSessionStatusMessage(input: {
   viewToGenerate: CharacterGenerationView | undefined;
   missingGeneratedViews: CharacterView[];
@@ -13033,7 +12665,7 @@ async function persistSelectedCandidates(input: {
   workflowHash
   } = input;
 
-  const acceptedScoreThreshold = resolveManifestAcceptedScoreThreshold(manifest);
+  const acceptedScoreThreshold = resolveManifestAcceptedScoreThreshold(manifest, isMascotTargetStyle);
   const packCoherence = buildPackCoherenceDiagnostics({
     selectedByView,
     targetStyle: manifest.qualityProfile?.targetStyle,
@@ -13644,11 +13276,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const earlyLimits = readGenerationLimits();
   const earlyViews = generation.viewToGenerate ? [generation.viewToGenerate] : CHARACTER_VIEWS;
   const earlyClamped = clampGenerationRequest(generation, earlyViews.length, earlyLimits);
-  const manifestPath = manifestBasePath(jobDbId, generation.manifestPath);
+  const manifestPath = manifestBasePath(jobDbId, generation.manifestPath, REPO_ROOT);
   const referenceSourceManifestPath = resolveManifestReadPath(jobDbId, {
     manifestPath: generation.manifestPath,
     sourceManifestPath: generation.sourceManifestPath
-  });
+  }, REPO_ROOT);
   const progressPath = path.join(path.dirname(manifestPath), "generation_progress.json");
   const writeGenerationProgress = async (progress: number, stage: string, details?: Record<string, unknown>) => {
     const progressPayload = {
@@ -13853,7 +13485,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     const selectedManifestPath = resolveHitlSelectionManifestReadPath(jobDbId, {
       manifestPath: generation.manifestPath,
       sourceManifestPath: generation.sourceManifestPath
-    });
+    }, REPO_ROOT);
 
     if (!fs.existsSync(selectedManifestPath)) {
       throw new Error(`HITL manifest not found: ${selectedManifestPath}`);
