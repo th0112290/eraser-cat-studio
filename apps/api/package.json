@@ -12,6 +12,7 @@
     "smoke:ui:artifact-freshness": "tsx src/routes/uiRoutesFreshness.smoke.ts",
     "smoke:ui:benchmark-refresh": "tsx src/routes/uiRoutesBenchmarkRefresh.smoke.ts",
     "smoke:character-proposal-apply": "tsx src/routes/characterRoutesProposalApply.smoke.ts",
+    "smoke:character-action-contracts": "tsx src/routes/characterRoutesActionContract.smoke.ts",
     "smoke:error-payload": "tsx src/errors/errorPayload.smoke.ts",
     "test:schedule": "dotenv -e ../../.env -o -- tsx src/services/scheduleService.test.ts",
     "test:report": "dotenv -e ../../.env -o -- tsx src/services/reportService.test.ts"

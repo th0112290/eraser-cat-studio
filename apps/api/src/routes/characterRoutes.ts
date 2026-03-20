@@ -647,6 +647,14 @@ type CharacterPackLineageOverrideSummary = {
 
 type CharacterOverrideKind = "anchors" | "cropBoxes";
 type CharacterProposalApplyMode = CharacterOverrideKind | "all";
+type CharacterProposalApplyRequest = {
+  generateJobId: string;
+  applyMode: CharacterProposalApplyMode;
+  rebuild: boolean;
+};
+type CharacterRebuildSelectedRequest = {
+  generateJobId: string;
+};
 
 type CharacterGenerationOverrideTarget = {
   generateJobId: string;
@@ -3151,6 +3159,35 @@ export function buildProposalApplyOverrideDocuments(input: {
     appliedKinds,
     anchorsText,
     cropBoxesText
+  };
+}
+
+export function parseCharacterProposalApplyRequest(body: unknown): CharacterProposalApplyRequest {
+  const payload = requireBodyObject(body);
+  const generateJobId = optionalString(payload, "generateJobId");
+  const applyModeRaw = optionalString(payload, "applyMode") ?? "all";
+  const rebuild = payload.rebuild === true || optionalString(payload, "afterApply") === "rebuild";
+  if (!generateJobId) {
+    throw createHttpError(400, "generateJobId is required");
+  }
+  if (applyModeRaw !== "all" && applyModeRaw !== "anchors" && applyModeRaw !== "cropBoxes") {
+    throw createHttpError(400, "applyMode must be all, anchors, or cropBoxes");
+  }
+  return {
+    generateJobId,
+    applyMode: applyModeRaw,
+    rebuild
+  };
+}
+
+export function parseCharacterRebuildSelectedRequest(body: unknown): CharacterRebuildSelectedRequest {
+  const payload = requireBodyObject(body);
+  const generateJobId = optionalString(payload, "generateJobId");
+  if (!generateJobId) {
+    throw createHttpError(400, "generateJobId is required");
+  }
+  return {
+    generateJobId
   };
 }
 
@@ -7074,11 +7111,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
   });
 
   app.post("/api/character-generator/rebuild-selected", async (request, reply) => {
-    const body = requireBodyObject(request.body);
-    const generateJobId = optionalString(body, "generateJobId");
-    if (!generateJobId) {
-      throw createHttpError(400, "generateJobId is required");
-    }
+    const { generateJobId } = parseCharacterRebuildSelectedRequest(request.body);
 
     const created = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
       generateJobId
@@ -7148,21 +7181,12 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
   });
 
   app.post("/api/character-generator/proposals/apply", async (request, reply) => {
-    const body = requireBodyObject(request.body);
-    const generateJobId = optionalString(body, "generateJobId");
-    const applyModeRaw = optionalString(body, "applyMode") ?? "all";
-    const rebuild = body.rebuild === true || optionalString(body, "afterApply") === "rebuild";
-    if (!generateJobId) {
-      throw createHttpError(400, "generateJobId is required");
-    }
-    if (applyModeRaw !== "all" && applyModeRaw !== "anchors" && applyModeRaw !== "cropBoxes") {
-      throw createHttpError(400, "applyMode must be all, anchors, or cropBoxes");
-    }
+    const { generateJobId, applyMode, rebuild } = parseCharacterProposalApplyRequest(request.body);
 
     const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
     const applied = applyProposalOverridesToCharacterPack({
       context,
-      applyMode: applyModeRaw
+      applyMode
     });
     const rebuilt = rebuild
       ? await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
@@ -7172,7 +7196,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
 
     return reply.code(201).send({
       data: {
-        applyMode: applyModeRaw,
+        applyMode,
         appliedKinds: applied.appliedKinds,
         characterPackId: context.characterPackId,
         anchorsOverridePath: applied.anchorsOverridePath,
@@ -9358,22 +9382,14 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const creationNav = readCreationNavState(body);
     const fallbackJobId = optionalString(body, "generateJobId") ?? creationNav.jobId;
     try {
-      const generateJobId = optionalString(body, "generateJobId");
-      if (!generateJobId) {
-        throw createHttpError(400, "generateJobId is required");
-      }
-      const applyModeRaw = optionalString(body, "applyMode") ?? "all";
-      if (applyModeRaw !== "all" && applyModeRaw !== "anchors" && applyModeRaw !== "cropBoxes") {
-        throw createHttpError(400, "applyMode must be all, anchors, or cropBoxes");
-      }
-      const afterApply = optionalString(body, "afterApply");
+      const { generateJobId, applyMode, rebuild } = parseCharacterProposalApplyRequest(body);
       const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
       const applied = applyProposalOverridesToCharacterPack({
         context,
-        applyMode: applyModeRaw
+        applyMode
       });
 
-      if (afterApply === "rebuild") {
+      if (rebuild) {
         const rebuilt = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
           generateJobId
         });
@@ -9427,10 +9443,7 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     const creationNav = readCreationNavState(body);
     const fallbackJobId = optionalString(body, "generateJobId") ?? creationNav.jobId;
     try {
-      const generateJobId = optionalString(body, "generateJobId");
-      if (!generateJobId) {
-        throw createHttpError(400, "generateJobId is required");
-      }
+      const { generateJobId } = parseCharacterRebuildSelectedRequest(body);
       const rebuilt = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
         generateJobId
       });
