@@ -66,6 +66,7 @@ import {
 import { initializeGenerationStageRuntime } from "./characterGenerationStageRuntime";
 import { runGenerationLifecycle } from "./characterGenerationLifecycle";
 import { runSelectionAutoRerouteFlow } from "./characterGenerationAutoReroute";
+import { runGenerationCompletionRuntime } from "./characterGenerationCompletionRuntime";
 import { finalizeSelectedCandidatePersistence } from "./characterGenerationSelectionFinalize";
 import {
   handleSelectionReviewGate,
@@ -12824,22 +12825,16 @@ export async function handleGenerateCharacterAssetsJob(input: {
     upsertSessionCandidates,
     insertProviderCallLogs
   });
-  await completePostScoreGeneration<GenerationManifest>({
+  await runGenerationCompletionRuntime({
+    completePostScoreGeneration,
     referenceSourceManifestPath,
-    viewToGenerate: generation.viewToGenerate,
+    generation,
     isRecord,
     parseManifestCandidate,
-    selectionOutcome: {
-      selectedByView: selectionOutcome.selectedByView,
-      missingGeneratedViews: selectionOutcome.missingGeneratedViews,
-      lowQualityGeneratedViews: selectionOutcome.lowQualityGeneratedViews,
-      packCoherence: selectionOutcome.packCoherence,
-      rigStability: selectionOutcome.rigStability,
-      coherenceIssues: selectionOutcome.coherenceIssues
-    },
+    selectionOutcome,
     acceptedScoreThreshold,
     autoRerouteDiagnostics,
-    workflowStageRuns: workflowStageRuns as Array<Record<string, unknown>>,
+    workflowStageRuns,
     promptBundle,
     mascotReferenceBankDiagnostics,
     mascotReferenceBankReviewPlan,
@@ -12851,7 +12846,6 @@ export async function handleGenerateCharacterAssetsJob(input: {
     clampedWarnings: clamped.warnings,
     providerWorkflowHash,
     providerGeneratedAt,
-    generation,
     ultraWorkflowEnabled,
     workflowTemplateVersion: ULTRA_WORKFLOW_TEMPLATE_VERSION,
     episodeId: payload.episodeId,
@@ -12862,174 +12856,33 @@ export async function handleGenerateCharacterAssetsJob(input: {
     starterReferencePathsByView,
     referenceAnalysis,
     continuitySnapshot,
-    scored: scored as Array<{
-      score: number;
-      styleScore: number;
-      referenceSimilarity: number | null;
-      consistencyScore: number | null;
-      warnings: string[];
-      rejections: string[];
-      breakdown: unknown;
-      candidate: {
-        id: string;
-        provider?: string;
-        view: CharacterView;
-        candidateIndex: number;
-        seed: number;
-        mimeType: string;
-        providerMeta?: unknown;
-      };
-    }>,
+    scored,
     requestedViews,
     writeGenerationProgress,
     summarizeBestScores,
-    resolveSelectionRisk: (flowInput) =>
-      assessAutoSelectionRisk({
-        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
-        packCoherence: flowInput.packCoherence as PackCoherenceDiagnostics,
-        rigStability: flowInput.rigStability as RigStabilityDiagnostics,
-        targetStyle: flowInput.targetStyle,
-        acceptedScoreThreshold: flowInput.acceptedScoreThreshold,
-        autoReroute: flowInput.autoReroute as AutoRerouteDiagnostics | undefined,
-        speciesId: flowInput.speciesId
-      }),
-    resolveQualityEmbargo: (flowInput) =>
-      assessQualityEmbargo({
-        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
-        rigStability: flowInput.rigStability as RigStabilityDiagnostics,
-        targetStyle: flowInput.targetStyle,
-        acceptedScoreThreshold: flowInput.acceptedScoreThreshold,
-        autoReroute: flowInput.autoReroute as AutoRerouteDiagnostics | undefined,
-        speciesId: flowInput.speciesId
-      }),
-    buildPackDefectSummary: (flowInput) =>
-      buildPackDefectSummary({
-        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
-        workflowStages: flowInput.workflowStages as StageRunSummary[],
-        speciesId: flowInput.speciesId
-      }),
-    resolveFinalQualityFirewall: (flowInput) =>
-      assessFinalQualityFirewall({
-        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
-        targetStyle: flowInput.targetStyle,
-        acceptedScoreThreshold: flowInput.acceptedScoreThreshold,
-        autoReroute: flowInput.autoReroute as AutoRerouteDiagnostics | undefined,
-        packCoherence: flowInput.packCoherence as PackCoherenceDiagnostics,
-        rigStability: flowInput.rigStability as RigStabilityDiagnostics,
-        selectionRisk: flowInput.selectionRisk as SelectionRiskAssessment,
-        qualityEmbargo: flowInput.qualityEmbargo as QualityEmbargoAssessment,
-        packDefectSummary: flowInput.packDefectSummary as PackDefectSummary,
-        speciesId: flowInput.speciesId
-      }),
-    summarizeSelectionCandidateSummaryByView: (flowInput) =>
-      summarizeSelectionCandidateSummaryByView({
-        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
-        targetStyle: flowInput.targetStyle,
-        acceptedScoreThreshold: flowInput.acceptedScoreThreshold
-      }),
-    resolveSelectionWorstRuntimeBucket: (flowInput) =>
-      resolveSelectionWorstRuntimeBucket({
-        selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
-        targetStyle: flowInput.targetStyle
-      }),
-    withManifestHashes: (manifestToHash) =>
-      withManifestHashes(
-        manifestToHash as Omit<GenerationManifest, "inputHash" | "manifestHash">
-      ),
-    handleHitlSelection: async ({
-      manifest,
-      missingGeneratedViews,
-      lowQualityGeneratedViews,
-      coherenceIssues,
-      packCoherence,
-      initialRigStability,
-      initialSelectionRisk,
-      initialQualityEmbargo,
-      initialFinalQualityFirewall
-    }) => {
-      const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
-      await handleHitlRequiredSelection({
-        manifest,
-        manifestPath,
-        providerName,
-        providerWarning,
-        scoredCandidateCount: scored.length,
-        acceptedScoreThreshold,
-        missingGeneratedViews,
-        lowQualityGeneratedViews,
-        coherenceIssues,
-        packCoherence: packCoherence as PackCoherenceDiagnostics | undefined,
-        rigStability: initialRigStability as RigStabilityDiagnostics | undefined,
-        selectionRisk: initialSelectionRisk as SelectionRiskAssessment | undefined,
-        qualityEmbargo: initialQualityEmbargo as QualityEmbargoAssessment | undefined,
-        finalQualityFirewall: initialFinalQualityFirewall as QualityEmbargoAssessment | undefined,
-        autoReroute: autoRerouteDiagnostics,
-        viewToGenerate: generation.viewToGenerate,
-        mode: generation.mode,
-        promptPresetId: promptBundle.presetId,
-        sessionId: sessionId!,
-        episodeId: payload.episodeId,
-        jobDbId,
-        buildJobDbId: character.buildJobDbId,
-        previewJobDbId: character.previewJobDbId,
-        limits: {
-          maxCandidatesPerView: limits.maxCandidatesPerView,
-          maxTotalImages: limits.maxTotalImages,
-          maxRetries: limits.maxRetries
-        },
-        budget,
-        writeGenerationProgress,
-        createAgentSuggestion: async (entry) => {
-          await prisma.agentSuggestion.create({
-            data: {
-              episodeId: payload.episodeId,
-              jobId: jobDbId,
-              type: "HITL_REVIEW",
-              status: "PENDING",
-              title: entry.title,
-              summary: entry.summary,
-              payload: toPrismaJson(entry.payload)
-            }
-          });
-        },
-        setJobStatus: helpers.setJobStatus,
-        logJob: helpers.logJob,
-        updateSessionReady: sessionDelegate
-          ? async (statusMessage) => {
-              await sessionDelegate.update({
-                where: { id: sessionId },
-                data: {
-                  status: "READY",
-                  statusMessage
-                }
-              });
-            }
-          : undefined
-      });
-    },
-    persistAutoSelection: async ({ manifest, selectedByView }) => {
-      await persistSelectedCandidates({
-        prisma,
-        sessionId,
-        episodeId: payload.episodeId,
-        episodeChannelId: episode.channelId,
-        jobDbId,
-        character,
-        selectedByView: {
-          front: selectedByView.front as ScoredCandidate,
-          threeQuarter: selectedByView.threeQuarter as ScoredCandidate,
-          profile: selectedByView.profile as ScoredCandidate
-        },
-        manifest,
-        manifestPath,
-        maxAttempts,
-        retryBackoffMs,
-        helpers,
-        source: "auto",
-        providerName,
-        workflowHash: providerWorkflowHash
-      });
-    }
+    assessAutoSelectionRisk,
+    assessQualityEmbargo,
+    buildPackDefectSummary,
+    assessFinalQualityFirewall,
+    summarizeSelectionCandidateSummaryByView,
+    resolveSelectionWorstRuntimeBucket,
+    withManifestHashes,
+    handleHitlRequiredSelection,
+    getCharacterGenerationSessionDelegate,
+    prisma,
+    manifestPath,
+    jobDbId,
+    buildJobDbId: character.buildJobDbId,
+    previewJobDbId: character.previewJobDbId,
+    limits,
+    budget,
+    toPrismaJson,
+    helpers,
+    persistSelectedCandidates,
+    episodeChannelId: episode.channelId,
+    character,
+    maxAttempts,
+    retryBackoffMs
   });
   } catch (error) {
     if (sessionId) {
