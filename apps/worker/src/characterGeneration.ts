@@ -65,8 +65,7 @@ import {
   prepareSelectionPersistenceContext
 } from "./characterGenerationSelectionAssessment";
 import {
-  buildInitialGenerationManifest,
-  loadRetainedManifestState
+  completePostScoreGeneration
 } from "./characterGenerationCompletionFlow";
 import {
   getCharacterGenerationCandidateDelegate,
@@ -16222,25 +16221,11 @@ export async function handleGenerateCharacterAssetsJob(input: {
     bestScores: summarizeBestScores(requestedViews)
   });
 
-  const { retainedManifestCandidates, retainedSelectedByView } = loadRetainedManifestState<GenerationManifest["selectedByView"]>({
+  await completePostScoreGeneration<GenerationManifest>({
     referenceSourceManifestPath,
     viewToGenerate: generation.viewToGenerate,
     isRecord,
-    parseManifestCandidate
-  });
-  const {
-    selectedByView,
-    missingGeneratedViews,
-    lowQualityGeneratedViews,
-    packCoherence,
-    initialRigStability,
-    coherenceIssues,
-    initialSelectionRisk,
-    initialQualityEmbargo,
-    initialFinalQualityFirewall,
-    requiresHitl,
-    manifest
-  } = buildInitialGenerationManifest<GenerationManifest>({
+    parseManifestCandidate,
     selectionOutcome: {
       selectedByView: selectionOutcome.selectedByView,
       missingGeneratedViews: selectionOutcome.missingGeneratedViews,
@@ -16269,8 +16254,6 @@ export async function handleGenerateCharacterAssetsJob(input: {
     episodeId: payload.episodeId,
     sessionId,
     characterPackId: character.characterPackId,
-    retainedManifestCandidates,
-    retainedSelectedByView,
     continuityReferenceSessionId,
     starterReferencePath,
     starterReferencePathsByView,
@@ -16294,6 +16277,9 @@ export async function handleGenerateCharacterAssetsJob(input: {
         providerMeta?: unknown;
       };
     }>,
+    requestedViews,
+    writeGenerationProgress,
+    summarizeBestScores,
     resolveSelectionRisk: (flowInput) =>
       assessAutoSelectionRisk({
         selectedByView: flowInput.selectedByView as Partial<Record<CharacterView, ScoredCandidate>>,
@@ -16346,126 +16332,101 @@ export async function handleGenerateCharacterAssetsJob(input: {
     withManifestHashes: (manifestToHash) =>
       withManifestHashes(
         manifestToHash as Omit<GenerationManifest, "inputHash" | "manifestHash">
-      )
-  });
-  await writeGenerationProgress(94, "manifest_built", {
-    requiresHitl,
-    missingGeneratedViews,
-    lowQualityGeneratedViews,
-    coherenceIssues,
-    packCoherence,
-    ...(autoRerouteDiagnostics
-      ? {
-          autoReroute: {
-            attempted: autoRerouteDiagnostics.attempted,
-            recovered: autoRerouteDiagnostics.recovered ?? null,
-            strategy: autoRerouteDiagnostics.strategy ?? null,
-            targetViews: autoRerouteDiagnostics.targetViews
-          }
-        }
-      : {}),
-    bestScores: summarizeBestScores(requestedViews)
-  });
-
-  if (requiresHitl) {
-    const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
-    await handleHitlRequiredSelection({
+      ),
+    handleHitlSelection: async ({
       manifest,
-      manifestPath,
-      providerName,
-      providerWarning,
-      scoredCandidateCount: scored.length,
-      acceptedScoreThreshold,
       missingGeneratedViews,
       lowQualityGeneratedViews,
       coherenceIssues,
-      packCoherence: packCoherence as PackCoherenceDiagnostics | undefined,
-      rigStability: initialRigStability as RigStabilityDiagnostics | undefined,
-      selectionRisk: initialSelectionRisk as SelectionRiskAssessment | undefined,
-      qualityEmbargo: initialQualityEmbargo as QualityEmbargoAssessment | undefined,
-      finalQualityFirewall: initialFinalQualityFirewall as QualityEmbargoAssessment | undefined,
-      autoReroute: autoRerouteDiagnostics,
-      viewToGenerate: generation.viewToGenerate,
-      mode: generation.mode,
-      promptPresetId: promptBundle.presetId,
-      sessionId,
-      episodeId: payload.episodeId,
-      jobDbId,
-      buildJobDbId: character.buildJobDbId,
-      previewJobDbId: character.previewJobDbId,
-      limits: {
-        maxCandidatesPerView: limits.maxCandidatesPerView,
-        maxTotalImages: limits.maxTotalImages,
-        maxRetries: limits.maxRetries
-      },
-      budget,
-      writeGenerationProgress,
-      createAgentSuggestion: async (entry) => {
-        await prisma.agentSuggestion.create({
-          data: {
-            episodeId: payload.episodeId,
-            jobId: jobDbId,
-            type: "HITL_REVIEW",
-            status: "PENDING",
-            title: entry.title,
-            summary: entry.summary,
-            payload: toPrismaJson(entry.payload)
-          }
-        });
-      },
-      setJobStatus: helpers.setJobStatus,
-      logJob: helpers.logJob,
-      updateSessionReady: sessionDelegate
-        ? async (statusMessage) => {
-            await sessionDelegate.update({
-              where: { id: sessionId },
-              data: {
-                status: "READY",
-                statusMessage
-              }
-            });
-          }
-        : undefined
-    });
-
-    return;
-  }
-
-  const selected = {
-    front: selectedByView.front,
-    threeQuarter: selectedByView.threeQuarter,
-    profile: selectedByView.profile
-  };
-  if (!selected.front || !selected.threeQuarter || !selected.profile) {
-    throw new Error("Failed to select candidates for all required views");
-  }
-
-  await persistSelectedCandidates({
-    prisma,
-    sessionId,
-    episodeId: payload.episodeId,
-    episodeChannelId: episode.channelId,
-    jobDbId,
-    character,
-    selectedByView: {
-      front: selected.front as ScoredCandidate,
-      threeQuarter: selected.threeQuarter as ScoredCandidate,
-      profile: selected.profile as ScoredCandidate
+      packCoherence,
+      initialRigStability,
+      initialSelectionRisk,
+      initialQualityEmbargo,
+      initialFinalQualityFirewall
+    }) => {
+      const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
+      await handleHitlRequiredSelection({
+        manifest,
+        manifestPath,
+        providerName,
+        providerWarning,
+        scoredCandidateCount: scored.length,
+        acceptedScoreThreshold,
+        missingGeneratedViews,
+        lowQualityGeneratedViews,
+        coherenceIssues,
+        packCoherence: packCoherence as PackCoherenceDiagnostics | undefined,
+        rigStability: initialRigStability as RigStabilityDiagnostics | undefined,
+        selectionRisk: initialSelectionRisk as SelectionRiskAssessment | undefined,
+        qualityEmbargo: initialQualityEmbargo as QualityEmbargoAssessment | undefined,
+        finalQualityFirewall: initialFinalQualityFirewall as QualityEmbargoAssessment | undefined,
+        autoReroute: autoRerouteDiagnostics,
+        viewToGenerate: generation.viewToGenerate,
+        mode: generation.mode,
+        promptPresetId: promptBundle.presetId,
+        sessionId: sessionId!,
+        episodeId: payload.episodeId,
+        jobDbId,
+        buildJobDbId: character.buildJobDbId,
+        previewJobDbId: character.previewJobDbId,
+        limits: {
+          maxCandidatesPerView: limits.maxCandidatesPerView,
+          maxTotalImages: limits.maxTotalImages,
+          maxRetries: limits.maxRetries
+        },
+        budget,
+        writeGenerationProgress,
+        createAgentSuggestion: async (entry) => {
+          await prisma.agentSuggestion.create({
+            data: {
+              episodeId: payload.episodeId,
+              jobId: jobDbId,
+              type: "HITL_REVIEW",
+              status: "PENDING",
+              title: entry.title,
+              summary: entry.summary,
+              payload: toPrismaJson(entry.payload)
+            }
+          });
+        },
+        setJobStatus: helpers.setJobStatus,
+        logJob: helpers.logJob,
+        updateSessionReady: sessionDelegate
+          ? async (statusMessage) => {
+              await sessionDelegate.update({
+                where: { id: sessionId },
+                data: {
+                  status: "READY",
+                  statusMessage
+                }
+              });
+            }
+          : undefined
+      });
     },
-    manifest,
-    manifestPath,
-    maxAttempts,
-    retryBackoffMs,
-    helpers,
-    source: "auto",
-    providerName,
-    workflowHash: providerWorkflowHash
-  });
-  await writeGenerationProgress(97, "persist_selected_candidates_auto", {
-    manifestPath,
-    requiresHitl: false,
-    provider: providerName,
-    bestScores: summarizeBestScores(requestedViews)
+    persistAutoSelection: async ({ manifest, selectedByView }) => {
+      await persistSelectedCandidates({
+        prisma,
+        sessionId,
+        episodeId: payload.episodeId,
+        episodeChannelId: episode.channelId,
+        jobDbId,
+        character,
+        selectedByView: {
+          front: selectedByView.front as ScoredCandidate,
+          threeQuarter: selectedByView.threeQuarter as ScoredCandidate,
+          profile: selectedByView.profile as ScoredCandidate
+        },
+        manifest,
+        manifestPath,
+        maxAttempts,
+        retryBackoffMs,
+        helpers,
+        source: "auto",
+        providerName,
+        workflowHash: providerWorkflowHash
+      });
+    }
   });
   } catch (error) {
     if (sessionId) {

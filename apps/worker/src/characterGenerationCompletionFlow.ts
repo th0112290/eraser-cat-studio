@@ -418,3 +418,224 @@ export function buildInitialGenerationManifest<TManifest>(input: {
     manifest
   };
 }
+
+export async function completePostScoreGeneration<TManifest>(input: {
+  referenceSourceManifestPath: string;
+  viewToGenerate?: CharacterView;
+  isRecord: (value: unknown) => value is Record<string, unknown>;
+  parseManifestCandidate: (
+    sourcePath: string,
+    candidate: unknown
+  ) => ParsedManifestCandidateLike | null;
+  selectionOutcome: SelectionOutcomeLike;
+  acceptedScoreThreshold: number;
+  autoRerouteDiagnostics?: unknown;
+  workflowStageRuns: Array<Record<string, unknown>>;
+  promptBundle: PromptBundleLike;
+  mascotReferenceBankDiagnostics?: unknown;
+  mascotReferenceBankReviewPlan: ReviewPlanLike;
+  mascotReferenceBankReviewChecklist: ReviewChecklistLike;
+  providerRunMeta?: {
+    selectionDiagnostics?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  providerName: string;
+  requestedProvider: string;
+  providerWarning?: string | null;
+  clampedWarnings: string[];
+  providerWorkflowHash: string;
+  providerGeneratedAt: string;
+  generation: GenerationLike;
+  ultraWorkflowEnabled: boolean;
+  workflowTemplateVersion: string;
+  episodeId: string;
+  sessionId: string;
+  characterPackId: string;
+  continuityReferenceSessionId?: string | null;
+  starterReferencePath?: string | null;
+  starterReferencePathsByView?: Partial<Record<CharacterView, string>>;
+  referenceAnalysis?: {
+    phash?: string | null;
+    palette?: Array<[number, number, number]> | null;
+  };
+  continuitySnapshot?: unknown;
+  scored: ScoredCandidateLike[];
+  requestedViews: CharacterView[];
+  writeGenerationProgress: (progress: number, stage: string, details?: Record<string, unknown>) => Promise<void>;
+  summarizeBestScores: (views: CharacterView[]) => unknown;
+  resolveSelectionRisk: (input: {
+    selectedByView: Partial<Record<CharacterView, unknown>>;
+    packCoherence: unknown;
+    rigStability: unknown;
+    targetStyle: string | undefined;
+    acceptedScoreThreshold: number;
+    autoReroute: unknown;
+    speciesId: string | undefined;
+  }) => unknown;
+  resolveQualityEmbargo: (input: {
+    selectedByView: Partial<Record<CharacterView, unknown>>;
+    rigStability: unknown;
+    targetStyle: string | undefined;
+    acceptedScoreThreshold: number;
+    autoReroute: unknown;
+    speciesId: string | undefined;
+  }) => unknown;
+  buildPackDefectSummary: (input: {
+    selectedByView: Partial<Record<CharacterView, unknown>>;
+    workflowStages: Array<Record<string, unknown>>;
+    speciesId: string | undefined;
+  }) => unknown;
+  resolveFinalQualityFirewall: (input: {
+    selectedByView: Partial<Record<CharacterView, unknown>>;
+    targetStyle: string | undefined;
+    acceptedScoreThreshold: number;
+    autoReroute: unknown;
+    packCoherence: unknown;
+    rigStability: unknown;
+    selectionRisk: unknown;
+    qualityEmbargo: unknown;
+    packDefectSummary: unknown;
+    speciesId: string | undefined;
+  }) => { level?: string } | undefined;
+  summarizeSelectionCandidateSummaryByView: (input: {
+    selectedByView: Partial<Record<CharacterView, unknown>>;
+    targetStyle: string | undefined;
+    acceptedScoreThreshold: number;
+  }) => unknown;
+  resolveSelectionWorstRuntimeBucket: (input: {
+    selectedByView: Partial<Record<CharacterView, unknown>>;
+    targetStyle: string | undefined;
+  }) => "clean" | "warn" | "degraded" | "compound" | "block" | undefined;
+  withManifestHashes: (manifest: unknown) => TManifest;
+  handleHitlSelection: (input: {
+    manifest: TManifest;
+    missingGeneratedViews: CharacterView[];
+    lowQualityGeneratedViews: CharacterView[];
+    coherenceIssues: string[];
+    packCoherence: unknown;
+    initialRigStability: unknown;
+    initialSelectionRisk: unknown;
+    initialQualityEmbargo: unknown;
+    initialFinalQualityFirewall: { level?: string } | undefined;
+  }) => Promise<void>;
+  persistAutoSelection: (input: {
+    manifest: TManifest;
+    selectedByView: Record<CharacterView, ScoredCandidateLike>;
+  }) => Promise<void>;
+}): Promise<void> {
+  const { retainedManifestCandidates, retainedSelectedByView } = loadRetainedManifestState<Record<string, unknown>>({
+    referenceSourceManifestPath: input.referenceSourceManifestPath,
+    viewToGenerate: input.viewToGenerate,
+    isRecord: input.isRecord,
+    parseManifestCandidate: input.parseManifestCandidate
+  });
+
+  const {
+    selectedByView,
+    missingGeneratedViews,
+    lowQualityGeneratedViews,
+    packCoherence,
+    initialRigStability,
+    coherenceIssues,
+    initialSelectionRisk,
+    initialQualityEmbargo,
+    initialFinalQualityFirewall,
+    requiresHitl,
+    manifest
+  } = buildInitialGenerationManifest<TManifest>({
+    selectionOutcome: input.selectionOutcome,
+    acceptedScoreThreshold: input.acceptedScoreThreshold,
+    autoRerouteDiagnostics: input.autoRerouteDiagnostics,
+    workflowStageRuns: input.workflowStageRuns,
+    promptBundle: input.promptBundle,
+    mascotReferenceBankDiagnostics: input.mascotReferenceBankDiagnostics,
+    mascotReferenceBankReviewPlan: input.mascotReferenceBankReviewPlan,
+    mascotReferenceBankReviewChecklist: input.mascotReferenceBankReviewChecklist,
+    providerRunMeta: input.providerRunMeta,
+    providerName: input.providerName,
+    requestedProvider: input.requestedProvider,
+    providerWarning: input.providerWarning,
+    clampedWarnings: input.clampedWarnings,
+    providerWorkflowHash: input.providerWorkflowHash,
+    providerGeneratedAt: input.providerGeneratedAt,
+    generation: input.generation,
+    ultraWorkflowEnabled: input.ultraWorkflowEnabled,
+    workflowTemplateVersion: input.workflowTemplateVersion,
+    episodeId: input.episodeId,
+    sessionId: input.sessionId,
+    characterPackId: input.characterPackId,
+    retainedManifestCandidates,
+    retainedSelectedByView,
+    continuityReferenceSessionId: input.continuityReferenceSessionId,
+    starterReferencePath: input.starterReferencePath,
+    starterReferencePathsByView: input.starterReferencePathsByView,
+    referenceAnalysis: input.referenceAnalysis,
+    continuitySnapshot: input.continuitySnapshot,
+    scored: input.scored,
+    resolveSelectionRisk: input.resolveSelectionRisk,
+    resolveQualityEmbargo: input.resolveQualityEmbargo,
+    buildPackDefectSummary: input.buildPackDefectSummary,
+    resolveFinalQualityFirewall: input.resolveFinalQualityFirewall,
+    summarizeSelectionCandidateSummaryByView: input.summarizeSelectionCandidateSummaryByView,
+    resolveSelectionWorstRuntimeBucket: input.resolveSelectionWorstRuntimeBucket,
+    withManifestHashes: input.withManifestHashes
+  });
+
+  await input.writeGenerationProgress(94, "manifest_built", {
+    requiresHitl,
+    missingGeneratedViews,
+    lowQualityGeneratedViews,
+    coherenceIssues,
+    packCoherence,
+    ...(input.autoRerouteDiagnostics
+      ? {
+          autoReroute: {
+            attempted: (input.autoRerouteDiagnostics as { attempted?: boolean }).attempted,
+            recovered: (input.autoRerouteDiagnostics as { recovered?: boolean | null }).recovered ?? null,
+            strategy: (input.autoRerouteDiagnostics as { strategy?: string | null }).strategy ?? null,
+            targetViews: (input.autoRerouteDiagnostics as { targetViews?: unknown }).targetViews
+          }
+        }
+      : {}),
+    bestScores: input.summarizeBestScores(input.requestedViews)
+  });
+
+  if (requiresHitl) {
+    await input.handleHitlSelection({
+      manifest,
+      missingGeneratedViews,
+      lowQualityGeneratedViews,
+      coherenceIssues,
+      packCoherence,
+      initialRigStability,
+      initialSelectionRisk,
+      initialQualityEmbargo,
+      initialFinalQualityFirewall
+    });
+    return;
+  }
+
+  const selected = {
+    front: selectedByView.front,
+    threeQuarter: selectedByView.threeQuarter,
+    profile: selectedByView.profile
+  };
+  if (!selected.front || !selected.threeQuarter || !selected.profile) {
+    throw new Error("Failed to select candidates for all required views");
+  }
+
+  await input.persistAutoSelection({
+    manifest,
+    selectedByView: {
+      front: selected.front as ScoredCandidateLike,
+      threeQuarter: selected.threeQuarter as ScoredCandidateLike,
+      profile: selected.profile as ScoredCandidateLike
+    }
+  });
+
+  await input.writeGenerationProgress(97, "persist_selected_candidates_auto", {
+    requiresHitl: false,
+    provider: input.providerName,
+    bestScores: input.summarizeBestScores(input.requestedViews)
+  });
+}
