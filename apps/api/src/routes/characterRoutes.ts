@@ -646,6 +646,7 @@ type CharacterPackLineageOverrideSummary = {
 };
 
 type CharacterOverrideKind = "anchors" | "cropBoxes";
+type CharacterProposalApplyMode = CharacterOverrideKind | "all";
 
 type CharacterGenerationOverrideTarget = {
   generateJobId: string;
@@ -3090,6 +3091,69 @@ function readManualOverrideSeed(input: {
   };
 }
 
+function readProposalOverrideSeed(input: {
+  proposalPath: string | null;
+  kind: CharacterOverrideKind;
+}): string | null {
+  const proposalRaw =
+    input.proposalPath && fs.existsSync(input.proposalPath) ? readJsonFileSafe(input.proposalPath) : null;
+  const proposal = isRecord(proposalRaw) ? proposalRaw : null;
+  const autoProposal = proposal && isRecord(proposal.auto_proposal) ? proposal.auto_proposal : null;
+  const proposalSeed =
+    input.kind === "anchors"
+      ? autoProposal && isRecord(autoProposal.anchors)
+        ? autoProposal.anchors
+        : null
+      : autoProposal && isRecord(autoProposal.crop_boxes)
+        ? autoProposal.crop_boxes
+        : null;
+  if (!proposalSeed) {
+    return null;
+  }
+  return normalizePrettyJsonDocument(
+    input.kind === "anchors" ? sanitizeAnchorOverridePayload(proposalSeed) : sanitizeCropBoxOverridePayload(proposalSeed)
+  );
+}
+
+export function buildProposalApplyOverrideDocuments(input: {
+  proposalPath: string | null;
+  applyMode: CharacterProposalApplyMode;
+}): {
+  appliedKinds: CharacterOverrideKind[];
+  anchorsText: string | null;
+  cropBoxesText: string | null;
+} {
+  const anchorsText =
+    input.applyMode === "all" || input.applyMode === "anchors"
+      ? readProposalOverrideSeed({ proposalPath: input.proposalPath, kind: "anchors" })
+      : null;
+  const cropBoxesText =
+    input.applyMode === "all" || input.applyMode === "cropBoxes"
+      ? readProposalOverrideSeed({ proposalPath: input.proposalPath, kind: "cropBoxes" })
+      : null;
+  const appliedKinds: CharacterOverrideKind[] = [];
+  if (anchorsText) {
+    appliedKinds.push("anchors");
+  }
+  if (cropBoxesText) {
+    appliedKinds.push("cropBoxes");
+  }
+  if (appliedKinds.length === 0) {
+    throw createHttpError(400, "proposal.json does not expose anchor or crop-box override seeds yet");
+  }
+  if (input.applyMode === "anchors" && !anchorsText) {
+    throw createHttpError(400, "proposal.json does not expose anchors yet");
+  }
+  if (input.applyMode === "cropBoxes" && !cropBoxesText) {
+    throw createHttpError(400, "proposal.json does not expose crop boxes yet");
+  }
+  return {
+    appliedKinds,
+    anchorsText,
+    cropBoxesText
+  };
+}
+
 function normalizeManualOverrideText(rawText: string, kind: CharacterOverrideKind): string {
   const trimmed = rawText.trim();
   if (trimmed.length === 0) {
@@ -3112,6 +3176,32 @@ function normalizeManualOverrideText(rawText: string, kind: CharacterOverrideKin
 
 function resolveManualOverrideFilePath(characterRoot: string, kind: CharacterOverrideKind): string {
   return path.join(characterRoot, "pack", "overrides", kind === "anchors" ? "anchors.json" : "crop-boxes.json");
+}
+
+function applyProposalOverridesToCharacterPack(input: {
+  context: CharacterGenerationOverrideTarget;
+  applyMode: CharacterProposalApplyMode;
+}): {
+  appliedKinds: CharacterOverrideKind[];
+  anchorsOverridePath: string | null;
+  cropBoxesOverridePath: string | null;
+} {
+  const documents = buildProposalApplyOverrideDocuments({
+    proposalPath: input.context.lineage.proposalPath,
+    applyMode: input.applyMode
+  });
+  fs.mkdirSync(path.dirname(input.context.anchorsOverridePath), { recursive: true });
+  if (documents.anchorsText) {
+    fs.writeFileSync(input.context.anchorsOverridePath, documents.anchorsText, "utf8");
+  }
+  if (documents.cropBoxesText) {
+    fs.writeFileSync(input.context.cropBoxesOverridePath, documents.cropBoxesText, "utf8");
+  }
+  return {
+    appliedKinds: documents.appliedKinds,
+    anchorsOverridePath: documents.anchorsText ? input.context.anchorsOverridePath : null,
+    cropBoxesOverridePath: documents.cropBoxesText ? input.context.cropBoxesOverridePath : null
+  };
 }
 
 async function resolveCharacterGenerationOverrideContext(
@@ -7057,6 +7147,41 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
     });
   });
 
+  app.post("/api/character-generator/proposals/apply", async (request, reply) => {
+    const body = requireBodyObject(request.body);
+    const generateJobId = optionalString(body, "generateJobId");
+    const applyModeRaw = optionalString(body, "applyMode") ?? "all";
+    const rebuild = body.rebuild === true || optionalString(body, "afterApply") === "rebuild";
+    if (!generateJobId) {
+      throw createHttpError(400, "generateJobId is required");
+    }
+    if (applyModeRaw !== "all" && applyModeRaw !== "anchors" && applyModeRaw !== "cropBoxes") {
+      throw createHttpError(400, "applyMode must be all, anchors, or cropBoxes");
+    }
+
+    const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
+    const applied = applyProposalOverridesToCharacterPack({
+      context,
+      applyMode: applyModeRaw
+    });
+    const rebuilt = rebuild
+      ? await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
+          generateJobId
+        })
+      : null;
+
+    return reply.code(201).send({
+      data: {
+        applyMode: applyModeRaw,
+        appliedKinds: applied.appliedKinds,
+        characterPackId: context.characterPackId,
+        anchorsOverridePath: applied.anchorsOverridePath,
+        cropBoxesOverridePath: applied.cropBoxesOverridePath,
+        rebuilt
+      }
+    });
+  });
+
   app.get("/ui/studio", async (request, reply) => {
     const query = isRecord(request.query) ? request.query : {};
     const message = optionalString(query, "message");
@@ -7612,7 +7737,21 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
                   creationNav
                 )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="overrideKind" value="cropBoxes"/><button type="submit" name="afterClear" value="clear" class="secondary">Clear crop-boxes.json</button><button type="submit" name="afterClear" value="rebuild" class="secondary"${
                   selectedHasRebuildSelection ? "" : " disabled"
-                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor" id="cg-rebuild-selection"><div class="cg-rig-kicker">Current Selection Rebuild</div><h4>Rebuild the Character Pack with current selected candidates</h4><p>This path keeps the current selected candidate ids and reruns pack assembly / preview. Use it after saving anchors.json or crop-boxes.json so compare reads the updated rig evidence without a fresh full recreate.</p><p class="cg-override-meta">${escHtml(
+                }>Clear + rebuild</button></form></div></article><article class="cg-override-editor" id="cg-apply-proposal"><div class="cg-rig-kicker">Proposal Apply</div><h4>Materialize proposal.json into override files</h4><p>Use this when the current auto proposal already looks right and you want the smallest possible repair path. This copies proposal anchors/crop boxes into override files so the next rebuild uses explicit manual artifacts instead of transient proposal state.</p><p class="cg-override-meta">${
+                  selectedGeneratedLineage.proposalUrl
+                    ? `source: <a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">proposal.json</a>`
+                    : "No proposal.json file was recorded for this run yet."
+                }</p><div class="notice">${
+                  selectedGeneratedLineage.proposalPath
+                    ? "Proposal seeds are available. Apply them when the proposal already matches the intended repair."
+                    : "Proposal apply is unavailable until pack artifacts materialize proposal.json."
+                }</div><div class="cg-override-actions"><form method="post" action="/ui/character-generator/proposals/apply">${renderCreationNavHiddenFields(
+                  creationNav
+                )}<input type="hidden" name="generateJobId" value="${escHtml(selectedJob.id)}"/><input type="hidden" name="applyMode" value="all"/><button type="submit"${
+                  selectedGeneratedLineage.proposalPath ? "" : ' class="secondary" disabled'
+                }>Apply proposal files</button><button type="submit" name="afterApply" value="rebuild" class="secondary"${
+                  selectedGeneratedLineage.proposalPath && selectedHasRebuildSelection ? "" : " disabled"
+                }>Apply proposal + rebuild</button></form></div><p class="cg-override-meta">This path overwrites override files with the current proposal seeds. Use anchors/crop-box editors instead when you need manual edits before rebuild.</p><div class="cg-inline-links">${selectedGeneratedLineage.proposalUrl ? `<a href="${escHtml(selectedGeneratedLineage.proposalUrl)}">Open proposal.json</a>` : ""}<a href="#cg-override-anchors">Anchors lane</a><a href="#cg-override-crop-boxes">Crop-box lane</a></div></article><article class="cg-override-editor" id="cg-rebuild-selection"><div class="cg-rig-kicker">Current Selection Rebuild</div><h4>Rebuild the Character Pack with current selected candidates</h4><p>This path keeps the current selected candidate ids and reruns pack assembly / preview. Use it after saving anchors.json or crop-boxes.json so compare reads the updated rig evidence without a fresh full recreate.</p><p class="cg-override-meta">${escHtml(
                   selectedRebuildSelectionSummary
                 )}</p><div class="notice">${
                   selectedHasRebuildSelection
@@ -9208,6 +9347,75 @@ export function registerCharacterRoutes(input: RegisterCharacterRoutesInput): vo
           {
             ...creationNav,
             focus: "cg-manual-overrides"
+          }
+        )
+      );
+    }
+  });
+
+  app.post("/ui/character-generator/proposals/apply", async (request, reply) => {
+    const body = isRecord(request.body) ? request.body : {};
+    const creationNav = readCreationNavState(body);
+    const fallbackJobId = optionalString(body, "generateJobId") ?? creationNav.jobId;
+    try {
+      const generateJobId = optionalString(body, "generateJobId");
+      if (!generateJobId) {
+        throw createHttpError(400, "generateJobId is required");
+      }
+      const applyModeRaw = optionalString(body, "applyMode") ?? "all";
+      if (applyModeRaw !== "all" && applyModeRaw !== "anchors" && applyModeRaw !== "cropBoxes") {
+        throw createHttpError(400, "applyMode must be all, anchors, or cropBoxes");
+      }
+      const afterApply = optionalString(body, "afterApply");
+      const context = await resolveCharacterGenerationOverrideContext(prisma, generateJobId);
+      const applied = applyProposalOverridesToCharacterPack({
+        context,
+        applyMode: applyModeRaw
+      });
+
+      if (afterApply === "rebuild") {
+        const rebuilt = await createCharacterGenerationRebuildSelected(prisma, queue, queueName, {
+          generateJobId
+        });
+        return reply.redirect(
+          hrefWithCreationNav(
+            "/ui/character-generator",
+            {
+              jobId: rebuilt.generateJobId,
+              message: `Applied proposal ${applied.appliedKinds.join(" + ")} and queued current-selection rebuild.`
+            },
+            {
+              ...creationNav,
+              currentObject: `run:${rebuilt.generateJobId}`,
+              focus: "cg-apply-proposal"
+            }
+          )
+        );
+      }
+
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          {
+            jobId: generateJobId,
+            message: `Applied proposal ${applied.appliedKinds.join(" + ")} to override files. Rebuild current selection when you want fresh pack evidence.`
+          },
+          {
+            ...creationNav,
+            currentObject: creationNav.currentObject ?? `run:${generateJobId}`,
+            focus: "cg-apply-proposal"
+          }
+        )
+      );
+    } catch (routeError) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      return reply.redirect(
+        hrefWithCreationNav(
+          "/ui/character-generator",
+          { error: message, ...(fallbackJobId ? { jobId: fallbackJobId } : {}) },
+          {
+            ...creationNav,
+            focus: "cg-apply-proposal"
           }
         )
       );
