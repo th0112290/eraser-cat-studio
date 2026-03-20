@@ -42,6 +42,14 @@ import {
   collectReferenceLineageWithResolvers
 } from "./uiRouteBenchmarkReferenceArtifacts";
 import {
+  collectDatasetLineageRowsFromBundles,
+  type DatasetLineageRow
+} from "./uiRouteBenchmarkDatasetLineage";
+import {
+  collectRouteReasonRowsFromBundles,
+  type RouteReasonExplorerRow
+} from "./uiRouteBenchmarkRouteReasons";
+import {
   collectSmokeArtifactBundlesWithResolvers,
   type SmokeArtifactBundle
 } from "./uiRouteBenchmarkSmokeBundles";
@@ -217,74 +225,6 @@ type RepairAcceptanceRow = {
   visualJudgePath: string | null;
   candidateComparePath: string | null;
   artifactRelativePath: string;
-  rig: RigReviewState;
-};
-
-type RouteReasonExplorerRow = {
-  scenario: string;
-  bundle: string;
-  episodeId: string;
-  shotId: string;
-  shotType: string;
-  routeReason: string;
-  routeReasonLabel: string;
-  renderModeSummary: string;
-  backend: string;
-  providerSummary: string;
-  policySummary: string;
-  attemptSummary: string;
-  selectedCandidateId: string;
-  acceptanceStatus: string;
-  acceptanceTone: UiBadgeTone;
-  qcSummary: string;
-  issueSummary: string;
-  issueCount: number;
-  repairSummary: string;
-  finalPassed: boolean | null;
-  finalStage: string | null;
-  fallbackSteps: string[];
-  fallbackSummary: string;
-  generatedAt: string;
-  characterPackId: string | null;
-  fixturePath: string | null;
-  sourceLabel: string;
-  sourcePath: string;
-  smokeArtifactPath: string;
-  runtimePath: string | null;
-  planArtifactPath: string | null;
-  qcArtifactPath: string | null;
-  renderLogPath: string | null;
-  actualJudgePath: string | null;
-  visualJudgePath: string | null;
-  candidateComparePath: string | null;
-  renderModeArtifactPath: string | null;
-  artifactRelativePath: string;
-  rig: RigReviewState;
-};
-
-type DatasetLineageRow = {
-  scenario: string;
-  bundle: string;
-  episodeId: string;
-  generatedAt: string;
-  sourceLabel: string;
-  sourcePath: string;
-  smokeArtifactPath: string;
-  artifactRelativePath: string;
-  bibleRef: string;
-  datasetIds: string[];
-  packIds: string[];
-  beatCount: number;
-  routeReasons: string[];
-  inputShotsPath: string | null;
-  runtimeShotsPath: string | null;
-  renderLogPath: string | null;
-  qcReportPath: string | null;
-  sidecarPlanPath: string | null;
-  renderModeArtifactPath: string | null;
-  manifestPaths: string[];
-  selectedImagePaths: string[];
-  schemaGaps: string[];
   rig: RigReviewState;
 };
 
@@ -1855,178 +1795,49 @@ function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
 }
 
 function collectRouteReasonRows(): RouteReasonExplorerRow[] {
-  const rows: RouteReasonExplorerRow[] = [];
-  for (const bundle of collectSmokeArtifactBundles()) {
-    const baseDir = path.dirname(bundle.sidecarPlanPath ?? bundle.smokePath);
-    const compareMap = buildCandidateCompareMap(bundle.source, baseDir);
-    const planReviewByShot = buildSidecarPlanReviewMap(bundle.source, bundle.sidecarPlanDoc);
-    const bundleFixturePath = collectBundleFixturePath(bundle);
-    const bundleReview = collectBundleReviewState({
-      qcDoc: bundle.qcDoc,
-      renderLogDoc: bundle.renderLogDoc,
-      qcArtifactPath: bundle.qcPath,
-      renderLogPath: bundle.renderLogPath
-    });
-    const shotItems = buildShotOpsItems({
-      shotsDoc: bundle.runtimeDoc,
-      qcReport: bundle.qcDoc,
-      sidecarPlan: bundle.sidecarPlanDoc,
-      renderModeReport: bundle.renderModeDoc
-    });
-    for (const item of shotItems) {
-      const acceptanceStatus = item.acceptanceStatus ?? item.sidecarStatus ?? "-";
-      const planReview = planReviewByShot.get(item.shotId);
-      const issueEntries = reviewIssuesForShot(bundleReview.issuesByShot, item.shotId);
-      const selectedCandidateId =
-        planReview?.selectedCandidateId && planReview.selectedCandidateId !== "-" ? planReview.selectedCandidateId : "-";
-      const actualJudgePath = planReview?.actualJudgePath ?? null;
-      const visualJudgePath = planReview?.visualJudgePath ?? null;
-      const rig = mergeRigReviewStates(
-        extractRigReviewState(item as unknown, selectedCandidateId === "-" ? null : selectedCandidateId),
-        readRigReviewStateFromArtifactPath(actualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId),
-        readRigReviewStateFromArtifactPath(visualJudgePath, selectedCandidateId === "-" ? null : selectedCandidateId)
-      );
-      rows.push({
-        scenario: bundle.scenario,
-        bundle: bundle.bundle,
-        episodeId: bundle.episodeId,
-        shotId: item.shotId,
-        shotType: item.shotType,
-        routeReason: item.routeReason ?? "-",
-        routeReasonLabel: item.routeReasonLabel,
-        renderModeSummary: item.renderModeSummary,
-        backend: item.backend ?? "-",
-        providerSummary: planReview?.providerSummary && planReview.providerSummary !== "-" ? planReview.providerSummary : item.backend ?? "-",
-        policySummary: planReview?.policySummary && planReview.policySummary !== "-" ? planReview.policySummary : "-",
-        attemptSummary: planReview?.attemptSummary && planReview.attemptSummary !== "-" ? planReview.attemptSummary : "-",
-        selectedCandidateId,
-        acceptanceStatus,
-        acceptanceTone: acceptanceTone(acceptanceStatus),
-        qcSummary: item.qcSummary,
-        issueSummary: summarizeReviewIssues(issueEntries, 2),
-        issueCount: issueEntries.length,
-        repairSummary: item.repairSummary,
-        finalPassed: bundleReview.finalPassed,
-        finalStage: bundleReview.finalStage,
-        fallbackSteps: bundleReview.fallbackSteps,
-        fallbackSummary:
-          compact(
-            [
-              item.fallbackSummary !== "-" ? item.fallbackSummary : null,
-              bundleReview.fallbackSteps.length > 0 ? `bundle ${summarizeValues(bundleReview.fallbackSteps, 3)}` : null
-            ],
-            " | "
-          ) || "-",
-        generatedAt: bundle.generatedAt,
-        characterPackId: resolveRuntimeShotCharacterPackId(bundle.runtimeDoc, item.shotId),
-        fixturePath: bundleFixturePath,
-        sourceLabel: bundle.source.label,
-        sourcePath: bundle.source.outRoot,
-        smokeArtifactPath: bundle.smokePath,
-        runtimePath: bundle.runtimePath,
-        planArtifactPath: bundle.sidecarPlanPath,
-        qcArtifactPath: bundleReview.qcArtifactPath,
-        renderLogPath: bundleReview.renderLogPath,
-        actualJudgePath,
-        visualJudgePath,
-        candidateComparePath: compareMap.get(item.shotId) ?? null,
-        renderModeArtifactPath: bundle.renderModePath,
-        artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath),
-        rig
-      });
-    }
-  }
-
-  rows.sort((left, right) => {
-    const leftTime = new Date(left.generatedAt).getTime();
-    const rightTime = new Date(right.generatedAt).getTime();
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    if (left.routeReason !== right.routeReason) {
-      return left.routeReason.localeCompare(right.routeReason);
-    }
-    return left.shotId.localeCompare(right.shotId);
+  const bundles = collectSmokeArtifactBundles();
+  return collectRouteReasonRowsFromBundles({
+    bundles,
+    buildCandidateCompareMap: (bundle, baseDir) =>
+      buildCandidateCompareMap(bundle.source, path.dirname(baseDir)),
+    buildSidecarPlanReviewMap: (bundle) => buildSidecarPlanReviewMap(bundle.source, bundle.sidecarPlanDoc),
+    collectBundleFixturePath,
+    collectBundleReviewState: (bundle) =>
+      collectBundleReviewState({
+        qcDoc: bundle.qcDoc,
+        renderLogDoc: bundle.renderLogDoc,
+        qcArtifactPath: bundle.qcPath,
+        renderLogPath: bundle.renderLogPath
+      }),
+    buildShotOpsItems: (bundle) =>
+      buildShotOpsItems({
+        shotsDoc: bundle.runtimeDoc,
+        qcReport: bundle.qcDoc,
+        sidecarPlan: bundle.sidecarPlanDoc,
+        renderModeReport: bundle.renderModeDoc
+      }),
+    reviewIssuesForShot,
+    summarizeReviewIssues,
+    resolveRuntimeShotCharacterPackId,
+    artifactRelativePath,
+    acceptanceTone,
+    mergeRigReviewStates,
+    extractRigReviewState,
+    readRigReviewStateFromArtifactPath
   });
-  return rows;
 }
 
 function collectDatasetLineageRows(): DatasetLineageRow[] {
-  const rows: DatasetLineageRow[] = [];
-  for (const bundle of collectSmokeArtifactBundles()) {
-    if (!isShotsDocLike(bundle.runtimeDoc)) {
-      continue;
-    }
-    const datasetIds = uniqueStrings(
-      recordList(bundle.runtimeDoc.shots).map((shot) => {
-        const chart = isRecord(shot.chart) ? shot.chart : {};
-        return str(chart.dataset_id) ?? str(chart.datasetId);
-      })
-    );
-    const packIds = collectRuntimePackIdsFromShotsDoc(bundle.runtimeDoc);
-    const beatIds = new Set<string>();
-    const routeReasons = uniqueStrings(
-      recordList(bundle.runtimeDoc.shots).flatMap((shot) => {
-        const beats = Array.isArray(shot.beat_ids) ? shot.beat_ids : [];
-        for (const beatId of beats) {
-          const normalized = str(beatId);
-          if (normalized) {
-            beatIds.add(normalized);
-          }
-        }
-        const shotGrammar = isRecord(shot.shot_grammar) ? shot.shot_grammar : {};
-        return [str(shotGrammar.route_reason) ?? str(shot.route_reason)];
-      })
-    );
-    const episodeInfo = isRecord(bundle.runtimeDoc.episode) ? bundle.runtimeDoc.episode : {};
-    const referenceLineage = collectReferenceLineage(bundle.source, path.dirname(bundle.sidecarPlanPath ?? bundle.smokePath));
-    const schemaGaps = uniqueStrings([
-      datasetIds.length > 0 ? "chart dataset version/hash is not recorded; showing dataset_id only" : "chart dataset ids are missing in runtime shots",
-      str(episodeInfo.bible_ref) ? null : "episode.bible_ref is missing in runtime shots",
-      packIds.length > 0 && referenceLineage.manifestPaths.length === 0
-        ? "sidecar request does not expose generation manifest path for the character source"
-        : null
-    ]);
-    rows.push({
-      scenario: bundle.scenario,
-      bundle: bundle.bundle,
-      episodeId: bundle.episodeId,
-      generatedAt: bundle.generatedAt,
-      sourceLabel: bundle.source.label,
-      sourcePath: bundle.source.outRoot,
-      smokeArtifactPath: bundle.smokePath,
-      artifactRelativePath: artifactRelativePath(bundle.source.outRoot, bundle.smokePath),
-      bibleRef: str(episodeInfo.bible_ref) ?? "-",
-      datasetIds,
-      packIds,
-      beatCount: beatIds.size,
-      routeReasons,
-      inputShotsPath:
-        collectBundleFixturePath(bundle),
-      runtimeShotsPath: bundle.runtimePath,
-      renderLogPath: bundle.renderLogPath,
-      qcReportPath: bundle.qcPath,
-      sidecarPlanPath: bundle.sidecarPlanPath,
-      renderModeArtifactPath: bundle.renderModePath,
-      manifestPaths: referenceLineage.manifestPaths,
-      selectedImagePaths: referenceLineage.selectedImagePaths,
-      schemaGaps,
-      rig: referenceLineage.rig
-    });
-  }
-
-  rows.sort((left, right) => {
-    const leftTime = new Date(left.generatedAt).getTime();
-    const rightTime = new Date(right.generatedAt).getTime();
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    if (left.bundle !== right.bundle) {
-      return left.bundle.localeCompare(right.bundle);
-    }
-    return left.episodeId.localeCompare(right.episodeId);
+  const bundles = collectSmokeArtifactBundles();
+  return collectDatasetLineageRowsFromBundles({
+    bundles,
+    isShotsDocLike,
+    collectRuntimePackIdsFromShotsDoc,
+    collectReferenceLineage: (bundle, baseDir) =>
+      collectReferenceLineage(bundle.source, path.dirname(baseDir)),
+    artifactRelativePath,
+    collectBundleFixturePath
   });
-  return rows;
 }
 
 function readStringAtPath(root: unknown, keys: string[]): string | null {
