@@ -1,4 +1,4 @@
-import { buildBenchmarkRefreshActions } from "./uiRoutes";
+import { buildBenchmarkRefreshActions, buildBenchmarkRefreshPlaybooksSection } from "./uiRoutes";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -46,5 +46,22 @@ const fresh = buildBenchmarkRefreshActions({
   agingSourceCount: 0
 });
 assert(fresh.every((entry) => entry.tone === "muted"), "expected fresh refresh actions to use muted tone");
+
+const section = buildBenchmarkRefreshPlaybooksSection({
+  staleSourceCount: 2,
+  agingSourceCount: 1,
+  benchmarkRepairHref: "/ui/benchmarks/repair-acceptance",
+  benchmarkRolloutsHref: "/ui/rollouts",
+  actions: stale
+});
+assert(section.includes('id="benchmark-refresh-playbooks"'), "expected refresh playbooks anchor id");
+assert(section.includes("Refresh Playbooks"), "expected refresh playbooks heading");
+assert(section.includes("Acceptance"), "expected acceptance link");
+assert(section.includes("Rollouts"), "expected rollouts link");
+assert(section.includes("Copy command"), "expected copy-command affordance");
+assert(
+  section.includes("pnpm rollout:video-i2v-multichannel -- --economy-character-pack-id=pack-alpha --medical-character-pack-id=pack-beta"),
+  "expected rendered section to preserve inferred multichannel command"
+);
 
 console.log("[ui-routes-benchmark-refresh-smoke] PASS");

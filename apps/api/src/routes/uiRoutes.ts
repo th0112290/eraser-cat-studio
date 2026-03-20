@@ -4779,6 +4779,28 @@ export function buildBenchmarkRefreshActions(input: {
   ];
 }
 
+export function buildBenchmarkRefreshPlaybooksSection(input: {
+  staleSourceCount: number;
+  agingSourceCount: number;
+  benchmarkRepairHref: string;
+  benchmarkRolloutsHref: string;
+  actions: BenchmarkRefreshAction[];
+}): string {
+  const intro =
+    input.staleSourceCount > 0
+      ? "Artifact roots are stale. Run the matching benchmark refresh command before trusting promotion or rollout decisions."
+      : input.agingSourceCount > 0
+        ? "Artifact roots are aging. Keep refresh commands adjacent so benchmark drift can be renewed before it becomes stale."
+        : "Keep these commands nearby so operators can refresh benchmark evidence without leaving the control plane.";
+  const rows = input.actions
+    .map(
+      (action) =>
+        `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(action.label)}</strong></span><span class="mono">${esc(action.command)}</span><span class="muted-text">${esc(action.hint)}</span></div><div class="inline-actions"><span class="badge ${action.tone}">${esc(action.badge)}</span><button type="button" class="secondary" data-copy="${esc(action.command)}">Copy command</button></div></div>`
+    )
+    .join("");
+  return `<section class="card decision-jump-target" id="benchmark-refresh-playbooks"><div class="section-head"><div><h2>Refresh Playbooks</h2><p class="section-intro">${intro}</p></div><div class="inline-actions"><a href="${input.benchmarkRepairHref}">Acceptance</a><a href="${input.benchmarkRolloutsHref}">Rollouts</a></div></div><div class="status-list">${rows}</div></section>`;
+}
+
 function profileBrowserHref(values: Array<string | null | undefined>): string {
   const query = values
     .map((value) => str(value))
@@ -9030,12 +9052,13 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
         return `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(source.label)}</strong></span><span class="mono">${esc(source.outRoot)}</span><span class="muted-text">${esc(meta)}</span></div><div class="inline-actions"><span class="badge ${tone}">${esc(label)}</span>${source.exists ? `<span class="badge ${freshness.tone}">${esc(freshness.label)}</span>` : ""}${freshness.isStale || freshness.isAging ? `<a class="secondary" href="#benchmark-refresh-playbooks">Refresh playbooks</a>` : ""}${freshness.isStale ? `<a class="secondary" href="${benchmarkRepairHref}">Open repair queue</a>` : ""}<button type="button" class="secondary" data-copy="${esc(source.outRoot)}">Copy path</button></div></div>`;
       })
       .join("");
-      const benchmarkRefreshRows = benchmarkRefreshActions
-        .map(
-          (action) =>
-            `<div class="status-row"><div class="stack"><span class="label"><strong>${esc(action.label)}</strong></span><span class="mono">${esc(action.command)}</span><span class="muted-text">${esc(action.hint)}</span></div><div class="inline-actions"><span class="badge ${action.tone}">${esc(action.badge)}</span><button type="button" class="secondary" data-copy="${esc(action.command)}">Copy command</button></div></div>`
-        )
-        .join("");
+      const benchmarkRefreshSection = buildBenchmarkRefreshPlaybooksSection({
+        staleSourceCount,
+        agingSourceCount,
+        benchmarkRepairHref,
+        benchmarkRolloutsHref,
+        actions: benchmarkRefreshActions
+      });
 
 	    const backendRows = backendScenarios
 	      .map((row) => {
@@ -9368,13 +9391,7 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
 	      linkedCards: benchmarkLinkedObjects,
 	      linkedEmpty: "No linked benchmark objects are available.",
 	      linkedTone: "muted"
-	    })}<section class="card decision-jump-target" id="benchmark-refresh-playbooks"><div class="section-head"><div><h2>Refresh Playbooks</h2><p class="section-intro">${
-        staleSourceCount > 0
-          ? "Artifact roots are stale. Run the matching benchmark refresh command before trusting promotion or rollout decisions."
-          : agingSourceCount > 0
-            ? "Artifact roots are aging. Keep refresh commands adjacent so benchmark drift can be renewed before it becomes stale."
-            : "Keep these commands nearby so operators can refresh benchmark evidence without leaving the control plane."
-      }</p></div><div class="inline-actions"><a href="${benchmarkRepairHref}">Acceptance</a><a href="${benchmarkRolloutsHref}">Rollouts</a></div></div><div class="status-list">${benchmarkRefreshRows}</div></section>${renderArtifactEvidenceSection({
+	    })}${benchmarkRefreshSection}${renderArtifactEvidenceSection({
 	      sectionId: "benchmark-evidence",
 	      title: "Artifact Evidence Drawer",
 	      intro: "Artifact sources and raw evidence stay available, but the queue remains the primary review surface.",
