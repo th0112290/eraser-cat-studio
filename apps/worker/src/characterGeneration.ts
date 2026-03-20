@@ -74,6 +74,14 @@ import {
   summarizeQualityEmbargo,
   summarizeSelectionRisk
 } from "./characterGenerationSelectionDecision";
+import {
+  buildSelectionBuildPayload,
+  buildSelectionQueuedStatusMessage,
+  buildSelectionSessionPickedMap,
+  resolveSelectedAssetIds,
+  resolveSelectedCandidateIds,
+  resolveSelectedSeed
+} from "./characterGenerationSelectionQueue";
 
 export {
   buildManifestSelectedByView,
@@ -12532,77 +12540,48 @@ async function persistSelectedCandidates(input: {
     };
   }
 
-  const existingAssetIds = character.assetIds;
-  const resolvedAssetIds: Partial<Record<CharacterView, string>> = {};
-  for (const view of allViews) {
-    const fromSelected = selectedAssets.get(view)?.assetId;
-    const fromExisting = existingAssetIds?.[view];
-    const resolved = fromSelected ?? fromExisting;
-    if (!resolved) {
-      throw new Error(`Missing assetId for required view=${view}`);
-    }
-    resolvedAssetIds[view] = resolved;
-  }
-  const assetIds: CharacterAssetSelection = {
-    front: resolvedAssetIds.front!,
-    threeQuarter: resolvedAssetIds.threeQuarter!,
-    profile: resolvedAssetIds.profile!
-  };
+  const assetIds = resolveSelectedAssetIds({
+    views: allViews,
+    selectedAssets,
+    existingAssetIds: character.assetIds
+  });
 
-  const existingSelectedIds = character.generation?.selectedCandidateIds;
-  const manifestSelectedByView = manifest.selectedByView ?? {};
-  const resolvedSelectedCandidateIds: Partial<Record<CharacterView, string>> = {};
-  for (const view of allViews) {
-    const fromSelected = selectedByView[view]?.candidate.id;
-    const fromManifest = manifestSelectedByView[view]?.candidateId;
-    const fromExisting = existingSelectedIds?.[view];
-    const resolved = fromSelected ?? fromManifest ?? fromExisting;
-    if (!resolved) {
-      throw new Error(`Missing selectedCandidateId for required view=${view}`);
-    }
-    resolvedSelectedCandidateIds[view] = resolved;
-  }
+  const resolvedSelectedCandidateIds = resolveSelectedCandidateIds({
+    views: allViews,
+    selectedByView,
+    manifestSelectedByView: manifest.selectedByView ?? {},
+    existingSelectedIds: character.generation?.selectedCandidateIds
+  });
 
-  const frontSeedFromSelected = selectedByView.front?.candidate.seed;
-  const frontCandidateId = resolvedSelectedCandidateIds.front!;
-  const frontSeedFromManifest = manifest.candidates.find((row) => row.id === frontCandidateId)?.seed;
-  const resolvedSeed = frontSeedFromSelected ?? frontSeedFromManifest ?? character.generation?.seed ?? 101;
+  const resolvedSeed = resolveSelectedSeed({
+    selectedByView,
+    selectedCandidateIds: resolvedSelectedCandidateIds,
+    manifestCandidates: manifest.candidates,
+    existingSeed: character.generation?.seed
+  });
 
   const buildJobId = character.buildJobDbId;
   if (!buildJobId) {
     throw new Error("payload.character.buildJobDbId is required for generation pipeline");
   }
 
-  const buildPayload: EpisodeJobPayload = {
-    jobDbId: buildJobId,
+  const buildPayload = buildSelectionBuildPayload({
+    buildJobId,
     episodeId,
-    schemaChecks: [],
-    character: {
-      characterPackId: character.characterPackId,
-      version: character.version,
-      buildJobDbId: buildJobId,
-      previewJobDbId: character.previewJobDbId,
-      assetIds,
-      generation: {
-        ...(sessionId ? { sessionId } : {}),
-        mode: manifest.mode === "reference" ? "reference" : "new",
-        provider:
-          providerName === "comfyui" ? "comfyui" : providerName === "remoteApi" ? "remoteApi" : "mock",
-        promptPreset: manifest.promptPreset,
-        species: normalizeGenerationSpecies(manifest.species),
-        positivePrompt: manifest.positivePrompt,
-        negativePrompt: manifest.negativePrompt,
-        seed: resolvedSeed,
-        candidateCount: manifest.candidates.length,
-        manifestPath,
-        selectedCandidateIds: {
-          front: resolvedSelectedCandidateIds.front!,
-          threeQuarter: resolvedSelectedCandidateIds.threeQuarter!,
-          profile: resolvedSelectedCandidateIds.profile!
-        }
-      }
-    }
-  };
+    character,
+    sessionId,
+    assetIds,
+    normalizedSpecies: normalizeGenerationSpecies(manifest.species),
+    manifestMode: manifest.mode,
+    providerName,
+    promptPreset: manifest.promptPreset,
+    positivePrompt: manifest.positivePrompt,
+    negativePrompt: manifest.negativePrompt,
+    seed: resolvedSeed,
+    candidateCount: manifest.candidates.length,
+    manifestPath,
+    selectedCandidateIds: resolvedSelectedCandidateIds
+  });
 
   await helpers.logJob(buildJobId, "info", "Transition -> QUEUED", {
     source: "worker:generate-character-assets",
@@ -12663,20 +12642,10 @@ async function persistSelectedCandidates(input: {
     await markSessionCandidatesPicked({
       prisma,
       sessionId,
-      selectedByView: {
-        front: {
-          candidateId: resolvedSelectedCandidateIds.front!,
-          assetId: assetIds.front
-        },
-        threeQuarter: {
-          candidateId: resolvedSelectedCandidateIds.threeQuarter!,
-          assetId: assetIds.threeQuarter
-        },
-        profile: {
-          candidateId: resolvedSelectedCandidateIds.profile!,
-          assetId: assetIds.profile
-        }
-      }
+      selectedByView: buildSelectionSessionPickedMap({
+        assetIds,
+        selectedCandidateIds: resolvedSelectedCandidateIds
+      })
     });
 
     const sessionDelegate = getCharacterGenerationSessionDelegate(prisma);
@@ -12685,10 +12654,10 @@ async function persistSelectedCandidates(input: {
         where: { id: sessionId },
         data: {
           status: "READY",
-          statusMessage:
-            source === "hitl"
-              ? `HITL selection applied and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
-              : `Auto-selected and build queued.${formatContinuitySentence(manifest.reference.continuity)}`
+          statusMessage: buildSelectionQueuedStatusMessage({
+            source,
+            continuity: manifest.reference.continuity
+          })
         }
       });
     }
