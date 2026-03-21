@@ -15,6 +15,14 @@ import {
 import { materializeGeneratedCharacterPack } from "./generatedCharacterPackBuild";
 import { collectCharacterPipelineAnimationChecks } from "./generatedCharacterPipelineAnimationChecks";
 import {
+  assertCharacterPipelineAcceptedWithDeps,
+  buildGeneratedCharacterPackWithDeps,
+  loadGeneratedCharacterPackWithDeps,
+  resolveCharacterPipelineAcceptanceWithDeps,
+  resolveGeneratedCharacterPackPathWithDeps,
+  runCharacterAnimationSafeQcWithDeps
+} from "./generatedCharacterPipelinePackRuntime";
+import {
   generateCharacterExpressionPackWithDeps,
   generateCharacterViewSetWithDeps,
   generateCharacterVisemePackWithDeps,
@@ -3123,30 +3131,21 @@ async function runLocalFaceRepairStill(input: {
 export async function buildGeneratedCharacterPack(input: {
   characterId: string;
 }): Promise<{ packId: string; packPath: string; proposalPath: string; metaPath: string }> {
-  await synchronizeManifestCanvasToApprovedFront(input.characterId);
-  const manifest = loadManifest(input.characterId);
-  requireApprovedFrontMaster(input.characterId);
-  const referenceBank = resolveManifestReferenceBankStatus(manifest);
-  const referenceBankReview = buildMascotReferenceBankReviewPlan(
-    resolveMascotReferenceBankDiagnostics(referenceBank.species_id)
-  );
-  const autoCropBoxes = await deriveAutoCropBoxes(manifest);
-  const cropBoxes = applyCropBoxOverrides(input.characterId, autoCropBoxes);
-  const autoAnchorManifest = await deriveAutoAnchorManifest(manifest, cropBoxes);
-  const anchorManifest = applyAnchorOverrides(input.characterId, autoAnchorManifest);
-  const anchorReview = collectAnchorReviewSummary(anchorManifest);
-  const { packPath, proposalPath, metaPath, builtAt } = await materializeGeneratedCharacterPack({
+  return buildGeneratedCharacterPackWithDeps({
     characterId: input.characterId,
-    rootDir: characterRootDir(input.characterId),
-    sourceManifestPath: manifestPathForCharacter(input.characterId),
-    manifest,
-    cropBoxes,
-    anchorManifest,
-    anchorReview,
-    referenceBank,
-    referenceBankReview,
-    speciesId: resolveManifestSpeciesId(manifest),
     deps: {
+      synchronizeManifestCanvasToApprovedFront,
+      loadManifest,
+      requireApprovedFrontMaster,
+      resolveManifestReferenceBankStatus,
+      deriveAutoCropBoxes,
+      applyCropBoxOverrides,
+      deriveAutoAnchorManifest,
+      applyAnchorOverrides,
+      collectAnchorReviewSummary,
+      characterRootDir,
+      manifestPathForCharacter,
+      resolveManifestSpeciesId,
       cropNormalizedRegion,
       recenterPackedEyeAsset,
       ensurePackedEyeSlotContent,
@@ -3158,21 +3157,11 @@ export async function buildGeneratedCharacterPack(input: {
             .join("; ");
           throw new Error(`Generated character pack invalid: ${summary}`);
         }
-      }
+      },
+      invalidateDerivedState,
+      saveManifest
     }
   });
-
-  manifest.pack = {
-    pack_id: input.characterId,
-    pack_path: packPath,
-    proposal_path: proposalPath,
-    meta_path: metaPath,
-    built_at: builtAt
-  };
-  invalidateDerivedState(manifest, "acceptance_only");
-  saveManifest(manifest);
-
-  return { packId: input.characterId, packPath, proposalPath, metaPath };
 }
 
 export async function runCharacterAnimationSafeQc(input: {
@@ -3183,55 +3172,50 @@ export async function runCharacterAnimationSafeQc(input: {
   passed: boolean;
   acceptanceStatus: CharacterPipelineAcceptanceStatus;
 }> {
-  await synchronizeManifestCanvasToApprovedFront(input.characterId);
-  const manifest = loadManifest(input.characterId);
-  const cropBoxes = applyCropBoxOverrides(input.characterId, await deriveAutoCropBoxes(manifest));
-  const referenceBank = resolveManifestReferenceBankStatus(manifest);
-  const animationQc = resolveAnimationQcThresholds(resolveManifestSpeciesId(manifest));
-  const requiredExpressions = ["neutral", "happy", "blink"] as const;
-  const requiredVisemes = ["mouth_closed", "mouth_open_small", "mouth_open_wide", "mouth_round_o"] as const;
-  const eyeRegion = { cx: 0.5, cy: 0.22, w: 0.28, h: 0.09 };
-  const strictGeneratedChecks = !isSyntheticSmokeManifest(manifest);
-  const { checks, rasterMap, referenceFrontRaster, mouthCrop } = await collectCharacterPipelineAnimationChecks({
-    manifest,
-    referenceBank,
-    animationQc,
-    requiredExpressions,
-    requiredVisemes,
-    strictGeneratedChecks,
-    eyeRegion,
-    constants: {
-      defaultCropBoxes: DEFAULT_CROP_BOXES,
-      fullImageCrop: FULL_IMAGE_CROP,
-      minFrontEyeDensity: MIN_FRONT_EYE_DENSITY,
-      minFrontMouthDensity: MIN_FRONT_MOUTH_DENSITY,
-      minViewVariation: MIN_VIEW_VARIATION
-    },
+  return runCharacterAnimationSafeQcWithDeps({
+    characterId: input.characterId,
     deps: {
-      collectManifestAssets,
+      synchronizeManifestCanvasToApprovedFront,
+      loadManifest,
+      applyCropBoxOverrides,
+      deriveAutoCropBoxes,
+      resolveManifestReferenceBankStatus,
+      resolveManifestSpeciesId,
       isSyntheticSmokeManifest,
+      collectManifestAssets,
       loadImageRaster,
       measureForegroundBounds,
       deriveHeadCropFromBodyBounds,
       detectFrontFaceFeatureCrops,
       inspectBackgroundSafety,
       measureDarkFeatureCenter,
-      meanRegionDifference
-    }
-  });
-
-  checks.push(
-    ...(await collectCharacterPipelinePackQcChecks({
-      manifest,
-      cropBoxes,
-      referenceFrontRaster,
-      rasterMap,
-      mouthCrop,
-      strictGeneratedChecks,
-      requiredVisemes,
-      animationQc,
+      meanRegionDifference,
+      readJson,
+      asRecord,
+      coerceCharacterPackAnchorManifest,
+      validatePackSchema: (pack) => schemaValidator.validate("character_pack.schema.json", pack),
+      resolveAnchorHeuristics: resolveMascotAnchorHeuristics,
+      anchorStatusMatchesExpectation: (actual, expected) =>
+        expected === "missing" ? (actual ?? "missing") === "missing" : anchorStatusMatchesExpectation(actual, expected),
+      normalizeAnchorWithinBounds,
+      resolvePackImageFilePath,
+      detectInteriorDarkComponents,
+      averageNumbers,
+      normalizedHorizontalDelta,
+      normalizedEarHeight,
+      expandCropBox,
+      boundsFromCropBox,
+      characterRootDir,
+      writeJson,
+      saveManifest,
+      resolveAcceptanceFromChecks,
+      repairActionForCode,
       constants: {
+        defaultCropBoxes: DEFAULT_CROP_BOXES,
         fullImageCrop: FULL_IMAGE_CROP,
+        minFrontEyeDensity: MIN_FRONT_EYE_DENSITY,
+        minFrontMouthDensity: MIN_FRONT_MOUTH_DENSITY,
+        minViewVariation: MIN_VIEW_VARIATION,
         minPackAnchorConfidence: MIN_PACK_ANCHOR_CONFIDENCE,
         minPackAnchorViewConfidence: MIN_PACK_ANCHOR_VIEW_CONFIDENCE,
         minPackAnchorOverallConfidence: MIN_PACK_ANCHOR_OVERALL_CONFIDENCE,
@@ -3240,85 +3224,23 @@ export async function runCharacterAnimationSafeQc(input: {
         characterPackAnchorViews: CHARACTER_PACK_ANCHOR_VIEWS,
         characterPackAnchorIds: CHARACTER_PACK_ANCHOR_IDS
       },
-      deps: {
-        readJson,
-        asRecord,
-        coerceCharacterPackAnchorManifest,
-        validatePackSchema: (pack) => schemaValidator.validate("character_pack.schema.json", pack),
-        resolveSpeciesId: resolveManifestSpeciesId,
-        resolveAnchorHeuristics: resolveMascotAnchorHeuristics,
-        anchorStatusMatchesExpectation: (actual, expected) =>
-          expected === "missing" ? (actual ?? "missing") === "missing" : anchorStatusMatchesExpectation(actual, expected),
-        normalizeAnchorWithinBounds,
-        resolvePackImageFilePath,
-        detectInteriorDarkComponents,
-        measureForegroundBounds,
-        loadImageRaster,
-        measureDarkFeatureCenter,
-        averageNumbers,
-        normalizedHorizontalDelta,
-        normalizedEarHeight,
-        expandCropBox,
-        boundsFromCropBox
-      }
-    }))
-  );
-
-  return materializeCharacterPipelineQcArtifacts({
-    characterId: input.characterId,
-    manifest,
-    checks,
-    referenceBank,
-    deps: {
-      characterRootDir,
-      writeJson,
-      saveManifest,
-      resolveAcceptanceFromChecks,
-      repairActionForCode
+      resolveAnimationQcThresholds
     }
   });
 }
 
 export function resolveCharacterPipelineAcceptance(characterId: string): CharacterPipelineAcceptance {
-  const manifest = loadManifest(characterId);
-  const referenceBank = resolveManifestReferenceBankStatus(manifest);
-  if (manifest.acceptance) {
-    return {
-      ...manifest.acceptance,
-      reference_bank: manifest.acceptance.reference_bank ?? referenceBank
-    };
-  }
-  if (manifest.qc) {
-    return {
-      status: manifest.qc.acceptance_status,
-      accepted: manifest.qc.acceptance_status === "accepted",
-      updated_at: manifest.qc.generated_at,
-      report_path: manifest.qc.report_path,
-      repair_tasks_path: manifest.qc.repair_tasks_path,
-      blocking_check_codes: [],
-      repair_task_count: 0,
-      reference_bank: manifest.qc.reference_bank ?? referenceBank
-    };
-  }
-  return {
-    status: "blocked",
-    accepted: false,
-    updated_at: new Date(0).toISOString(),
-    blocking_check_codes: ["QC_NOT_RUN"],
-    repair_task_count: 0,
-    reference_bank: referenceBank
-  };
+  return resolveCharacterPipelineAcceptanceWithDeps(characterId, {
+    loadManifest,
+    resolveManifestReferenceBankStatus
+  });
 }
 
 export function assertCharacterPipelineAccepted(characterId: string): CharacterPipelineAcceptance {
-  const acceptance = resolveCharacterPipelineAcceptance(characterId);
-  if (acceptance.status !== "accepted") {
-    const reportHint = acceptance.report_path ? ` See ${acceptance.report_path}` : "";
-    throw new Error(
-      `Generated character pack ${characterId} is not accepted for render (status=${acceptance.status}).${reportHint}`
-    );
-  }
-  return acceptance;
+  return assertCharacterPipelineAcceptedWithDeps(characterId, {
+    loadManifest,
+    resolveManifestReferenceBankStatus
+  });
 }
 
 // Legacy local fallback. One-off character generation should use the worker
@@ -3332,13 +3254,14 @@ export async function runDeterministicCharacterPipeline(
 }
 
 export function resolveGeneratedCharacterPackPath(packId: string): string {
-  return path.join(GENERATED_ROOT_DIR, packId, "pack", "character.pack.json");
+  return resolveGeneratedCharacterPackPathWithDeps(packId, {
+    generatedRootDir: GENERATED_ROOT_DIR
+  });
 }
 
 export function loadGeneratedCharacterPack(packId: string): unknown | null {
-  const packPath = resolveGeneratedCharacterPackPath(packId);
-  if (!fs.existsSync(packPath)) {
-    return null;
-  }
-  return readJson<unknown>(packPath);
+  return loadGeneratedCharacterPackWithDeps(packId, {
+    generatedRootDir: GENERATED_ROOT_DIR,
+    readJson
+  });
 }

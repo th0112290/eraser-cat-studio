@@ -42,6 +42,16 @@ import {
   collectReferenceLineageWithResolvers
 } from "./uiRouteBenchmarkReferenceArtifacts";
 import {
+  buildCandidateCompareMapWithDeps,
+  collectBenchmarkViewerDataWithDeps,
+  collectBundleFixturePath as collectBenchmarkBundleFixturePath,
+  collectDatasetLineageRowsWithDeps,
+  collectReferenceLineageWithDeps,
+  collectRepairAcceptanceRowsWithDeps,
+  collectRouteReasonRowsWithDeps,
+  collectSmokeArtifactBundlesWithDeps
+} from "./uiRouteBenchmarkReviewData";
+import {
   collectDatasetLineageRowsFromBundles,
   type DatasetLineageRow
 } from "./uiRouteBenchmarkDatasetLineage";
@@ -1172,26 +1182,30 @@ function collectBenchmarkViewerData(): {
   backendScenarios: BenchmarkScenarioView[];
   regressions: RegressionReportView[];
 } {
-  return collectBenchmarkViewerDataFromSources({
-    sources: getRolloutArtifactSources(),
+  return collectBenchmarkViewerDataWithDeps({
+    getRolloutArtifactSources,
     pathExists: (filePath) => fs.existsSync(filePath),
     buildBackendBenchmarkViews,
     buildRegressionReportViews,
-    selectGeneratedAt
+    selectGeneratedAt: (values) =>
+      selectGeneratedAt(values.filter((value): value is string => typeof value === "string" && value.length > 0))
   });
 }
 
 function collectBundleFixturePath(bundle: SmokeArtifactBundle): string | null {
-  return collectBundleFixturePathWithNormalizer(bundle, safeRolloutArtifactPath);
+  return collectBenchmarkBundleFixturePath({
+    bundle,
+    safeRolloutArtifactPath
+  });
 }
 
 function collectSmokeArtifactBundles(): SmokeArtifactBundle[] {
-  return collectSmokeArtifactBundlesWithResolvers({
-    sources: getRolloutArtifactSources(),
+  return collectSmokeArtifactBundlesWithDeps({
+    getRolloutArtifactSources,
     pathExists: (filePath) => fs.existsSync(filePath),
     findFilesByName,
     readJsonFileSafe,
-    normalizeJsonArtifactPath: (source, candidatePath) => safeJsonArtifactPath(source, candidatePath),
+    safeJsonArtifactPath: (source, candidatePath) => safeJsonArtifactPath(source, candidatePath),
     artifactRelativePath
   });
 }
@@ -1217,10 +1231,11 @@ function collectReferenceLineage(
   source: RolloutArtifactSource,
   baseDir: string
 ): { manifestPaths: string[]; selectedImagePaths: string[]; rig: RigReviewState } {
-  return collectReferenceLineageWithResolvers({
+  return collectReferenceLineageWithDeps({
+    source,
     baseDir,
     readJsonFileSafe,
-    normalizeJsonArtifactPath: (candidatePath) => safeJsonArtifactPath(source, candidatePath),
+    safeJsonArtifactPath,
     createEmptyRigReviewState,
     mergeRigReviewStates,
     extractRigReviewState
@@ -1228,7 +1243,12 @@ function collectReferenceLineage(
 }
 
 function buildCandidateCompareMap(source: RolloutArtifactSource, baseDir: string): Map<string, string> {
-  return buildCandidateCompareMapFromItems(findCandidateCompareItems(source, baseDir), readJsonFileSafe);
+  return buildCandidateCompareMapWithDeps({
+    source,
+    baseDir,
+    findCandidateCompareItems,
+    readJsonFileSafe
+  });
 }
 
 function acceptanceStatusFromArtifact(raw: JsonRecord): string {
@@ -1285,7 +1305,7 @@ function qcStatusFromArtifact(raw: JsonRecord): { status: string; tone: UiBadgeT
 
 function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
   const bundles = collectSmokeArtifactBundles();
-  return collectRepairAcceptanceRowsFromBundles({
+  return collectRepairAcceptanceRowsWithDeps({
     bundles,
     buildCandidateCompareMap: (bundle, baseDir) =>
       buildCandidateCompareMap(bundle.source, path.dirname(baseDir)),
@@ -1317,7 +1337,7 @@ function collectRepairAcceptanceRows(): RepairAcceptanceRow[] {
 
 function collectRouteReasonRows(): RouteReasonExplorerRow[] {
   const bundles = collectSmokeArtifactBundles();
-  return collectRouteReasonRowsFromBundles({
+  return collectRouteReasonRowsWithDeps({
     bundles,
     buildCandidateCompareMap: (bundle, baseDir) =>
       buildCandidateCompareMap(bundle.source, path.dirname(baseDir)),
@@ -1350,7 +1370,7 @@ function collectRouteReasonRows(): RouteReasonExplorerRow[] {
 
 function collectDatasetLineageRows(): DatasetLineageRow[] {
   const bundles = collectSmokeArtifactBundles();
-  return collectDatasetLineageRowsFromBundles({
+  return collectDatasetLineageRowsWithDeps({
     bundles,
     isShotsDocLike,
     collectRuntimePackIdsFromShotsDoc,
