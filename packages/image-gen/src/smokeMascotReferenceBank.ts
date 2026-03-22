@@ -40,6 +40,8 @@ function run(): void {
     assert.equal(diagnostics.status, "species_ready", `${speciesId} bank should now resolve species_ready`);
     assert.equal(diagnostics.declaredStatus, "species_ready", `${speciesId} bank should declare species_ready`);
     assert.equal(diagnostics.statusMismatch, false, `${speciesId} should not have a readiness mismatch while species_ready`);
+    assert.equal(diagnostics.variant, "canonical", `${speciesId} smoke should default to canonical bank`);
+    assert.equal(diagnostics.legacyTemporary, true, `${speciesId} canonical bank should be marked legacy-temporary`);
     assert.ok(diagnostics.styleCount > 0, `${speciesId} bank should now include style refs`);
     assert.ok(diagnostics.heroCount > 0, `${speciesId} bank should now include hero refs`);
     assert.ok(diagnostics.requiredAssetCount >= 5, `${speciesId} bank should still declare required intake assets`);
@@ -67,6 +69,7 @@ function run(): void {
 
     const manifest = resolveMascotReferenceBankManifest(speciesId);
     assert.equal(manifest?.extends?.endsWith("../shared/bank.json"), true, `${speciesId} should inherit shared bank`);
+    assert.equal(manifest?.legacyTemporary, true, `${speciesId} manifest should declare legacy-temporary bank status`);
   }
 
   assert.equal(

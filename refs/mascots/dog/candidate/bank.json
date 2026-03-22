@@ -1,0 +1,64 @@
+{
+  "extends": "../../shared/bank.json",
+  "profileId": "dog",
+  "speciesId": "dog",
+  "familyId": "compact_doodle_mascot_v3_candidate",
+  "variant": "candidate",
+  "bankStatus": "scaffold_only",
+  "replacementStrategy": "replace",
+  "notes": [
+    "candidate replacement bank for dog canon",
+    "drop premium-api generated front/threeQuarter/profile/style/hero assets here, then enable with MASCOT_REFERENCE_BANK_CANDIDATES=dog"
+  ],
+  "requiredAssets": [
+    {
+      "slotId": "style.front.primary",
+      "role": "style",
+      "view": "front",
+      "requiredForStatus": "species_ready",
+      "description": "dog front house style canon"
+    },
+    {
+      "slotId": "family.front.primary",
+      "role": "composition",
+      "view": "front",
+      "requiredForStatus": "species_ready",
+      "description": "dog front composition anchor"
+    },
+    {
+      "slotId": "family.threeQuarter.primary",
+      "role": "composition",
+      "view": "threeQuarter",
+      "requiredForStatus": "species_ready",
+      "description": "dog three-quarter composition anchor"
+    },
+    {
+      "slotId": "family.profile.primary",
+      "role": "composition",
+      "view": "profile",
+      "requiredForStatus": "species_ready",
+      "description": "dog profile composition anchor"
+    },
+    {
+      "slotId": "hero.front.primary",
+      "role": "hero",
+      "view": "front",
+      "requiredForStatus": "species_ready",
+      "description": "dog front hero identity ref"
+    }
+  ],
+  "style": [],
+  "starterByView": {
+    "front": [],
+    "threeQuarter": [],
+    "profile": []
+  },
+  "familyByView": {
+    "front": [],
+    "threeQuarter": [],
+    "profile": []
+  },
+  "heroByView": {
+    "front": []
+  }
+}

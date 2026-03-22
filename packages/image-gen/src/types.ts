@@ -183,7 +183,10 @@ export type MascotReferenceBankManifest = {
   profileId?: string;
   speciesId?: MascotSpeciesId;
   familyId?: string;
+  variant?: "canonical" | "candidate";
   bankStatus?: "species_ready" | "scaffold_only";
+  legacyTemporary?: boolean;
+  replacementStrategy?: "rescue" | "replace";
   notes?: string[];
   requiredAssets?: MascotReferenceAssetRequirement[];
   style?: MascotReferenceAssetEntry[];

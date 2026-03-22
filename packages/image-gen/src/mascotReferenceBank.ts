@@ -15,6 +15,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const MASCOT_REFERENCE_BANK_ROOT = path.join(REPO_ROOT, "refs", "mascots");
+const ACTIVE_CANDIDATE_SPECIES = new Set(
+  (process.env.MASCOT_REFERENCE_BANK_CANDIDATES ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+);
 
 export type ResolvedMascotReferenceAsset = {
   filePath: string;
@@ -29,6 +35,9 @@ export type MascotReferenceBankDiagnostics = {
   status: "species_ready" | "scaffold_only";
   declaredStatus: "species_ready" | "scaffold_only";
   statusMismatch: boolean;
+  variant: "canonical" | "candidate";
+  manifestPath: string;
+  legacyTemporary: boolean;
   styleCount: number;
   heroCount: number;
   requiredAssetCount: number;
@@ -63,14 +72,39 @@ export function resolveEffectiveMascotReferenceBankStatus(input: {
 }
 
 const mascotReferenceBankManifestCache = new Map<string, MascotReferenceBankManifest | null>();
+const mascotReferenceBankManifestPathCache = new Map<string, string>();
 
 function normalizeMascotReferenceSpeciesId(speciesId?: MascotSpeciesId | string): MascotSpeciesId {
   return resolveMascotSpeciesProfile(speciesId).id;
 }
 
+function resolveCanonicalMascotReferenceBankManifestPath(speciesId: MascotSpeciesId): string {
+  return path.join(MASCOT_REFERENCE_BANK_ROOT, speciesId, "bank.json");
+}
+
+function resolveCandidateMascotReferenceBankManifestPath(speciesId: MascotSpeciesId): string {
+  return path.join(MASCOT_REFERENCE_BANK_ROOT, speciesId, "candidate", "bank.json");
+}
+
+export function resolveMascotReferenceBankManifestPath(speciesId?: MascotSpeciesId | string): string {
+  const normalizedSpecies = normalizeMascotReferenceSpeciesId(speciesId);
+  const cachedPath = mascotReferenceBankManifestPathCache.get(normalizedSpecies);
+  if (cachedPath) {
+    return cachedPath;
+  }
+
+  const candidatePath = resolveCandidateMascotReferenceBankManifestPath(normalizedSpecies);
+  const resolvedPath =
+    ACTIVE_CANDIDATE_SPECIES.has(normalizedSpecies) && fs.existsSync(candidatePath)
+      ? candidatePath
+      : resolveCanonicalMascotReferenceBankManifestPath(normalizedSpecies);
+  mascotReferenceBankManifestPathCache.set(normalizedSpecies, resolvedPath);
+  return resolvedPath;
+}
+
 function readRawMascotReferenceBankManifest(speciesId?: MascotSpeciesId | string): MascotReferenceBankManifest | null {
   const normalizedSpecies = normalizeMascotReferenceSpeciesId(speciesId);
-  const manifestPath = path.join(MASCOT_REFERENCE_BANK_ROOT, normalizedSpecies, "bank.json");
+  const manifestPath = resolveMascotReferenceBankManifestPath(normalizedSpecies);
   if (!fs.existsSync(manifestPath)) {
     return null;
   }
@@ -150,7 +184,7 @@ export function resolveMascotReferenceBankManifest(speciesId?: MascotSpeciesId |
     return mascotReferenceBankManifestCache.get(normalizedSpecies) ?? null;
   }
 
-  const manifestPath = path.join(MASCOT_REFERENCE_BANK_ROOT, normalizedSpecies, "bank.json");
+  const manifestPath = resolveMascotReferenceBankManifestPath(normalizedSpecies);
   const manifest = readMascotReferenceBankManifestAtPath(manifestPath);
   mascotReferenceBankManifestCache.set(normalizedSpecies, manifest);
   return manifest;
@@ -189,7 +223,7 @@ export function resolveMascotReferenceRequirementStatuses(
   const normalizedSpecies = normalizeMascotReferenceSpeciesId(speciesId);
   const manifest = resolveMascotReferenceBankManifest(normalizedSpecies);
   const rawManifest = readRawMascotReferenceBankManifest(normalizedSpecies);
-  const manifestPath = path.join(MASCOT_REFERENCE_BANK_ROOT, normalizedSpecies, "bank.json");
+  const manifestPath = resolveMascotReferenceBankManifestPath(normalizedSpecies);
   const manifestDir = path.dirname(manifestPath);
 
   return (manifest?.requiredAssets ?? []).map((requirement) => {
@@ -211,6 +245,7 @@ export function resolveMascotReferenceBankDiagnostics(
   const normalizedSpecies = normalizeMascotReferenceSpeciesId(speciesId);
   const manifest = resolveMascotReferenceBankManifest(normalizedSpecies);
   const requirementStatuses = resolveMascotReferenceRequirementStatuses(normalizedSpecies);
+  const manifestPath = resolveMascotReferenceBankManifestPath(normalizedSpecies);
   const styleCount = Array.isArray(manifest?.style) ? manifest.style.length : 0;
   const heroCount = Object.values(manifest?.heroByView ?? {}).reduce(
     (sum, entries) => sum + (Array.isArray(entries) ? entries.length : 0),
@@ -237,6 +272,9 @@ export function resolveMascotReferenceBankDiagnostics(
     status,
     declaredStatus,
     statusMismatch: declaredStatus !== status,
+    variant: manifest?.variant === "candidate" ? "candidate" : "canonical",
+    manifestPath,
+    legacyTemporary: manifest?.legacyTemporary === true,
     styleCount,
     heroCount,
     requiredAssetCount: requiredAssetSlots.length,
@@ -291,6 +329,14 @@ export function buildMascotReferenceBankReviewPlan(
     reviewNotes.push("hero role is missing; manually review face identity, expression stability, and viseme mouth shapes");
   }
 
+  if (diagnostics.variant === "candidate") {
+    reviewNotes.push("candidate reference bank is active; promote only after species identity and cross-view quality pass.");
+  }
+
+  if (diagnostics.legacyTemporary) {
+    reviewNotes.push("active reference bank is marked legacy-temporary; replace with a new canon before rollout.");
+  }
+
   return {
     reviewOnly: true,
     requiredManualSlots: [...requiredManualSlots],
@@ -307,7 +353,7 @@ function buildResolvedMascotReferenceAsset(
     return null;
   }
 
-  const manifestPath = path.join(MASCOT_REFERENCE_BANK_ROOT, speciesId, "bank.json");
+  const manifestPath = resolveMascotReferenceBankManifestPath(speciesId);
   const resolvedPath = path.resolve(path.dirname(manifestPath), entry.path);
   if (!fs.existsSync(resolvedPath)) {
     return null;

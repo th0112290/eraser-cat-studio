@@ -9,6 +9,7 @@
   "scripts": {
     "image-gen:demo": "pnpm exec tsx src/mockDemo.ts",
     "bank:report": "pnpm exec tsx src/reportMascotReferenceReadiness.ts",
+    "bank:readiness": "pnpm exec tsx src/reportMascotReferenceReadiness.ts",
     "bank:smoke": "pnpm exec tsx src/smokeMascotReferenceBank.ts",
     "pipeline:mvp": "pnpm exec tsx src/runImageToAnimationMvp.ts",
     "pipeline:render-accepted": "pnpm exec tsx src/renderAcceptedCharacterShort.ts",

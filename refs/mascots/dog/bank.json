@@ -3,10 +3,14 @@
   "profileId": "dog",
   "speciesId": "dog",
   "familyId": "compact_doodle_mascot_v2",
+  "variant": "canonical",
   "bankStatus": "species_ready",
+  "legacyTemporary": true,
+  "replacementStrategy": "replace",
   "notes": [
     "dog bank bootstrapped from 2026-03-10 one-off outputs for worker stage-chain verification",
-    "replace these temporary refs with dedicated dog canon before rollout or promotion"
+    "replace these temporary refs with dedicated dog canon before rollout or promotion",
+    "current canon is only retained to keep existing smoke fixtures stable while dog replacement bank is generated"
   ],
   "style": [
     {

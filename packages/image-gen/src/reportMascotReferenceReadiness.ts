@@ -30,6 +30,9 @@ function main(): void {
 
     return {
       speciesId,
+      variant: diagnostics.variant,
+      manifestPath: diagnostics.manifestPath,
+      legacyTemporary: diagnostics.legacyTemporary,
       declaredStatus: diagnostics.declaredStatus,
       effectiveStatus: diagnostics.status,
       statusMismatch: diagnostics.statusMismatch,
@@ -63,7 +66,7 @@ function main(): void {
     const unsatisfiedSummary =
       entry.unsatisfiedRequiredAssetSlots.length > 0 ? entry.unsatisfiedRequiredAssetSlots.join(", ") : "none";
     console.log(
-      `[mascot-reference-readiness] species=${entry.speciesId} declared=${entry.declaredStatus} effective=${entry.effectiveStatus} reviewOnly=${entry.reviewOnly} unsatisfied=${unsatisfiedSummary}`
+      `[mascot-reference-readiness] species=${entry.speciesId} variant=${entry.variant} declared=${entry.declaredStatus} effective=${entry.effectiveStatus} reviewOnly=${entry.reviewOnly} legacyTemporary=${entry.legacyTemporary} unsatisfied=${unsatisfiedSummary}`
     );
   }
   console.log(`[mascot-reference-readiness] report=${OUTPUT_PATH}`);
