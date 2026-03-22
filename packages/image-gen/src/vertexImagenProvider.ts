@@ -14,6 +14,7 @@ import type {
 
 const DEFAULT_VERTEX_TIMEOUT_MS = 120_000;
 const DEFAULT_VERTEX_LOCATION = process.env.IMAGEGEN_VERTEX_LOCATION?.trim() || "us-central1";
+const MAX_VERTEX_SAMPLE_COUNT = 4;
 const DEFAULT_VERTEX_GENERATE_MODEL =
   process.env.IMAGEGEN_VERTEX_GENERATE_MODEL?.trim() || "imagen-4.0-generate-001";
 const DEFAULT_VERTEX_EDIT_MODEL =
@@ -221,6 +222,13 @@ function buildRequestContext(
   };
 }
 
+function clampVertexSampleCount(candidateCount: number): number {
+  if (!Number.isFinite(candidateCount) || candidateCount <= 0) {
+    return 1;
+  }
+  return Math.max(1, Math.min(MAX_VERTEX_SAMPLE_COUNT, Math.floor(candidateCount)));
+}
+
 function parseJsonResponse(text: string): VertexImagenResponse {
   if (!text.trim()) {
     return {};
@@ -294,12 +302,25 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
 
     for (const view of views) {
       const context = buildRequestContext(input, view);
-      const usesEdits = Boolean(context.referenceImage);
-      if ((input.referenceBankByView?.[view] ?? input.referenceBank)?.length && context.referenceImage?.source === "reference_bank") {
+      const effectiveCandidateCount = clampVertexSampleCount(context.candidateCount);
+      const usesEdits = Boolean(context.referenceImage && context.repairMask);
+      if (
+        usesEdits &&
+        (input.referenceBankByView?.[view] ?? input.referenceBank)?.length &&
+        context.referenceImage?.source === "reference_bank"
+      ) {
         warnings.add(`vertexImagen used first reference bank asset only for ${view} edits`);
       }
       if (input.structureControlsByView?.[view] && Object.keys(input.structureControlsByView[view] ?? {}).length > 0) {
         warnings.add(`vertexImagen ignored structure controls for ${view}`);
+      }
+      if (context.referenceImage && !context.repairMask) {
+        warnings.add(`vertexImagen ignored reference image for ${view} because no repair mask was provided`);
+      }
+      if (effectiveCandidateCount !== context.candidateCount) {
+        warnings.add(
+          `vertexImagen capped sampleCount for ${view} from ${context.candidateCount} to ${effectiveCandidateCount}`
+        );
       }
 
       let response: VertexImagenResponse | null = null;
@@ -313,9 +334,10 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
             negativePrompt: input.negativePrompt,
             aspectRatio,
             seed: input.baseSeed,
+            candidateCount: effectiveCandidateCount,
             signalTimeoutMs: this.#timeoutMs
           });
-          for (let candidateIndex = 0; candidateIndex < input.candidateCount; candidateIndex += 1) {
+          for (let candidateIndex = 0; candidateIndex < effectiveCandidateCount; candidateIndex += 1) {
             callLogs.push({
               provider: "vertexImagen",
               view,
@@ -331,7 +353,7 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
           const requestError =
             error instanceof Error ? (error as VertexImagenRequestError) : makeRequestError(String(error));
           lastError = requestError;
-          for (let candidateIndex = 0; candidateIndex < input.candidateCount; candidateIndex += 1) {
+          for (let candidateIndex = 0; candidateIndex < effectiveCandidateCount; candidateIndex += 1) {
             callLogs.push({
               provider: "vertexImagen",
               view,
@@ -390,6 +412,8 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
             workflowStage: input.workflowStage,
             workflowTemplateVersion: input.workflowTemplateVersion,
             stagePlan: input.stagePlan,
+            requestedSampleCount: context.candidateCount,
+            actualSampleCount: effectiveCandidateCount,
             referenceBankSummary: summarizeReferenceBank(referenceBank),
             structureControlsSummary: summarizeStructureControls(structureControls),
             structureControlApplied: false,
@@ -458,6 +482,7 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
     negativePrompt: string;
     aspectRatio?: string;
     seed: number;
+    candidateCount: number;
     signalTimeoutMs: number;
   }): Promise<VertexImagenResponse> {
     const controller = new AbortController();
@@ -466,7 +491,7 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
     headers.set("Authorization", `Bearer ${this.#accessToken}`);
     headers.set("Content-Type", "application/json; charset=utf-8");
 
-      const usesEdits = Boolean(input.context.referenceImage);
+      const usesEdits = Boolean(input.context.referenceImage && input.context.repairMask);
       const endpoint = this.#endpointFor(usesEdits);
       const body = usesEdits
       ? {
@@ -499,7 +524,7 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
           ],
           parameters: {
             editMode: "EDIT_MODE_INPAINT_INSERTION",
-            sampleCount: input.context.candidateCount,
+            sampleCount: input.candidateCount,
             seed: input.seed,
             addWatermark: false,
             ...(input.negativePrompt.trim() ? { negativePrompt: input.negativePrompt.trim() } : {}),
@@ -518,7 +543,7 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
             }
           ],
           parameters: {
-            sampleCount: input.context.candidateCount,
+            sampleCount: input.candidateCount,
             seed: input.seed,
             addWatermark: false,
             ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),

@@ -76,6 +76,7 @@ export function initializeGenerationExecutionRuntime(input: any) {
 
   const stageRuntime = initializeGenerationStageRuntime({
     ...input.stageRuntimeInput,
+    workflowStageRuns: input.workflowStageRuns,
     runtimeState,
     runProviderGenerate
   });

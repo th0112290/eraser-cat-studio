@@ -135,6 +135,68 @@ try {
   assert.ok(Array.isArray(editInstance.referenceImages));
   assert.equal((editInstance.referenceImages as Array<unknown>).length, 2);
 
+  const clampedResult = await provider.generate({
+    mode: "new",
+    views: ["front"],
+    candidateCount: 6,
+    baseSeed: 707,
+    speciesId: "cat",
+    positivePrompt: "vertex large sample count",
+    negativePrompt: "artifact",
+    qualityProfile: {
+      id: "vertex_clamp",
+      label: "Vertex Clamp",
+      targetStyle: "2d mascot",
+      qualityTier: "quality",
+      width: 1024,
+      height: 1024
+    }
+  });
+
+  assert.equal(clampedResult.candidates.length, 2);
+  assert.equal(
+    (requests[2]?.jsonBody?.parameters as Record<string, unknown> | undefined)?.sampleCount,
+    4
+  );
+  assert.match(
+    JSON.stringify(clampedResult.providerMeta?.warnings ?? []),
+    /capped sampleCount/i
+  );
+
+  const referenceOnlyResult = await provider.generate({
+    mode: "reference",
+    views: ["front"],
+    candidateCount: 1,
+    baseSeed: 808,
+    speciesId: "cat",
+    positivePrompt: "vertex reference only",
+    negativePrompt: "artifact",
+    referenceImageBase64: Buffer.from("vertex-reference-only").toString("base64"),
+    qualityProfile: {
+      id: "vertex_reference_only",
+      label: "Vertex Reference Only",
+      targetStyle: "2d mascot",
+      qualityTier: "quality",
+      width: 1024,
+      height: 1024
+    }
+  });
+
+  const referenceOnlyRequest = requests.at(-1)?.jsonBody as Record<string, unknown> | undefined;
+  assert.ok(referenceOnlyResult.candidates.length >= 1);
+  assert.equal(
+    (referenceOnlyRequest?.parameters as Record<string, unknown> | undefined)?.sampleCount,
+    1
+  );
+  assert.equal(
+    Array.isArray((referenceOnlyRequest?.instances as Array<Record<string, unknown>> | undefined)?.[0]?.referenceImages),
+    false
+  );
+  assert.match(
+    JSON.stringify(referenceOnlyResult.providerMeta?.warnings ?? []),
+    /ignored reference image/i
+  );
+
   await assert.rejects(
     () =>
       provider.generate({

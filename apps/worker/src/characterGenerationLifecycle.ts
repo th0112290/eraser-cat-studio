@@ -43,8 +43,11 @@ export async function runGenerationLifecycle(input: any) {
     loadMascotStarterReferencesByView,
     mascotFamilyReferencesByView,
     shouldSuppressDuplicateViewStarterReference,
+    hasRetryAdjustmentContent,
     buildInitialAngleReferenceBiasAdjustment,
     generationViewToGenerate,
+    maybeRunUltraSideRefineStage,
+    maybeRunUltraIdentityLockStage,
     buildSideViewAcceptanceGate,
     recordSideViewAcceptanceGateStage,
     buildPackCoherenceDiagnostics,
@@ -1265,11 +1268,16 @@ export async function runGenerationLifecycle(input: any) {
     selectBestCandidateForViewByStages,
     buildAutoRerouteViewDelta,
     toFlatContinuityFields,
-    shouldEnableMascotHeroMode
+    shouldEnableMascotHeroMode,
+    getRuntimeProviderState: () => ({
+      providerName: runtimeState.providerName,
+      providerWarning: runtimeState.providerWarning
+    })
   });
   let selectionOutcome = autoRerouteResult.selectionOutcome;
   preferredSelectionByView = autoRerouteResult.preferredSelectionByView;
   starterReferencePathsByView = autoRerouteResult.starterReferencePathsByView;
+  providerName = autoRerouteResult.providerName ?? providerName;
   providerWarning = autoRerouteResult.providerWarning;
   autoRerouteDiagnostics = autoRerouteResult.autoRerouteDiagnostics;
   await insertProviderCallLogs({

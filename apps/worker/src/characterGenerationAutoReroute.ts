@@ -210,6 +210,21 @@ export function buildSelectionOutcome(input: any): any {
 }
 
 export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
+  const syncProviderRuntimeState = () => {
+    if (typeof input.getRuntimeProviderState !== "function") {
+      return;
+    }
+    const snapshot = input.getRuntimeProviderState();
+    if (!snapshot || typeof snapshot !== "object") {
+      return;
+    }
+    if (typeof snapshot.providerName === "string" && snapshot.providerName.length > 0) {
+      input.providerName = snapshot.providerName;
+    }
+    if (typeof snapshot.providerWarning === "string" || snapshot.providerWarning === null) {
+      input.providerWarning = snapshot.providerWarning ?? null;
+    }
+  };
   let providerWarning = input.providerWarning;
   let preferredSelectionByView = input.preferredSelectionByView;
   let starterReferencePathsByView = input.starterReferencePathsByView;
@@ -353,6 +368,8 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
       budgetViewCount: input.requestedViews.length,
       seedOffset: autoRerouteDecision.seedOffset
     });
+    syncProviderRuntimeState();
+    providerWarning = input.providerWarning;
     input.applyConsistencyScoring(
       input.scored,
       input.promptBundle.qualityProfile.targetStyle,
@@ -528,6 +545,8 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
         ),
         seedOffset: autoRerouteDecision.seedOffset + 5000
       });
+      syncProviderRuntimeState();
+      providerWarning = input.providerWarning;
       input.applyConsistencyScoring(
         input.scored,
         input.promptBundle.qualityProfile.targetStyle,
@@ -551,6 +570,8 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
         acceptedScoreThresholdBoost: autoRerouteDecision.acceptedScoreThresholdBoost * 0.35,
         candidateCountBoost: Math.max(0, autoRerouteDecision.candidateCountBoost - 1)
       });
+      syncProviderRuntimeState();
+      providerWarning = input.providerWarning;
       const autoRerouteBestAfterRefine = input.groupBestByViewForSelection({
         scored: input.scored,
         targetStyle: input.promptBundle.qualityProfile.targetStyle,
@@ -568,6 +589,8 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
         acceptedScoreThresholdBoost: autoRerouteDecision.acceptedScoreThresholdBoost * 0.45,
         candidateCountBoost: Math.max(0, autoRerouteDecision.candidateCountBoost - 1)
       });
+      syncProviderRuntimeState();
+      providerWarning = input.providerWarning;
       const autoRerouteBestAfterLock = input.groupBestByViewForSelection({
         scored: input.scored,
         targetStyle: input.promptBundle.qualityProfile.targetStyle,
@@ -816,6 +839,8 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
           : {}),
         seedOffset: autoRerouteDecision.seedOffset + 9000
       });
+      syncProviderRuntimeState();
+      providerWarning = input.providerWarning;
       input.applyConsistencyScoring(
         input.scored,
         input.promptBundle.qualityProfile.targetStyle,
@@ -903,6 +928,7 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
     selectionOutcome,
     preferredSelectionByView,
     starterReferencePathsByView,
+    providerName: input.providerName,
     providerWarning,
     autoRerouteDiagnostics
   };
