@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 export function buildBenchmarkQueueViewModel(input: any) {
   const {
     decisionState,

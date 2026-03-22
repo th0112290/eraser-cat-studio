@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 export function buildBenchmarkQueueSurface(input: any) {
   const {
     decisionState,
