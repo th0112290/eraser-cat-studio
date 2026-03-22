@@ -93,6 +93,7 @@ import {
   getEpisodeOutputPaths,
   MAX_JOB_ATTEMPTS,
   PACKAGE_OUTPUTS_JOB_NAME,
+  PIPELINE_JOB_NAMES,
   queue,
   QUEUE_NAME,
   REDIS_CONNECTION,
@@ -270,6 +271,7 @@ type JobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
 type ActiveJobStatus = "QUEUED" | "RUNNING";
 type EpisodeStatus = "GENERATING" | "PREVIEW_READY" | "COMPLETED" | "FAILED";
 type RenderStage = typeof RENDER_PREVIEW_JOB_NAME | typeof RENDER_FINAL_JOB_NAME | typeof RENDER_EPISODE_JOB_NAME;
+type ActiveQueueState = "active" | "waiting" | "delayed" | "prioritized" | "paused" | "waiting-children";
 type CurrentJobState = { status: JobStatus; maxAttempts: number; retryBackoffMs: number };
 type WorkerQueuePayload = EpisodeJobPayload;
 type StoredQcReport = {
@@ -306,6 +308,16 @@ type RetrySummaryReport = {
   issues: RenderFailureIssue[];
   qc_report_path: string;
 };
+
+const REUSABLE_DOWNSTREAM_QUEUE_STATES = new Set<ActiveQueueState>([
+  "active",
+  "waiting",
+  "delayed",
+  "prioritized",
+  "paused",
+  "waiting-children"
+]);
+const EPISODE_TERMINAL_FAILURE_JOB_NAMES = new Set<string>([...PIPELINE_JOB_NAMES, RENDER_EPISODE_JOB_NAME]);
 
 type ShotSidecarPresetLike = {
   sidecar_preset?: {
@@ -8077,27 +8089,84 @@ async function enqueueNext(input: { parentJobDbId: string; episodeId: string; ty
   const lockKey = `${input.episodeId}:${input.type}`;
   return withRedisDownstreamLock(lockKey, async () =>
     withDownstreamEnqueueLock(lockKey, async () => {
-    const active = await prisma.job.findFirst({
-      where: { episodeId: input.episodeId, type: input.type, status: { in: ["QUEUED", "RUNNING"] satisfies ActiveJobStatus[] } },
-      orderBy: { createdAt: "desc" }
-    });
-    if (active) {
-      await logJob(input.parentJobDbId, "info", "Reusing active downstream job", { nextType: input.type, nextJobDbId: active.id });
-      return active;
-    }
+      const active = await prisma.job.findFirst({
+        where: { episodeId: input.episodeId, type: input.type, status: { in: ["QUEUED", "RUNNING"] satisfies ActiveJobStatus[] } },
+        orderBy: { createdAt: "desc" }
+      });
+      if (active) {
+        const queueJobId =
+          typeof active.bullmqJobId === "string" && active.bullmqJobId.trim().length > 0 ? active.bullmqJobId.trim() : active.id;
+        let queueState: string | null = null;
+        try {
+          const queuedJob = await queue.getJob(queueJobId);
+          if (queuedJob) {
+            queueState = String(await queuedJob.getState());
+          }
+        } catch {
+          queueState = "lookup_failed";
+        }
 
-    const nextJob = await prisma.job.create({
-      data: { episodeId: input.episodeId, type: input.type, status: "QUEUED", progress: 0, maxAttempts: input.maxAttempts > 0 ? input.maxAttempts : MAX_JOB_ATTEMPTS, retryBackoffMs: input.retryBackoffMs > 0 ? input.retryBackoffMs : 1000 }
-    });
-    await logJob(nextJob.id, "info", "Transition -> QUEUED", { source: "worker:pipeline", parentJobDbId: input.parentJobDbId, type: input.type });
+        if (queueState && REUSABLE_DOWNSTREAM_QUEUE_STATES.has(queueState as ActiveQueueState)) {
+          await logJob(input.parentJobDbId, "info", "Reusing active downstream job", {
+            nextType: input.type,
+            nextJobDbId: active.id,
+            bullmqJobId: queueJobId,
+            queueState
+          });
+          return active;
+        }
 
-    const payload: EpisodeJobPayload = { jobDbId: nextJob.id, episodeId: input.episodeId, schemaChecks: [], ...(input.templatePayload.pipeline ? { pipeline: input.templatePayload.pipeline } : {}), ...(input.render ? { render: input.render } : {}) };
-    const bull = await addToQueue(input.type, payload, nextJob.maxAttempts, nextJob.retryBackoffMs);
-    await prisma.job.update({ where: { id: nextJob.id }, data: { bullmqJobId: String(bull.id), status: "QUEUED", lastError: null } });
-    await logJob(nextJob.id, "info", "Transition -> ENQUEUED", { source: "worker:pipeline", bullmqJobId: String(bull.id), type: input.type });
-    await logJob(input.parentJobDbId, "info", "Pipeline next job enqueued", { nextType: input.type, nextJobDbId: nextJob.id, bullmqJobId: String(bull.id) });
-    return nextJob;
-  }));
+        if (queueState === "completed") {
+          const completed = await prisma.job.update({
+            where: { id: active.id },
+            data: {
+              status: "SUCCEEDED",
+              progress: 100,
+              finishedAt: new Date(),
+              lastError: null
+            }
+          });
+          await logJob(active.id, "warn", "Recovered stale downstream job row from completed queue state", {
+            queueState,
+            bullmqJobId: queueJobId,
+            source: "worker:enqueueNext"
+          });
+          await logJob(input.parentJobDbId, "info", "Downstream job already completed; skipping duplicate enqueue", {
+            nextType: input.type,
+            nextJobDbId: completed.id,
+            bullmqJobId: queueJobId
+          });
+          return completed;
+        }
+
+        await prisma.job.update({
+          where: { id: active.id },
+          data: {
+            status: "FAILED",
+            finishedAt: new Date(),
+            lastError: `Recovered stale downstream job row before enqueueNext (queueState=${queueState ?? "missing"})`
+          }
+        });
+        await logJob(active.id, "warn", "Recovered stale downstream job row before replacement", {
+          queueState: queueState ?? "missing",
+          bullmqJobId: queueJobId,
+          source: "worker:enqueueNext"
+        });
+      }
+
+      const nextJob = await prisma.job.create({
+        data: { episodeId: input.episodeId, type: input.type, status: "QUEUED", progress: 0, maxAttempts: input.maxAttempts > 0 ? input.maxAttempts : MAX_JOB_ATTEMPTS, retryBackoffMs: input.retryBackoffMs > 0 ? input.retryBackoffMs : 1000 }
+      });
+      await logJob(nextJob.id, "info", "Transition -> QUEUED", { source: "worker:pipeline", parentJobDbId: input.parentJobDbId, type: input.type });
+
+      const payload: EpisodeJobPayload = { jobDbId: nextJob.id, episodeId: input.episodeId, schemaChecks: [], ...(input.templatePayload.pipeline ? { pipeline: input.templatePayload.pipeline } : {}), ...(input.render ? { render: input.render } : {}) };
+      const bull = await addToQueue(input.type, payload, nextJob.maxAttempts, nextJob.retryBackoffMs);
+      await prisma.job.update({ where: { id: nextJob.id }, data: { bullmqJobId: String(bull.id), status: "QUEUED", lastError: null } });
+      await logJob(nextJob.id, "info", "Transition -> ENQUEUED", { source: "worker:pipeline", bullmqJobId: String(bull.id), type: input.type });
+      await logJob(input.parentJobDbId, "info", "Pipeline next job enqueued", { nextType: input.type, nextJobDbId: nextJob.id, bullmqJobId: String(bull.id) });
+      return nextJob;
+    })
+  );
 }
 
 function parseBeatDoc(json: Prisma.JsonValue, fallbackEpisode: EpisodeInput): { episode: EpisodeInput; beats: Beat[] } {
@@ -9262,7 +9331,14 @@ worker.on("failed", async (bullJob, err) => {
     maxAttempts: configuredAttempts
   });
   try {
-    await setEpisodeStatus(payload.episodeId, "FAILED");
+    if (EPISODE_TERMINAL_FAILURE_JOB_NAMES.has(jobName)) {
+      await setEpisodeStatus(payload.episodeId, "FAILED");
+    } else {
+      await logJob(payload.jobDbId, "warn", "Episode status left unchanged for non-core job failure", {
+        jobName,
+        episodeId: payload.episodeId
+      });
+    }
   } catch {
     // Ignore missing episode in failed hook.
   }

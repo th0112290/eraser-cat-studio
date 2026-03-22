@@ -125,6 +125,7 @@ export async function initializeGenerationProviderRuntime(input: {
   });
   let providerWarning: string | null = null;
   const isPremiumProvider = requestedProvider === "remoteApi" || requestedProvider === "vertexImagen";
+  const explicitlyRequestedRealProvider = requestedProvider === "remoteApi" || requestedProvider === "vertexImagen";
 
   if (input.mascotReferenceBankDiagnostics.status === "scaffold_only") {
     const reviewSlotsSummary =
@@ -165,18 +166,9 @@ export async function initializeGenerationProviderRuntime(input: {
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .join(" | ");
   } else if (requestedProvider === "remoteApi" && !input.remoteApiConfig.baseUrl) {
-    providerName = "mock";
-    providerWarning = [providerWarning, "IMAGEGEN_REMOTE_BASE_URL is not configured. Falling back to mock provider."]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .join(" | ");
+    throw new Error("IMAGEGEN_REMOTE_BASE_URL is required when generationProvider=remoteApi");
   } else if (requestedProvider === "vertexImagen" && !input.vertexImagenConfig.projectId) {
-    providerName = "mock";
-    providerWarning = [
-      providerWarning,
-      "IMAGEGEN_VERTEX_PROJECT_ID is not configured. Falling back to mock provider."
-    ]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .join(" | ");
+    throw new Error("IMAGEGEN_VERTEX_PROJECT_ID is required when generationProvider=vertexImagen");
   }
 
   const premiumMaxCandidatesPerView = Math.max(
@@ -266,8 +258,8 @@ export async function initializeGenerationProviderRuntime(input: {
     qualityConfig.lowQualityFallbackToMock &&
     !input.isMascotTargetStyle(input.promptBundle.qualityProfile.targetStyle);
   const strictRealProvider =
-    input.isMascotTargetStyle(input.promptBundle.qualityProfile.targetStyle) &&
-    requestedProvider === "comfyui";
+    explicitlyRequestedRealProvider ||
+    (input.isMascotTargetStyle(input.promptBundle.qualityProfile.targetStyle) && requestedProvider === "comfyui");
   const providerRequestTimeoutMs = input.toPositiveInt(process.env.COMFY_ADAPTER_TIMEOUT_MS, 360_000);
   const providerStageTimeoutOverrideMs = input.toPositiveInt(
     process.env.CHARACTER_PROVIDER_STAGE_TIMEOUT_MS,
