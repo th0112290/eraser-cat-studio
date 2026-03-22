@@ -5,14 +5,21 @@
 - Keep required checks aligned with current workflows.
 
 ## Required Workflows
-1. Character strict smoke
+1. API UI resilience smoke
+- Workflow file: `.github/workflows/api-ui-resilience-smoke.yml`
+- Workflow name: `API UI Resilience Smoke`
+- Job id: `api-ui-resilience`
+- Typical check label in branch protection:
+  - `API UI Resilience Smoke / api-ui-resilience`
+
+2. Character strict smoke
 - Workflow file: `.github/workflows/character-strict-smoke.yml`
 - Workflow name: `Character Strict Smoke`
 - Job id: `smoke-character-strict`
 - Typical check label in branch protection:
   - `Character Strict Smoke / smoke-character-strict`
 
-2. E2E manifest selftest
+3. E2E manifest selftest
 - Workflow file: `.github/workflows/e2e-manifest-selftest.yml`
 - Workflow name: `E2E Manifest Selftest`
 - Job id: `manifest-selftest`
@@ -24,7 +31,8 @@
 2. Create or edit the rule for `main`.
 3. Enable `Require a pull request before merging`.
 4. Enable `Require status checks to pass before merging`.
-5. Add both required checks:
+5. Add all required checks:
+- `API UI Resilience Smoke / api-ui-resilience`
 - `Character Strict Smoke / smoke-character-strict`
 - `E2E Manifest Selftest / manifest-selftest`
 6. Save changes.
@@ -45,6 +53,7 @@ Use this when check labels differ by repo settings.
 - `matched: true` for both required targets.
 - If any target is missing, run the workflow once on PR and re-run capture.
 5. Register exact labels for:
+- api ui resilience smoke
 - character strict smoke
 - e2e manifest selftest
 
@@ -52,9 +61,9 @@ Use this when check labels differ by repo settings.
 1. Open a PR that touches:
 - `scripts/smokeCharacter.mjs` (strict smoke)
 - `scripts/smokeE2E.mjs` (manifest selftest)
-2. Confirm both workflows run.
-3. Confirm merge is blocked when either check fails.
-4. Confirm merge becomes available when both checks pass.
+2. Confirm all three workflows run.
+3. Confirm merge is blocked when any required check fails.
+4. Confirm merge becomes available when all required checks pass.
 
 ## Troubleshooting
 - Check not listed in branch protection:

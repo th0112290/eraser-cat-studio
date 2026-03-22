@@ -67,9 +67,13 @@ jobs:
 
       - name: Package smoke (shared/audio/render/analytics)
         run: |
+          pnpm -C packages/shared run validate:smoke
           pnpm -C packages/shared run smoke:stableStringify
+          pnpm -C packages/story run beats:smoke
+          pnpm -C packages/story run shots:smoke
           pnpm -C packages/audio run audio:smoke
           pnpm -C packages/render-orchestrator run render:smoke
+          pnpm -C packages/render-orchestrator run render:smoke:data-contract
           pnpm -C packages/analytics run analytics:smoke
 
       - name: Run fallback helper smoke

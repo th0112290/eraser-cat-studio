@@ -3,15 +3,33 @@ name: E2E Manifest Selftest
 on:
   workflow_dispatch:
   pull_request:
+    branches:
+      - main
     paths:
+      - "apps/api/**"
+      - "apps/worker/**"
+      - "packages/render-orchestrator/**"
+      - "packages/shared/**"
+      - "packages/story/**"
+      - "packages/schemas/**"
       - "scripts/smokeE2E.mjs"
       - ".github/workflows/e2e-manifest-selftest.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
   push:
     branches:
       - main
     paths:
+      - "apps/api/**"
+      - "apps/worker/**"
+      - "packages/render-orchestrator/**"
+      - "packages/shared/**"
+      - "packages/story/**"
+      - "packages/schemas/**"
       - "scripts/smokeE2E.mjs"
       - ".github/workflows/e2e-manifest-selftest.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
 
 jobs:
   manifest-selftest:

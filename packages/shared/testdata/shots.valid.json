@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "episode": {
+    "episode_id": "ep_001",
+    "bible_ref": "bible_v1",
+    "profiles": {
+      "studio_profile_id": "studio_default",
+      "channel_profile_id": "economy_channel",
+      "mascot_profile_id": "eraser_cat"
+    },
+    "data_inputs": [
+      {
+        "dataset_id": "macro_series",
+        "time_range": "2025-Q1..2025-Q3",
+        "unit": "%",
+        "rows": [
+          { "label": "Q1", "value": 12, "unit": "%" },
+          { "label": "Q2", "value": 18, "unit": "%" }
+        ],
+        "expected_sum": 30,
+        "sum_tolerance": 0.5
+      }
+    ]
+  },
+  "render": {
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "safe_area": {
+      "x": 0.05,
+      "y": 0.05,
+      "w": 0.9,
+      "h": 0.9
+    },
+    "coord_space": "normalized"
+  },
+  "shots": [
+    {
+      "shot_id": "shot_001",
+      "shot_type": "talk",
+      "render_mode": "deterministic",
+      "beat_ids": ["beat_001"],
+      "start_frame": 0,
+      "duration_frames": 120,
+      "set": {
+        "set_id": "studio_chart"
+      },
+      "camera": {
+        "preset": "static"
+      },
+      "chart": {
+        "chart_id": "chart_001",
+        "type": "bar",
+        "dataset_id": "macro_series",
+        "time_range": "full",
+        "layout_preset": "main_left"
+      },
+      "character": {
+        "pack_id": "eraser-cat-minimal",
+        "layer": "between_bg_mid_and_near",
+        "transform": {
+          "x": 0.45,
+          "y": 0.82,
+          "scale": 1,
+          "flip_x": false
+        },
+        "tracks": {
+          "pos_path": [
+            { "f": 0, "x": 0.45, "y": 0.82, "interp": "spring" }
+          ],
+          "action_track": [
+            { "f": 0, "clip": "idle", "weight": 1 }
+          ],
+          "expression_track": [
+            { "f": 0, "expression": "neutral" }
+          ],
+          "look_track": [
+            { "f": 0, "target": "viewer" }
+          ]
+        }
+      },
+      "shot_grammar": {
+        "camera_size": "mcu",
+        "camera_motion": "hold",
+        "acting_intent": "steady_delivery",
+        "emotion_curve": "flat",
+        "primary_speaking_character": "host",
+        "required_view": "front",
+        "educational_intent": "hook_context",
+        "insert_need": ["chart"],
+        "route_reason": "data_primary"
+      },
+      "acting": {
+        "blink_cues": [],
+        "gesture_cues": [],
+        "look_cues": [],
+        "expression_cues": [],
+        "mouth_cues": []
+      },
+      "qc_expectations": {
+        "must_keep_character_in_frame": true,
+        "allow_pointing_fail_fallback": true
+      }
+    }
+  ]
+}

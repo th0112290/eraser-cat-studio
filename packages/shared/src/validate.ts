@@ -115,6 +115,18 @@ export function runValidationSmoke(): void {
       schemaId: "beats.schema.json",
       file: path.join(testdataDir, "beats.invalid.json"),
       expectOk: false
+    },
+    {
+      name: "shots.valid",
+      schemaId: "shots.schema.json",
+      file: path.join(testdataDir, "shots.valid.json"),
+      expectOk: true
+    },
+    {
+      name: "shots.invalid",
+      schemaId: "shots.schema.json",
+      file: path.join(testdataDir, "shots.invalid.json"),
+      expectOk: false
     }
   ];
 
