@@ -68,6 +68,7 @@ export async function initializeGenerationProviderRuntime(input: {
   totalImages: number;
   limits: LimitsLike;
   comfyUiUrl?: string;
+  vertexImagenConfig: Record<string, unknown> & { projectId?: string };
   remoteApiConfig: Record<string, unknown> & { baseUrl?: string };
   generationProvider?: string | null;
   promptBundle: PromptBundleLike;
@@ -101,11 +102,18 @@ export async function initializeGenerationProviderRuntime(input: {
 }> {
   const requestedProvider =
     input.generationProvider ??
-    (input.comfyUiUrl ? "comfyui" : input.remoteApiConfig.baseUrl ? "remoteApi" : "mock");
+    (input.comfyUiUrl
+      ? "comfyui"
+      : input.vertexImagenConfig.projectId
+        ? "vertexImagen"
+        : input.remoteApiConfig.baseUrl
+          ? "remoteApi"
+          : "mock");
 
   let providerName = resolveProviderName({
     requestedProvider,
     comfyUiUrl: input.comfyUiUrl,
+    vertexImagenProjectId: input.vertexImagenConfig.projectId,
     remoteApiBaseUrl: input.remoteApiConfig.baseUrl
   });
   let providerWarning: string | null = null;
@@ -133,6 +141,13 @@ export async function initializeGenerationProviderRuntime(input: {
     ]
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .join(" | ");
+  } else if (requestedProvider === "comfyui" && !input.comfyUiUrl && input.vertexImagenConfig.projectId) {
+    providerWarning = [
+      providerWarning,
+      "COMFY_ADAPTER_URL/COMFYUI_BASE_URL is not configured. Falling back to vertexImagen provider."
+    ]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join(" | ");
   } else if (requestedProvider === "comfyui" && !input.comfyUiUrl) {
     providerName = "mock";
     providerWarning = [
@@ -144,6 +159,14 @@ export async function initializeGenerationProviderRuntime(input: {
   } else if (requestedProvider === "remoteApi" && !input.remoteApiConfig.baseUrl) {
     providerName = "mock";
     providerWarning = [providerWarning, "IMAGEGEN_REMOTE_BASE_URL is not configured. Falling back to mock provider."]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join(" | ");
+  } else if (requestedProvider === "vertexImagen" && !input.vertexImagenConfig.projectId) {
+    providerName = "mock";
+    providerWarning = [
+      providerWarning,
+      "IMAGEGEN_VERTEX_PROJECT_ID is not configured. Falling back to mock provider."
+    ]
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .join(" | ");
   }
@@ -165,8 +188,13 @@ export async function initializeGenerationProviderRuntime(input: {
   }
 
   const provider = createCharacterProvider({
-    provider: providerName as "comfyui" | "remoteApi" | "mock",
+    provider: providerName as "comfyui" | "remoteApi" | "vertexImagen" | "mock",
     comfyUiUrl: input.comfyUiUrl,
+    vertexImagen: {
+      ...input.vertexImagenConfig,
+      maxRetries: input.limits.maxRetries,
+      estimatedCostUsdPerImage: input.limits.costPerImageUsd
+    },
     remoteApi: {
       ...input.remoteApiConfig,
       maxRetries: input.limits.maxRetries,

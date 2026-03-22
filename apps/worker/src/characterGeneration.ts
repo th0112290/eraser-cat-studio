@@ -4918,6 +4918,34 @@ function getRemoteApiConfig(): {
   };
 }
 
+function getVertexImagenConfig(): {
+  projectId?: string;
+  location?: string;
+  model?: string;
+  accessToken?: string;
+  timeoutMs: number;
+  outputFormat?: string;
+  aspectRatio?: string;
+} {
+  const projectId = process.env.IMAGEGEN_VERTEX_PROJECT_ID?.trim();
+  const location = process.env.IMAGEGEN_VERTEX_LOCATION?.trim();
+  const model = process.env.IMAGEGEN_VERTEX_MODEL?.trim();
+  const accessToken = process.env.IMAGEGEN_VERTEX_ACCESS_TOKEN?.trim();
+  const timeoutMs = toPositiveInt(process.env.IMAGEGEN_VERTEX_TIMEOUT_MS, 60_000);
+  const outputFormat = process.env.IMAGEGEN_VERTEX_OUTPUT_FORMAT?.trim();
+  const aspectRatio = process.env.IMAGEGEN_VERTEX_ASPECT_RATIO?.trim();
+
+  return {
+    ...(projectId ? { projectId } : {}),
+    ...(location ? { location } : {}),
+    ...(model ? { model } : {}),
+    ...(accessToken ? { accessToken } : {}),
+    timeoutMs,
+    ...(outputFormat ? { outputFormat } : {}),
+    ...(aspectRatio ? { aspectRatio } : {})
+  };
+}
+
 function asNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -11280,12 +11308,14 @@ export async function handleGenerateCharacterAssetsJob(input: {
   }
 
   const comfyUiUrl = getComfyUiUrl();
+  const vertexImagenConfig = getVertexImagenConfig();
   const remoteApiConfig = getRemoteApiConfig();
   const runtime = await initializeGenerationProviderRuntime({
     prisma,
     totalImages: clamped.totalImages,
     limits,
     comfyUiUrl,
+    vertexImagenConfig,
     remoteApiConfig,
     generationProvider: generation.provider ?? null,
     promptBundle: promptBundle as {

@@ -1,6 +1,6 @@
 export type CharacterGenerationMode = "reference" | "new";
 export type CharacterView = "front" | "threeQuarter" | "profile";
-export type CharacterProviderName = "mock" | "comfyui" | "remoteApi";
+export type CharacterProviderName = "mock" | "comfyui" | "remoteApi" | "vertexImagen";
 export type MascotSpeciesId = "cat" | "dog" | "wolf";
 export type CharacterWorkflowStage =
   | "front_master"

@@ -71,7 +71,7 @@ type CharacterGenerationSelection = {
 };
 
 type CharacterGenerationMode = "reference" | "new";
-type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi";
+type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi" | "vertexImagen";
 type CharacterGenerationView = "front" | "threeQuarter" | "profile";
 type CharacterGenerationSpecies = "cat" | "dog" | "wolf";
 type CharacterGeneratorStatus = "PENDING_HITL" | "AUTO_SELECTED";
@@ -2352,6 +2352,14 @@ function resolveRemoteApiBaseUrl(): string | undefined {
   return undefined;
 }
 
+function resolveVertexImagenProjectId(): string | undefined {
+  const configured = process.env.IMAGEGEN_VERTEX_PROJECT_ID?.trim();
+  if (configured && configured.length > 0) {
+    return configured;
+  }
+  return undefined;
+}
+
 function parseGenerationProvider(value: unknown): CharacterGenerationProvider {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
@@ -2361,6 +2369,9 @@ function parseGenerationProvider(value: unknown): CharacterGenerationProvider {
     if (normalized === "remoteapi" || normalized === "remote_api" || normalized === "remote-api") {
       return "remoteApi";
     }
+    if (normalized === "verteximagen" || normalized === "vertex-imagen" || normalized === "vertex_imagen" || normalized === "vertex") {
+      return "vertexImagen";
+    }
     if (normalized === "mock") {
       return "mock";
     }
@@ -2368,6 +2379,9 @@ function parseGenerationProvider(value: unknown): CharacterGenerationProvider {
 
   if (resolveComfyUiBaseUrl()) {
     return "comfyui";
+  }
+  if (resolveVertexImagenProjectId()) {
+    return "vertexImagen";
   }
   if (resolveRemoteApiBaseUrl()) {
     return "remoteApi";
@@ -2396,7 +2410,7 @@ function toDbGenerationProvider(provider: CharacterGenerationProvider): "MOCK" |
   if (provider === "comfyui") {
     return "COMFYUI";
   }
-  if (provider === "remoteApi") {
+  if (provider === "remoteApi" || provider === "vertexImagen") {
     return "REMOTEAPI";
   }
   return "MOCK";

@@ -147,6 +147,8 @@ export function buildSelectionBuildPayload(input: {
             ? "comfyui"
             : input.providerName === "remoteApi"
               ? "remoteApi"
+              : input.providerName === "vertexImagen"
+                ? "vertexImagen"
               : "mock",
         promptPreset: input.promptPreset,
         species: input.normalizedSpecies,

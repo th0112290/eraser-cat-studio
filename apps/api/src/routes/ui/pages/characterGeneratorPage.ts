@@ -345,7 +345,7 @@ export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopIn
         </div>
         <div class="cg-field-grid tight">
           <label>Run mode<select name="mode"><option value="new">new</option><option value="reference">reference</option></select><small>Use reference mode when the run must stay visibly anchored to an existing asset.</small></label>
-          <label>Provider<select name="provider"><option value="mock">mock</option><option value="comfyui">comfyui</option><option value="remoteApi">remoteApi</option></select><small>Use remoteApi for premium still/rescue runs when configured; keep mock available for fallback or local validation.</small></label>
+          <label>Provider<select name="provider"><option value="mock">mock</option><option value="comfyui">comfyui</option><option value="remoteApi">remoteApi</option><option value="vertexImagen">vertexImagen</option></select><small>Use remoteApi or vertexImagen for premium still/rescue runs when configured; keep mock available for fallback or local validation.</small></label>
           <label>Prompt preset<select name="promptPreset">${input.styleOptions}</select><small>Presets should carry the stable styling intent that later compare and approval decisions inherit.</small></label>
           <label>Species<select name="species">${input.speciesOptions}</select><small>Make species explicit early so compare does not need to recover from basic intent drift.</small></label>
           <label>Topic<input name="topic" placeholder="Introduce the current character angle or episode need"/><small>This topic appears again in run history, reopen travel, and linked review surfaces.</small></label>

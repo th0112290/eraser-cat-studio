@@ -69,7 +69,7 @@ export type CharacterAssetSelection = {
 };
 
 export type CharacterGenerationMode = "reference" | "new";
-export type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi";
+export type CharacterGenerationProvider = "mock" | "comfyui" | "remoteApi" | "vertexImagen";
 export type CharacterGenerationView = "front" | "threeQuarter" | "profile";
 export type CharacterGenerationSpecies = "cat" | "dog" | "wolf";
 export type CharacterGenerationSelection = {

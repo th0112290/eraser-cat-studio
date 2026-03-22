@@ -284,7 +284,7 @@ function parseNonNegativeEnv(value: string | undefined, fallback: number): numbe
   return parsed;
 }
 
-function parseProviderName(value: unknown): "mock" | "comfyui" | "remoteApi" {
+function parseProviderName(value: unknown): "mock" | "comfyui" | "remoteApi" | "vertexImagen" {
   if (typeof value !== "string") {
     return "mock";
   }
@@ -294,6 +294,9 @@ function parseProviderName(value: unknown): "mock" | "comfyui" | "remoteApi" {
   }
   if (normalized === "remoteapi" || normalized === "remote_api" || normalized === "remote") {
     return "remoteApi";
+  }
+  if (normalized === "verteximagen" || normalized === "vertex_imagen" || normalized === "vertex-imagen" || normalized === "vertex") {
+    return "vertexImagen";
   }
   return "mock";
 }
@@ -311,6 +314,9 @@ function readImageGenBudgetConfig() {
     remoteConfigured:
       typeof process.env.IMAGEGEN_REMOTE_BASE_URL === "string" &&
       process.env.IMAGEGEN_REMOTE_BASE_URL.trim().length > 0,
+    vertexConfigured:
+      typeof process.env.IMAGEGEN_VERTEX_PROJECT_ID === "string" &&
+      process.env.IMAGEGEN_VERTEX_PROJECT_ID.trim().length > 0,
     comfyConfigured:
       typeof process.env.COMFYUI_BASE_URL === "string"
         ? process.env.COMFYUI_BASE_URL.trim().length > 0
@@ -319,7 +325,7 @@ function readImageGenBudgetConfig() {
 }
 
 function parseBudgetQuery(requestQuery: unknown): {
-  provider: "mock" | "comfyui" | "remoteApi";
+  provider: "mock" | "comfyui" | "remoteApi" | "vertexImagen";
   candidateCount: number;
   views: number;
 } {
@@ -570,7 +576,7 @@ function injectCharacterGeneratorBudgetBanner(html: string): string {
   }
 
   const banner = `<section class="card" id="imagegen-budget-banner"><h2>ImageGen Budget</h2><div id="imagegen-budget-body">Loading budget...</div></section>`;
-  const script = `<script>(function(){if(window.__ecImageGenBudgetLoaded){return;}window.__ecImageGenBudgetLoaded=true;const bannerBody=document.getElementById("imagegen-budget-body");const providerSelect=document.querySelector('select[name=\"provider\"]');if(providerSelect){const exists=[...providerSelect.options].some(o=>o.value==='remoteApi');if(!exists){const opt=document.createElement('option');opt.value='remoteApi';opt.textContent='remoteApi (vendor-neutral)';providerSelect.appendChild(opt);}}const candidateInput=document.querySelector('input[name=\"candidateCount\"]');const render=async()=>{const provider=providerSelect&&providerSelect.value?providerSelect.value:'mock';const candidateCount=candidateInput&&candidateInput.value?candidateInput.value:'4';const params=new URLSearchParams({provider,candidateCount,views:'3'});const res=await fetch('/api/character-generator/budget?'+params.toString());if(!res.ok){throw new Error('budget endpoint '+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error('invalid budget response');}const providerInfo='provider='+data.provider+' / remoteConfigured='+data.remoteConfigured+' / comfyConfigured='+data.comfyConfigured;const costInfo='estimatedThisRun=$'+Number(data.estimatedCostThisRunUsd||0).toFixed(2)+' / monthSpent=$'+Number(data.monthSpentUsd||0).toFixed(2)+' / monthBudget=$'+Number(data.monthBudgetUsd||0).toFixed(2);const limitInfo='maxCandidatesPerView='+data.maxCandidatesPerView+' / maxTotalImages='+data.maxTotalImages+' / maxRetries='+data.maxRetries;const warn=(typeof data.warning==='string'&&data.warning.length>0)?('<div class=\"error\">'+data.warning+'</div>'):'';bannerBody.innerHTML='<div class=\"notice\">'+providerInfo+'</div><div class=\"notice\">'+costInfo+'</div><div class=\"notice\">'+limitInfo+'</div>'+warn;};const safeRender=()=>{render().catch((error)=>{if(bannerBody){bannerBody.textContent='budget load failed: '+String(error);}})};safeRender();if(providerSelect){providerSelect.addEventListener('change',safeRender);}if(candidateInput){candidateInput.addEventListener('input',safeRender);}})();</script>`;
+  const script = `<script>(function(){if(window.__ecImageGenBudgetLoaded){return;}window.__ecImageGenBudgetLoaded=true;const bannerBody=document.getElementById("imagegen-budget-body");const providerSelect=document.querySelector('select[name=\"provider\"]');if(providerSelect){const ensureOption=(value,label)=>{const exists=[...providerSelect.options].some(o=>o.value===value);if(!exists){const opt=document.createElement('option');opt.value=value;opt.textContent=label;providerSelect.appendChild(opt);}};ensureOption('remoteApi','remoteApi (vendor-neutral)');ensureOption('vertexImagen','vertexImagen (Google Cloud)');}const candidateInput=document.querySelector('input[name=\"candidateCount\"]');const render=async()=>{const provider=providerSelect&&providerSelect.value?providerSelect.value:'mock';const candidateCount=candidateInput&&candidateInput.value?candidateInput.value:'4';const params=new URLSearchParams({provider,candidateCount,views:'3'});const res=await fetch('/api/character-generator/budget?'+params.toString());if(!res.ok){throw new Error('budget endpoint '+res.status);}const json=await res.json();const data=json&&json.data?json.data:null;if(!data){throw new Error('invalid budget response');}const providerInfo='provider='+data.provider+' / remoteConfigured='+data.remoteConfigured+' / vertexConfigured='+data.vertexConfigured+' / comfyConfigured='+data.comfyConfigured;const costInfo='estimatedThisRun=$'+Number(data.estimatedCostThisRunUsd||0).toFixed(2)+' / monthSpent=$'+Number(data.monthSpentUsd||0).toFixed(2)+' / monthBudget=$'+Number(data.monthBudgetUsd||0).toFixed(2);const limitInfo='maxCandidatesPerView='+data.maxCandidatesPerView+' / maxTotalImages='+data.maxTotalImages+' / maxRetries='+data.maxRetries;const warn=(typeof data.warning==='string'&&data.warning.length>0)?('<div class=\"error\">'+data.warning+'</div>'):'';bannerBody.innerHTML='<div class=\"notice\">'+providerInfo+'</div><div class=\"notice\">'+costInfo+'</div><div class=\"notice\">'+limitInfo+'</div>'+warn;};const safeRender=()=>{render().catch((error)=>{if(bannerBody){bannerBody.textContent='budget load failed: '+String(error);}})};safeRender();if(providerSelect){providerSelect.addEventListener('change',safeRender);}if(candidateInput){candidateInput.addEventListener('input',safeRender);}})();</script>`;
   return html.replace("<main>", `<main>${banner}${script}`);
 }
 
@@ -642,27 +648,6 @@ export function registerPublishRoutes(input: {
     await assetQueue.close().catch(() => undefined);
   });
 
-  app.addHook("preValidation", async (request) => {
-    const pathname = request.url.split("?", 1)[0] ?? request.url;
-    if (pathname !== "/api/character-generator/generate" && pathname !== "/ui/character-generator/create") {
-      return;
-    }
-
-    if (!isRecord(request.body)) {
-      return;
-    }
-
-    const providerRaw = request.body.provider;
-    if (typeof providerRaw !== "string") {
-      return;
-    }
-
-    const normalized = providerRaw.trim().toLowerCase();
-    if (normalized === "remoteapi" || normalized === "remote_api" || normalized === "remote") {
-      request.body.provider = "comfyui";
-    }
-  });
-
   app.addHook("onSend", async (request, reply, payload) => {
     const pathname = request.url.split("?", 1)[0] ?? request.url;
     if (pathname !== "/ui/character-generator") {
@@ -701,6 +686,8 @@ export function registerPublishRoutes(input: {
     let warning = "";
     if (query.provider === "remoteApi" && !config.remoteConfigured) {
       warning = "IMAGEGEN_REMOTE_BASE_URL is not configured. remoteApi will not be available.";
+    } else if (query.provider === "vertexImagen" && !config.vertexConfigured) {
+      warning = "IMAGEGEN_VERTEX_PROJECT_ID is not configured. vertexImagen will not be available.";
     } else if (query.provider === "comfyui" && !config.comfyConfigured && !config.remoteConfigured) {
       warning = "COMFYUI_BASE_URL is not configured. provider will fall back to mock.";
     } else if (monthSpentUsd + estimate.estimatedCostUsd > config.monthBudgetUsd) {
@@ -719,6 +706,7 @@ export function registerPublishRoutes(input: {
         maxTotalImages: config.maxTotalImages,
         maxRetries: config.maxRetries,
         remoteConfigured: config.remoteConfigured,
+        vertexConfigured: config.vertexConfigured,
         comfyConfigured: config.comfyConfigured,
         warning
       }

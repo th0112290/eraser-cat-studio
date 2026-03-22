@@ -17,6 +17,7 @@ import {
 } from "./generatedCharacterPipeline";
 import { MockCharacterGenerationProvider } from "./mockProvider";
 import { RemoteApiCharacterGenerationProvider } from "./remoteApiProvider";
+import { VertexImagenCharacterGenerationProvider } from "./vertexImagenProvider";
 import {
   buildMascotReferenceBankReviewPlan,
   resolveEffectiveMascotReferenceBankStatus,
@@ -69,6 +70,17 @@ export type CreateCharacterProviderInput = {
     quality?: string;
     outputFormat?: string;
   };
+  vertexImagen?: {
+    projectId?: string;
+    location?: string;
+    model?: string;
+    accessToken?: string;
+    timeoutMs?: number;
+    maxRetries?: number;
+    estimatedCostUsdPerImage?: number;
+    outputFormat?: string;
+    aspectRatio?: string;
+  };
 };
 
 export function createCharacterProvider(input: CreateCharacterProviderInput): CharacterGenerationProvider {
@@ -80,8 +92,16 @@ export function createCharacterProvider(input: CreateCharacterProviderInput): Ch
     return new RemoteApiCharacterGenerationProvider(input.remoteApi ?? {});
   }
 
+  if (input.provider === "vertexImagen") {
+    return new VertexImagenCharacterGenerationProvider(input.vertexImagen ?? {});
+  }
+
   if (!input.provider && input.comfyUiUrl && input.comfyUiUrl.trim().length > 0) {
     return new ComfyUiCharacterGenerationProvider(input.comfyUiUrl);
+  }
+
+  if (!input.provider && input.vertexImagen?.projectId && input.vertexImagen.projectId.trim().length > 0) {
+    return new VertexImagenCharacterGenerationProvider(input.vertexImagen);
   }
 
   if (!input.provider && input.remoteApi?.baseUrl && input.remoteApi.baseUrl.trim().length > 0) {
@@ -94,6 +114,7 @@ export function createCharacterProvider(input: CreateCharacterProviderInput): Ch
 export function resolveProviderName(input: {
   requestedProvider?: string;
   comfyUiUrl?: string;
+  vertexImagenProjectId?: string;
   remoteApiBaseUrl?: string;
 }): CharacterProviderName {
   const requested = input.requestedProvider?.trim().toLowerCase();
@@ -106,9 +127,16 @@ export function resolveProviderName(input: {
   if (requested === "remoteapi" || requested === "remote_api" || requested === "remote") {
     return "remoteApi";
   }
+  if (requested === "verteximagen" || requested === "vertex_imagen" || requested === "vertex-imagen" || requested === "vertex") {
+    return "vertexImagen";
+  }
 
   if (input.comfyUiUrl && input.comfyUiUrl.trim().length > 0) {
     return "comfyui";
+  }
+
+  if (input.vertexImagenProjectId && input.vertexImagenProjectId.trim().length > 0) {
+    return "vertexImagen";
   }
 
   if (input.remoteApiBaseUrl && input.remoteApiBaseUrl.trim().length > 0) {

@@ -86,7 +86,7 @@ function toDbGenerationProvider(
   if (provider === "comfyui") {
     return "COMFYUI";
   }
-  if (provider === "remoteApi") {
+  if (provider === "remoteApi" || provider === "vertexImagen") {
     return "REMOTEAPI";
   }
   return "MOCK";

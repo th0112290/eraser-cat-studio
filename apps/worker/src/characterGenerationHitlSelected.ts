@@ -152,6 +152,8 @@ export async function handleHitlSelectedGeneration<TManifest>(input: {
           ? "comfyui"
           : manifestProvider === "remoteApi"
             ? "remoteApi"
+            : manifestProvider === "vertexImagen"
+              ? "vertexImagen"
             : "mock",
       prompt: input.asString(parsedManifest.positivePrompt),
       negativePrompt: input.asString(parsedManifest.negativePrompt),
