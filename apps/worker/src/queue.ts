@@ -8,6 +8,7 @@ import { workerQueueRetentionOptions } from "./jobRetention";
 bootstrapEnv();
 
 export const QUEUE_NAME = process.env.WORKER_EPISODE_QUEUE_NAME?.trim() || "episode-jobs";
+export const HEAVY_QUEUE_NAME = process.env.WORKER_HEAVY_QUEUE_NAME?.trim() || "episode-heavy-jobs";
 
 export const GENERATE_BEATS_JOB_NAME = "GENERATE_BEATS";
 export const COMPILE_SHOTS_JOB_NAME = "COMPILE_SHOTS";
@@ -40,6 +41,15 @@ export const RENDER_COMPAT_JOB_NAMES = new Set<string>([
   RENDER_EPISODE_JOB_NAME,
   RENDER_PREVIEW_JOB_NAME,
   RENDER_FINAL_JOB_NAME
+]);
+
+export const HEAVY_EPISODE_JOB_NAMES = new Set<string>([
+  GENERATE_CHARACTER_ASSETS_JOB_NAME,
+  BUILD_CHARACTER_PACK_JOB_NAME,
+  RENDER_CHARACTER_PREVIEW_JOB_NAME,
+  RENDER_PREVIEW_JOB_NAME,
+  RENDER_FINAL_JOB_NAME,
+  RENDER_EPISODE_JOB_NAME
 ]);
 
 const redisUrl = process.env.REDIS_URL;
@@ -117,3 +127,38 @@ export const queue = new Queue<SharedEpisodeJobPayload>(QUEUE_NAME, {
     ...workerQueueRetentionOptions()
   }
 });
+
+export const heavyQueue =
+  HEAVY_QUEUE_NAME === QUEUE_NAME
+    ? queue
+    : new Queue<SharedEpisodeJobPayload>(HEAVY_QUEUE_NAME, {
+        connection: REDIS_CONNECTION,
+        defaultJobOptions: {
+          attempts: MAX_JOB_ATTEMPTS,
+          backoff: {
+            type: "exponential",
+            delay: DEFAULT_RETRY_BACKOFF_MS
+          },
+          ...workerQueueRetentionOptions()
+        }
+      });
+
+export function isHeavyEpisodeJobName(name: string): boolean {
+  return HEAVY_EPISODE_JOB_NAMES.has(name);
+}
+
+export function getEpisodeQueueNameForJobName(name: string): string {
+  return isHeavyEpisodeJobName(name) ? HEAVY_QUEUE_NAME : QUEUE_NAME;
+}
+
+export function getEpisodeQueueForJobName(name: string): Queue<SharedEpisodeJobPayload> {
+  return isHeavyEpisodeJobName(name) ? heavyQueue : queue;
+}
+
+export async function closeEpisodeQueues(): Promise<void> {
+  if (heavyQueue === queue) {
+    await queue.close();
+    return;
+  }
+  await Promise.allSettled([queue.close(), heavyQueue.close()]);
+}

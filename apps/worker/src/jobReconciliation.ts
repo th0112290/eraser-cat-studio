@@ -36,6 +36,7 @@ export type StaleCharacterJobReconciliationAction = {
   jobId: string;
   episodeId: string;
   previousStatus: JobStatus;
+  jobType: JobType;
   nextStatus: JobStatus;
   queueState: QueueState;
   reasonCode: string;
@@ -48,6 +49,7 @@ export type StaleCharacterJobReconciliationAction = {
 export type StaleCharacterJobReconciliationSummary = {
   dryRun: boolean;
   staleAgeMinutes: number;
+  reconciledJobTypes: JobType[];
   scanned: number;
   changed: number;
   skippedActive: number;
@@ -56,13 +58,26 @@ export type StaleCharacterJobReconciliationSummary = {
 
 export type ReconcileStaleCharacterGenerationJobsInput = {
   prisma: PrismaClient;
-  queue: Queue;
+  queue?: Queue;
+  getQueueForJobType?: (jobType: JobType) => Queue;
   staleAgeMs: number;
   dryRun?: boolean;
   maxRows?: number;
   log?: (message: string) => void;
   now?: Date;
+  jobTypes?: JobType[];
 };
+
+export const DEFAULT_RECONCILED_WORKER_JOB_TYPES: JobType[] = [
+  JobType.GENERATE_CHARACTER_ASSETS,
+  JobType.GENERATE_BEATS,
+  JobType.COMPILE_SHOTS,
+  JobType.BUILD_CHARACTER_PACK,
+  JobType.RENDER_CHARACTER_PREVIEW,
+  JobType.RENDER_PREVIEW,
+  JobType.RENDER_FINAL,
+  JobType.PACKAGE_OUTPUTS
+];
 
 type ReconciliationDecision = {
   nextStatus: JobStatus;
@@ -234,10 +249,11 @@ export async function reconcileStaleCharacterGenerationJobs(
   const dryRun = input.dryRun === true;
   const maxRows = Math.max(1, input.maxRows ?? 250);
   const log = input.log ?? (() => undefined);
+  const jobTypes = input.jobTypes?.length ? input.jobTypes : DEFAULT_RECONCILED_WORKER_JOB_TYPES;
 
   const rows = await input.prisma.job.findMany({
     where: {
-      type: JobType.GENERATE_CHARACTER_ASSETS,
+      type: { in: jobTypes },
       status: JobStatus.RUNNING,
       updatedAt: { lt: staleCutoff }
     },
@@ -262,6 +278,7 @@ export async function reconcileStaleCharacterGenerationJobs(
   const summary: StaleCharacterJobReconciliationSummary = {
     dryRun,
     staleAgeMinutes,
+    reconciledJobTypes: jobTypes,
     scanned: rows.length,
     changed: 0,
     skippedActive: 0,
@@ -271,13 +288,18 @@ export async function reconcileStaleCharacterGenerationJobs(
   for (const row of rows as ReconciliationTarget[]) {
     const bullmqJobId = typeof row.bullmqJobId === "string" && row.bullmqJobId.trim().length > 0 ? row.bullmqJobId : row.id;
     const ageHours = Math.max(0, (now.getTime() - row.updatedAt.getTime()) / (60 * 60 * 1000));
-    const manifestStatus = readGenerationManifestStatus(row.id);
+    const manifestStatus =
+      row.type === JobType.GENERATE_CHARACTER_ASSETS ? readGenerationManifestStatus(row.id) : null;
 
     let queueState: QueueState = "missing";
     let queueAttemptsMade = row.attemptsMade;
 
     try {
-      const bullJob = await input.queue.getJob(bullmqJobId);
+      const targetQueue = input.getQueueForJobType?.(row.type) ?? input.queue;
+      if (!targetQueue) {
+        throw new Error("queue or getQueueForJobType is required for job reconciliation");
+      }
+      const bullJob = await targetQueue.getJob(bullmqJobId);
       if (bullJob) {
         const rawState = String(await bullJob.getState());
         queueState =
@@ -317,6 +339,7 @@ export async function reconcileStaleCharacterGenerationJobs(
       jobId: row.id,
       episodeId: row.episodeId,
       previousStatus: row.status,
+      jobType: row.type,
       nextStatus: decision.nextStatus,
       queueState,
       reasonCode: decision.reasonCode,
@@ -345,6 +368,7 @@ export async function reconcileStaleCharacterGenerationJobs(
         decision.nextStatus === JobStatus.FAILED ? "warn" : "info",
         {
           source: "worker:stale-character-job-reconciliation",
+          jobType: row.type,
           previousStatus: row.status,
           nextStatus: decision.nextStatus,
           queueState,
@@ -359,14 +383,14 @@ export async function reconcileStaleCharacterGenerationJobs(
 
     summary.changed += 1;
     log(
-      `[worker] reconciled stale character job id=${row.id} next=${decision.nextStatus} ` +
+      `[worker] reconciled stale worker job id=${row.id} type=${row.type} next=${decision.nextStatus} ` +
         `queue=${queueState} reason=${decision.reasonCode} ageHours=${ageHours.toFixed(1)}`
     );
   }
 
   if (summary.scanned > 0 || summary.changed > 0) {
     log(
-      `[worker] stale character job reconciliation scanned=${summary.scanned} changed=${summary.changed} ` +
+      `[worker] stale worker job reconciliation scanned=${summary.scanned} changed=${summary.changed} ` +
         `skippedActive=${summary.skippedActive} dryRun=${summary.dryRun ? "1" : "0"} cutoffMinutes=${summary.staleAgeMinutes}`
     );
   }

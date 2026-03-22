@@ -1,6 +1,6 @@
 import { bootstrapEnv } from "./bootstrapEnv";
 import { PrismaClient } from "@prisma/client";
-import { queue } from "./queue";
+import { closeEpisodeQueues, getEpisodeQueueForJobName } from "./queue";
 import { reconcileStaleCharacterGenerationJobs } from "./jobReconciliation";
 
 bootstrapEnv();
@@ -20,7 +20,7 @@ async function main() {
 
   const summary = await reconcileStaleCharacterGenerationJobs({
     prisma,
-    queue,
+    getQueueForJobType: (jobType) => getEpisodeQueueForJobName(String(jobType)),
     staleAgeMs: staleAgeMinutes * 60 * 1000,
     dryRun,
     maxRows,
@@ -36,5 +36,5 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await Promise.allSettled([prisma.$disconnect(), queue.close()]);
+    await Promise.allSettled([prisma.$disconnect(), closeEpisodeQueues()]);
   });

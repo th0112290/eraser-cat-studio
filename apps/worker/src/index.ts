@@ -84,6 +84,7 @@ import {
   ASSET_QUEUE_NAME,
   BUILD_CHARACTER_PACK_JOB_NAME,
   COMPILE_SHOTS_JOB_NAME,
+  getEpisodeQueueForJobName,
   type AssetIngestQueuePayload,
   type CharacterAssetSelection,
   type CharacterPackJobPayload,
@@ -91,6 +92,7 @@ import {
   GENERATE_CHARACTER_ASSETS_JOB_NAME,
   GENERATE_BEATS_JOB_NAME,
   getEpisodeOutputPaths,
+  HEAVY_QUEUE_NAME,
   MAX_JOB_ATTEMPTS,
   PACKAGE_OUTPUTS_JOB_NAME,
   PIPELINE_JOB_NAMES,
@@ -140,6 +142,14 @@ const ASSET_INGEST_TIMEOUT_MS = Number.parseInt(process.env.ASSET_INGEST_TIMEOUT
 const WORKER_LOCK_DURATION_MS = Number.parseInt(process.env.WORKER_LOCK_DURATION_MS ?? "900000", 10);
 const WORKER_STALLED_INTERVAL_MS = Number.parseInt(process.env.WORKER_STALLED_INTERVAL_MS ?? "60000", 10);
 const WORKER_MAX_STALLED_COUNT = Number.parseInt(process.env.WORKER_MAX_STALLED_COUNT ?? "5", 10);
+const WORKER_DEFAULT_CONCURRENCY = Math.max(
+  1,
+  Number.parseInt(process.env.WORKER_DEFAULT_CONCURRENCY ?? "2", 10) || 2
+);
+const WORKER_HEAVY_CONCURRENCY = Math.max(
+  1,
+  Number.parseInt(process.env.WORKER_HEAVY_CONCURRENCY ?? "1", 10) || 1
+);
 const WORKER_RECONCILE_STALE_CHARACTER_JOBS = parseBoolean(
   process.env.WORKER_RECONCILE_STALE_CHARACTER_JOBS,
   true
@@ -7999,6 +8009,7 @@ async function persistQc(episodeId: string, jobDbId: string, qcReportPath: strin
 }
 
 async function addToQueue(name: string, payload: EpisodeJobPayload, maxAttempts: number, retryBackoffMs: number) {
+  const targetQueue = getEpisodeQueueForJobName(name);
   const hasFailedShotIds =
     Array.isArray(payload.render?.failedShotIds) &&
     payload.render.failedShotIds.some((shotId) => typeof shotId === "string" && shotId.trim().length > 0);
@@ -8011,9 +8022,9 @@ async function addToQueue(name: string, payload: EpisodeJobPayload, maxAttempts:
     ...(retryPriority !== undefined ? { priority: retryPriority } : {})
   };
   try {
-    return await queue.add(name, payload, options);
+    return await targetQueue.add(name, payload, options);
   } catch {
-    const existing = await queue.getJob(payload.jobDbId);
+    const existing = await targetQueue.getJob(payload.jobDbId);
     if (existing) return existing;
     throw new Error(`failed to enqueue job ${payload.jobDbId}`);
   }
@@ -8096,9 +8107,10 @@ async function enqueueNext(input: { parentJobDbId: string; episodeId: string; ty
       if (active) {
         const queueJobId =
           typeof active.bullmqJobId === "string" && active.bullmqJobId.trim().length > 0 ? active.bullmqJobId.trim() : active.id;
+        const targetQueue = getEpisodeQueueForJobName(input.type);
         let queueState: string | null = null;
         try {
-          const queuedJob = await queue.getJob(queueJobId);
+          const queuedJob = await targetQueue.getJob(queueJobId);
           if (queuedJob) {
             queueState = String(await queuedJob.getState());
           }
@@ -9171,90 +9183,121 @@ async function handleRenderCharacterPreview(payload: EpisodeJobPayload, jobDbId:
 if (WORKER_RECONCILE_STALE_CHARACTER_JOBS) {
   await reconcileStaleCharacterGenerationJobs({
     prisma,
-    queue,
+    getQueueForJobType: (jobType) => getEpisodeQueueForJobName(String(jobType)),
     staleAgeMs: WORKER_STALE_CHARACTER_JOB_AGE_MINUTES * 60 * 1000,
     maxRows: WORKER_STALE_CHARACTER_JOB_MAX_ROWS,
     log: (message) => console.log(message)
   });
 }
 
-const worker = new Worker<WorkerQueuePayload>(
-  QUEUE_NAME,
-  async (bullJob) => {
-    const jobName = String(bullJob.name);
-    const rawPayload = bullJob.data as unknown;
+async function processEpisodeWorkerJob(bullJob: { name: string; id?: string | number | null; data: unknown; attemptsMade: number }) {
+  const jobName = String(bullJob.name);
+  const rawPayload = bullJob.data as unknown;
 
-    if (!isEpisodePayload(rawPayload)) {
-      throw new Error(`Invalid payload for job=${jobName}`);
+  if (!isEpisodePayload(rawPayload)) {
+    throw new Error(`Invalid payload for job=${jobName}`);
+  }
+
+  const payload = rawPayload;
+  const attempt = bullJob.attemptsMade + 1;
+  const jobDbId = payload.jobDbId;
+
+  const current = await prisma.job.findUnique({
+    where: { id: jobDbId },
+    select: { status: true, maxAttempts: true, retryBackoffMs: true }
+  });
+  if (!current) throw new Error(`Job row not found: ${jobDbId}`);
+  if (current.status === "SUCCEEDED") {
+    await logJob(jobDbId, "warn", "Duplicate delivery ignored", { bullmqJobId: String(bullJob.id), jobName });
+    return { ok: true, skipped: true };
+  }
+
+  await setJobStatus(jobDbId, "RUNNING", {
+    progress: 1,
+    attemptsMade: attempt,
+    lastError: null,
+    startedAt: attempt === 1 ? new Date() : undefined,
+    finishedAt: null
+  });
+  await logJob(jobDbId, "info", "Transition -> RUNNING", { bullmqJobId: String(bullJob.id), jobName, attempt });
+
+  if (payload.schemaChecks?.length) {
+    for (const check of payload.schemaChecks) {
+      const vr = schemaValidator.validate(check.schemaId, check.data);
+      if (!vr.ok) throw new Error(`Schema validation failed: ${check.schemaId}`);
     }
+  }
 
-    const payload = rawPayload;
-    const attempt = bullJob.attemptsMade + 1;
-    const jobDbId = payload.jobDbId;
-
-    const current = await prisma.job.findUnique({ where: { id: jobDbId }, select: { status: true, maxAttempts: true, retryBackoffMs: true } });
-    if (!current) throw new Error(`Job row not found: ${jobDbId}`);
-    if (current.status === "SUCCEEDED") {
-      await logJob(jobDbId, "warn", "Duplicate delivery ignored", { bullmqJobId: String(bullJob.id), jobName });
-      return { ok: true, skipped: true };
-    }
-
-    await setJobStatus(jobDbId, "RUNNING", { progress: 1, attemptsMade: attempt, lastError: null, startedAt: attempt === 1 ? new Date() : undefined, finishedAt: null });
-    await logJob(jobDbId, "info", "Transition -> RUNNING", { bullmqJobId: String(bullJob.id), jobName, attempt });
-
-    if (payload.schemaChecks?.length) {
-      for (const check of payload.schemaChecks) {
-        const vr = schemaValidator.validate(check.schemaId, check.data);
-        if (!vr.ok) throw new Error(`Schema validation failed: ${check.schemaId}`);
+  if (jobName === GENERATE_CHARACTER_ASSETS_JOB_NAME) {
+    await handleGenerateCharacterAssetsJob({
+      prisma,
+      payload,
+      jobDbId,
+      maxAttempts: current.maxAttempts,
+      retryBackoffMs: current.retryBackoffMs,
+      helpers: {
+        logJob,
+        setJobStatus,
+        setEpisodeStatus,
+        addEpisodeJob: addToQueue
       }
-    }
+    });
+  } else if (jobName === GENERATE_BEATS_JOB_NAME) {
+    await handleGenerate(payload, jobDbId, current);
+  } else if (jobName === COMPILE_SHOTS_JOB_NAME) {
+    await handleCompile(payload, jobDbId, current);
+  } else if (jobName === BUILD_CHARACTER_PACK_JOB_NAME) {
+    await handleBuildCharacterPack(payload, jobDbId);
+  } else if (jobName === RENDER_CHARACTER_PREVIEW_JOB_NAME) {
+    await handleRenderCharacterPreview(payload, jobDbId);
+  } else if (jobName === RENDER_PREVIEW_JOB_NAME) {
+    await handleRender(RENDER_PREVIEW_JOB_NAME, payload, jobDbId, attempt, current);
+  } else if (jobName === RENDER_FINAL_JOB_NAME) {
+    await handleRender(RENDER_FINAL_JOB_NAME, payload, jobDbId, attempt, current);
+  } else if (jobName === RENDER_EPISODE_JOB_NAME) {
+    await handleRender(RENDER_EPISODE_JOB_NAME, payload, jobDbId, attempt, current);
+  } else if (jobName === PACKAGE_OUTPUTS_JOB_NAME) {
+    await handlePackage(payload, jobDbId);
+  } else {
+    await logJob(jobDbId, "info", "No-op handler", { jobName });
+  }
 
-    if (jobName === GENERATE_CHARACTER_ASSETS_JOB_NAME) {
-      await handleGenerateCharacterAssetsJob({
-        prisma,
-        payload,
-        jobDbId,
-        maxAttempts: current.maxAttempts,
-        retryBackoffMs: current.retryBackoffMs,
-        helpers: {
-          logJob,
-          setJobStatus,
-          setEpisodeStatus,
-          addEpisodeJob: addToQueue
-        }
-      });
-    } else if (jobName === GENERATE_BEATS_JOB_NAME) {
-      await handleGenerate(payload, jobDbId, current);
-    } else if (jobName === COMPILE_SHOTS_JOB_NAME) {
-      await handleCompile(payload, jobDbId, current);
-    } else if (jobName === BUILD_CHARACTER_PACK_JOB_NAME) {
-      await handleBuildCharacterPack(payload, jobDbId);
-    } else if (jobName === RENDER_CHARACTER_PREVIEW_JOB_NAME) {
-      await handleRenderCharacterPreview(payload, jobDbId);
-    } else if (jobName === RENDER_PREVIEW_JOB_NAME) {
-      await handleRender(RENDER_PREVIEW_JOB_NAME, payload, jobDbId, attempt, current);
-    } else if (jobName === RENDER_FINAL_JOB_NAME) {
-      await handleRender(RENDER_FINAL_JOB_NAME, payload, jobDbId, attempt, current);
-    } else if (jobName === RENDER_EPISODE_JOB_NAME) {
-      await handleRender(RENDER_EPISODE_JOB_NAME, payload, jobDbId, attempt, current);
-    } else if (jobName === PACKAGE_OUTPUTS_JOB_NAME) {
-      await handlePackage(payload, jobDbId);
-    } else {
-      await logJob(jobDbId, "info", "No-op handler", { jobName });
-    }
+  await setJobStatus(jobDbId, "SUCCEEDED", {
+    progress: 100,
+    attemptsMade: attempt,
+    lastError: null,
+    finishedAt: new Date()
+  });
+  await logJob(jobDbId, "info", "Transition -> SUCCEEDED", { bullmqJobId: String(bullJob.id), jobName, attempt });
+  return { ok: true };
+}
 
-    await setJobStatus(jobDbId, "SUCCEEDED", { progress: 100, attemptsMade: attempt, lastError: null, finishedAt: new Date() });
-    await logJob(jobDbId, "info", "Transition -> SUCCEEDED", { bullmqJobId: String(bullJob.id), jobName, attempt });
-    return { ok: true };
-  },
+const defaultWorker = new Worker<WorkerQueuePayload>(
+  QUEUE_NAME,
+  async (bullJob) => processEpisodeWorkerJob(bullJob),
   {
     connection: REDIS_CONNECTION,
-    concurrency: 2,
+    concurrency: WORKER_DEFAULT_CONCURRENCY,
     lockDuration: WORKER_LOCK_DURATION_MS,
     stalledInterval: WORKER_STALLED_INTERVAL_MS,
     maxStalledCount: WORKER_MAX_STALLED_COUNT
   }
 );
+
+const heavyWorker =
+  HEAVY_QUEUE_NAME === QUEUE_NAME
+    ? null
+    : new Worker<WorkerQueuePayload>(
+        HEAVY_QUEUE_NAME,
+        async (bullJob) => processEpisodeWorkerJob(bullJob),
+        {
+          connection: REDIS_CONNECTION,
+          concurrency: WORKER_HEAVY_CONCURRENCY,
+          lockDuration: WORKER_LOCK_DURATION_MS,
+          stalledInterval: WORKER_STALLED_INTERVAL_MS,
+          maxStalledCount: WORKER_MAX_STALLED_COUNT
+        }
+      );
 
 const assetIngestWorker = new Worker<AssetIngestQueuePayload>(
   ASSET_QUEUE_NAME,
@@ -9284,7 +9327,10 @@ const assetIngestWorker = new Worker<AssetIngestQueuePayload>(
   }
 );
 
-worker.on("failed", async (bullJob, err) => {
+async function handleEpisodeWorkerFailure(
+  bullJob: { name: string; id?: string | number | null; data: unknown; attemptsMade: number; opts: { attempts?: number | undefined } } | undefined,
+  err: Error
+) {
   if (!bullJob) return;
   const jobName = String(bullJob.name);
   const rawPayload = bullJob.data as unknown;
@@ -9342,6 +9388,14 @@ worker.on("failed", async (bullJob, err) => {
   } catch {
     // Ignore missing episode in failed hook.
   }
+}
+
+defaultWorker.on("failed", async (bullJob, err) => {
+  await handleEpisodeWorkerFailure(bullJob, err);
+});
+
+heavyWorker?.on("failed", async (bullJob, err) => {
+  await handleEpisodeWorkerFailure(bullJob, err);
 });
 
 assetIngestWorker.on("failed", async (bullJob, error) => {
@@ -9390,7 +9444,10 @@ async function shutdownWorker(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   isShuttingDown = true;
   console.log(`[worker] shutting down signal=${signal}`);
   await assetIngestWorker.close().catch(() => undefined);
-  await worker.close().catch(() => undefined);
+  await Promise.allSettled([
+    defaultWorker.close().catch(() => undefined),
+    heavyWorker?.close().catch(() => undefined)
+  ]);
   await prisma.$disconnect().catch(() => undefined);
   process.exit(0);
 }
@@ -9402,7 +9459,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 console.log(
-  `[worker] running. redis=${REDIS_URL} queue=${QUEUE_NAME} jobs=${EPISODE_JOB_NAME},${GENERATE_CHARACTER_ASSETS_JOB_NAME},${BUILD_CHARACTER_PACK_JOB_NAME},${COMPILE_SHOTS_JOB_NAME},${RENDER_CHARACTER_PREVIEW_JOB_NAME},${RENDER_PREVIEW_JOB_NAME},${RENDER_FINAL_JOB_NAME},${PACKAGE_OUTPUTS_JOB_NAME},${RENDER_EPISODE_JOB_NAME}`
+  `[worker] running. redis=${REDIS_URL} defaultQueue=${QUEUE_NAME} defaultConcurrency=${WORKER_DEFAULT_CONCURRENCY} ` +
+    `heavyQueue=${HEAVY_QUEUE_NAME} heavyConcurrency=${WORKER_HEAVY_CONCURRENCY} ` +
+    `jobs=${EPISODE_JOB_NAME},${GENERATE_CHARACTER_ASSETS_JOB_NAME},${BUILD_CHARACTER_PACK_JOB_NAME},${COMPILE_SHOTS_JOB_NAME},${RENDER_CHARACTER_PREVIEW_JOB_NAME},${RENDER_PREVIEW_JOB_NAME},${RENDER_FINAL_JOB_NAME},${PACKAGE_OUTPUTS_JOB_NAME},${RENDER_EPISODE_JOB_NAME}`
 );
 console.log(`[worker] asset ingest enabled. queue=${ASSET_QUEUE_NAME} job=${ASSET_INGEST_JOB_NAME}`);
 logMotionPresetBenchmarkStartupHealth();

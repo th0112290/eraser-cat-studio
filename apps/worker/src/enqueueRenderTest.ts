@@ -2,7 +2,7 @@ import { bootstrapEnv } from "./bootstrapEnv";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { queue, RENDER_EPISODE_JOB_NAME } from "./queue";
+import { closeEpisodeQueues, getEpisodeQueueForJobName, RENDER_EPISODE_JOB_NAME } from "./queue";
 import type { EpisodeJobPayload } from "./queue";
 import type { Job, Prisma } from "@prisma/client";
 import type { JobsOptions } from "bullmq";
@@ -111,6 +111,7 @@ async function findOrCreateActiveRenderJob(episodeId: string): Promise<{ job: Jo
 }
 
 async function addToQueue(job: Job, payload: EpisodeJobPayload) {
+  const targetQueue = getEpisodeQueueForJobName(RENDER_EPISODE_JOB_NAME);
   const addOptions: JobsOptions = {
     jobId: job.id,
     attempts: job.maxAttempts,
@@ -119,9 +120,9 @@ async function addToQueue(job: Job, payload: EpisodeJobPayload) {
   };
 
   try {
-    return await queue.add(RENDER_EPISODE_JOB_NAME, payload, addOptions);
+    return await targetQueue.add(RENDER_EPISODE_JOB_NAME, payload, addOptions);
   } catch (error) {
-    const existing = await queue.getJob(job.id);
+    const existing = await targetQueue.getJob(job.id);
     if (existing) {
       return existing;
     }
@@ -229,5 +230,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
-    await queue.close();
+    await closeEpisodeQueues();
   });

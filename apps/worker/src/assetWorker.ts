@@ -1,7 +1,7 @@
 import { bootstrapEnv } from "./bootstrapEnv";
 import { Worker } from "bullmq";
 import { PrismaClient } from "@prisma/client";
-import { QUEUE_NAME, REDIS_CONNECTION, REDIS_URL } from "./queue";
+import { ASSET_QUEUE_NAME, REDIS_CONNECTION, REDIS_URL } from "./queue";
 import { handleAssetIngestJob } from "./assetIngest";
 
 bootstrapEnv();
@@ -32,7 +32,7 @@ if (process.env.ASSET_ONLY_WORKER !== "1") {
 }
 
 const worker = new Worker<AssetIngestQueuePayload>(
-  QUEUE_NAME,
+  ASSET_QUEUE_NAME,
   async (bullJob) => {
     if (String(bullJob.name) !== ASSET_INGEST_JOB_NAME) {
       throw new Error(`asset worker received unsupported job: ${String(bullJob.name)}`);
@@ -97,4 +97,4 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-console.log(`[worker:asset] running. redis=${REDIS_URL} queue=${QUEUE_NAME} job=${ASSET_INGEST_JOB_NAME}`);
+console.log(`[worker:asset] running. redis=${REDIS_URL} queue=${ASSET_QUEUE_NAME} job=${ASSET_INGEST_JOB_NAME}`);
