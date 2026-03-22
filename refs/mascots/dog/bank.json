@@ -1,56 +1,69 @@
 {
-  "extends": "../shared/bank.json",
   "profileId": "dog",
-  "speciesId": "dog",
   "familyId": "canine_compact_doodle_v1",
-  "variant": "canonical",
   "bankStatus": "species_ready",
-  "legacyTemporary": true,
-  "replacementStrategy": "replace",
   "notes": [
-    "dog bank bootstrapped from 2026-03-10 one-off outputs for worker stage-chain verification",
-    "replace these temporary refs with dedicated dog canon before rollout or promotion",
-    "current canon is only retained to keep existing smoke fixtures stable while dog replacement bank is generated"
-  ],
-  "style": [
-    {
-      "path": "./style_front_primary.png",
-      "note": "temporary dog front style canon from prior one-off"
-    }
+    "shared bank is species-neutral scaffold only",
+    "do not place species-specific style or hero refs here",
+    "candidate replacement bank for dog canon",
+    "drop premium-api generated front/threeQuarter/profile/style/hero assets here, then enable with MASCOT_REFERENCE_BANK_CANDIDATES=dog",
+    "dog candidate bank staged from vertexImagen preset mascot-bank-canon-premium on 2026-03-22",
+    "generated candidate assets are staged for manual review before promotion",
+    "front master first workflow: style.front.primary establishes identity, remaining slots derive from the approved front master",
+    "front master first workflow: style.front.primary establishes identity, family.front reuses the approved front, hero.front is cropped from the approved front, and side views derive from the approved front master",
+    "front-master phase only: generate style.front, copy family.front, and derive hero.front before any side-view generation",
+    "do not derive three-quarter/profile until the front master is manually approved",
+    "dog front master approved on 2026-03-22",
+    "front approval unlocks family_views generation from the approved front master",
+    "family-views phase: derive three-quarter/profile only from an approved front master",
+    "reject and rerun family-views if side silhouettes drift away from the approved front master",
+    "generated candidate assets were promoted ready for species rollout",
+    "dog candidate promoted to canonical on 2026-03-22"
   ],
   "starterByView": {
-    "front": [],
-    "threeQuarter": [],
-    "profile": []
-  },
-  "familyByView": {
     "front": [
       {
         "path": "./family_front_primary.png",
-        "note": "temporary dog front composition anchor from prior one-off"
+        "note": "dog candidate front starter scaffold"
       }
     ],
     "threeQuarter": [
       {
         "path": "./family_threeQuarter_primary.png",
-        "note": "temporary dog three-quarter composition guide for worker side-view verification"
+        "note": "dog candidate three-quarter starter scaffold"
       }
     ],
     "profile": [
       {
         "path": "./family_profile_primary.png",
-        "note": "temporary dog profile composition guide for worker side-view verification"
+        "note": "dog candidate profile starter scaffold"
       }
     ]
   },
-  "heroByView": {
+  "familyByView": {
     "front": [
       {
-        "path": "./hero_front_primary.png",
-        "note": "temporary dog front hero ref from prior one-off"
+        "path": "./family_front_primary.png",
+        "note": "dog candidate front composition anchor"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "./family_threeQuarter_primary.png",
+        "note": "dog candidate three-quarter composition anchor"
+      }
+    ],
+    "profile": [
+      {
+        "path": "./family_profile_primary.png",
+        "note": "dog candidate profile composition anchor"
       }
     ]
   },
+  "extends": "../shared/bank.json",
+  "speciesId": "dog",
+  "variant": "canonical",
+  "replacementStrategy": "replace",
   "requiredAssets": [
     {
       "slotId": "style.front.primary",
@@ -64,28 +77,119 @@
       "role": "composition",
       "view": "front",
       "requiredForStatus": "species_ready",
-      "description": "dog front composition anchor replacing shared scaffold"
+      "description": "dog front composition anchor"
     },
     {
       "slotId": "family.threeQuarter.primary",
       "role": "composition",
       "view": "threeQuarter",
       "requiredForStatus": "species_ready",
-      "description": "dog three-quarter composition anchor replacing shared scaffold"
+      "description": "dog three-quarter composition anchor"
     },
     {
       "slotId": "family.profile.primary",
       "role": "composition",
       "view": "profile",
       "requiredForStatus": "species_ready",
-      "description": "dog profile composition anchor replacing shared scaffold"
+      "description": "dog profile composition anchor"
     },
     {
       "slotId": "hero.front.primary",
       "role": "hero",
       "view": "front",
       "requiredForStatus": "species_ready",
-      "description": "dog front hero identity ref for face/expression lock"
+      "description": "dog front hero identity ref"
     }
-  ]
+  ],
+  "style": [
+    {
+      "path": "./style_front_primary.png",
+      "note": "dog candidate front style canon"
+    }
+  ],
+  "heroByView": {
+    "front": [
+      {
+        "path": "./hero_front_primary.png",
+        "note": "dog candidate front hero identity ref"
+      }
+    ]
+  },
+  "canonStage": "species_ready",
+  "qualityStatus": "approved",
+  "qualityNotes": [
+    "front family slot is copied directly from the approved front master to avoid front drift",
+    "hero front slot is derived by deterministic crop from the approved front master",
+    "three-quarter and profile slots are generated from a subject-mask front-master derivation path",
+    "canonical promotion completed from approved candidate bank"
+  ],
+  "frontApproval": {
+    "approvedAt": "2026-03-22T14:25:47.022Z",
+    "visualQcPassed": true,
+    "visualQcOverallScore": 0.947
+  },
+  "visualQc": {
+    "generatedAt": "2026-03-22T14:25:47.021Z",
+    "speciesId": "dog",
+    "familyId": "canine_compact_doodle_v1",
+    "frontAssetPath": "C:\\Users\\th011\\eraser-cat-studio\\refs\\mascots\\dog\\candidate\\style_front_primary.png",
+    "familyFrontAssetPath": "C:\\Users\\th011\\eraser-cat-studio\\refs\\mascots\\dog\\candidate\\family_front_primary.png",
+    "heroAssetPath": "C:\\Users\\th011\\eraser-cat-studio\\refs\\mascots\\dog\\candidate\\hero_front_primary.png",
+    "overallScore": 0.947,
+    "passed": true,
+    "checks": [
+      {
+        "id": "front_subject_coverage",
+        "label": "Front subject coverage",
+        "score": 1,
+        "threshold": 0.55,
+        "blocking": true,
+        "note": "front master should occupy a stable central area without becoming tiny or overwhelming the frame",
+        "passed": true
+      },
+      {
+        "id": "front_head_boxiness",
+        "label": "Front head boxiness",
+        "score": 0.805,
+        "threshold": 0.58,
+        "blocking": true,
+        "note": "front master should keep a near-square boxy head silhouette",
+        "passed": true
+      },
+      {
+        "id": "front_monochrome_finish",
+        "label": "Monochrome finish",
+        "score": 0.916,
+        "threshold": 0.82,
+        "note": "front master should stay in the monochrome doodle finish",
+        "passed": true
+      },
+      {
+        "id": "background_flatness",
+        "label": "Flat background",
+        "score": 0.962,
+        "threshold": 0.8,
+        "note": "background should stay plain and low-noise",
+        "passed": true
+      },
+      {
+        "id": "family_front_consistency",
+        "label": "Family-front consistency",
+        "score": 1,
+        "threshold": 1,
+        "blocking": true,
+        "note": "family.front should be an exact copy of the approved front master during front-discovery",
+        "passed": true
+      },
+      {
+        "id": "hero_focus",
+        "label": "Hero focus",
+        "score": 1,
+        "threshold": 0.62,
+        "note": "hero crop should keep the face dominant and readable",
+        "passed": true
+      }
+    ]
+  },
+  "legacyTemporary": false
 }

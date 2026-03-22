@@ -4,7 +4,7 @@
   "speciesId": "wolf",
   "familyId": "canine_compact_doodle_v1",
   "variant": "candidate",
-  "bankStatus": "scaffold_only",
+  "bankStatus": "species_ready",
   "replacementStrategy": "replace",
   "notes": [
     "candidate replacement bank for wolf canon",
@@ -14,7 +14,12 @@
     "front master first workflow: style.front.primary establishes identity, remaining slots derive from the approved front master",
     "front master first workflow: style.front.primary establishes identity, family.front reuses the approved front, hero.front is cropped from the approved front, and side views derive from the approved front master",
     "front-master phase only: generate style.front, copy family.front, and derive hero.front before any side-view generation",
-    "do not derive three-quarter/profile until the front master is manually approved"
+    "do not derive three-quarter/profile until the front master is manually approved",
+    "wolf front master approved on 2026-03-22",
+    "front approval unlocks family_views generation from the approved front master",
+    "family-views phase: derive three-quarter/profile only from an approved front master",
+    "reject and rerun family-views if side silhouettes drift away from the approved front master",
+    "generated candidate assets were promoted ready for species rollout"
   ],
   "requiredAssets": [
     {
@@ -66,8 +71,18 @@
         "note": "wolf candidate front starter scaffold"
       }
     ],
-    "threeQuarter": [],
-    "profile": []
+    "threeQuarter": [
+      {
+        "path": "./family_threeQuarter_primary.png",
+        "note": "wolf candidate three-quarter starter scaffold"
+      }
+    ],
+    "profile": [
+      {
+        "path": "./family_profile_primary.png",
+        "note": "wolf candidate profile starter scaffold"
+      }
+    ]
   },
   "familyByView": {
     "front": [
@@ -76,8 +91,18 @@
         "note": "wolf candidate front composition anchor"
       }
     ],
-    "threeQuarter": [],
-    "profile": []
+    "threeQuarter": [
+      {
+        "path": "./family_threeQuarter_primary.png",
+        "note": "wolf candidate three-quarter composition anchor"
+      }
+    ],
+    "profile": [
+      {
+        "path": "./family_profile_primary.png",
+        "note": "wolf candidate profile composition anchor"
+      }
+    ]
   },
   "heroByView": {
     "front": [
@@ -87,11 +112,79 @@
       }
     ]
   },
-  "canonStage": "hero_seeded",
-  "qualityStatus": "review_needed",
+  "canonStage": "species_ready",
+  "qualityStatus": "approved",
   "qualityNotes": [
     "front family slot is copied directly from the approved front master to avoid front drift",
     "hero front slot is derived by deterministic crop from the approved front master",
-    "side views stay intentionally ungenerated until front-master QA is complete"
-  ]
+    "three-quarter and profile slots are generated from a subject-mask front-master derivation path"
+  ],
+  "frontApproval": {
+    "approvedAt": "2026-03-22T14:31:24.701Z",
+    "visualQcPassed": true,
+    "visualQcOverallScore": 0.91
+  },
+  "visualQc": {
+    "generatedAt": "2026-03-22T14:31:24.700Z",
+    "speciesId": "wolf",
+    "familyId": "canine_compact_doodle_v1",
+    "frontAssetPath": "C:\\Users\\th011\\eraser-cat-studio\\refs\\mascots\\wolf\\candidate\\style_front_primary.png",
+    "familyFrontAssetPath": "C:\\Users\\th011\\eraser-cat-studio\\refs\\mascots\\wolf\\candidate\\family_front_primary.png",
+    "heroAssetPath": "C:\\Users\\th011\\eraser-cat-studio\\refs\\mascots\\wolf\\candidate\\hero_front_primary.png",
+    "overallScore": 0.91,
+    "passed": true,
+    "checks": [
+      {
+        "id": "front_subject_coverage",
+        "label": "Front subject coverage",
+        "score": 1,
+        "threshold": 0.55,
+        "blocking": true,
+        "note": "front master should occupy a stable central area without becoming tiny or overwhelming the frame",
+        "passed": true
+      },
+      {
+        "id": "front_head_boxiness",
+        "label": "Front head boxiness",
+        "score": 0.512,
+        "threshold": 0.5,
+        "blocking": true,
+        "note": "wolf front master should keep a broad boxy head silhouette even with a short wedge muzzle",
+        "passed": true
+      },
+      {
+        "id": "front_monochrome_finish",
+        "label": "Monochrome finish",
+        "score": 0.993,
+        "threshold": 0.82,
+        "note": "front master should stay in the monochrome doodle finish",
+        "passed": true
+      },
+      {
+        "id": "background_flatness",
+        "label": "Flat background",
+        "score": 0.955,
+        "threshold": 0.8,
+        "note": "background should stay plain and low-noise",
+        "passed": true
+      },
+      {
+        "id": "family_front_consistency",
+        "label": "Family-front consistency",
+        "score": 1,
+        "threshold": 1,
+        "blocking": true,
+        "note": "family.front should be an exact copy of the approved front master during front-discovery",
+        "passed": true
+      },
+      {
+        "id": "hero_focus",
+        "label": "Hero focus",
+        "score": 1,
+        "threshold": 0.62,
+        "note": "hero crop should keep the face dominant and readable",
+        "passed": true
+      }
+    ]
+  }
 }

@@ -502,6 +502,7 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     referenceBankId: "wolf_mascot_bank_v1",
     positiveTokens: [
       "compact boxy wolf head silhouette",
+      "near-square wolf head with a flatter top and straighter sides",
       "taller sharp upright ears",
       "short angular wedge muzzle",
       "alert wolf silhouette",
@@ -536,15 +537,17 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "keep the muzzle only slightly longer, not realistic",
       "do not round the wolf into a puppy face",
       "keep the head broad and boxy instead of plush and circular",
+      "keep the head nearly as wide as tall with a flatter top edge",
       "keep the face deadpan with tiny features",
       "keep the eyes as tiny solid black dots without oversized white eye rings",
       "do not add cat whisker-face cues",
       "do not turn the wolf into a fox with a narrow sly face",
-      "keep the wolf cheeks broad and the face short, not sly or narrow"
+      "keep the wolf cheeks broad and the face short, not sly or narrow",
+      "avoid a round teddy-bear forehead or circular puppy head puff"
     ],
     viewHints: {
       front:
-        "front view should read as wolf first in the same mascot family, with taller upright ears, a short angular muzzle that stays cute and simplified, tiny solid black dot eyes only, a broader wolf head than a fox, and no puppy softness or fox narrowing",
+        "front view should read as wolf first in the same mascot family, with a broad near-square head, a flatter top edge, straighter side planes, taller upright ears, a short angular muzzle that stays cute and simplified, tiny solid black dot eyes only, a broader wolf head than a fox, and no puppy softness or fox narrowing",
       threeQuarter:
         "three-quarter wolf should keep the same compact body and head while clearly turning about 35 to 45 degrees, showing a slightly longer wedge muzzle, alert ears, a larger near eye than far eye, and a broad wolf head that does not read as fox-like or front-facing",
       profile:
@@ -553,6 +556,7 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     keepTraits: [
       "compact wolf head",
       "boxy wolf head",
+      "flat-top near-square wolf forehead",
       "tall upright ears",
       "short angular wedge muzzle",
       "alert silhouette",
@@ -566,6 +570,7 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "fox face",
       "fox muzzle",
       "fox ears",
+      "round teddy-bear forehead",
       "plush toy look",
       "glossy vector finish",
       "big expressive eyes",

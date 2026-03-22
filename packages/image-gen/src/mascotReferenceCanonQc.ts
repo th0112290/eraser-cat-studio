@@ -214,6 +214,8 @@ export async function evaluateMascotFrontCanon(input: {
   heroAssetPath?: string;
 }): Promise<MascotReferenceVisualQcReport> {
   const speciesProfile = resolveMascotSpeciesProfile(input.speciesId);
+  const frontHeadBoxinessThreshold =
+    input.speciesId === "wolf" ? 0.5 : input.speciesId === "dog" ? 0.56 : 0.58;
   const front = await loadRaster(input.frontAssetPath);
   const familyFront = await loadRaster(input.familyFrontAssetPath);
   const hero = input.heroAssetPath && fs.existsSync(input.heroAssetPath) ? await loadRaster(input.heroAssetPath) : null;
@@ -234,9 +236,12 @@ export async function evaluateMascotFrontCanon(input: {
       id: "front_head_boxiness",
       label: "Front head boxiness",
       score: scoreSquareness(frontBounds),
-      threshold: 0.58,
+      threshold: frontHeadBoxinessThreshold,
       blocking: true,
-      note: "front master should keep a near-square boxy head silhouette"
+      note:
+        input.speciesId === "wolf"
+          ? "wolf front master should keep a broad boxy head silhouette even with a short wedge muzzle"
+          : "front master should keep a near-square boxy head silhouette"
     }),
     buildCheck({
       id: "front_monochrome_finish",

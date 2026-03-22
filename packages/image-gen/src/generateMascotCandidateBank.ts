@@ -536,13 +536,34 @@ function buildSlotPromptBundle(input: {
   slot: CandidateBankAssetPlan;
   referenceDriven: boolean;
 }) {
+  const speciesPositiveAdditions: string[] = [];
+  const speciesNegativeAdditions: string[] = [];
+  if (input.speciesId === "wolf" && input.slot.slotId === FRONT_MASTER_SLOT_ID) {
+    speciesPositiveAdditions.push(
+      "broad near-square wolf forehead",
+      "flatter top edge on the head silhouette",
+      "straighter side planes on the head silhouette",
+      "head almost as wide as tall",
+      "broad short wolf cheeks",
+      "pure black outline with flat white fill only"
+    );
+    speciesNegativeAdditions.push(
+      "round puppy forehead",
+      "circular teddy-bear head puff",
+      "soft plush head sphere",
+      "gray fur shading",
+      "painted fur texture",
+      "soft airbrush shading",
+      "fox narrow face"
+    );
+  }
   return buildMascotBankPromptBundle({
     presetId: input.presetId,
     speciesId: input.speciesId,
     view: input.slot.view,
     stage: input.referenceDriven ? "reference_derivation" : "front_master",
-    positiveTokens: input.slot.promptAdditions,
-    negativeTokens: input.slot.negativeAdditions
+    positiveTokens: [...input.slot.promptAdditions, ...speciesPositiveAdditions],
+    negativeTokens: [...(input.slot.negativeAdditions ?? []), ...speciesNegativeAdditions]
   });
 }
 

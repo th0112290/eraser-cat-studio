@@ -51,6 +51,7 @@ function run(): void {
   assert.equal(catManifest?.heroByView?.front?.[0]?.path?.endsWith("hero_face_detail.png"), true, "cat bank should normalize hero ref path");
 
   for (const speciesId of ["dog", "wolf"] as const) {
+    const expectedLegacyTemporary = false;
     const diagnostics = resolveMascotReferenceBankDiagnostics(speciesId);
     const reviewPlan = buildMascotReferenceBankReviewPlan(diagnostics);
     const requirementStatuses = resolveMascotReferenceRequirementStatuses(speciesId);
@@ -60,7 +61,11 @@ function run(): void {
     assert.equal(diagnostics.declaredStatus, "species_ready", `${speciesId} bank should declare species_ready`);
     assert.equal(diagnostics.statusMismatch, false, `${speciesId} should not have a readiness mismatch while species_ready`);
     assert.equal(diagnostics.variant, "canonical", `${speciesId} smoke should default to canonical bank`);
-    assert.equal(diagnostics.legacyTemporary, true, `${speciesId} canonical bank should be marked legacy-temporary`);
+    assert.equal(
+      diagnostics.legacyTemporary,
+      expectedLegacyTemporary,
+      `${speciesId} canonical legacy-temporary state should match promotion status`
+    );
     assert.ok(diagnostics.styleCount > 0, `${speciesId} bank should now include style refs`);
     assert.ok(diagnostics.heroCount > 0, `${speciesId} bank should now include hero refs`);
     assert.ok(diagnostics.requiredAssetCount >= 5, `${speciesId} bank should still declare required intake assets`);
@@ -80,15 +85,19 @@ function run(): void {
     assert.equal(reviewPlan.reviewOnly, false, `${speciesId} bank should no longer force review-only proposal mode`);
     assert.deepEqual(reviewPlan.requiredManualSlots, [], `${speciesId} bank should not require manual pack slots now`);
     assert.ok(
-      diagnostics.notes.some((entry) => entry.includes("temporary")),
-      `${speciesId} bank notes should still flag the temporary bootstrap provenance`
+      diagnostics.notes.some((entry) => entry.includes(expectedLegacyTemporary ? "temporary" : "promoted")),
+      `${speciesId} bank notes should reflect canonical provenance`
     );
     assert.ok(resolveMascotStyleReferenceAsset(speciesId), `${speciesId} style reference should resolve`);
     expectCompositionAcrossViews(speciesId);
 
     const manifest = resolveMascotReferenceBankManifest(speciesId);
     assert.equal(manifest?.extends?.endsWith("../shared/bank.json"), true, `${speciesId} should inherit shared bank`);
-    assert.equal(manifest?.legacyTemporary, true, `${speciesId} manifest should declare legacy-temporary bank status`);
+    assert.equal(
+      manifest?.legacyTemporary,
+      expectedLegacyTemporary,
+      `${speciesId} manifest legacy-temporary state should match promotion status`
+    );
   }
 
   const previousCandidateEnv = process.env.MASCOT_REFERENCE_BANK_CANDIDATES;
@@ -98,12 +107,18 @@ function run(): void {
     delete process.env.MASCOT_REFERENCE_BANK_ALLOW_REVIEW_CANDIDATES;
     const dogCandidateDiagnostics = resolveMascotReferenceBankDiagnostics("dog");
     assert.equal(dogCandidateDiagnostics.variant, "candidate", "dog diagnostics should switch to candidate variant when candidate env is active");
-    assert.equal(dogCandidateDiagnostics.frontApproved, false, "unapproved dog candidate should not report front approval");
-    assert.equal(dogCandidateDiagnostics.productionLocked, true, "unapproved dog candidate should stay production-locked");
+    assert.equal(dogCandidateDiagnostics.frontApproved, true, "approved dog candidate should continue to report front approval");
+    assert.equal(dogCandidateDiagnostics.productionLocked, false, "approved dog candidate should report an unlocked readiness state");
     const dogResolvedStyle = resolveMascotStyleReferenceAsset("dog");
     const dogResolvedFront = resolveMascotCompositionReferenceAsset("dog", "front");
-    assert.ok(dogResolvedStyle?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}style_front_primary.png`), "production style resolution should fall back to canonical dog assets while candidate is locked");
-    assert.ok(dogResolvedFront?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}family_front_primary.png`), "production front composition should fall back to canonical dog assets while candidate is locked");
+    assert.ok(
+      dogResolvedStyle?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}candidate${path.sep}style_front_primary.png`),
+      "production style resolution should use approved dog candidate assets when candidate env is active"
+    );
+    assert.ok(
+      dogResolvedFront?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}candidate${path.sep}family_front_primary.png`),
+      "production front composition should use approved dog candidate assets when candidate env is active"
+    );
     assert.equal(
       canUseMascotReferenceBankForProduction({
         variant: dogCandidateDiagnostics.variant,
@@ -111,8 +126,8 @@ function run(): void {
         canonStage: dogCandidateDiagnostics.canonStage,
         qualityStatus: dogCandidateDiagnostics.qualityStatus
       }),
-      false,
-      "candidate dog bank should not be production-eligible before canonical promotion"
+      true,
+      "approved species-ready dog candidate bank should be production-eligible when candidate env is active"
     );
   } finally {
     if (previousCandidateEnv === undefined) {
