@@ -224,6 +224,11 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseNonNegativeFloat(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseFloat(value ?? "");
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (!value) {
     return fallback;
@@ -291,7 +296,8 @@ function buildProvider(): { provider: ReturnType<typeof createCharacterProvider>
       model: process.env.IMAGEGEN_REMOTE_MODEL,
       imageSize: process.env.IMAGEGEN_REMOTE_IMAGE_SIZE,
       quality: process.env.IMAGEGEN_REMOTE_QUALITY,
-      outputFormat: process.env.IMAGEGEN_REMOTE_OUTPUT_FORMAT
+      outputFormat: process.env.IMAGEGEN_REMOTE_OUTPUT_FORMAT,
+      estimatedCostUsdPerImage: parseNonNegativeFloat(process.env.IMAGEGEN_COST_PER_IMAGE_USD, 0)
     },
     vertexImagen: {
       projectId: process.env.IMAGEGEN_VERTEX_PROJECT_ID,
@@ -302,7 +308,8 @@ function buildProvider(): { provider: ReturnType<typeof createCharacterProvider>
       accessToken: process.env.IMAGEGEN_VERTEX_ACCESS_TOKEN,
       timeoutMs: parsePositiveInt(process.env.IMAGEGEN_VERTEX_TIMEOUT_MS, 60_000),
       outputFormat: process.env.IMAGEGEN_VERTEX_OUTPUT_FORMAT,
-      aspectRatio: process.env.IMAGEGEN_VERTEX_ASPECT_RATIO
+      aspectRatio: process.env.IMAGEGEN_VERTEX_ASPECT_RATIO,
+      estimatedCostUsdPerImage: parseNonNegativeFloat(process.env.IMAGEGEN_COST_PER_IMAGE_USD, 0)
     }
   });
 

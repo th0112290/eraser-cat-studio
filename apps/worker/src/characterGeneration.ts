@@ -11169,12 +11169,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
     summarizeMascotReferenceBankDiagnostics,
     buildMascotReferenceBankReviewPlan: (diagnostics) =>
       buildMascotReferenceBankReviewPlan(
-        diagnostics as ReturnType<typeof summarizeMascotReferenceBankDiagnostics>
+        diagnostics as unknown as Parameters<typeof buildMascotReferenceBankReviewPlan>[0]
       ),
     buildReferenceBankReviewChecklist: (helperInput) =>
       buildReferenceBankReviewChecklist({
-        diagnostics: helperInput.diagnostics as ReturnType<typeof summarizeMascotReferenceBankDiagnostics>,
-        reviewPlan: helperInput.reviewPlan as ReturnType<typeof buildMascotReferenceBankReviewPlan>
+        diagnostics: helperInput.diagnostics as unknown as Parameters<typeof buildReferenceBankReviewChecklist>[0]["diagnostics"],
+        reviewPlan: helperInput.reviewPlan as unknown as Parameters<typeof buildReferenceBankReviewChecklist>[0]["reviewPlan"]
       }),
     readContinuityReferenceConfig,
     shouldAutoContinuityReference,
@@ -11318,7 +11318,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const remoteApiConfig = getRemoteApiConfig();
   const runtime = await initializeGenerationProviderRuntime({
     prisma,
-    totalImages: clamped.totalImages,
+    candidateCount: clamped.candidateCount,
+    viewCount: requestedViews.length,
     limits,
     comfyUiUrl,
     vertexImagenConfig,
@@ -11360,6 +11361,12 @@ export async function handleGenerateCharacterAssetsJob(input: {
   const budget = runtime.budget;
   const qualityConfig = runtime.qualityConfig;
   const autoRerouteConfig = runtime.autoRerouteConfig as ReturnType<typeof readAutoRerouteConfig>;
+  const effectiveLimits = runtime.effectiveLimits as ReturnType<typeof readGenerationLimits>;
+  const effectiveClamped = {
+    ...clamped,
+    candidateCount: runtime.effectiveCandidateCount,
+    totalImages: runtime.effectiveTotalImages
+  };
   const acceptedScoreThreshold = runtime.acceptedScoreThreshold;
   const frontAnchorAcceptedScoreThreshold = runtime.frontAnchorAcceptedScoreThreshold;
   const allowLowQualityMockFallback = runtime.allowLowQualityMockFallback;
@@ -11417,8 +11424,8 @@ export async function handleGenerateCharacterAssetsJob(input: {
     stageRuntimeInput: {
       resolveStageConfig,
       autoRetryRounds,
-      clamped,
-      limits,
+      clamped: effectiveClamped,
+      limits: effectiveLimits,
       promptBundle,
       ultraWorkflowEnabled,
       analyzeImage,

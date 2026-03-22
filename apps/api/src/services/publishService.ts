@@ -301,6 +301,18 @@ function parseProviderName(value: unknown): "mock" | "comfyui" | "remoteApi" | "
   return "mock";
 }
 
+function isPremiumImageProvider(provider: "mock" | "comfyui" | "remoteApi" | "vertexImagen"): boolean {
+  return provider === "remoteApi" || provider === "vertexImagen";
+}
+
+function readPremiumImageGenPolicy() {
+  return {
+    maxCandidatesPerView: parsePositiveIntEnv(process.env.IMAGEGEN_PREMIUM_MAX_CANDIDATES_PER_VIEW, 2),
+    maxTotalImages: parsePositiveIntEnv(process.env.IMAGEGEN_PREMIUM_MAX_TOTAL_IMAGES, 6),
+    maxRetries: parsePositiveIntEnv(process.env.IMAGEGEN_PREMIUM_MAX_RETRIES, 1)
+  };
+}
+
 function readImageGenBudgetConfig() {
   return {
     monthBudgetUsd: parseNonNegativeEnv(process.env.IMAGEGEN_MONTHLY_BUDGET_USD, IMAGEGEN_DEFAULT_MONTHLY_BUDGET_USD),
@@ -383,20 +395,37 @@ async function readMonthlyImageGenSpentUsd(prisma: PrismaClient): Promise<number
 }
 
 function estimateRunCost(input: {
+  provider: "mock" | "comfyui" | "remoteApi" | "vertexImagen";
   candidateCount: number;
   views: number;
   maxCandidatesPerView: number;
   maxTotalImages: number;
   costPerImageUsd: number;
-}): { estimatedImageCount: number; estimatedCostUsd: number } {
-  const clampedCandidates = Math.max(1, Math.min(input.candidateCount, input.maxCandidatesPerView));
+}): {
+  estimatedImageCount: number;
+  estimatedCostUsd: number;
+  maxCandidatesPerView: number;
+  maxTotalImages: number;
+  maxRetries?: number;
+} {
+  const premiumPolicy = readPremiumImageGenPolicy();
+  const effectiveMaxCandidatesPerView = isPremiumImageProvider(input.provider)
+    ? Math.max(1, Math.min(input.maxCandidatesPerView, premiumPolicy.maxCandidatesPerView))
+    : input.maxCandidatesPerView;
+  const effectiveMaxTotalImages = isPremiumImageProvider(input.provider)
+    ? Math.max(1, Math.min(input.maxTotalImages, premiumPolicy.maxTotalImages))
+    : input.maxTotalImages;
+  const clampedCandidates = Math.max(1, Math.min(input.candidateCount, effectiveMaxCandidatesPerView));
   const clampedViews = Math.max(1, input.views);
-  const maxByTotal = Math.max(1, Math.floor(input.maxTotalImages / clampedViews));
+  const maxByTotal = Math.max(1, Math.floor(effectiveMaxTotalImages / clampedViews));
   const finalCandidates = Math.min(clampedCandidates, maxByTotal);
   const estimatedImageCount = finalCandidates * clampedViews;
   return {
     estimatedImageCount,
-    estimatedCostUsd: estimatedImageCount * Math.max(0, input.costPerImageUsd)
+    estimatedCostUsd: estimatedImageCount * Math.max(0, input.costPerImageUsd),
+    maxCandidatesPerView: effectiveMaxCandidatesPerView,
+    maxTotalImages: effectiveMaxTotalImages,
+    ...(isPremiumImageProvider(input.provider) ? { maxRetries: premiumPolicy.maxRetries } : {})
   };
 }
 
@@ -675,6 +704,7 @@ export function registerPublishRoutes(input: {
     const config = readImageGenBudgetConfig();
     const query = parseBudgetQuery(request.query);
     const estimate = estimateRunCost({
+      provider: query.provider,
       candidateCount: query.candidateCount,
       views: query.views,
       maxCandidatesPerView: config.maxCandidatesPerView,
@@ -690,6 +720,8 @@ export function registerPublishRoutes(input: {
       warning = "IMAGEGEN_VERTEX_PROJECT_ID is not configured. vertexImagen will not be available.";
     } else if (query.provider === "comfyui" && !config.comfyConfigured && !config.remoteConfigured) {
       warning = "COMFYUI_BASE_URL is not configured. provider will fall back to mock.";
+    } else if (isPremiumImageProvider(query.provider) && query.candidateCount > estimate.maxCandidatesPerView) {
+      warning = `${query.provider} is capped for premium rescue/bank use. Candidate count is limited to ${estimate.maxCandidatesPerView} per view.`;
     } else if (monthSpentUsd + estimate.estimatedCostUsd > config.monthBudgetUsd) {
       warning = "Estimated run would exceed monthly budget. Generation can be rejected or fallback to mock.";
     }
@@ -702,9 +734,9 @@ export function registerPublishRoutes(input: {
         monthSpentUsd,
         monthBudgetUsd: config.monthBudgetUsd,
         remainingBudgetUsd: Math.max(0, config.monthBudgetUsd - monthSpentUsd),
-        maxCandidatesPerView: config.maxCandidatesPerView,
-        maxTotalImages: config.maxTotalImages,
-        maxRetries: config.maxRetries,
+        maxCandidatesPerView: estimate.maxCandidatesPerView,
+        maxTotalImages: estimate.maxTotalImages,
+        maxRetries: estimate.maxRetries ?? config.maxRetries,
         remoteConfigured: config.remoteConfigured,
         vertexConfigured: config.vertexConfigured,
         comfyConfigured: config.comfyConfigured,

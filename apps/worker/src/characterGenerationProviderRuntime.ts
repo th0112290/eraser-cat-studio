@@ -34,9 +34,12 @@ type MascotReferenceBankReviewPlanLike = {
 };
 
 type LimitsLike = {
+  maxCandidatesPerView: number;
+  maxTotalImages: number;
   maxRetries: number;
   costPerImageUsd: number;
   budgetFallbackToMock: boolean;
+  monthlyBudgetUsd?: number;
 };
 
 type BudgetLike = {
@@ -65,7 +68,8 @@ type ProviderLike = {
 
 export async function initializeGenerationProviderRuntime(input: {
   prisma: unknown;
-  totalImages: number;
+  candidateCount: number;
+  viewCount: number;
   limits: LimitsLike;
   comfyUiUrl?: string;
   vertexImagenConfig: Record<string, unknown> & { projectId?: string };
@@ -92,6 +96,9 @@ export async function initializeGenerationProviderRuntime(input: {
   frontAnchorAcceptedScoreThreshold: number;
   allowLowQualityMockFallback: boolean;
   strictRealProvider: boolean;
+  effectiveLimits: LimitsLike;
+  effectiveCandidateCount: number;
+  effectiveTotalImages: number;
   providerRequestTimeoutMs: number;
   providerStageTimeoutOverrideMs: number;
   candidatePostprocessTimeoutMs: number;
@@ -117,6 +124,7 @@ export async function initializeGenerationProviderRuntime(input: {
     remoteApiBaseUrl: input.remoteApiConfig.baseUrl
   });
   let providerWarning: string | null = null;
+  const isPremiumProvider = requestedProvider === "remoteApi" || requestedProvider === "vertexImagen";
 
   if (input.mascotReferenceBankDiagnostics.status === "scaffold_only") {
     const reviewSlotsSummary =
@@ -171,9 +179,51 @@ export async function initializeGenerationProviderRuntime(input: {
       .join(" | ");
   }
 
-  const budget = await input.evaluateBudget(input.prisma, input.totalImages, input.limits);
+  const premiumMaxCandidatesPerView = Math.max(
+    1,
+    input.toPositiveInt(process.env.IMAGEGEN_PREMIUM_MAX_CANDIDATES_PER_VIEW, 2)
+  );
+  const premiumMaxTotalImages = Math.max(
+    1,
+    input.toPositiveInt(process.env.IMAGEGEN_PREMIUM_MAX_TOTAL_IMAGES, premiumMaxCandidatesPerView * 3)
+  );
+  const premiumMaxRetries = Math.max(1, input.toPositiveInt(process.env.IMAGEGEN_PREMIUM_MAX_RETRIES, 1));
+  const premiumAutoRetryRoundsRaw = process.env.IMAGEGEN_PREMIUM_AUTO_RETRY_ROUNDS;
+  const premiumAutoRetryRounds =
+    typeof premiumAutoRetryRoundsRaw === "string" && premiumAutoRetryRoundsRaw.trim().length > 0
+      ? Math.max(0, Number.parseInt(premiumAutoRetryRoundsRaw, 10) || 0)
+      : 0;
+
+  const effectiveLimits = isPremiumProvider
+    ? {
+        ...input.limits,
+        maxCandidatesPerView: Math.max(1, Math.min(input.limits.maxCandidatesPerView, premiumMaxCandidatesPerView)),
+        maxTotalImages: Math.max(1, Math.min(input.limits.maxTotalImages, premiumMaxTotalImages)),
+        maxRetries: Math.max(1, Math.min(input.limits.maxRetries, premiumMaxRetries))
+      }
+    : input.limits;
+
+  let effectiveCandidateCount = Math.max(1, input.candidateCount);
+  if (effectiveCandidateCount > effectiveLimits.maxCandidatesPerView) {
+    effectiveCandidateCount = effectiveLimits.maxCandidatesPerView;
+  }
+  const maxByTotal = Math.max(1, Math.floor(effectiveLimits.maxTotalImages / Math.max(1, input.viewCount)));
+  if (effectiveCandidateCount > maxByTotal) {
+    effectiveCandidateCount = maxByTotal;
+  }
+  const effectiveTotalImages = effectiveCandidateCount * Math.max(1, input.viewCount);
+  if (isPremiumProvider && effectiveCandidateCount < input.candidateCount) {
+    providerWarning = [
+      providerWarning,
+      `${requestedProvider} premium cap reduced candidateCount ${input.candidateCount} -> ${effectiveCandidateCount}`
+    ]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join(" | ");
+  }
+
+  const budget = await input.evaluateBudget(input.prisma, effectiveTotalImages, effectiveLimits);
   if (budget.wouldExceed) {
-    if (input.limits.budgetFallbackToMock && providerName !== "mock") {
+    if (effectiveLimits.budgetFallbackToMock && providerName !== "mock") {
       providerWarning = `Budget exceeded (${budget.monthSpentUsd.toFixed(2)} / ${budget.monthBudgetUsd.toFixed(
         2
       )} USD). Falling back to mock provider.`;
@@ -192,13 +242,13 @@ export async function initializeGenerationProviderRuntime(input: {
     comfyUiUrl: input.comfyUiUrl,
     vertexImagen: {
       ...input.vertexImagenConfig,
-      maxRetries: input.limits.maxRetries,
-      estimatedCostUsdPerImage: input.limits.costPerImageUsd
+      maxRetries: effectiveLimits.maxRetries,
+      estimatedCostUsdPerImage: effectiveLimits.costPerImageUsd
     },
     remoteApi: {
       ...input.remoteApiConfig,
-      maxRetries: input.limits.maxRetries,
-      estimatedCostUsdPerImage: input.limits.costPerImageUsd
+      maxRetries: effectiveLimits.maxRetries,
+      estimatedCostUsdPerImage: effectiveLimits.costPerImageUsd
     }
   }) as ProviderLike;
 
@@ -232,9 +282,20 @@ export async function initializeGenerationProviderRuntime(input: {
     120_000
   );
   const speciesRetryBonus = input.promptBundle.speciesId === "wolf" ? 1 : 0;
-  const autoRetryRounds =
+  const requestedAutoRetryRounds =
     Math.max(qualityConfig.autoRetryRounds, input.promptBundle.selectionHints.autoRetryRounds ?? 0) +
     speciesRetryBonus;
+  const autoRetryRounds = isPremiumProvider
+    ? Math.min(requestedAutoRetryRounds, premiumAutoRetryRounds)
+    : requestedAutoRetryRounds;
+  if (isPremiumProvider && autoRetryRounds < requestedAutoRetryRounds) {
+    providerWarning = [
+      providerWarning,
+      `${requestedProvider} premium cap reduced autoRetryRounds ${requestedAutoRetryRounds} -> ${autoRetryRounds}`
+    ]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join(" | ");
+  }
   const sequentialReferenceEnabled =
     (input.promptBundle.selectionHints.sequentialReference ?? qualityConfig.sequentialReference) === true;
   const candidatesDir = path.join(path.dirname(input.manifestPath), "candidates");
@@ -252,6 +313,9 @@ export async function initializeGenerationProviderRuntime(input: {
     frontAnchorAcceptedScoreThreshold,
     allowLowQualityMockFallback,
     strictRealProvider,
+    effectiveLimits,
+    effectiveCandidateCount,
+    effectiveTotalImages,
     providerRequestTimeoutMs,
     providerStageTimeoutOverrideMs,
     candidatePostprocessTimeoutMs,

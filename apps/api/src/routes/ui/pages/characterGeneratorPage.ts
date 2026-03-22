@@ -345,7 +345,7 @@ export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopIn
         </div>
         <div class="cg-field-grid tight">
           <label>Run mode<select name="mode"><option value="new">new</option><option value="reference">reference</option></select><small>Use reference mode when the run must stay visibly anchored to an existing asset.</small></label>
-          <label>Provider<select name="provider"><option value="mock">mock</option><option value="comfyui">comfyui</option><option value="remoteApi">remoteApi</option><option value="vertexImagen">vertexImagen</option></select><small>Use remoteApi or vertexImagen for premium still/rescue runs when configured; keep mock available for fallback or local validation.</small></label>
+          <label>Provider<select name="provider"><option value="mock">mock</option><option value="comfyui">comfyui</option><option value="remoteApi">remoteApi</option><option value="vertexImagen">vertexImagen</option></select><small>Use remoteApi or vertexImagen for premium still/rescue runs when configured. Treat them as expensive rescue/bank lanes, not the default full-flow smoke path.</small></label>
           <label>Prompt preset<select name="promptPreset">${input.styleOptions}</select><small>Presets should carry the stable styling intent that later compare and approval decisions inherit.</small></label>
           <label>Species<select name="species">${input.speciesOptions}</select><small>Make species explicit early so compare does not need to recover from basic intent drift.</small></label>
           <label>Topic<input name="topic" placeholder="Introduce the current character angle or episode need"/><small>This topic appears again in run history, reopen travel, and linked review surfaces.</small></label>
@@ -384,7 +384,7 @@ export function buildCharacterGeneratorTopSection(input: CharacterGeneratorTopIn
           </div>
         </div>
         <div class="cg-field-grid tight">
-          <label>Candidate count<input name="candidateCount" value="4" inputmode="numeric"/><small>Use enough coverage for compare without hiding the decision in an oversized workset.</small></label>
+          <label>Candidate count<input name="candidateCount" value="4" inputmode="numeric"/><small>Use enough coverage for compare without hiding the decision in an oversized workset. Premium providers should usually stay at 1-2 candidates per view.</small></label>
           <label>Auto-pick<select name="autoPick"><option value="false">false</option><option value="true">true</option></select><small>Auto-pick stays useful for fallback, but compare still needs a readable manual lane.</small></label>
           <label>Require HITL pick<select name="requireHitlPick"><option value="true">true</option><option value="false">false</option></select><small>Keep the review contract explicit when approval should not proceed without a manual choice.</small></label>
         </div>
