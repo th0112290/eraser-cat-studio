@@ -1073,7 +1073,8 @@ async function runScenario(
     dryRun: true,
     shotsPath,
     outputPath,
-    renderLogPath
+    renderLogPath,
+    allowSyntheticChartData: true
   });
 
   const regressionReport = readJson<EpisodeRegressionReport>(path.join(scenarioDir, "episode_regression_report.json"));

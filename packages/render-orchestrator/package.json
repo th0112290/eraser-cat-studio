@@ -9,6 +9,7 @@
   "scripts": {
     "render:demo": "pnpm exec tsx src/renderDemo.ts",
     "render:smoke": "pnpm exec tsx src/renderDemo.ts --dry-run",
+    "render:smoke:data-contract": "pnpm exec tsx src/renderDataContractSmoke.ts",
     "render:smoke:visual-plan": "pnpm exec tsx src/renderVisualPlanRegressionSmoke.ts"
   },
   "dependencies": {

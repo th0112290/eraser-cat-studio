@@ -8184,6 +8184,58 @@ async function enqueueNext(input: { parentJobDbId: string; episodeId: string; ty
 function parseBeatDoc(json: Prisma.JsonValue, fallbackEpisode: EpisodeInput): { episode: EpisodeInput; beats: Beat[] } {
   if (!isRecord(json)) throw new Error("BeatDoc json must be object");
   const e = isRecord(json.episode) ? json.episode : {};
+  const parsedDataInputs: NonNullable<EpisodeInput["data_inputs"]> = [];
+  if (Array.isArray(e.data_inputs)) {
+    for (const rawEntry of e.data_inputs) {
+      if (!isRecord(rawEntry)) {
+        continue;
+      }
+      const datasetId = asString(rawEntry.dataset_id).trim();
+      if (!datasetId) {
+        continue;
+      }
+
+      const normalizedRows: Array<{ label: string; value: number; unit?: string }> = [];
+      if (Array.isArray(rawEntry.rows)) {
+        for (const rawRow of rawEntry.rows) {
+          if (!isRecord(rawRow)) {
+            continue;
+          }
+          const label = asString(rawRow.label).trim();
+          const value = typeof rawRow.value === "number" && Number.isFinite(rawRow.value) ? rawRow.value : null;
+          if (!label || value === null) {
+            continue;
+          }
+          normalizedRows.push({
+            label,
+            value,
+            ...(typeof rawRow.unit === "string" && rawRow.unit.trim().length > 0
+              ? { unit: rawRow.unit.trim() }
+              : {})
+          });
+        }
+      }
+
+      parsedDataInputs.push({
+        dataset_id: datasetId,
+        ...(typeof rawEntry.time_range === "string" && rawEntry.time_range.trim().length > 0
+          ? { time_range: rawEntry.time_range.trim() }
+          : {}),
+        ...(normalizedRows.length > 0 ? { rows: normalizedRows } : {}),
+        ...(typeof rawEntry.unit === "string" && rawEntry.unit.trim().length > 0
+          ? { unit: rawEntry.unit.trim() }
+          : {}),
+        ...(typeof rawEntry.expected_sum === "number" && Number.isFinite(rawEntry.expected_sum)
+          ? { expected_sum: rawEntry.expected_sum }
+          : {}),
+        ...(typeof rawEntry.sum_tolerance === "number" && Number.isFinite(rawEntry.sum_tolerance)
+          ? { sum_tolerance: rawEntry.sum_tolerance }
+          : {})
+      });
+    }
+  } else if (Array.isArray(fallbackEpisode.data_inputs)) {
+    parsedDataInputs.push(...fallbackEpisode.data_inputs);
+  }
   const parsedCharacterPackId =
     typeof e.character_pack_id === "string" && e.character_pack_id.trim().length > 0
       ? e.character_pack_id.trim()
@@ -8204,7 +8256,8 @@ function parseBeatDoc(json: Prisma.JsonValue, fallbackEpisode: EpisodeInput): { 
           }).selection
         }
       : {}),
-    ...(parsedCharacterPackId ? { character_pack_id: parsedCharacterPackId } : {})
+    ...(parsedCharacterPackId ? { character_pack_id: parsedCharacterPackId } : {}),
+    ...(parsedDataInputs && parsedDataInputs.length > 0 ? { data_inputs: parsedDataInputs } : {})
   };
   const rows = Array.isArray(json.beats) ? json.beats : [];
   const beats: Beat[] = [];
@@ -8216,7 +8269,39 @@ function parseBeatDoc(json: Prisma.JsonValue, fallbackEpisode: EpisodeInput): { 
     const tag = tags.find((x) => x.startsWith("emphasis:"));
     const eraw = tag ? tag.slice("emphasis:".length) : "medium";
     const emphasis: "low" | "medium" | "high" = eraw === "high" ? "high" : eraw === "low" ? "low" : "medium";
-    beats.push({ id, type: asString(row.kind, "narrative"), intent: asString(row.intent, "Narrative progression"), narration: asString(row.narration, ""), onScreen: sanitizeStringArray(row.on_screen_text), emphasis });
+    const references: Beat["references"] = [];
+    if (Array.isArray(row.data_refs)) {
+      for (const rawEntry of row.data_refs) {
+        if (!isRecord(rawEntry)) {
+          continue;
+        }
+        const datasetId = asString(rawEntry.dataset_id).trim();
+        const refId = asString(rawEntry.ref_id).trim();
+        if (!datasetId || !refId) {
+          continue;
+        }
+        const valueRole =
+          rawEntry.value_role === "spoken" ||
+          rawEntry.value_role === "shown" ||
+          rawEntry.value_role === "highlighted"
+            ? rawEntry.value_role
+            : undefined;
+        references.push({
+          datasetId,
+          refId,
+          ...(valueRole ? { valueRole } : {})
+        });
+      }
+    }
+    beats.push({
+      id,
+      type: asString(row.kind, "narrative"),
+      intent: asString(row.intent, "Narrative progression"),
+      narration: asString(row.narration, ""),
+      onScreen: sanitizeStringArray(row.on_screen_text),
+      emphasis,
+      ...(references.length > 0 ? { references } : {})
+    });
   }
   if (beats.length === 0) throw new Error("BeatDoc has no beats");
   return { episode, beats };
@@ -8268,7 +8353,63 @@ function buildStoryInput(episode: { id: string; topic: string; targetDurationSec
       bible_ref: asString(payload.pipeline?.story?.bibleRef, "").trim() || episode.bibleId || "channel_bible:default",
       topic: episode.topic,
       target_duration_sec: episode.targetDurationSec,
-      profiles
+      profiles,
+      ...(Array.isArray(payload.pipeline?.story?.dataInputs) && payload.pipeline.story.dataInputs.length > 0
+        ? {
+            data_inputs: payload.pipeline.story.dataInputs
+              .map((entry) => {
+                if (!entry || typeof entry !== "object") {
+                  return null;
+                }
+                const datasetId =
+                  typeof entry.datasetId === "string" && entry.datasetId.trim().length > 0
+                    ? entry.datasetId.trim()
+                    : "";
+                if (!datasetId) {
+                  return null;
+                }
+                const rows = Array.isArray(entry.rows)
+                  ? entry.rows
+                      .map((row) => {
+                        if (!row || typeof row !== "object") {
+                          return null;
+                        }
+                        const label =
+                          typeof row.label === "string" && row.label.trim().length > 0 ? row.label.trim() : "";
+                        const value = typeof row.value === "number" && Number.isFinite(row.value) ? row.value : null;
+                        if (!label || value === null) {
+                          return null;
+                        }
+                        return {
+                          label,
+                          value,
+                          ...(typeof row.unit === "string" && row.unit.trim().length > 0
+                            ? { unit: row.unit.trim() }
+                            : {})
+                        };
+                      })
+                      .filter((row): row is NonNullable<typeof row> => row !== null)
+                  : [];
+                return {
+                  dataset_id: datasetId,
+                  ...(typeof entry.timeRange === "string" && entry.timeRange.trim().length > 0
+                    ? { time_range: entry.timeRange.trim() }
+                    : {}),
+                  ...(rows.length > 0 ? { rows } : {}),
+                  ...(typeof entry.unit === "string" && entry.unit.trim().length > 0
+                    ? { unit: entry.unit.trim() }
+                    : {}),
+                  ...(typeof entry.expectedSum === "number" && Number.isFinite(entry.expectedSum)
+                    ? { expected_sum: entry.expectedSum }
+                    : {}),
+                  ...(typeof entry.sumTolerance === "number" && Number.isFinite(entry.sumTolerance)
+                    ? { sum_tolerance: entry.sumTolerance }
+                    : {})
+                };
+              })
+              .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+          }
+        : {})
     },
     ...(outline.length > 0 ? { outline } : {}),
     ...(paragraphs.length > 0 ? { paragraphs } : {}),

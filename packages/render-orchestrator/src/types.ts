@@ -579,6 +579,7 @@ export type OrchestrateRenderInput = {
   attempt?: number;
   maxAttempts?: number;
   dryRun?: boolean;
+  allowSyntheticChartData?: boolean;
   allowUnacceptedGeneratedPacks?: boolean;
   qc?: RenderQcInput;
   alignmentHook?: AlignmentHook;

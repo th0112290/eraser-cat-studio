@@ -4,6 +4,15 @@ export type RenderDatasetRow = {
   unit?: string;
 };
 
+export type StoryDataInput = {
+  datasetId: string;
+  timeRange?: string;
+  rows?: RenderDatasetRow[];
+  unit?: string;
+  expectedSum?: number;
+  sumTolerance?: number;
+};
+
 export type RenderDatasetInput = {
   rows: RenderDatasetRow[];
   expectedSum?: number;
@@ -38,6 +47,7 @@ export type PipelineStoryOptions = {
   outline?: string[];
   paragraphs?: string[];
   targetBeatCount?: number;
+  dataInputs?: StoryDataInput[];
   studioProfileId?: string;
   channelProfileId?: string;
   mascotProfileId?: string;

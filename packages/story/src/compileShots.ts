@@ -10,7 +10,7 @@
   SidecarQcPresetId
 } from "@ec/profiles";
 import { coerceBenchmarkedMotionPreset } from "@ec/profiles";
-import type { Beat, EpisodeInput } from "./generateBeats";
+import type { Beat, EpisodeDataInput, EpisodeInput } from "./generateBeats";
 
 export type ShotTransition = "cut" | "fade";
 export type ShotType = "talk" | "reaction" | "broll" | "transition" | "fx";
@@ -279,7 +279,7 @@ export type Shot = {
   chart?: {
     chart_id: string;
     type: string;
-    dataset_id: string;
+    dataset_id?: string;
     time_range: string;
     layout_preset: string;
     highlights?: Array<{
@@ -365,6 +365,7 @@ export type ShotsDocument = {
     episode_id: string;
     bible_ref: string;
     profiles?: ProfileSelection;
+    data_inputs?: EpisodeDataInput[];
   };
   render: {
     fps: number;
@@ -5234,7 +5235,7 @@ export function compileShots(beats: Beat[], rawOptions: CompileShotsOptions = {}
               ? primaryVisualSelection?.selected_kind
               : chartBackboneSelection?.selected_kind ?? "bar_chart"
           ),
-          dataset_id: firstRef?.datasetId ?? "dataset_main",
+          ...(firstRef?.datasetId ? { dataset_id: firstRef.datasetId } : {}),
           time_range: "full",
           layout_preset: layoutPresetForChartKind(
             isChartFamilyKind(primaryVisualSelection?.selected_kind)
@@ -5374,7 +5375,8 @@ export function toShotsDocument(episode: EpisodeInput, shots: Shot[], fps: numbe
     episode: {
       episode_id: episode.episode_id,
       bible_ref: episode.bible_ref,
-      ...(episode.profiles ? { profiles: episode.profiles } : {})
+      ...(episode.profiles ? { profiles: episode.profiles } : {}),
+      ...(episode.data_inputs ? { data_inputs: episode.data_inputs } : {})
     },
     render: {
       fps,

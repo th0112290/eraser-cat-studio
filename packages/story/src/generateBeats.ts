@@ -7,10 +7,22 @@ export type EpisodeInput = {
   target_duration_sec: number;
   character_pack_id?: string;
   profiles?: ProfileSelection;
-  data_inputs?: Array<{
-    dataset_id: string;
-    time_range?: string;
-  }>;
+  data_inputs?: EpisodeDataInput[];
+};
+
+export type EpisodeDataInputRow = {
+  label: string;
+  value: number;
+  unit?: string;
+};
+
+export type EpisodeDataInput = {
+  dataset_id: string;
+  time_range?: string;
+  rows?: EpisodeDataInputRow[];
+  unit?: string;
+  expected_sum?: number;
+  sum_tolerance?: number;
 };
 
 export type StoryInput = {

@@ -23,5 +23,6 @@ export type {
   EpisodeJobPayload,
   PipelineOptions,
   PipelineStoryOptions,
+  StoryDataInput,
   RenderJobPayload
 } from "./queueContracts";

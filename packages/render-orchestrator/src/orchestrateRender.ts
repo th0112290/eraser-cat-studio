@@ -258,18 +258,85 @@ function defaultChartRows(seedSource: string): ChartDataRow[] {
   ];
 }
 
-function buildChartRowsForShot(shot: RenderableShot, qcInput?: RenderQcInput): ChartDataRow[] {
-  if (!shot.chart) {
+function normalizeDatasetRows(
+  rows: Array<{ label: string; value: number; unit?: string }>,
+  fallbackUnit?: string
+): ChartDataRow[] {
+  return rows.map((row) => ({
+    label: normalizeText(row.label),
+    value: row.value,
+    unit: row.unit ?? fallbackUnit
+  }));
+}
+
+function resolveShotDatasetIds(shot: RenderableShot): string[] {
+  const ids = new Set<string>();
+
+  if (typeof shot.chart?.dataset_id === "string" && shot.chart.dataset_id.trim().length > 0) {
+    ids.add(shot.chart.dataset_id.trim());
+  }
+
+  for (const visualObject of shot.visual_objects ?? []) {
+    if (typeof visualObject.data_ref?.dataset_id === "string" && visualObject.data_ref.dataset_id.trim().length > 0) {
+      ids.add(visualObject.data_ref.dataset_id.trim());
+    }
+  }
+
+  return [...ids];
+}
+
+function resolveEpisodeDatasetRows(
+  doc: RenderableShotsDocument,
+  datasetIds: string[]
+): { rows: ChartDataRow[]; datasetId: string } | null {
+  if (datasetIds.length === 0) {
+    return null;
+  }
+
+  const inputs = Array.isArray(doc.episode.data_inputs) ? doc.episode.data_inputs : [];
+  for (const datasetId of datasetIds) {
+    const match = inputs.find((entry) => entry.dataset_id === datasetId);
+    if (match && Array.isArray(match.rows) && match.rows.length > 0) {
+      return {
+        datasetId,
+        rows: normalizeDatasetRows(match.rows, match.unit)
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildChartRowsForShot(
+  doc: RenderableShotsDocument,
+  shot: RenderableShot,
+  qcInput: RenderQcInput | undefined,
+  allowSyntheticChartData: boolean
+): ChartDataRow[] {
+  const datasetIds = resolveShotDatasetIds(shot);
+  const requiresTabularData =
+    Boolean(shot.chart) ||
+    datasetIds.length > 0 ||
+    (shot.visual_objects ?? []).some((visualObject) => visualObject.kind === "table");
+
+  if (!requiresTabularData) {
     return [];
+  }
+
+  const boundEpisodeDataset = resolveEpisodeDatasetRows(doc, datasetIds);
+  if (boundEpisodeDataset) {
+    return boundEpisodeDataset.rows;
   }
 
   const datasetRows = qcInput?.dataset?.rows;
   if (datasetRows && datasetRows.length > 0) {
-    return datasetRows.map((row) => ({
-      label: normalizeText(row.label),
-      value: row.value,
-      unit: row.unit ?? qcInput?.dataset?.unit
-    }));
+    return normalizeDatasetRows(datasetRows, qcInput?.dataset?.unit);
+  }
+
+  if (datasetIds.length > 0 && !allowSyntheticChartData) {
+    throw new Error(
+      `Shot ${shot.shot_id} declares dataset binding (${datasetIds.join(", ")}) but no render data rows were provided.`
+    );
   }
 
   return defaultChartRows(shot.shot_id);
@@ -412,7 +479,8 @@ function buildDeterministicSequences(
   safeArea: RenderSafeArea,
   presetFps: number,
   qcInput?: RenderQcInput,
-  profiles?: ResolvedProfiles
+  profiles?: ResolvedProfiles,
+  allowSyntheticChartData: boolean = false
 ): DeterministicSequence[] {
   const sourceFps = doc.render.fps;
   const frameScale = sourceFps > 0 ? presetFps / sourceFps : 1;
@@ -434,7 +502,8 @@ function buildDeterministicSequences(
         : typeof shot.talk_text === "string" && shot.talk_text.trim().length > 0
           ? shot.talk_text.trim()
           : undefined;
-    const chartData = buildChartRowsForShot(shot, qcInput);
+    const chartData = buildChartRowsForShot(doc, shot, qcInput, allowSyntheticChartData);
+    const chartUnit = chartData.find((row) => typeof row.unit === "string" && row.unit.length > 0)?.unit ?? qcInput?.dataset?.unit;
     const insertAsset = shot.insert_asset
       ? {
           assetId: shot.insert_asset.asset_id,
@@ -619,7 +688,7 @@ function buildDeterministicSequences(
       freezePose: false,
       expectOcclusion,
       pointerTip: pointerAnchor,
-      unit: qcInput?.dataset?.unit,
+      unit: chartUnit,
       hasChart: Boolean(shot.chart),
       chartCallout: shot.chart?.callouts?.[0]?.text,
       insertAsset,
@@ -1547,7 +1616,8 @@ export async function orchestrateRenderEpisode(input: OrchestrateRenderInput = {
       safeArea,
       preset.fps,
       input.qc,
-      resolvedProfiles
+      resolvedProfiles,
+      input.allowSyntheticChartData ?? false
     );
     episodeFinishProfile = resolveEpisodeFinishProfile({
       profiles: resolvedProfiles,

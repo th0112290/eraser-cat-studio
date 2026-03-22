@@ -21,6 +21,32 @@
             "channel_profile_id": { "type": "string" },
             "mascot_profile_id": { "type": "string" }
           }
+        },
+        "data_inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dataset_id"],
+            "properties": {
+              "dataset_id": { "type": "string" },
+              "time_range": { "type": "string" },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "value"],
+                  "properties": {
+                    "label": { "type": "string" },
+                    "value": { "type": "number" },
+                    "unit": { "type": "string" }
+                  }
+                }
+              },
+              "unit": { "type": "string" },
+              "expected_sum": { "type": "number" },
+              "sum_tolerance": { "type": "number" }
+            }
+          }
         }
       }
     },

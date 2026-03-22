@@ -3,6 +3,8 @@ export type {
   Beat,
   BeatReference,
   BeatsDocument,
+  EpisodeDataInput,
+  EpisodeDataInputRow,
   EpisodeInput,
   SchemaBeat,
   StoryInput

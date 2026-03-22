@@ -16,7 +16,8 @@ async function main() {
 
   const result = await orchestrateRenderEpisode({
     dryRun,
-    shotsPath
+    shotsPath,
+    allowSyntheticChartData: true
   });
 
   console.log(`render:status ${result.status}`);
