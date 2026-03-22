@@ -8,7 +8,9 @@
   "replacementStrategy": "replace",
   "notes": [
     "candidate replacement bank for wolf canon",
-    "drop premium-api generated front/threeQuarter/profile/style/hero assets here, then enable with MASCOT_REFERENCE_BANK_CANDIDATES=wolf"
+    "drop premium-api generated front/threeQuarter/profile/style/hero assets here, then enable with MASCOT_REFERENCE_BANK_CANDIDATES=wolf",
+    "wolf candidate bank staged from vertexImagen preset mascot-bank-canon-premium on 2026-03-22",
+    "generated candidate assets are staged for manual review before promotion"
   ],
   "requiredAssets": [
     {
@@ -47,18 +49,58 @@
       "description": "wolf front hero identity ref"
     }
   ],
-  "style": [],
+  "style": [
+    {
+      "path": "./style_front_primary.png",
+      "note": "wolf candidate front style canon"
+    }
+  ],
   "starterByView": {
-    "front": [],
-    "threeQuarter": [],
-    "profile": []
+    "front": [
+      {
+        "path": "./family_front_primary.png",
+        "note": "wolf candidate front starter scaffold"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "./family_threeQuarter_primary.png",
+        "note": "wolf candidate three-quarter starter scaffold"
+      }
+    ],
+    "profile": [
+      {
+        "path": "./family_profile_primary.png",
+        "note": "wolf candidate profile starter scaffold"
+      }
+    ]
   },
   "familyByView": {
-    "front": [],
-    "threeQuarter": [],
-    "profile": []
+    "front": [
+      {
+        "path": "./family_front_primary.png",
+        "note": "wolf candidate front composition anchor"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "./family_threeQuarter_primary.png",
+        "note": "wolf candidate three-quarter composition anchor"
+      }
+    ],
+    "profile": [
+      {
+        "path": "./family_profile_primary.png",
+        "note": "wolf candidate profile composition anchor"
+      }
+    ]
   },
   "heroByView": {
-    "front": []
+    "front": [
+      {
+        "path": "./hero_front_primary.png",
+        "note": "wolf candidate front hero identity ref"
+      }
+    ]
   }
 }

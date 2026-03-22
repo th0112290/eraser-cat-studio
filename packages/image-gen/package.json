@@ -11,6 +11,7 @@
     "bank:report": "pnpm exec tsx src/reportMascotReferenceReadiness.ts",
     "bank:readiness": "pnpm exec tsx src/reportMascotReferenceReadiness.ts",
     "bank:smoke": "pnpm exec tsx src/smokeMascotReferenceBank.ts",
+    "bank:generate-candidate": "pnpm exec tsx src/generateMascotCandidateBank.ts",
     "prompt:cat-canon:smoke": "pnpm exec tsx src/smokeCatCanonPrompt.ts",
     "pipeline:mvp": "pnpm exec tsx src/runImageToAnimationMvp.ts",
     "pipeline:render-accepted": "pnpm exec tsx src/renderAcceptedCharacterShort.ts",

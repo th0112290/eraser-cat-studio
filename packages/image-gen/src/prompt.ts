@@ -117,6 +117,25 @@ const ERASER_CAT_CANON_PREMIUM_QUALITY_PROFILE: PromptQualityProfile = {
   saturationBoost: 1
 };
 
+const MASCOT_BANK_CANON_PREMIUM_QUALITY_PROFILE: PromptQualityProfile = {
+  id: "mascot_bank_canon_premium_v1",
+  label: "Mascot Bank Canon Premium",
+  targetStyle: "compact doodle mascot canon",
+  qualityTier: "production",
+  sampler: "dpmpp_2m_sde",
+  scheduler: "karras",
+  steps: 36,
+  cfg: 4.8,
+  width: 1152,
+  height: 1152,
+  maxShift: 1,
+  baseShift: 0.48,
+  postprocessPlan: [],
+  upscaleLongSide: 0,
+  sharpen: 0,
+  saturationBoost: 1
+};
+
 const DEFAULT_VIEW_MODIFIERS: Record<CharacterView, string> = {
   front:
     "front view, camera facing subject directly, symmetric facial alignment, shoulders square, neutral standing pose",
@@ -154,6 +173,7 @@ function isMascotPreset(presetId: string): boolean {
   const normalizedPresetId = normalizePresetId(presetId) ?? presetId;
   return (
     normalizedPresetId === "eraser-cat-canon-premium" ||
+    normalizedPresetId === "mascot-bank-canon-premium" ||
     normalizedPresetId === "compact-mascot-production" ||
     normalizedPresetId === "compact-mascot-flat" ||
     normalizedPresetId === "playful-cartoon"
@@ -161,6 +181,57 @@ function isMascotPreset(presetId: string): boolean {
 }
 
 export const STYLE_PROMPT_PRESETS: StylePromptPreset[] = [
+  {
+    id: "mascot-bank-canon-premium",
+    label: "Mascot Bank Canon Premium",
+    positive: [
+      "cute monochrome doodle mascot",
+      "near-square oversized head with only soft corner rounding",
+      "very small chibi body under the head",
+      "short stubby limbs",
+      "paw or mitten hands only",
+      "thick clean black outline",
+      "flat white fill",
+      "plain light background",
+      "single centered sticker-like silhouette",
+      "friendly hand-drawn doodle mascot",
+      "full body visible",
+      "simple face only"
+    ].join(", "),
+    negative: [
+      "realistic fur",
+      "grey fur shading",
+      "anime shading",
+      "gradient shading",
+      "3d render",
+      "painted texture",
+      "rough sketch hatching",
+      "crosshatching",
+      "human fingers",
+      "long body",
+      "small head",
+      "circular teddy-bear head",
+      "realistic nose",
+      "realistic muzzle",
+      "detailed pupils",
+      "fur hatching",
+      "comparison panels",
+      "inset figures",
+      "teeth",
+      "tongue",
+      "commercial anime detail",
+      "glossy highlights",
+      "color accents",
+      "busy background",
+      "multiple characters",
+      "character lineup",
+      "turnaround sheet",
+      "text",
+      "logo",
+      "symbol only"
+    ].join(", "),
+    qualityProfile: MASCOT_BANK_CANON_PREMIUM_QUALITY_PROFILE
+  },
   {
     id: "eraser-cat-canon-premium",
     label: "Eraser Cat Canon Premium",
@@ -351,6 +422,7 @@ function joinPromptParts(parts: Array<string | undefined>): string {
 export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
   const preset = findPreset(input.presetId);
   const mascotPreset = isMascotPreset(preset.id);
+  const premiumMascotBankPreset = preset.id === "mascot-bank-canon-premium";
   const premiumCatCanonPreset = preset.id === "eraser-cat-canon-premium";
   const speciesProfile = mascotPreset ? resolveMascotSpeciesProfile(input.speciesId) : null;
 
@@ -403,13 +475,17 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
         "flat black line-art on light plain background",
         "clear empty margin around the character",
         "all limbs attached, no missing arms, no missing paws",
-        ...(premiumCatCanonPreset
+        ...(premiumCatCanonPreset || premiumMascotBankPreset
           ? [
               "head should occupy most of the total character width",
               "keep the head boxy and close to square",
               "keep the body tiny and short beneath the head",
               "keep the outline thick, smooth, and uniform",
-              "keep the fill almost pure black and white with no rich shading",
+              "keep the fill almost pure black and white with no rich shading"
+            ]
+          : []),
+        ...(premiumCatCanonPreset
+          ? [
               "keep both ears clearly pointed and upright",
               "keep only two short whisker dashes on each cheek",
               "keep the eye treatment as tiny dots or short line eyes with no detailed pupils",
@@ -575,13 +651,13 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
     selectionHints: {
       minAcceptedScore: mascotPreset ? 0.58 : preset.qualityProfile.qualityTier === "production" ? 0.74 : 0.67,
       frontMasterMinAcceptedScore: mascotPreset
-        ? premiumCatCanonPreset
-          ? Math.max(speciesProfile?.qcThresholds.frontMasterMinScore ?? 0.62, 0.68)
+        ? premiumCatCanonPreset || premiumMascotBankPreset
+          ? Math.max(speciesProfile?.qcThresholds.frontMasterMinScore ?? 0.62, premiumCatCanonPreset ? 0.68 : 0.66)
           : speciesProfile?.qcThresholds.frontMasterMinScore ?? 0.62
         : undefined,
-      autoRetryRounds: mascotPreset ? (premiumCatCanonPreset ? 3 : 2) : preset.qualityProfile.qualityTier === "production" ? 3 : 2,
-      frontMasterCandidateCount: mascotPreset ? (premiumCatCanonPreset ? 8 : 6) : undefined,
-      repairCandidateCount: mascotPreset ? (premiumCatCanonPreset ? 3 : 2) : undefined,
+      autoRetryRounds: mascotPreset ? (premiumCatCanonPreset || premiumMascotBankPreset ? 3 : 2) : preset.qualityProfile.qualityTier === "production" ? 3 : 2,
+      frontMasterCandidateCount: mascotPreset ? (premiumCatCanonPreset || premiumMascotBankPreset ? 8 : 6) : undefined,
+      repairCandidateCount: mascotPreset ? (premiumCatCanonPreset || premiumMascotBankPreset ? 3 : 2) : undefined,
       repairScoreFloor: mascotPreset ? speciesProfile?.qcThresholds.repairScoreFloor ?? 0.41 : undefined,
       sequentialReference: true,
       prioritizeConsistency: true,
