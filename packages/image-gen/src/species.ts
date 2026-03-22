@@ -334,29 +334,53 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "almost no muzzle projection",
       "tiny dash mouth",
       "two short whisker strokes on each cheek",
-      "cat-first silhouette"
+      "cat-first silhouette",
+      "eraser-crumb tail silhouette",
+      "simple dot eyes or short line-eye expression only"
     ],
-    negativeTokens: ["dog muzzle", "wolf wedge snout", "button nose", "floppy dog ears", "canine face"],
+    negativeTokens: [
+      "dog muzzle",
+      "wolf wedge snout",
+      "button nose",
+      "floppy dog ears",
+      "canine face",
+      "rounded teddy ears",
+      "detailed pupils",
+      "human eyebrows",
+      "grey fur shading"
+    ],
     identityTokens: [
       "pointed cat ears",
       "two whisker strokes per cheek",
       "almost no muzzle projection",
-      "single connected cat silhouette"
+      "single connected cat silhouette",
+      "same eraser-crumb tail silhouette",
+      "same face placement high in the upper half of the head"
     ],
-    anchorTokens: ["same cat ear spacing", "same cat cheek width", "same whisker rhythm", "same centered upper face placement"],
+    anchorTokens: [
+      "same cat ear spacing",
+      "same cat cheek width",
+      "same whisker rhythm",
+      "same centered upper face placement",
+      "same rounded-square head box",
+      "same eraser-tail clump mass"
+    ],
     guardrails: [
       "do not add a realistic cat nose",
       "do not turn the face into a canine muzzle",
       "keep whiskers simple and sparse",
-      "do not split the cat into detached ear, whisker, or foreground fragments"
+      "do not split the cat into detached ear, whisker, or foreground fragments",
+      "keep the cat black-and-white and doodle-simple",
+      "do not smooth the ears into rounded teddy-bear ears",
+      "keep the tail as a compact eraser-crumb clump instead of a long realistic tail"
     ],
     viewHints: {
       front:
-        "front view should read as cat first, with pointed ears, minimal muzzle, a compact blocky head, exactly two short whisker strokes per side, full body visible, a single centered subject, a face sitting high in the upper head, and no duplicate foreground fragments",
+        "front view should read as cat first, with pointed ears, minimal muzzle, a compact blocky near-square head, exactly two short whisker strokes per side, tiny dot eyes or short line-eye expression only, a very small body directly under the head, a readable eraser-tail clump, full body visible, a single centered subject, a face sitting high in the upper head, and no duplicate foreground fragments",
       threeQuarter:
-        "three-quarter cat should stay compact and cute while clearly turning about 35 to 45 degrees, with a larger near ear, a smaller but still attached far ear, a slightly larger near eye, a muzzle rotated off center, a broader near cheek, and a torso and chest angled with the head instead of drifting back to front symmetry",
+        "three-quarter cat should stay compact and cute while clearly turning about 35 to 45 degrees, with a larger near ear, a smaller but still attached far ear, a slightly larger near eye, a muzzle rotated off center, a broader near cheek, a tiny body angled with the head, and a torso and chest rotated instead of drifting back to front symmetry",
       profile:
-        "profile cat should keep a very short feline muzzle, one eye only, a clear compact head silhouette, and short cheek whisker strokes"
+        "profile cat should keep a very short feline muzzle, one eye only, a clear compact head silhouette, pointed ear geometry, a tiny body, and short cheek whisker strokes"
     },
     keepTraits: [
       "compact blocky cat head",
@@ -364,7 +388,10 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "pointed cat ears",
       "minimal feline muzzle",
       "two short whisker strokes per cheek",
-      "tiny body and short limbs"
+      "tiny body and short limbs",
+      "eraser-crumb tail silhouette",
+      "dot-or-line eyes only",
+      "black-and-white doodle finish"
     ],
     rejectTraits: [
       "dog muzzle",
@@ -372,11 +399,44 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "button nose",
       "human fingers",
       "long realistic tail",
-      "multiple characters"
+      "multiple characters",
+      "detailed pupils",
+      "rounded teddy ears",
+      "realistic whisker fan",
+      "human eyebrows",
+      "grey fur shading"
     ],
     animationQc: {
       minExpressionFaceVariation: 0.0085,
       minVisemeFaceVariation: 0.0075
+    },
+    qcThresholds: {
+      frontMasterMinScore: 0.64,
+      frontMasterMinStyleScore: 0.42,
+      frontMasterMinSpeciesScore: 0.28,
+      frontMasterMinHeadSquarenessScore: 0.3,
+      minConsistencyByView: {
+        threeQuarter: 0.5,
+        profile: 0.42
+      },
+      minHeadRatioByView: {
+        front: 0.36,
+        threeQuarter: 0.23,
+        profile: 0.19
+      },
+      minGeometryCueByView: {
+        threeQuarter: 0.42,
+        profile: 0.35
+      },
+      minFrontSymmetryScore: 0.56,
+      minSubjectIsolationFront: 0.5,
+      maxStyleSpread: 0.14,
+      maxHeadRatioSpread: 0.12,
+      maxMonochromeSpread: 0.14,
+      maxEarCueSpread: 0.22,
+      maxMuzzleCueSpread: 0.18,
+      maxHeadShapeCueSpread: 0.18,
+      maxSilhouetteCueSpread: 0.2
     }
   },
   dog: {
@@ -562,7 +622,9 @@ const SPECIES_ANCHOR_HEURISTIC_OVERRIDES: Record<MascotSpeciesId, SpeciesAnchorH
           ...BASE_COMPONENT_CONFIDENCE_BOOST,
           mouth: -0.02,
           earNear: 0.02,
-          earFar: 0.01
+          earFar: 0.01,
+          paw: 0.02,
+          tail: 0.05
         }
       },
       threeQuarter: {
@@ -574,7 +636,8 @@ const SPECIES_ANCHOR_HEURISTIC_OVERRIDES: Record<MascotSpeciesId, SpeciesAnchorH
           ...BASE_COMPONENT_CONFIDENCE_BOOST,
           mouth: -0.02,
           earNear: 0.04,
-          earFar: 0.02
+          earFar: 0.02,
+          tail: 0.03
         },
         qc: {
           muzzleProjection: { min: 0.06, max: 0.2 },
@@ -589,7 +652,8 @@ const SPECIES_ANCHOR_HEURISTIC_OVERRIDES: Record<MascotSpeciesId, SpeciesAnchorH
         componentConfidenceBoost: {
           ...BASE_COMPONENT_CONFIDENCE_BOOST,
           mouth: -0.03,
-          earNear: 0.05
+          earNear: 0.05,
+          tail: 0.02
         },
         expectedVisibility: {
           eyeFar: "not_applicable",

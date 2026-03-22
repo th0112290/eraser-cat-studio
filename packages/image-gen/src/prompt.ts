@@ -98,6 +98,25 @@ const COMPACT_MASCOT_PRODUCTION_QUALITY_PROFILE: PromptQualityProfile = {
   saturationBoost: 1
 };
 
+const ERASER_CAT_CANON_PREMIUM_QUALITY_PROFILE: PromptQualityProfile = {
+  id: "eraser_cat_canon_premium_v1",
+  label: "Eraser Cat Canon Premium",
+  targetStyle: "eraser cat premium mascot",
+  qualityTier: "production",
+  sampler: "dpmpp_2m_sde",
+  scheduler: "karras",
+  steps: 36,
+  cfg: 4.6,
+  width: 1152,
+  height: 1152,
+  maxShift: 1,
+  baseShift: 0.48,
+  postprocessPlan: [],
+  upscaleLongSide: 0,
+  sharpen: 0,
+  saturationBoost: 1
+};
+
 const DEFAULT_VIEW_MODIFIERS: Record<CharacterView, string> = {
   front:
     "front view, camera facing subject directly, symmetric facial alignment, shoulders square, neutral standing pose",
@@ -119,7 +138,8 @@ const MASCOT_VIEW_MODIFIERS: Record<CharacterView, string> = {
 const DEFAULT_PRESET_ID = "compact-mascot-production";
 const LEGACY_PRESET_ID_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   "eraser-cat-mascot-production": "compact-mascot-production",
-  "eraser-cat-flat": "compact-mascot-flat"
+  "eraser-cat-flat": "compact-mascot-flat",
+  "eraser-cat-canon": "eraser-cat-canon-premium"
 });
 
 function normalizePresetId(presetId: string | undefined): string | undefined {
@@ -133,6 +153,7 @@ function normalizePresetId(presetId: string | undefined): string | undefined {
 function isMascotPreset(presetId: string): boolean {
   const normalizedPresetId = normalizePresetId(presetId) ?? presetId;
   return (
+    normalizedPresetId === "eraser-cat-canon-premium" ||
     normalizedPresetId === "compact-mascot-production" ||
     normalizedPresetId === "compact-mascot-flat" ||
     normalizedPresetId === "playful-cartoon"
@@ -140,6 +161,55 @@ function isMascotPreset(presetId: string): boolean {
 }
 
 export const STYLE_PROMPT_PRESETS: StylePromptPreset[] = [
+  {
+    id: "eraser-cat-canon-premium",
+    label: "Eraser Cat Canon Premium",
+    positive: [
+      "cute monochrome doodle mascot cat",
+      "near-square cat head with only soft corner rounding and a slightly flat top",
+      "very large head and tiny chibi body",
+      "pointed triangular cat ears",
+      "two short whisker strokes on each cheek",
+      "tiny dash mouth",
+      "simple dot eyes or simple line-eye expression only",
+      "thick clean black outline",
+      "flat white fill",
+      "plain light background",
+      "single centered sticker-like silhouette",
+      "eraser crumb tail shape",
+      "full body visible",
+      "friendly hand-drawn doodle mascot"
+    ].join(", "),
+    negative: [
+      "realistic fur",
+      "anime shading",
+      "gradient shading",
+      "3d render",
+      "painted texture",
+      "rough sketch hatching",
+      "crosshatching",
+      "human fingers",
+      "long body",
+      "small head",
+      "circular teddy-bear head",
+      "realistic cat nose",
+      "realistic muzzle",
+      "detailed whiskers",
+      "teeth",
+      "tongue",
+      "commercial anime detail",
+      "glossy highlights",
+      "color accents",
+      "busy background",
+      "multiple characters",
+      "character lineup",
+      "turnaround sheet",
+      "text",
+      "logo",
+      "symbol only"
+    ].join(", "),
+    qualityProfile: ERASER_CAT_CANON_PREMIUM_QUALITY_PROFILE
+  },
   {
     id: "compact-mascot-production",
     label: "Mascot Production",
@@ -281,6 +351,7 @@ function joinPromptParts(parts: Array<string | undefined>): string {
 export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
   const preset = findPreset(input.presetId);
   const mascotPreset = isMascotPreset(preset.id);
+  const premiumCatCanonPreset = preset.id === "eraser-cat-canon-premium";
   const speciesProfile = mascotPreset ? resolveMascotSpeciesProfile(input.speciesId) : null;
 
   const styleHints = input.styleHints;
@@ -295,6 +366,14 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
         ...keepTraitTokens.slice(0, 4),
         "same simple eye style",
         "same tiny mouth vocabulary",
+        ...(premiumCatCanonPreset
+          ? [
+              "same rounded-square cat head",
+              "same eraser-crumb tail silhouette",
+              "same thick clean black line weight",
+              "same minimal face with dot-eye or line-eye expression only"
+            ]
+          : []),
         "no redesign"
       ].join(", ")
     : [
@@ -324,6 +403,19 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
         "flat black line-art on light plain background",
         "clear empty margin around the character",
         "all limbs attached, no missing arms, no missing paws",
+        ...(premiumCatCanonPreset
+          ? [
+              "head should occupy most of the total character width",
+              "keep the head boxy and close to square",
+              "keep the body tiny and short beneath the head",
+              "keep the outline thick, smooth, and uniform",
+              "keep the fill almost pure black and white with no rich shading",
+              "keep both ears clearly pointed and upright",
+              "keep only two short whisker dashes on each cheek",
+              "keep the eye treatment as tiny dots or short line eyes with no detailed pupils",
+              "keep the tail as a compact crumb-like eraser clump"
+            ]
+          : []),
         ...keepTraitTokens.slice(4)
       ].join(", ")
     : [
@@ -482,10 +574,14 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
     },
     selectionHints: {
       minAcceptedScore: mascotPreset ? 0.58 : preset.qualityProfile.qualityTier === "production" ? 0.74 : 0.67,
-      frontMasterMinAcceptedScore: mascotPreset ? speciesProfile?.qcThresholds.frontMasterMinScore ?? 0.62 : undefined,
-      autoRetryRounds: mascotPreset ? 2 : preset.qualityProfile.qualityTier === "production" ? 3 : 2,
-      frontMasterCandidateCount: mascotPreset ? 6 : undefined,
-      repairCandidateCount: mascotPreset ? 2 : undefined,
+      frontMasterMinAcceptedScore: mascotPreset
+        ? premiumCatCanonPreset
+          ? Math.max(speciesProfile?.qcThresholds.frontMasterMinScore ?? 0.62, 0.68)
+          : speciesProfile?.qcThresholds.frontMasterMinScore ?? 0.62
+        : undefined,
+      autoRetryRounds: mascotPreset ? (premiumCatCanonPreset ? 3 : 2) : preset.qualityProfile.qualityTier === "production" ? 3 : 2,
+      frontMasterCandidateCount: mascotPreset ? (premiumCatCanonPreset ? 8 : 6) : undefined,
+      repairCandidateCount: mascotPreset ? (premiumCatCanonPreset ? 3 : 2) : undefined,
       repairScoreFloor: mascotPreset ? speciesProfile?.qcThresholds.repairScoreFloor ?? 0.41 : undefined,
       sequentialReference: true,
       prioritizeConsistency: true,

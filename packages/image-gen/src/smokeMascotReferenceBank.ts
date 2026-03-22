@@ -23,7 +23,8 @@ function run(): void {
   assert.equal(catDiagnostics.status, "species_ready", "cat bank should be species_ready");
   assert.equal(catDiagnostics.declaredStatus, "species_ready", "cat bank should declare species_ready");
   assert.equal(catDiagnostics.statusMismatch, false, "cat bank should not have a readiness mismatch");
-  assert.ok(catDiagnostics.styleCount > 0, "cat bank should include style refs");
+  assert.equal(catDiagnostics.variant, "canonical", "cat bank should resolve canonical variant");
+  assert.ok(catDiagnostics.styleCount >= 2, "cat bank should include both style and body canon refs");
   assert.ok(catDiagnostics.heroCount > 0, "cat bank should include hero refs");
   assert.equal(catDiagnostics.requiredAssetCount, 0, "cat bank should not declare missing required assets");
   assert.equal(catRequirementStatuses.length, 0, "cat bank should not expose pending requirement statuses");
@@ -32,6 +33,17 @@ function run(): void {
   assert.deepEqual(catReviewPlan.requiredManualSlots, [], "cat bank should not require manual pack slots");
   assert.ok(resolveMascotStyleReferenceAsset("cat"), "cat style reference should resolve");
   expectCompositionAcrossViews("cat");
+  const catManifest = resolveMascotReferenceBankManifest("cat");
+  assert.equal(catManifest?.variant, "canonical", "cat manifest should declare canonical variant");
+  assert.equal(catManifest?.style?.[1]?.path?.endsWith("body_proportion_sheet.png"), true, "cat bank should normalize the body proportion support ref");
+  assert.equal(catManifest?.familyByView?.front?.[0]?.path?.endsWith("front_composition.png"), true, "cat bank should own front family composition");
+  assert.equal(
+    catManifest?.familyByView?.threeQuarter?.[0]?.path?.endsWith("threeQuarter_composition.png"),
+    true,
+    "cat bank should own three-quarter family composition"
+  );
+  assert.equal(catManifest?.familyByView?.profile?.[0]?.path?.endsWith("profile_composition.png"), true, "cat bank should own profile family composition");
+  assert.equal(catManifest?.heroByView?.front?.[0]?.path?.endsWith("hero_face_detail.png"), true, "cat bank should normalize hero ref path");
 
   for (const speciesId of ["dog", "wolf"] as const) {
     const diagnostics = resolveMascotReferenceBankDiagnostics(speciesId);

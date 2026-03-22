@@ -3,20 +3,67 @@
   "profileId": "cat",
   "speciesId": "cat",
   "familyId": "compact_doodle_mascot_v2",
+  "variant": "canonical",
   "bankStatus": "species_ready",
   "notes": [
-    "cat bank currently owns the active house style canon and hero ref"
+    "cat bank currently owns the active house style canon and hero ref",
+    "cat bank explicitly owns the active family composition canon from cat_quality_input",
+    "cat bank also carries the body and paw proportion sheet from cat_quality_input"
   ],
   "style": [
     {
       "path": "../../cat_quality_input/derived/front_style_clean.png",
       "note": "cat front house style canon"
+    },
+    {
+      "path": "../../cat_quality_input/derived/body_proportion_sheet.png",
+      "note": "cat body and paw proportion canon"
     }
   ],
+  "starterByView": {
+    "front": [
+      {
+        "path": "../../cat_quality_input/derived/front_composition.png",
+        "note": "cat front composition starter canon"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "../../cat_quality_input/derived/threeQuarter_composition.png",
+        "note": "cat three-quarter composition starter canon"
+      }
+    ],
+    "profile": [
+      {
+        "path": "../../cat_quality_input/derived/profile_composition.png",
+        "note": "cat profile composition starter canon"
+      }
+    ]
+  },
+  "familyByView": {
+    "front": [
+      {
+        "path": "../../cat_quality_input/derived/front_composition.png",
+        "note": "cat front family composition canon"
+      }
+    ],
+    "threeQuarter": [
+      {
+        "path": "../../cat_quality_input/derived/threeQuarter_composition.png",
+        "note": "cat three-quarter family composition canon"
+      }
+    ],
+    "profile": [
+      {
+        "path": "../../cat_quality_input/derived/profile_composition.png",
+        "note": "cat profile family composition canon"
+      }
+    ]
+  },
   "heroByView": {
     "front": [
       {
-        "path": "../../cat_quality_input/02_face_detail/ChatGPT Image 2026년 3월 6일 오후 02_10_17.png",
+        "path": "../../cat_quality_input/derived/hero_face_detail.png",
         "note": "front face hero reference"
       }
     ]
