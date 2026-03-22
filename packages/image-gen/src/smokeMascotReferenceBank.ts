@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import {
   buildMascotReferenceBankReviewPlan,
+  canUseMascotReferenceBankForProduction,
   resolveEffectiveMascotReferenceBankStatus,
   resolveMascotCompositionReferenceAsset,
   resolveMascotReferenceBankDiagnostics,
@@ -103,6 +104,16 @@ function run(): void {
     const dogResolvedFront = resolveMascotCompositionReferenceAsset("dog", "front");
     assert.ok(dogResolvedStyle?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}style_front_primary.png`), "production style resolution should fall back to canonical dog assets while candidate is locked");
     assert.ok(dogResolvedFront?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}family_front_primary.png`), "production front composition should fall back to canonical dog assets while candidate is locked");
+    assert.equal(
+      canUseMascotReferenceBankForProduction({
+        variant: dogCandidateDiagnostics.variant,
+        status: dogCandidateDiagnostics.status,
+        canonStage: dogCandidateDiagnostics.canonStage,
+        qualityStatus: dogCandidateDiagnostics.qualityStatus
+      }),
+      false,
+      "candidate dog bank should not be production-eligible before canonical promotion"
+    );
   } finally {
     if (previousCandidateEnv === undefined) {
       delete process.env.MASCOT_REFERENCE_BANK_CANDIDATES;
