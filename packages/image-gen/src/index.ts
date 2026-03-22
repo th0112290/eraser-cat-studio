@@ -28,6 +28,7 @@ import {
   resolveMascotStyleReferenceAsset
 } from "./mascotReferenceBank";
 import { listMascotFamilyArchetypes, resolveMascotFamilyArchetype } from "./mascotFamilyArchetypes";
+import { evaluateMascotFrontCanon } from "./mascotReferenceCanonQc";
 import { STYLE_PROMPT_PRESETS, buildMascotBankPromptBundle, buildPromptBundle, resolveStylePromptPreset } from "./prompt";
 import { listMascotSpeciesProfiles, resolveMascotSpeciesProfile } from "./species";
 import type {
@@ -162,6 +163,7 @@ export function listMascotFamilies() {
 }
 
 export { resolveMascotFamilyArchetype, resolveMascotSpeciesProfile };
+export { evaluateMascotFrontCanon };
 export {
   buildMascotReferenceBankReviewPlan,
   resolveEffectiveMascotReferenceBankStatus,
@@ -266,7 +268,10 @@ export type {
   MascotSpeciesProfile,
   MascotReferenceAssetEntry,
   MascotReferenceAssetRequirement,
-  MascotReferenceBankManifest
+  MascotReferenceBankManifest,
+  MascotReferenceFrontApproval,
+  MascotReferenceVisualQcCheck,
+  MascotReferenceVisualQcReport
 } from "./types";
 export type {
   MascotReferenceAssetRequirementStatus,

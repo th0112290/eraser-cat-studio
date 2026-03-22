@@ -311,6 +311,10 @@ export type CharacterPipelineRepairTask = {
 export type CharacterPipelineReferenceBankStatus = {
   species_id: MascotSpeciesId;
   status: "species_ready" | "scaffold_only";
+  variant?: "canonical" | "candidate";
+  canon_stage?: string;
+  quality_status?: "unchecked" | "review_needed" | "approved";
+  production_locked?: boolean;
   style_count: number;
   hero_count: number;
   missing_roles: string[];
@@ -1498,6 +1502,10 @@ function toCharacterPipelineReferenceBankStatus(
   return {
     species_id: diagnostics.speciesId,
     status: diagnostics.status,
+    variant: diagnostics.variant,
+    canon_stage: diagnostics.canonStage,
+    quality_status: diagnostics.qualityStatus,
+    production_locked: diagnostics.productionLocked,
     style_count: diagnostics.styleCount,
     hero_count: diagnostics.heroCount,
     missing_roles: [...diagnostics.missingRoles],

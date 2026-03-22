@@ -5,11 +5,38 @@ export type MascotSpeciesId = "cat" | "dog" | "wolf";
 export type MascotReferenceCanonStage =
   | "scaffold"
   | "front_master_seeded"
+  | "front_approved"
   | "family_views_seeded"
   | "hero_seeded"
   | "review_ready"
   | "species_ready";
 export type MascotReferenceQualityStatus = "unchecked" | "review_needed" | "approved";
+export type MascotReferenceVisualQcCheck = {
+  id: string;
+  label: string;
+  score: number;
+  threshold: number;
+  blocking?: boolean;
+  passed: boolean;
+  note: string;
+};
+export type MascotReferenceVisualQcReport = {
+  generatedAt: string;
+  speciesId: MascotSpeciesId;
+  familyId: string;
+  frontAssetPath: string;
+  familyFrontAssetPath: string;
+  heroAssetPath?: string;
+  overallScore: number;
+  passed: boolean;
+  checks: MascotReferenceVisualQcCheck[];
+};
+export type MascotReferenceFrontApproval = {
+  approvedAt: string;
+  forced?: boolean;
+  visualQcPassed: boolean;
+  visualQcOverallScore?: number;
+};
 export type CharacterWorkflowStage =
   | "front_master"
   | "side_view_base"
@@ -214,6 +241,8 @@ export type MascotReferenceBankManifest = {
   replacementStrategy?: "rescue" | "replace";
   notes?: string[];
   qualityNotes?: string[];
+  frontApproval?: MascotReferenceFrontApproval;
+  visualQc?: MascotReferenceVisualQcReport;
   requiredAssets?: MascotReferenceAssetRequirement[];
   style?: MascotReferenceAssetEntry[];
   starterByView?: Partial<Record<CharacterView, MascotReferenceAssetEntry[]>>;

@@ -577,6 +577,21 @@ function buildAssetEntry(relativePath: string, note: string): { path: string; no
   return [{ path: relativePath, note }];
 }
 
+function ensurePhaseUnlock(input: {
+  currentManifest: MascotReferenceBankManifest;
+  speciesId: MascotSpeciesId;
+  phase: CandidateBankGenerationPhase;
+}): void {
+  if (input.phase !== "family_views") {
+    return;
+  }
+  if (!input.currentManifest.frontApproval?.approvedAt) {
+    throw new Error(
+      `Cannot generate family views for ${input.speciesId} before front approval. Run bank front review/approval first.`
+    );
+  }
+}
+
 function buildCandidateBankManifest(input: {
   current: MascotReferenceBankManifest;
   speciesId: MascotSpeciesId;
@@ -595,6 +610,7 @@ function buildCandidateBankManifest(input: {
   const heroExists = fs.existsSync(path.join(input.candidateDir, "hero_front_primary.png"));
   const sideViewCount = Number(threeQuarterExists) + Number(profileExists);
   const allRequiredExist = styleExists && frontExists && threeQuarterExists && profileExists && heroExists;
+  const frontApproved = Boolean(input.current.frontApproval?.approvedAt) && input.phase === "family_views";
   const canonStage = !styleExists
     ? "scaffold"
     : allRequiredExist
@@ -603,10 +619,19 @@ function buildCandidateBankManifest(input: {
         : "species_ready"
       : sideViewCount > 0
         ? "family_views_seeded"
-        : heroExists
+        : frontApproved
+          ? "front_approved"
+          : heroExists
           ? "hero_seeded"
           : "front_master_seeded";
-  const qualityStatus = !styleExists ? "unchecked" : input.keepScaffoldOnly ? "review_needed" : "approved";
+  const qualityStatus =
+    !styleExists
+      ? "unchecked"
+      : input.phase === "front_master"
+        ? "review_needed"
+        : input.keepScaffoldOnly
+          ? "review_needed"
+          : "approved";
   const bankStatus = !input.keepScaffoldOnly && allRequiredExist ? "species_ready" : "scaffold_only";
   const phaseNotes =
     input.phase === "front_master"
@@ -633,6 +658,8 @@ function buildCandidateBankManifest(input: {
     bankStatus,
     canonStage,
     qualityStatus,
+    frontApproval: input.phase === "family_views" ? input.current.frontApproval : undefined,
+    visualQc: input.phase === "family_views" ? input.current.visualQc : undefined,
     notes: mergeUniqueNotes(input.current.notes, [
       generatedNote,
       ...phaseNotes,
@@ -888,6 +915,11 @@ async function run(): Promise<void> {
     }
 
     const currentManifest = JSON.parse(fs.readFileSync(bankManifestPath, "utf8")) as MascotReferenceBankManifest;
+    ensurePhaseUnlock({
+      currentManifest,
+      speciesId,
+      phase
+    });
     const nextManifest = buildCandidateBankManifest({
       current: currentManifest,
       speciesId,

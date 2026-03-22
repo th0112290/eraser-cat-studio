@@ -34,6 +34,9 @@ function main(): void {
       variant: diagnostics.variant,
       canonStage: diagnostics.canonStage,
       qualityStatus: diagnostics.qualityStatus,
+      frontApproved: diagnostics.frontApproved,
+      productionLocked: diagnostics.productionLocked,
+      visualQcOverallScore: diagnostics.visualQcOverallScore,
       manifestPath: diagnostics.manifestPath,
       legacyTemporary: diagnostics.legacyTemporary,
       declaredStatus: diagnostics.declaredStatus,
@@ -70,7 +73,7 @@ function main(): void {
     const unsatisfiedSummary =
       entry.unsatisfiedRequiredAssetSlots.length > 0 ? entry.unsatisfiedRequiredAssetSlots.join(", ") : "none";
     console.log(
-      `[mascot-reference-readiness] species=${entry.speciesId} family=${entry.familyId} variant=${entry.variant} canonStage=${entry.canonStage} quality=${entry.qualityStatus} declared=${entry.declaredStatus} effective=${entry.effectiveStatus} reviewOnly=${entry.reviewOnly} legacyTemporary=${entry.legacyTemporary} unsatisfied=${unsatisfiedSummary}`
+      `[mascot-reference-readiness] species=${entry.speciesId} family=${entry.familyId} variant=${entry.variant} canonStage=${entry.canonStage} quality=${entry.qualityStatus} frontApproved=${entry.frontApproved} productionLocked=${entry.productionLocked} visualQc=${entry.visualQcOverallScore ?? "n/a"} declared=${entry.declaredStatus} effective=${entry.effectiveStatus} reviewOnly=${entry.reviewOnly} legacyTemporary=${entry.legacyTemporary} unsatisfied=${unsatisfiedSummary}`
     );
   }
   console.log(`[mascot-reference-readiness] report=${OUTPUT_PATH}`);

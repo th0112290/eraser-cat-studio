@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import {
   buildMascotReferenceBankReviewPlan,
   resolveEffectiveMascotReferenceBankStatus,
@@ -87,6 +88,32 @@ function run(): void {
     const manifest = resolveMascotReferenceBankManifest(speciesId);
     assert.equal(manifest?.extends?.endsWith("../shared/bank.json"), true, `${speciesId} should inherit shared bank`);
     assert.equal(manifest?.legacyTemporary, true, `${speciesId} manifest should declare legacy-temporary bank status`);
+  }
+
+  const previousCandidateEnv = process.env.MASCOT_REFERENCE_BANK_CANDIDATES;
+  const previousAllowReviewEnv = process.env.MASCOT_REFERENCE_BANK_ALLOW_REVIEW_CANDIDATES;
+  try {
+    process.env.MASCOT_REFERENCE_BANK_CANDIDATES = "dog";
+    delete process.env.MASCOT_REFERENCE_BANK_ALLOW_REVIEW_CANDIDATES;
+    const dogCandidateDiagnostics = resolveMascotReferenceBankDiagnostics("dog");
+    assert.equal(dogCandidateDiagnostics.variant, "candidate", "dog diagnostics should switch to candidate variant when candidate env is active");
+    assert.equal(dogCandidateDiagnostics.frontApproved, false, "unapproved dog candidate should not report front approval");
+    assert.equal(dogCandidateDiagnostics.productionLocked, true, "unapproved dog candidate should stay production-locked");
+    const dogResolvedStyle = resolveMascotStyleReferenceAsset("dog");
+    const dogResolvedFront = resolveMascotCompositionReferenceAsset("dog", "front");
+    assert.ok(dogResolvedStyle?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}style_front_primary.png`), "production style resolution should fall back to canonical dog assets while candidate is locked");
+    assert.ok(dogResolvedFront?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}family_front_primary.png`), "production front composition should fall back to canonical dog assets while candidate is locked");
+  } finally {
+    if (previousCandidateEnv === undefined) {
+      delete process.env.MASCOT_REFERENCE_BANK_CANDIDATES;
+    } else {
+      process.env.MASCOT_REFERENCE_BANK_CANDIDATES = previousCandidateEnv;
+    }
+    if (previousAllowReviewEnv === undefined) {
+      delete process.env.MASCOT_REFERENCE_BANK_ALLOW_REVIEW_CANDIDATES;
+    } else {
+      process.env.MASCOT_REFERENCE_BANK_ALLOW_REVIEW_CANDIDATES = previousAllowReviewEnv;
+    }
   }
 
   assert.equal(
