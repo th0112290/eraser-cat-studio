@@ -99,6 +99,8 @@ assert.ok(!strongDogFront.rejections.includes("dog_front_species_breakdown"));
 assert.ok(!strongDogFront.rejections.includes("dog_front_face_too_small"));
 assert.ok(!strongDogFront.rejections.includes("dog_front_arm_zone_empty"));
 assert.ok((strongDogFront.breakdown.speciesScore ?? 0) >= 0.34);
+assert.ok((strongDogFront.breakdown.headSquarenessScore ?? 0) >= 0.45);
+assert.ok((weakDogFront.breakdown.headSquarenessScore ?? 0) >= 0.4);
 
 console.log("[characterGenerationDogFrontScoring.smoke] PASS");
 process.exit(0);

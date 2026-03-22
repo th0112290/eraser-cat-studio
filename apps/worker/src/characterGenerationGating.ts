@@ -256,12 +256,13 @@ function resolveMascotSelectionRiskThresholds(speciesId: any, deps: any) {
   const qc = profile.qcThresholds;
   const frontStyleSoftFloor = profile.id === "wolf" ? 0.44 : profile.id === "dog" ? 0.45 : 0.46;
   const frontSpeciesSoftFloor = profile.id === "wolf" ? 0.3 : profile.id === "dog" ? 0.32 : 0.34;
+  const frontSpeciesSoftBuffer = profile.id === "wolf" ? 0.03 : profile.id === "dog" ? 0.02 : 0.06;
   return {
     frontAnchorScoreSoftFloor: clamp01(Math.max(0.64, qc.frontMasterMinScore + 0.08)),
     frontSymmetrySoftFloor: clamp01(Math.max(0.42, qc.minFrontSymmetryScore - 0.02)),
     frontHeadSquarenessSoftFloor: clamp01(Math.max(0.18, qc.frontMasterMinHeadSquarenessScore + 0.04)),
     frontStyleSoftFloor: clamp01(Math.max(frontStyleSoftFloor, qc.frontMasterMinStyleScore + 0.08)),
-    frontSpeciesSoftFloor: clamp01(Math.max(frontSpeciesSoftFloor, qc.frontMasterMinSpeciesScore + 0.08)),
+    frontSpeciesSoftFloor: clamp01(Math.max(frontSpeciesSoftFloor, qc.frontMasterMinSpeciesScore + frontSpeciesSoftBuffer)),
     threeQuarterGeometrySoftFloor: clamp01(Math.max(0.3, (qc.minGeometryCueByView.threeQuarter ?? 0.4) - 0.02)),
     profileGeometrySoftFloor: clamp01(Math.max(0.26, (qc.minGeometryCueByView.profile ?? 0.34) - 0.02)),
     threeQuarterConsistencySoftFloor: clamp01(Math.max(0.44, (qc.minConsistencyByView.threeQuarter ?? 0.48) + 0.04)),

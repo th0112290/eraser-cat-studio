@@ -406,6 +406,12 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "rabbit ears",
       "bunny ears",
       "rabbit face",
+      "front collapse",
+      "front-facing torso",
+      "flat front chest",
+      "same-size eyes",
+      "same-size ears",
+      "eyes too low on the head",
       "plush toy look",
       "glossy sticker mascot",
       "big expressive eyes",
@@ -439,11 +445,11 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     ],
     viewHints: {
       front:
-        "front view should read as dog first while staying in the same mascot family, with rounded-base dog ears, a short blunt muzzle, a tiny button nose, tiny solid black dot eyes only, a simple tiny mouth, and both short arms visible with attached paws",
+        "front view should read as dog first while staying in the same mascot family, with rounded-base dog ears placed on the outer top corners, a short blunt muzzle centered high in the head, a tiny button nose, tiny solid black dot eyes only, a simple tiny mouth, and both short arms visible with attached paws separated from the torso",
       threeQuarter:
-        "three-quarter dog should preserve the same compact head and body while clearly turning about 35 to 45 degrees, showing a short blunt puppy muzzle, lower rounded ears, a larger near cheek, and a smaller but still present far paw",
+        "three-quarter dog should preserve the same compact head and body while clearly turning about 35 to 45 degrees, showing a short blunt puppy muzzle rotated off center, lower rounded ears with the near ear larger than the far ear, a larger near cheek, a smaller but still present far paw, and torso and hips turning with the head instead of staying front-facing",
       profile:
-        "profile dog should show a short blunt muzzle and one soft ear, domestic and readable, not cat-flat and not wolf-sharp, with one readable near paw and no detached far-limb fragments"
+        "profile dog should show a short blunt muzzle and one soft ear, domestic and readable, not cat-flat and not wolf-sharp, with one readable near paw, the muzzle placed on the outer contour, and no detached far-limb fragments"
     },
     keepTraits: [
       "compact dog head",
@@ -518,6 +524,13 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "fox muzzle",
       "fox ears",
       "puppy face",
+      "front collapse",
+      "front-facing torso",
+      "flat front chest",
+      "same-size eyes",
+      "same-size ears",
+      "tiny muzzle",
+      "fox sly grin",
       "plush toy look",
       "glossy sticker mascot",
       "big expressive eyes"
@@ -543,15 +556,18 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "do not add cat whisker-face cues",
       "do not turn the wolf into a fox with a narrow sly face",
       "keep the wolf cheeks broad and the face short, not sly or narrow",
-      "avoid a round teddy-bear forehead or circular puppy head puff"
+      "avoid a round teddy-bear forehead or circular puppy head puff",
+      "keep side views fully turned and never front-collapsed",
+      "keep the wedge muzzle projecting forward on turned views",
+      "keep profile to one visible eye and one dominant ear"
     ],
     viewHints: {
       front:
         "front view should read as wolf first in the same mascot family, with a broad near-square head, a flatter top edge, straighter side planes, taller upright ears, a short angular muzzle that stays cute and simplified, tiny solid black dot eyes only, a broader wolf head than a fox, and no puppy softness or fox narrowing",
       threeQuarter:
-        "three-quarter wolf should keep the same compact body and head while clearly turning about 35 to 45 degrees, showing a slightly longer wedge muzzle, alert ears, a larger near eye than far eye, and a broad wolf head that does not read as fox-like or front-facing",
+        "three-quarter wolf should keep the same compact body and head while clearly turning about 35 to 45 degrees, showing a slightly longer wedge muzzle projected off center, alert ears with the near ear clearly larger and the far ear partially hidden, a larger near eye than far eye, a broad wolf head, a broader near cheek ruff, and torso and hips turned with the head so the pose never reads as fox-like or front-facing",
       profile:
-        "profile wolf should have a short angular wedge muzzle, one tall ear, a simple eye, and the same small-body mascot proportions, with a broader wolf contour and not a slim fox profile"
+        "profile wolf should have a short angular wedge muzzle projected on the outer contour, one tall dominant ear, one simple eye only, and the same small-body mascot proportions, with a broader wolf contour, no front chest, and not a slim fox profile"
     },
     keepTraits: [
       "compact wolf head",

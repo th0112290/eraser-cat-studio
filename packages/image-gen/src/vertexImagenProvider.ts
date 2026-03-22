@@ -417,7 +417,9 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
             referenceBankSummary: summarizeReferenceBank(referenceBank),
             structureControlsSummary: summarizeStructureControls(structureControls),
             structureControlApplied: false,
-            referenceMode: context.referenceImage ? "img2img" : "off",
+            referenceMode: usesEdits ? "img2img" : "off",
+            repairMaskApplied: Boolean(context.repairMask),
+            ...(context.repairMask ? { repairMaskSource: "explicit" as const } : {}),
             viewPrompt: input.viewPrompts?.[view] ?? input.positivePrompt,
             raiFilteredReason: item.raiFilteredReason,
             safetyAttributes: item.safetyAttributes

@@ -119,6 +119,8 @@ export async function runGenerationLifecycle(input: any) {
     providerName !== "mock" &&
     generation.viewToGenerate === undefined &&
     requestedViews.length > 1;
+  const shouldDisableMascotSideCanonAnchors = (view: CharacterView): boolean =>
+    view !== "front" && (promptBundle.speciesId === "dog" || promptBundle.speciesId === "wolf");
 
   if (supportsReferenceSequential && requestedViews.includes("front")) {
     const frontMasterCandidateCount = Math.max(
@@ -496,8 +498,9 @@ export async function runGenerationLifecycle(input: any) {
       const angleBaseAdjustmentsByView: Partial<Record<CharacterView, RetryAdjustment>> = {};
       for (const view of remainingViews) {
         const bank: CharacterReferenceBankEntry[] = [];
-        const starterReference = starterReferenceByView[view];
-        const familyReference = mascotFamilyReferencesByView[view];
+        const disableSideCanonAnchors = shouldDisableMascotSideCanonAnchors(view);
+        const starterReference = disableSideCanonAnchors ? undefined : starterReferenceByView[view];
+        const familyReference = disableSideCanonAnchors ? undefined : mascotFamilyReferencesByView[view];
         const preferredSideReference = preferredAngleReferenceInputByView[view];
         const suppressStarterReference = shouldSuppressDuplicateViewStarterReference({
           stage: "angles",
@@ -576,7 +579,7 @@ export async function runGenerationLifecycle(input: any) {
           speciesId: promptBundle.speciesId,
           stage: "angles",
           targetView: view,
-          familyReferencesByView: mascotFamilyReferencesByView,
+          familyReferencesByView: disableSideCanonAnchors ? {} : mascotFamilyReferencesByView,
           hasStarter: hasSideAnchor,
           preferMultiReference: promptBundle.selectionHints.preferMultiReference,
             heroModeEnabled: shouldEnableMascotHeroMode({
@@ -659,8 +662,9 @@ export async function runGenerationLifecycle(input: any) {
     const perViewReferenceInputByView: Partial<Record<CharacterView, InlineImageReference>> = {};
     for (const view of requestedViews) {
       const bank: CharacterReferenceBankEntry[] = [];
-      const starterReference = starterReferenceByView[view];
-      const familyReference = mascotFamilyReferencesByView[view];
+      const disableSideCanonAnchors = shouldDisableMascotSideCanonAnchors(view);
+      const starterReference = disableSideCanonAnchors ? undefined : starterReferenceByView[view];
+      const familyReference = disableSideCanonAnchors ? undefined : mascotFamilyReferencesByView[view];
       const preferredSideReference = preferredSideReferenceInputByView[view];
       const suppressStarterReference = shouldSuppressDuplicateViewStarterReference({
         stage: requestedBaseStage,
@@ -718,7 +722,7 @@ export async function runGenerationLifecycle(input: any) {
           speciesId: promptBundle.speciesId,
           stage: requestedBaseStage,
           targetView: view,
-          familyReferencesByView: mascotFamilyReferencesByView,
+          familyReferencesByView: disableSideCanonAnchors ? {} : mascotFamilyReferencesByView,
           hasStarter: hasSideAnchor,
           preferMultiReference: promptBundle.selectionHints.preferMultiReference,
           heroModeEnabled: shouldEnableMascotHeroMode({

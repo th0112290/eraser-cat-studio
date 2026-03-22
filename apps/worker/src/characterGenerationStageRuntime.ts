@@ -81,6 +81,7 @@ export function initializeGenerationStageRuntime(input: any) {
     continuityConfig,
     loadStagePoseGuides,
     inlineReferenceFromCandidate,
+    buildRepairMaskReferenceFromInlineReference,
     buildRepairDirectiveProfile,
     summarizeRepairDirectiveProfile,
     loadMascotStarterReference,
@@ -536,6 +537,28 @@ export function initializeGenerationStageRuntime(input: any) {
       ) as Partial<Record<CharacterView, string>>;
       const useSharedReferenceInput =
         Object.keys(activeRetryAdjustments).length === 0 || Object.keys(referenceBase64ByView).length === 0;
+      const shouldAutoDeriveReferenceMask =
+        runtimeState.providerName === "vertexImagen" && isMascotTargetStyle(promptBundle.qualityProfile.targetStyle);
+      const effectiveRepairMaskBase64ByView = { ...repairMaskBase64ByView } as Partial<Record<CharacterView, string>>;
+      const effectiveRepairMaskMimeTypeByView = { ...repairMaskMimeTypeByView } as Partial<Record<CharacterView, string>>;
+      let sharedRepairMaskInput: InlineImageReference | undefined;
+      if (shouldAutoDeriveReferenceMask) {
+        for (const [view, reference] of Object.entries(effectiveReferenceInputByView) as Array<
+          [CharacterView, InlineImageReference]
+        >) {
+          if (effectiveRepairMaskBase64ByView[view]) {
+            continue;
+          }
+          const derivedMask = await buildRepairMaskReferenceFromInlineReference(reference);
+          if (derivedMask?.referenceImageBase64) {
+            effectiveRepairMaskBase64ByView[view] = derivedMask.referenceImageBase64;
+            effectiveRepairMaskMimeTypeByView[view] = derivedMask.referenceMimeType ?? "image/png";
+          }
+        }
+        if (useSharedReferenceInput && input.referenceInput) {
+          sharedRepairMaskInput = await buildRepairMaskReferenceFromInlineReference(input.referenceInput);
+        }
+      }
       latestReferenceMixByView = summarizeReferenceMixByView({
         views: executionViews,
         sharedReferenceBank: adjustedReferenceBank,
@@ -648,6 +671,12 @@ export function initializeGenerationStageRuntime(input: any) {
               referenceMimeType: input.referenceInput.referenceMimeType ?? "image/png"
             }
           : {}),
+        ...(useSharedReferenceInput && sharedRepairMaskInput?.referenceImageBase64
+          ? {
+              repairMaskImageBase64: sharedRepairMaskInput.referenceImageBase64,
+              repairMaskMimeType: sharedRepairMaskInput.referenceMimeType ?? "image/png"
+            }
+          : {}),
         ...(Array.isArray(adjustedReferenceBank) && adjustedReferenceBank.length > 0
           ? {
               referenceBank: adjustedReferenceBank
@@ -659,10 +688,10 @@ export function initializeGenerationStageRuntime(input: any) {
               referenceMimeTypeByView
             }
           : {}),
-        ...(Object.keys(repairMaskBase64ByView).length > 0
+        ...(Object.keys(effectiveRepairMaskBase64ByView).length > 0
           ? {
-              repairMaskImageBase64ByView: repairMaskBase64ByView,
-              repairMaskMimeTypeByView
+              repairMaskImageBase64ByView: effectiveRepairMaskBase64ByView,
+              repairMaskMimeTypeByView: effectiveRepairMaskMimeTypeByView
             }
           : {}),
         ...(Object.keys(referenceBankByView).length > 0

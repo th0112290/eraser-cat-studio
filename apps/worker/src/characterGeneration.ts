@@ -2916,6 +2916,29 @@ async function buildRepairMaskReferenceForCandidate(candidate: ScoredCandidate):
   };
 }
 
+async function buildRepairMaskReferenceFromInlineReference(
+  reference: InlineImageReference | undefined
+): Promise<InlineImageReference | undefined> {
+  if (
+    !reference ||
+    typeof reference.referenceImageBase64 !== "string" ||
+    reference.referenceImageBase64.trim().length === 0
+  ) {
+    return undefined;
+  }
+
+  const sourceBuffer = Buffer.from(reference.referenceImageBase64, "base64");
+  if (sourceBuffer.byteLength === 0) {
+    return undefined;
+  }
+
+  const { maskSourceBuffer } = await resolveStructureGuideSourceBuffers(sourceBuffer);
+  return {
+    referenceImageBase64: maskSourceBuffer.toString("base64"),
+    referenceMimeType: "image/png"
+  };
+}
+
 function resolveStructureControlKindsForStage(
   stage: GenerationStageKey,
   view?: CharacterView
@@ -3713,6 +3736,13 @@ export function buildPreferredSideReferenceInputByView(input: {
   const loaded: Partial<Record<CharacterView, InlineImageReference>> = {};
   for (const view of new Set(input.views)) {
     if (view === "front") {
+      continue;
+    }
+    if (
+      (normalizeGenerationSpecies(input.speciesId) === "dog" ||
+        normalizeGenerationSpecies(input.speciesId) === "wolf") &&
+      (view === "threeQuarter" || view === "profile")
+    ) {
       continue;
     }
     const preferCompositionForCatThreeQuarter = view === "threeQuarter" && input.speciesId === "cat";
@@ -5468,36 +5498,96 @@ export function buildInitialAngleReferenceBiasAdjustment(input: {
   speciesId?: string;
   hasApprovedFrontAnchor?: boolean;
 }): RetryAdjustment | undefined {
-  if (!input.hasApprovedFrontAnchor || input.view !== "threeQuarter") {
+  if (!input.hasApprovedFrontAnchor || input.view === "front") {
     return undefined;
   }
 
-  if (normalizeGenerationSpecies(input.speciesId) !== "cat") {
-    return undefined;
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (species === "cat" && input.view === "threeQuarter") {
+    return {
+      extraNegativeTokens: [
+        "front-facing cat chest",
+        "level frontal cat ears",
+        "centered cat muzzle",
+        "same-size cat ears",
+        "same-size cat eyes"
+      ],
+      viewPromptHints: [
+        "strict cat three-quarter turn around 35 to 45 degrees, near ear clearly larger than the far ear, far ear still attached and peeking behind the head, near eye slightly larger than the far eye, short cat muzzle rotated off center, and torso/chest following the same turn instead of slipping back to front symmetry"
+      ],
+      disablePose: false,
+      enforceSideTurnBalance: true,
+      referenceWeightDeltas: {
+        composition: 0.16,
+        view_starter: 0.12,
+        front_master: -0.16,
+        subject: -0.08,
+        hero: -0.05
+      },
+      notes: ["biased cat three-quarter initial angles away from frontal collapse"]
+    };
   }
 
-  return {
-    extraNegativeTokens: [
-      "front-facing cat chest",
-      "level frontal cat ears",
-      "centered cat muzzle",
-      "same-size cat ears",
-      "same-size cat eyes"
-    ],
-    viewPromptHints: [
-      "strict cat three-quarter turn around 35 to 45 degrees, near ear clearly larger than the far ear, far ear still attached and peeking behind the head, near eye slightly larger than the far eye, short cat muzzle rotated off center, and torso/chest following the same turn instead of slipping back to front symmetry"
-    ],
-    disablePose: false,
-    enforceSideTurnBalance: true,
-    referenceWeightDeltas: {
-      composition: 0.16,
-      view_starter: 0.12,
-      front_master: -0.16,
-      subject: -0.08,
-      hero: -0.05
-    },
-    notes: ["biased cat three-quarter initial angles away from frontal collapse"]
-  };
+  if (species === "dog") {
+    return {
+      extraNegativeTokens: [
+        "front-facing torso",
+        "front collapse",
+        "same-size eyes",
+        "same-size ears",
+        "paper-thin torso",
+        "paper-thin limbs",
+        "stick figure legs",
+        "fox face"
+      ],
+      viewPromptHints: [
+        input.view === "threeQuarter"
+          ? "strict dog three-quarter turn around 35 to 45 degrees, near ear slightly larger than the far ear, short blunt muzzle rotated off center, chest and hips turned with the head, compact torso with readable short legs, no stick-thin body, no front collapse"
+          : "strict dog side profile, one visible eye only, one soft near ear, blunt muzzle placed on the outer contour, compact torso and both short legs readable, no front chest, no stick-thin body, no fox-like narrowing"
+      ],
+      disablePose: false,
+      enforceSideTurnBalance: true,
+      referenceWeightDeltas: {
+        front_master: 0.18,
+        subject: 0.1,
+        hero: 0.06,
+        style: 0.04
+      },
+      notes: [`biased dog ${input.view} initial angles toward compact side turns`]
+    };
+  }
+
+  if (species === "wolf") {
+    return {
+      extraNegativeTokens: [
+        "front-facing torso",
+        "front collapse",
+        "same-size eyes",
+        "same-size ears",
+        "paper-thin torso",
+        "paper-thin limbs",
+        "stick figure legs",
+        "fox face",
+        "round puppy muzzle"
+      ],
+      viewPromptHints: [
+        input.view === "threeQuarter"
+          ? "strict wolf three-quarter turn around 35 to 45 degrees, near ear clearly larger than the far ear, wedge muzzle projected off center, broader near cheek ruff, chest and hips turned with the head, compact torso with readable short legs, no stick-thin body, no fox-like narrowing"
+          : "strict wolf side profile, one visible eye only, one tall near ear, wedge muzzle on the outer contour, broader cheek ruff, compact torso and both short legs readable, no front chest, no stick-thin body, no fox-like narrowing"
+      ],
+      disablePose: false,
+      enforceSideTurnBalance: true,
+      referenceWeightDeltas: {
+        front_master: 0.18,
+        subject: 0.1,
+        hero: 0.06,
+        style: 0.04
+      },
+      notes: [`biased wolf ${input.view} initial angles toward compact side turns`]
+    };
+  }
+
+  return undefined;
 }
 
 function summarizeRepairDirectiveProfile(
@@ -5872,6 +5962,42 @@ export function deriveRetryAdjustmentForCandidate(input: {
     addDelta("hero", -0.08);
     enforceSideTurnBalance = true;
     notes.push("reinforced three-quarter torso yaw");
+  }
+
+  if (
+    normalizeGenerationSpecies(input.speciesId) === "wolf" &&
+    input.view !== "front" &&
+    (
+      reasons.has("threequarter_front_collapse") ||
+      reasons.has("inconsistent_with_front_baseline") ||
+      reasons.has("consistency_style_drift") ||
+      reasons.has("species_identity_too_weak") ||
+      reasons.has("species_readability_low") ||
+      reasons.has("wolf_muzzle_too_short")
+    )
+  ) {
+    extraNegativeTokens.add("front-facing torso");
+    extraNegativeTokens.add("front collapse");
+    extraNegativeTokens.add("flat front chest");
+    extraNegativeTokens.add("square shoulders");
+    extraNegativeTokens.add("same-size eyes");
+    extraNegativeTokens.add("same-size ears");
+    extraNegativeTokens.add("fox sly grin");
+    extraNegativeTokens.add("round puppy muzzle");
+    extraNegativeTokens.add("tiny muzzle");
+    viewPromptHints.add(
+      input.view === "threeQuarter"
+        ? "strict wolf three-quarter turn, near eye clearly larger than the far eye, near ear dominant, far ear partially hidden, wedge muzzle projected off center, shoulders and hips rotated with the head, broader cheek ruff, no front chest and no fox-like narrowing"
+        : "strict wolf side profile, one visible eye only, one tall near ear, wedge muzzle projecting on the outer contour, neck and torso in full side turn, broader cheek ruff, no front chest and no fox-like narrowing"
+    );
+    addDelta("composition", 0.14);
+    addDelta("view_starter", 0.16);
+    addDelta("front_master", -0.12);
+    addDelta("subject", -0.08);
+    addDelta("hero", -0.08);
+    addDelta("style", 0.05);
+    enforceSideTurnBalance = true;
+    notes.push(`reinforced wolf ${input.view} species turn`);
   }
 
   if (
@@ -7091,9 +7217,47 @@ function scoreMascotHeadRatio(analysis: ImageAnalysis): number {
   return clamp01(1 - Math.abs(analysis.upperAlphaRatio - target) / 0.28);
 }
 
-function scoreMascotHeadSquareness(analysis: ImageAnalysis): number {
-  const target = 1.02;
-  return clamp01(1 - Math.abs(analysis.headBoxAspectRatio - target) / 0.34);
+function resolveMascotHeadSquarenessProfile(input: {
+  speciesId?: string;
+  view: CharacterView;
+}): { target: number; tolerance: number } {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (species === "dog") {
+    if (input.view === "front") {
+      return { target: 1.24, tolerance: 0.58 };
+    }
+    if (input.view === "threeQuarter") {
+      return { target: 1.08, tolerance: 0.5 };
+    }
+    return { target: 0.94, tolerance: 0.44 };
+  }
+  if (species === "wolf") {
+    if (input.view === "front") {
+      return { target: 1.14, tolerance: 0.5 };
+    }
+    if (input.view === "threeQuarter") {
+      return { target: 1.02, tolerance: 0.46 };
+    }
+    return { target: 0.9, tolerance: 0.42 };
+  }
+  if (species === "cat") {
+    if (input.view === "profile") {
+      return { target: 0.92, tolerance: 0.38 };
+    }
+    return { target: 1.02, tolerance: 0.38 };
+  }
+  return { target: 1.02, tolerance: 0.34 };
+}
+
+function scoreMascotHeadSquareness(
+  analysis: ImageAnalysis,
+  input: {
+    speciesId?: string;
+    view: CharacterView;
+  }
+): number {
+  const profile = resolveMascotHeadSquarenessProfile(input);
+  return clamp01(1 - Math.abs(analysis.headBoxAspectRatio - profile.target) / profile.tolerance);
 }
 
 function scoreMascotSilhouette(analysis: ImageAnalysis): number {
@@ -7814,6 +7978,56 @@ function shouldDowngradeSelectedCanineSoftHeadBlock(input: {
     (breakdown.styleScore ?? breakdown.targetStyleScore ?? 0) >= 0.84 &&
     (breakdown.qualityScore ?? 0) >= 0.48 &&
     (breakdown.referenceScore ?? 0) >= 0.44
+  );
+}
+
+function shouldDowngradeSelectedCanineSoftSpeciesBlock(input: {
+  candidate: ScoredCandidate | undefined;
+  speciesId?: string;
+}): boolean {
+  const candidate = input.candidate;
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if (!candidate || candidate.candidate.view !== "front" || (species !== "dog" && species !== "wolf")) {
+    return false;
+  }
+  if (candidate.rejections.length > 0) {
+    return false;
+  }
+
+  const allowedWarnings = new Set<string>([
+    "text_or_watermark_suspected",
+    "text_or_watermark_high_risk",
+    "palette_too_complex_for_mascot",
+    "head_shape_not_square_enough",
+    "dog_front_arm_zone_weak",
+    "dog_front_species_readability_low",
+    "threequarter_frontality_risk",
+    "paw_symmetry_low",
+    "consistency_shape_drift",
+    "consistency_style_drift",
+    "bbox_occupancy_outlier",
+    "paw_shape_unstable",
+    "finger_spikes_detected",
+    "paw_readability_low",
+    "paw_shape_failure",
+    "wolf_muzzle_too_short",
+    "dog_muzzle_too_short"
+  ]);
+  if ([...candidate.warnings].some((warning) => !allowedWarnings.has(warning))) {
+    return false;
+  }
+
+  const breakdown = candidate.breakdown ?? {};
+  const silhouetteOrMuzzle = Math.max(breakdown.speciesMuzzleScore ?? 0, breakdown.speciesSilhouetteScore ?? 0);
+  const minimumSpeciesScore = resolveMascotQcThresholds(species).frontMasterMinSpeciesScore + 0.005;
+  return (
+    candidate.score >= (species === "wolf" ? 0.92 : 0.9) &&
+    (breakdown.targetStyleScore ?? 0) >= (species === "wolf" ? 0.84 : 0.82) &&
+    (breakdown.frontSymmetryScore ?? 0) >= 0.96 &&
+    (breakdown.headSquarenessScore ?? 0) >= (species === "wolf" ? 0.46 : 0.54) &&
+    (breakdown.speciesScore ?? 0) >= minimumSpeciesScore &&
+    (breakdown.speciesHeadShapeScore ?? 0) >= (species === "wolf" ? 0.34 : 0.52) &&
+    silhouetteOrMuzzle >= (species === "wolf" ? 0.36 : 0.32)
   );
 }
 
@@ -8900,9 +9114,23 @@ export function buildPackCoherenceDiagnostics(input: {
 
   if (
     typeof front?.breakdown.speciesScore === "number" &&
-    front.breakdown.speciesScore < profileThresholds.frontMasterMinSpeciesScore + 0.04
+    front.breakdown.speciesScore <
+      profileThresholds.frontMasterMinSpeciesScore +
+        (normalizeGenerationSpecies(input.speciesId) === "dog"
+          ? 0.015
+          : normalizeGenerationSpecies(input.speciesId) === "wolf"
+            ? 0.025
+            : 0.04)
   ) {
-    addIssue("front_species_floor_low", { blockView: "front" });
+    addIssue(
+      "front_species_floor_low",
+      shouldDowngradeSelectedCanineSoftSpeciesBlock({
+        candidate: front,
+        speciesId: input.speciesId
+      })
+        ? { warnView: "front" }
+        : { blockView: "front" }
+    );
   }
 
   for (const [view, candidate] of [
@@ -9838,7 +10066,10 @@ export function scoreCandidate(input: {
     monochromeScore = scoreMascotMonochrome(input.analysis);
     paletteSimplicityScore = scoreMascotPaletteSimplicity(input.analysis);
     headRatioScore = scoreMascotHeadRatio(input.analysis);
-    headSquarenessScore = scoreMascotHeadSquareness(input.analysis);
+    headSquarenessScore = scoreMascotHeadSquareness(input.analysis, {
+      speciesId: input.speciesId,
+      view: input.candidate.view
+    });
     silhouetteScore = scoreMascotSilhouette(input.analysis);
     frontSymmetryScore = scoreMascotFrontSymmetry(input.analysis, input.candidate.view);
     contrastScore = scoreMascotContrast(input.analysis);
@@ -11486,6 +11717,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
       continuityConfig,
       loadStagePoseGuides,
       inlineReferenceFromCandidate,
+      buildRepairMaskReferenceFromInlineReference,
         buildRepairDirectiveProfile,
         summarizeRepairDirectiveProfile,
         loadMascotStarterReference,

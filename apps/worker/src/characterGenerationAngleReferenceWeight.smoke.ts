@@ -12,6 +12,7 @@ import {
 
 const preferredSideReferences = buildPreferredSideReferenceInputByView({
   views: ["front", "threeQuarter", "profile"],
+  speciesId: "dog",
   familyReferencesByView: {
     threeQuarter: { referenceImageBase64: "family-3q", referenceMimeType: "image/png" } as any
   },
@@ -22,8 +23,16 @@ const preferredSideReferences = buildPreferredSideReferenceInputByView({
 });
 
 assert.equal(preferredSideReferences.front, undefined);
-assert.equal(preferredSideReferences.threeQuarter?.referenceImageBase64, "starter-3q");
-assert.equal(preferredSideReferences.profile?.referenceImageBase64, "starter-p");
+assert.equal(
+  preferredSideReferences.threeQuarter,
+  undefined,
+  "dog side-view generation should fall back to the front anchor instead of trusting canonical side refs"
+);
+assert.equal(
+  preferredSideReferences.profile,
+  undefined,
+  "dog profile generation should fall back to the front anchor instead of trusting canonical side refs"
+);
 
 const catPreferredSideReferences = buildPreferredSideReferenceInputByView({
   views: ["threeQuarter", "profile"],
@@ -43,6 +52,18 @@ assert.equal(
   "cat three-quarter initial side reference should prefer composition over starter"
 );
 assert.equal(catPreferredSideReferences.profile?.referenceImageBase64, "starter-p");
+const dogThreeQuarterInitialBias = buildInitialAngleReferenceBiasAdjustment({
+  view: "threeQuarter",
+  speciesId: "dog",
+  hasApprovedFrontAnchor: true
+});
+assert.ok(dogThreeQuarterInitialBias);
+assert.equal(dogThreeQuarterInitialBias?.enforceSideTurnBalance, true);
+assert.ok((dogThreeQuarterInitialBias?.referenceWeightDeltas.front_master ?? 0) > 0);
+assert.match(
+  dogThreeQuarterInitialBias?.viewPromptHints.join(" ") ?? "",
+  /strict dog three-quarter turn/i
+);
 assert.equal(
   shouldSuppressDuplicateViewStarterReference({
     stage: "angles",
@@ -144,7 +165,13 @@ const dogInitialAngleBias = buildInitialAngleReferenceBiasAdjustment({
   speciesId: "dog",
   hasApprovedFrontAnchor: true
 });
-assert.equal(dogInitialAngleBias, undefined);
+assert.ok(dogInitialAngleBias);
+assert.equal(dogInitialAngleBias?.enforceSideTurnBalance, true);
+assert.ok((dogInitialAngleBias?.referenceWeightDeltas.front_master ?? 0) > 0);
+assert.ok(
+  dogInitialAngleBias?.viewPromptHints.some((hint) => hint.includes("strict dog three-quarter turn around 35 to 45 degrees")),
+  "dog initial angle bias should reinforce a true dog three-quarter turn before retries"
+);
 
 const retryAdjustment = deriveRetryAdjustmentForCandidate({
   stage: "angles",

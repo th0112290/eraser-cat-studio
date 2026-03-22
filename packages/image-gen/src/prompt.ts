@@ -299,18 +299,33 @@ export const STYLE_PROMPT_PRESETS: StylePromptPreset[] = [
     id: "compact-mascot-production",
     label: "Mascot Production",
     positive: [
-      "cute monochrome doodle mascot",
-      "oversized rounded geometric head",
-      "tiny rounded mascot body",
-      "stubby tube limbs",
-      "black line art",
-      "plain light background",
-      "sticker-ready silhouette",
-      "paw hands",
-      "simple tail silhouette",
-      "very simple face only"
+      "minimal offbeat monochrome mascot",
+      "large boxy rounded-square head with a flatter top and straighter sides",
+      "tiny simple body",
+      "short stubby limbs",
+      "deadpan face",
+      "two tiny vertical oval eyes",
+      "solid black dot eyes with no white eye rings",
+      "short straight mouth",
+      "rough slightly uneven black outline",
+      "flat white fill",
+      "plain light gray background",
+      "minimal anatomy only",
+      "single centered full-body mascot"
     ].join(", "),
     negative: [
+      "sticker border",
+      "white outline",
+      "drop shadow",
+      "glossy vector finish",
+      "plush toy look",
+      "polished mascot design",
+      "commercial mascot look",
+      "big sparkling eyes",
+      "outlined eye sockets",
+      "large white eye patches",
+      "oversized eye ovals",
+      "highly expressive face",
       "realistic fingers",
       "human hands",
       "knuckles",
@@ -330,6 +345,8 @@ export const STYLE_PROMPT_PRESETS: StylePromptPreset[] = [
       "thick eyebrows",
       "eyelashes",
       "hair strands",
+      "gradient shading",
+      "detailed shading",
       "sticker sheet",
       "character lineup",
       "logo mark",
@@ -733,21 +750,38 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
     !mascotPreset && styleHints?.typography ? `typography hint: ${styleHints.typography}` : undefined
   ]);
 
-  const positivePrompt = joinPromptParts([
-    styleCore,
-    speciesPositive,
-    input.positivePrompt,
-    identityAnchors,
-    renderDirectives,
-    hintText
-  ]);
-  const negativePrompt = joinPromptParts([
-    BASE_NEGATIVE_TEMPLATE,
-    negativeCore,
-    preset.negative,
-    speciesNegative,
-    input.negativePrompt
-  ]);
+  const positivePrompt = mascotPreset
+    ? joinUniquePromptTokens([
+        styleCore,
+        speciesPositive,
+        input.positivePrompt,
+        identityAnchors,
+        renderDirectives,
+        hintText
+      ])
+    : joinPromptParts([
+        styleCore,
+        speciesPositive,
+        input.positivePrompt,
+        identityAnchors,
+        renderDirectives,
+        hintText
+      ]);
+  const negativePrompt = mascotPreset
+    ? joinUniquePromptTokens([
+        BASE_NEGATIVE_TEMPLATE,
+        negativeCore,
+        preset.negative,
+        speciesNegative,
+        input.negativePrompt
+      ])
+    : joinPromptParts([
+        BASE_NEGATIVE_TEMPLATE,
+        negativeCore,
+        preset.negative,
+        speciesNegative,
+        input.negativePrompt
+      ]);
 
   const guardrails = [
     "enforce transparent background",
@@ -767,11 +801,21 @@ export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {
   ];
   const viewModifiers = mascotPreset ? MASCOT_VIEW_MODIFIERS : DEFAULT_VIEW_MODIFIERS;
 
-  const viewPrompts: Record<CharacterView, string> = {
-    front: joinPromptParts([positivePrompt, viewModifiers.front, speciesProfile?.viewHints.front]),
-    threeQuarter: joinPromptParts([positivePrompt, viewModifiers.threeQuarter, speciesProfile?.viewHints.threeQuarter]),
-    profile: joinPromptParts([positivePrompt, viewModifiers.profile, speciesProfile?.viewHints.profile])
-  };
+  const viewPrompts: Record<CharacterView, string> = mascotPreset
+    ? {
+        front: joinUniquePromptTokens([positivePrompt, viewModifiers.front, speciesProfile?.viewHints.front]),
+        threeQuarter: joinUniquePromptTokens([
+          positivePrompt,
+          viewModifiers.threeQuarter,
+          speciesProfile?.viewHints.threeQuarter
+        ]),
+        profile: joinUniquePromptTokens([positivePrompt, viewModifiers.profile, speciesProfile?.viewHints.profile])
+      }
+    : {
+        front: joinPromptParts([positivePrompt, viewModifiers.front, speciesProfile?.viewHints.front]),
+        threeQuarter: joinPromptParts([positivePrompt, viewModifiers.threeQuarter, speciesProfile?.viewHints.threeQuarter]),
+        profile: joinPromptParts([positivePrompt, viewModifiers.profile, speciesProfile?.viewHints.profile])
+      };
 
   return {
     presetId: preset.id,
