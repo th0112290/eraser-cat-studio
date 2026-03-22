@@ -7,7 +7,13 @@ import type { Queue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createValidator, sha256Hex, stableStringify } from "@ec/shared";
 import type { EpisodeJobPayload } from "@ec/shared";
+import { createHitlRerenderJob } from "../services/agentService";
 import { apiQueueRetentionOptions } from "../services/jobRetention";
+import {
+  createEpisodeWithInitialJob,
+  enqueueEpisodeJob,
+  retryEpisodeJob
+} from "../services/episodeQueueMutationService";
 import { renderUiPage } from "./ui/uiPage";
 import {
   buildArtifactsPageBody,
@@ -3517,8 +3523,109 @@ function simpleErrorHtml(message: string): string {
   return page("Error", `<section class="card"><h1>Error</h1><p>Category: <span class="badge ${category.badge}">${category.label}</span></p><div class="error">${esc(message)}</div><p class="notice">${esc(category.hint)}</p><p><a href="/ui">Back to Dashboard</a></p></section>`);
 }
 
+function statusCodeFromError(error: unknown, fallback = 500): number {
+  if (error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number") {
+    return error.statusCode;
+  }
+  return fallback;
+}
+
+function messageFromError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  const text = String(error ?? "");
+  return text.trim().length > 0 ? text : fallback;
+}
+
 export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   const { app, prisma, queue, queueName } = input;
+
+  async function runEpisodeProfile(input: {
+    episodeId: string;
+    profile: RunProfileId;
+    stylePresetId: string;
+    hookBoost: number;
+  }): Promise<{
+    episodeId: string;
+    profile: RunProfileId;
+    title: string;
+    stylePresetId: string;
+    hookBoost: number;
+    jobId: string;
+    deduped: boolean;
+    dedupWindowMs: number;
+    next: {
+      episode: string;
+      jobs: string;
+      job: string;
+    };
+  }> {
+    const plan = runProfileToEnqueue(input.profile);
+    const nowMs = Date.now();
+    cleanupRunProfileDedupCache(nowMs);
+    const dedupKey = runProfileDedupKey({
+      episodeId: input.episodeId,
+      profile: input.profile,
+      stylePresetId: input.stylePresetId,
+      hookBoost: input.hookBoost
+    });
+    const recent = runProfileDedupCache.get(dedupKey);
+    if (recent && nowMs - recent.at <= RUN_PROFILE_DEDUP_WINDOW_MS && recent.jobId) {
+      runProfileDedupStats.hits += 1;
+      return {
+        episodeId: input.episodeId,
+        profile: input.profile,
+        title: plan.title,
+        stylePresetId: input.stylePresetId,
+        hookBoost: input.hookBoost,
+        jobId: recent.jobId,
+        deduped: true,
+        dedupWindowMs: RUN_PROFILE_DEDUP_WINDOW_MS,
+        next: {
+          episode: `/ui/episodes/${encodeURIComponent(input.episodeId)}`,
+          jobs: "/ui/jobs",
+          job: `/ui/jobs/${encodeURIComponent(recent.jobId)}`
+        }
+      };
+    }
+
+    const body: JsonRecord = {
+      jobType: plan.jobType,
+      stylePresetId: input.stylePresetId,
+      hookBoost: input.hookBoost
+    };
+    if (plan.pipeline) {
+      body.pipeline = plan.pipeline;
+    }
+
+    const result = await enqueueEpisodeJob({
+      prisma,
+      queue,
+      queueName,
+      episodeId: input.episodeId,
+      body
+    });
+    const jobId = result.job.id;
+    runProfileDedupStats.enqueues += 1;
+    runProfileDedupCache.set(dedupKey, { at: nowMs, jobId });
+
+    return {
+      episodeId: input.episodeId,
+      profile: input.profile,
+      title: plan.title,
+      stylePresetId: input.stylePresetId,
+      hookBoost: input.hookBoost,
+      jobId,
+      deduped: false,
+      dedupWindowMs: RUN_PROFILE_DEDUP_WINDOW_MS,
+      next: {
+        episode: `/ui/episodes/${encodeURIComponent(input.episodeId)}`,
+        jobs: "/ui/jobs",
+        job: `/ui/jobs/${encodeURIComponent(jobId)}`
+      }
+    };
+  }
 
   app.get("/", async (_request, reply) => reply.redirect("/ui"));
 
@@ -3860,15 +3967,19 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       payload.channelId = channelId;
     }
 
-    const res = await injectJson(app, "POST", "/api/episodes", payload);
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `Generate Preview failed (${res.statusCode})`;
-      return reply.code(res.statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
+    try {
+      const result = await createEpisodeWithInitialJob({
+        prisma,
+        queue,
+        queueName,
+        body: payload
+      });
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(result.job.id)}`);
+    } catch (error) {
+      const statusCode = statusCodeFromError(error);
+      const msg = messageFromError(error, "Generate Preview failed");
+      return reply.code(statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
     }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    if (!jobId) return reply.code(500).type("text/html; charset=utf-8").send(simpleErrorHtml("Generate Preview returned no jobId"));
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
   });
 
   app.post("/ui/actions/generate-full", async (request, reply) => {
@@ -3890,15 +4001,19 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       payload.channelId = channelId;
     }
 
-    const res = await injectJson(app, "POST", "/api/episodes", payload);
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `Run full pipeline failed (${res.statusCode})`;
-      return reply.code(res.statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
+    try {
+      const result = await createEpisodeWithInitialJob({
+        prisma,
+        queue,
+        queueName,
+        body: payload
+      });
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(result.job.id)}`);
+    } catch (error) {
+      const statusCode = statusCodeFromError(error);
+      const msg = messageFromError(error, "Run full pipeline failed");
+      return reply.code(statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
     }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    if (!jobId) return reply.code(500).type("text/html; charset=utf-8").send(simpleErrorHtml("Run full pipeline returned no jobId"));
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
   });
 
   app.get("/ui/channel-bible", async (request, reply) => {
@@ -4503,15 +4618,19 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
       payload.pipeline = pipeline;
     }
 
-    const res = await injectJson(app, "POST", "/api/episodes", payload);
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `Episode create failed (${res.statusCode})`;
-      return reply.code(res.statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
+    try {
+      const result = await createEpisodeWithInitialJob({
+        prisma,
+        queue,
+        queueName,
+        body: payload
+      });
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(result.job.id)}`);
+    } catch (error) {
+      const statusCode = statusCodeFromError(error);
+      const msg = messageFromError(error, "Episode create failed");
+      return reply.code(statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
     }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    if (!jobId) return reply.redirect(`/ui/episodes?message=${encodeURIComponent("Episode created")}`);
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
   });
 
   app.get("/ui/episodes/:id", async (request, reply) => {
@@ -6145,34 +6264,47 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const previewShotIds = pickStylePreviewShotIds(shotDoc, 300);
 
     if (previewShotIds.length === 0) {
-      const compileRes = await injectJson(app, "POST", `/api/episodes/${encodeURIComponent(id)}/enqueue`, {
-        jobType: "COMPILE_SHOTS",
-        stylePresetId,
-        hookBoost
-      });
-      if (compileRes.statusCode >= 400) {
-        const msg = isRecord(compileRes.body) && typeof compileRes.body.error === "string" ? compileRes.body.error : `style preview prepare failed (${compileRes.statusCode})`;
+      try {
+        await enqueueEpisodeJob({
+          prisma,
+          queue,
+          queueName,
+          episodeId: id,
+          body: {
+            jobType: "COMPILE_SHOTS",
+            stylePresetId,
+            hookBoost
+          }
+        });
+      } catch (error) {
+        const msg = messageFromError(error, "style preview prepare failed");
         return reply.redirect(episodeRedirect("error", msg));
       }
       return reply.redirect(episodeRedirect("message", "shots.json was missing, so COMPILE_SHOTS was enqueued first. Run Style Preview again after completion."));
     }
 
-    const res = await injectJson(app, "POST", `/api/episodes/${encodeURIComponent(id)}/enqueue`, {
-      jobType: "RENDER_PREVIEW",
-      failedShotIds: previewShotIds,
-      stylePresetId,
-      hookBoost
-    });
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `style preview enqueue failed (${res.statusCode})`;
+    try {
+      const result = await enqueueEpisodeJob({
+        prisma,
+        queue,
+        queueName,
+        episodeId: id,
+        body: {
+          jobType: "RENDER_PREVIEW",
+          failedShotIds: previewShotIds,
+          stylePresetId,
+          hookBoost
+        }
+      });
+      const jobId = result.job.id;
+      if (redirectPath || hasDecisionLinkState(decisionState)) {
+        return reply.redirect(episodeRedirect("message", `Style preview enqueued (${jobId})`));
+      }
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
+    } catch (error) {
+      const msg = messageFromError(error, "style preview enqueue failed");
       return reply.redirect(episodeRedirect("error", msg));
     }
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    if (!jobId) return reply.redirect(episodeRedirect("message", "Style preview enqueued"));
-    if (redirectPath || hasDecisionLinkState(decisionState)) {
-      return reply.redirect(episodeRedirect("message", `Style preview enqueued (${jobId})`));
-    }
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
   });
 
   app.post("/ui/episodes/:id/ab-preview", async (request, reply) => {
@@ -6620,68 +6752,22 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
     const profile = normalizeRunProfile(b(body, "profile"));
     const stylePresetId = normalizeStylePresetId(b(body, "stylePresetId"));
     const hookBoost = parseHookBoost(b(body, "hookBoost"), DEFAULT_HOOK_BOOST);
-    const plan = runProfileToEnqueue(profile);
-    const nowMs = Date.now();
-    cleanupRunProfileDedupCache(nowMs);
-    const dedupKey = runProfileDedupKey({ episodeId: id, profile, stylePresetId, hookBoost });
-    const recent = runProfileDedupCache.get(dedupKey);
-    if (recent && nowMs - recent.at <= RUN_PROFILE_DEDUP_WINDOW_MS) {
-      runProfileDedupStats.hits += 1;
-      return reply.send({
-        data: {
-          episodeId: id,
-          profile,
-          title: plan.title,
-          stylePresetId,
-          hookBoost,
-          jobId: recent.jobId,
-          deduped: true,
-          dedupWindowMs: RUN_PROFILE_DEDUP_WINDOW_MS,
-          next: {
-            episode: `/ui/episodes/${encodeURIComponent(id)}`,
-            jobs: "/ui/jobs",
-            job: recent.jobId ? `/ui/jobs/${encodeURIComponent(recent.jobId)}` : null
-          }
-        }
-      });
-    }
-
-    const payload: JsonRecord = {
-      jobType: plan.jobType,
-      stylePresetId,
-      hookBoost
-    };
-    if (plan.pipeline) {
-      payload.pipeline = plan.pipeline;
-    }
-
-    const res = await injectJson(app, "POST", `/api/episodes/${encodeURIComponent(id)}/enqueue`, payload);
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `run profile failed (${res.statusCode})`;
-      const hint = runProfileFailureHint(msg);
-      return reply.code(res.statusCode).send({ error: msg, hint, profile, episodeId: id });
-    }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    runProfileDedupStats.enqueues += 1;
-    runProfileDedupCache.set(dedupKey, { at: nowMs, jobId });
-    return reply.send({
-      data: {
+    try {
+      const result = await runEpisodeProfile({
         episodeId: id,
         profile,
-        title: plan.title,
         stylePresetId,
-        hookBoost,
-        jobId,
-        deduped: false,
-        dedupWindowMs: RUN_PROFILE_DEDUP_WINDOW_MS,
-        next: {
-          episode: `/ui/episodes/${encodeURIComponent(id)}`,
-          jobs: "/ui/jobs",
-          job: jobId ? `/ui/jobs/${encodeURIComponent(jobId)}` : null
-        }
-      }
-    });
+        hookBoost
+      });
+      return reply.send({
+        data: result
+      });
+    } catch (error) {
+      const statusCode = statusCodeFromError(error);
+      const msg = messageFromError(error, "run profile failed");
+      const hint = runProfileFailureHint(msg);
+      return reply.code(statusCode).send({ error: msg, hint, profile, episodeId: id });
+    }
   });
 
   app.post("/ui/episodes/:id/run-profile", async (request, reply) => {
@@ -6716,15 +6802,26 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           [key]: value
         }
       });
-    const res = await injectJson(app, "POST", `/api/episodes/${encodeURIComponent(id)}/run-profile`, {
-      profile,
-      stylePresetId,
-      hookBoost
-    });
-
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `run profile failed (${res.statusCode})`;
-      const hint = isRecord(res.body) && typeof res.body.hint === "string" ? res.body.hint : runProfileFailureHint(msg);
+    try {
+      const result = await runEpisodeProfile({
+        episodeId: id,
+        profile,
+        stylePresetId,
+        hookBoost
+      });
+      const jobId = result.jobId;
+      const deduped = result.deduped;
+      const message = deduped ? `Run profile skipped (dedup): ${profile}` : `Run profile started: ${profile}`;
+      if (redirectPath || hasDecisionLinkState(decisionState) || redirectTarget === "episode" || !jobId) {
+        return reply.redirect(surfaceRedirect("message", message));
+      }
+      if (redirectTarget === "episodes") {
+        return reply.redirect(`/ui/episodes?message=${encodeURIComponent(`${id}: ${message}`)}`);
+      }
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}?message=${encodeURIComponent(message)}`);
+    } catch (error) {
+      const msg = messageFromError(error, "run profile failed");
+      const hint = runProfileFailureHint(msg);
       const combined = `${msg} (${hint})`;
       if (redirectPath || hasDecisionLinkState(decisionState)) {
         return reply.redirect(surfaceRedirect("error", combined));
@@ -6735,17 +6832,6 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
           : `/ui/episodes/${encodeURIComponent(id)}?profile=${encodeURIComponent(profile)}&error=${encodeURIComponent(combined)}`;
       return reply.redirect(errorTarget);
     }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && typeof res.body.data.jobId === "string" ? res.body.data.jobId : null;
-    const deduped = isRecord(res.body) && isRecord(res.body.data) && res.body.data.deduped === true;
-    const message = deduped ? `Run profile skipped (dedup): ${profile}` : `Run profile started: ${profile}`;
-    if (redirectPath || hasDecisionLinkState(decisionState) || redirectTarget === "episode" || !jobId) {
-      return reply.redirect(surfaceRedirect("message", message));
-    }
-    if (redirectTarget === "episodes") {
-      return reply.redirect(`/ui/episodes?message=${encodeURIComponent(`${id}: ${message}`)}`);
-    }
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}?message=${encodeURIComponent(message)}`);
   });
 
   app.post("/ui/episodes/:id/enqueue", async (request, reply) => {
@@ -6780,18 +6866,23 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       payload.pipeline = pipeline;
     }
 
-    const res = await injectJson(app, "POST", `/api/episodes/${encodeURIComponent(id)}/enqueue`, payload);
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `enqueue failed (${res.statusCode})`;
+    try {
+      const result = await enqueueEpisodeJob({
+        prisma,
+        queue,
+        queueName,
+        episodeId: id,
+        body: payload
+      });
+      const jobId = result.job.id;
+      if (redirectPath || hasDecisionLinkState(decisionState)) {
+        return reply.redirect(surfaceRedirect("message", `Job enqueued (${jobId})`));
+      }
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
+    } catch (error) {
+      const msg = messageFromError(error, "enqueue failed");
       return reply.redirect(surfaceRedirect("error", msg));
     }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    if (!jobId) return reply.redirect(surfaceRedirect("message", "Job enqueued"));
-    if (redirectPath || hasDecisionLinkState(decisionState)) {
-      return reply.redirect(surfaceRedirect("message", `Job enqueued (${jobId})`));
-    }
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
   });
 
   app.get("/ui/jobs", async (request, reply) => {
@@ -7029,19 +7120,23 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       return reply.code(400).type("text/html; charset=utf-8").send(simpleErrorHtml("job id is required"));
     }
     const body = request.body;
-    const res = await injectJson(app, "POST", `/api/jobs/${encodeURIComponent(id)}/retry`, {
-      ...(csv(isRecord(body) ? body.failedShotIds : undefined).length > 0 ? { failedShotIds: csv(isRecord(body) ? body.failedShotIds : undefined) } : {}),
-      dryRun: bool(isRecord(body) ? body.dryRun : undefined, false)
-    });
-
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `Retry failed (${res.statusCode})`;
+    try {
+      const failedShotIds = csv(isRecord(body) ? body.failedShotIds : undefined);
+      const result = await retryEpisodeJob({
+        prisma,
+        queue,
+        queueName,
+        jobId: id,
+        body: {
+          ...(failedShotIds.length > 0 ? { failedShotIds } : {}),
+          dryRun: bool(isRecord(body) ? body.dryRun : undefined, false)
+        }
+      });
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(result.job.id)}`);
+    } catch (error) {
+      const msg = messageFromError(error, "Retry failed");
       return reply.redirect(`/ui/jobs/${encodeURIComponent(id)}?error=${encodeURIComponent(msg)}`);
     }
-
-    const newJobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    if (!newJobId) return reply.redirect(`/ui/jobs/${encodeURIComponent(id)}?message=${encodeURIComponent("Retry requested")}`);
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(newJobId)}`);
   });
 
   app.get("/ui/hitl", async (request, reply) => {
@@ -7070,15 +7165,20 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       return reply.redirect(`/ui/hitl?episodeId=${encodeURIComponent(episodeId)}&error=${encodeURIComponent("failedShotIds is required")}`);
     }
 
-    const res = await injectJson(app, "POST", "/api/hitl/rerender", { episodeId, shotIds, dryRun: bool(isRecord(body) ? body.dryRun : undefined, false) });
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `HITL rerender failed (${res.statusCode})`;
+    try {
+      const result = await createHitlRerenderJob({
+        prisma,
+        queue,
+        queueName,
+        episodeId,
+        shotIds,
+        dryRun: bool(isRecord(body) ? body.dryRun : undefined, false)
+      });
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(result.job.id)}`);
+    } catch (error) {
+      const msg = messageFromError(error, "HITL rerender failed");
       return reply.redirect(`/ui/hitl?episodeId=${encodeURIComponent(episodeId)}&failedShotIds=${encodeURIComponent(failedShotIdsRaw)}&error=${encodeURIComponent(msg)}`);
     }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && isRecord(res.body.data.job) && typeof res.body.data.job.id === "string" ? res.body.data.job.id : null;
-    if (!jobId) return reply.redirect(`/ui/hitl?message=${encodeURIComponent("Rerender requested")}`);
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
   });
 
   app.get("/ui/rollouts/detail", async (request, reply) => {

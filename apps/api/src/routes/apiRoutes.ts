@@ -8,9 +8,15 @@ import sharp from "sharp";
 import type { Queue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { EpisodeJobPayload } from "@ec/shared";
+import { createHitlRerenderJob } from "../services/agentService";
 import { makeStorageKey, putAssetObject } from "../services/assetStorage";
 import { enqueueWithResilience } from "../services/enqueueWithResilience";
 import { apiQueueRetentionOptions } from "../services/jobRetention";
+import {
+  createEpisodeWithInitialJob,
+  enqueueEpisodeJob,
+  retryEpisodeJob
+} from "../services/episodeQueueMutationService";
 import { isDbUnavailableError, renderDbUnavailableCard } from "./ui/dbFallback";
 import { buildAssetsPageBody } from "./ui/pages/assetsPage";
 import { renderUiPage as uiPage } from "./ui/uiPage";
@@ -812,111 +818,21 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
   app.post("/api/jobs/:id/retry", async (request, reply) => {
     const id = requireRouteParam(request.params, "id");
     const body = request.body === undefined ? {} : requireBodyObject(request.body);
-
-    const source = await prisma.job.findUnique({
-      where: { id }
-    });
-
-    if (!source) {
-      throw createHttpError(404, "Job not found");
-    }
-
-    const maxAttempts = parsePositiveInt(body.maxAttempts, "maxAttempts", Math.max(1, source.maxAttempts));
-    const retryBackoffMs = parsePositiveInt(
-      body.retryBackoffMs,
-      "retryBackoffMs",
-      Math.max(DEFAULT_RETRY_BACKOFF_MS, source.retryBackoffMs)
-    );
-
-    const failedShotIds = parseStringArray(body.failedShotIds, "failedShotIds");
-    const dryRun = parseBoolean(body.dryRun, false);
-
-    const created = await prisma.job.create({
-      data: {
-        episodeId: source.episodeId,
-        type: source.type,
-        status: "QUEUED",
-        progress: 0,
-        maxAttempts,
-        retryBackoffMs
-      }
-    });
-
-    await prisma.jobLog.create({
-      data: {
-        jobId: created.id,
-        level: "info",
-        message: "Transition -> QUEUED",
-        details: toPrismaJson({
-          source: "api:jobs:retry",
-          retryOfJobId: source.id,
-          queueName,
-          maxAttempts,
-          retryBackoffMs
-        })
-      }
-    });
-
-    const payload: EpisodeJobPayloadWithRender = {
-      jobDbId: created.id,
-      episodeId: created.episodeId,
-      schemaChecks: []
-    };
-
-    if (failedShotIds.length > 0 || source.type === "RENDER_PREVIEW" || source.type === "RENDER_FINAL") {
-      payload.render = {
-        rerenderFailedShotsOnly: failedShotIds.length > 0,
-        ...(failedShotIds.length > 0 ? { failedShotIds } : {}),
-        dryRun
-      };
-    }
-
-    const enqueueResult = await enqueueWithResilience({
+    const result = await retryEpisodeJob({
+      prisma,
       queue,
-      name: source.type,
-      payload,
-      maxAttempts,
-      backoffMs: retryBackoffMs,
-      maxEnqueueRetries: 2,
-      retryDelayMs: 200,
-      redisUnavailableAsHttp503: true
-    });
-    const bullmqJobId = String(enqueueResult.job.id);
-
-    const updated = await prisma.job.update({
-      where: { id: created.id },
-      data: {
-        status: "QUEUED",
-        bullmqJobId,
-        lastError: null,
-        finishedAt: null
-      }
-    });
-
-    await prisma.jobLog.create({
-      data: {
-        jobId: updated.id,
-        level: "info",
-        message: "Transition -> ENQUEUED",
-        details: toPrismaJson({
-          source: "api:jobs:retry",
-          retryOfJobId: source.id,
-          queueName,
-          bullmqJobId,
-          enqueueMode: enqueueResult.mode,
-          enqueueAttemptCount: enqueueResult.attemptCount,
-          enqueueErrorSummary: enqueueResult.errorSummary
-        })
-      }
+      queueName,
+      jobId: id,
+      body
     });
 
     return reply.code(201).send({
       data: {
-        sourceJobId: source.id,
-        job: updated,
+        sourceJobId: result.sourceJob.id,
+        job: result.job,
         queue: {
-          queueName,
-          bullmqJobId
+          queueName: result.queue.queueName,
+          bullmqJobId: result.queue.bullmqJobId
         }
       }
     });
@@ -1056,127 +972,18 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
 
   app.post("/api/episodes", async (request, reply) => {
     const body = requireBodyObject(request.body);
-
-    const topic = requireTopic(body);
-    const targetDurationSec = parsePositiveInt(body.targetDurationSec, "targetDurationSec", 600);
-    const maxAttempts = parsePositiveInt(body.maxAttempts, "maxAttempts", DEFAULT_MAX_ATTEMPTS);
-    const jobType = body.jobType === undefined ? "GENERATE_BEATS" : requireEpisodeJobType(body.jobType);
-    const styleConfig = resolveEpisodeStyleConfig(body, {
-      stylePresetId: AUTO_STYLE_PRESET_ID,
-      hookBoost: 0.55
-    });
-    const characterPackId = optionalString(body, "characterPackId");
-    let characterPackVersion: number | undefined;
-    if (characterPackId) {
-      const pack = await prisma.characterPack.findUnique({
-        where: { id: characterPackId },
-        select: { id: true, version: true }
-      });
-      if (!pack) {
-        throw createHttpError(400, `characterPackId not found: ${characterPackId}`);
-      }
-      characterPackVersion = pack.version;
-    }
-
-    const channelId = optionalString(body, "channelId") ?? (await ensureDefaultChannel(prisma)).id;
-
-    const episode = await prisma.episode.create({
-      data: {
-        channelId,
-        topic,
-        targetDurationSec,
-        ...(characterPackId ? { characterPackId } : {}),
-        ...(typeof characterPackVersion === "number" ? { characterPackVersion } : {}),
-        datasetVersionSnapshot: toPrismaJson({
-          style: styleConfig
-        })
-      }
-    });
-
-    const job = await prisma.job.create({
-      data: {
-        episodeId: episode.id,
-        type: jobType,
-        status: "QUEUED",
-        progress: 0,
-        maxAttempts,
-        retryBackoffMs: DEFAULT_RETRY_BACKOFF_MS
-      }
-    });
-
-    await prisma.jobLog.create({
-      data: {
-        jobId: job.id,
-        level: "info",
-        message: "Transition -> QUEUED",
-        details: toPrismaJson({
-          source: "api:episodes:create",
-          queueName,
-          maxAttempts,
-          stylePresetId: styleConfig.stylePresetId,
-          hookBoost: styleConfig.hookBoost
-        })
-      }
-    });
-
-    const payload: EpisodeJobPayloadWithRender = {
-      jobDbId: job.id,
-      episodeId: episode.id,
-      schemaChecks: [],
-      pipeline: {
-        story: {
-          stylePresetId: styleConfig.stylePresetId,
-          hookBoost: styleConfig.hookBoost
-        }
-      }
-    };
-
-    const enqueueResult = await enqueueWithResilience({
+    const result = await createEpisodeWithInitialJob({
+      prisma,
       queue,
-      name: jobType,
-      payload,
-      maxAttempts,
-      backoffMs: DEFAULT_RETRY_BACKOFF_MS,
-      maxEnqueueRetries: 2,
-      retryDelayMs: 200,
-      redisUnavailableAsHttp503: true
-    });
-    const bullmqJobId = String(enqueueResult.job.id);
-
-    const updatedJob = await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        status: "QUEUED",
-        bullmqJobId,
-        lastError: null,
-        finishedAt: null
-      }
-    });
-
-    await prisma.jobLog.create({
-      data: {
-        jobId: job.id,
-        level: "info",
-        message: "Transition -> ENQUEUED",
-        details: toPrismaJson({
-          source: "api:episodes:create",
-          queueName,
-          bullmqJobId,
-          enqueueMode: enqueueResult.mode,
-          enqueueAttemptCount: enqueueResult.attemptCount,
-          enqueueErrorSummary: enqueueResult.errorSummary
-        })
-      }
+      queueName,
+      body
     });
 
     return reply.code(201).send({
       data: {
-        episode,
-        job: updatedJob,
-        queue: {
-          queueName,
-          bullmqJobId
-        }
+        episode: result.episode,
+        job: result.job,
+        queue: result.queue
       }
     });
   });
@@ -1184,129 +991,19 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
   app.post("/api/episodes/:id/enqueue", async (request, reply) => {
     const episodeId = requireRouteParam(request.params, "id");
     const body = request.body === undefined ? {} : requireBodyObject(request.body);
-
-    const episode = await prisma.episode.findUnique({ where: { id: episodeId } });
-    if (!episode) {
-      throw createHttpError(404, "Episode not found");
-    }
-
-    const jobType = body.jobType === undefined ? "COMPILE_SHOTS" : requireEpisodeJobType(body.jobType);
-    const maxAttempts = parsePositiveInt(body.maxAttempts, "maxAttempts", DEFAULT_MAX_ATTEMPTS);
-    const retryBackoffMs = parsePositiveInt(body.retryBackoffMs, "retryBackoffMs", DEFAULT_RETRY_BACKOFF_MS);
-    const failedShotIds = parseStringArray(body.failedShotIds, "failedShotIds");
-    const dryRun = parseBoolean(body.dryRun, false);
-    const baseStyleConfig = readEpisodeStyleFromSnapshot(episode.datasetVersionSnapshot);
-    const styleConfig = resolveEpisodeStyleConfig(body, baseStyleConfig);
-    const hasStyleOverrides = body.stylePresetId !== undefined || body.hookBoost !== undefined;
-
-    if (hasStyleOverrides) {
-      const currentSnapshot = isRecord(episode.datasetVersionSnapshot) ? episode.datasetVersionSnapshot : {};
-      await prisma.episode.update({
-        where: { id: episodeId },
-        data: {
-          datasetVersionSnapshot: toPrismaJson({
-            ...currentSnapshot,
-            style: styleConfig
-          })
-        }
-      });
-    }
-
-    const job = await prisma.job.create({
-      data: {
-        episodeId,
-        type: jobType,
-        status: "QUEUED",
-        progress: 0,
-        maxAttempts,
-        retryBackoffMs
-      }
-    });
-
-    await prisma.jobLog.create({
-      data: {
-        jobId: job.id,
-        level: "info",
-        message: "Transition -> QUEUED",
-        details: toPrismaJson({
-          source: "api:episodes:enqueue",
-          queueName,
-          maxAttempts,
-          retryBackoffMs,
-          jobType,
-          stylePresetId: styleConfig.stylePresetId,
-          hookBoost: styleConfig.hookBoost
-        })
-      }
-    });
-
-    const payload: EpisodeJobPayloadWithRender = {
-      jobDbId: job.id,
-      episodeId,
-      schemaChecks: [],
-      pipeline: {
-        story: {
-          stylePresetId: styleConfig.stylePresetId,
-          hookBoost: styleConfig.hookBoost
-        }
-      }
-    };
-
-    if (jobType === "RENDER_PREVIEW" || jobType === "RENDER_FINAL") {
-      payload.render = {
-        rerenderFailedShotsOnly: failedShotIds.length > 0,
-        ...(failedShotIds.length > 0 ? { failedShotIds } : {}),
-        dryRun
-      };
-    }
-
-    const enqueueResult = await enqueueWithResilience({
+    const result = await enqueueEpisodeJob({
+      prisma,
       queue,
-      name: jobType,
-      payload,
-      maxAttempts,
-      backoffMs: retryBackoffMs,
-      maxEnqueueRetries: 2,
-      retryDelayMs: 200,
-      redisUnavailableAsHttp503: true
-    });
-    const bullmqJobId = String(enqueueResult.job.id);
-
-    const updatedJob = await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        status: "QUEUED",
-        bullmqJobId,
-        lastError: null,
-        finishedAt: null
-      }
-    });
-
-    await prisma.jobLog.create({
-      data: {
-        jobId: job.id,
-        level: "info",
-        message: "Transition -> ENQUEUED",
-        details: toPrismaJson({
-          source: "api:episodes:enqueue",
-          queueName,
-          bullmqJobId,
-          jobType,
-          enqueueMode: enqueueResult.mode,
-          enqueueAttemptCount: enqueueResult.attemptCount,
-          enqueueErrorSummary: enqueueResult.errorSummary
-        })
-      }
+      queueName,
+      episodeId,
+      body
     });
 
     return reply.code(201).send({
       data: {
-        episodeId,
-        job: updatedJob,
-        queue: {
-          queueName,
-          bullmqJobId
-        }
+        episodeId: result.episodeId,
+        job: result.job,
+        queue: result.queue
       }
     });
   });
@@ -1785,35 +1482,23 @@ export function registerApiRoutes(input: RegisterApiRoutesInput): void {
     }
 
     const dryRun = parseBoolean(body.dryRun, false);
-
-    const injected = await app.inject({
-      method: "POST",
-      url: "/hitl/rerender",
-      payload: {
-        episodeId,
-        shotIds,
-        dryRun
-      },
-      headers: internalHeaders()
+    const result = await createHitlRerenderJob({
+      prisma,
+      queue,
+      queueName,
+      episodeId,
+      shotIds,
+      dryRun
     });
 
-    const parsed = parseJsonBody(injected.body);
-
-    if (injected.statusCode >= 400) {
-      const message =
-        isRecord(parsed) && typeof parsed.error === "string"
-          ? parsed.error
-          : `Failed to rerender selected shots: status=${injected.statusCode}`;
-
-      throw createHttpError(injected.statusCode, message, parsed);
-    }
-
-    return reply.code(injected.statusCode).send(
-      parsed ?? {
-        data: {
-          ok: true
-        }
+    return reply.code(result.idempotent ? 200 : 201).send({
+      data: {
+        idempotent: result.idempotent,
+        rerenderKey: result.rerenderKey,
+        shotIds: result.shotIds,
+        job: result.job,
+        ...("suggestion" in result && result.suggestion ? { suggestion: result.suggestion } : {})
       }
-    );
+    });
   });
 }

@@ -763,6 +763,205 @@ async function findExistingRerenderJob(prisma: PrismaClient, episodeId: string, 
   return null;
 }
 
+export async function createHitlRerenderJob(input: {
+  prisma: PrismaClient;
+  queue: Queue;
+  queueName?: string;
+  episodeId: string;
+  shotIds: string[];
+  dryRun?: boolean;
+  maxAttempts?: number;
+  backoffMs?: number;
+}) {
+  let jobId: string | null = null;
+
+  try {
+    const shotIds = stableShotIds(input.shotIds);
+    if (shotIds.length === 0) {
+      throw createHttpError(400, "shotIds must include at least one valid id");
+    }
+
+    await ensureEpisodeExists(input.prisma, input.episodeId);
+
+    const retry = normalizeRetryConfig({
+      maxAttempts: input.maxAttempts,
+      backoffMs: input.backoffMs
+    });
+    const queueName = input.queueName ?? input.queue.name ?? DEFAULT_QUEUE_NAME;
+    const rerenderKey = createRerenderKey(input.episodeId, shotIds);
+    const existing = await findExistingRerenderJob(input.prisma, input.episodeId, rerenderKey);
+
+    if (existing) {
+      return {
+        idempotent: true,
+        rerenderKey,
+        shotIds,
+        job: existing
+      };
+    }
+
+    const estimatedRenderSeconds = Math.max(15, shotIds.length * 10);
+    const estimatedAudioSeconds = Math.max(0, shotIds.length * 4);
+    const cost = estimateJobCost({
+      estimatedRenderSeconds,
+      estimatedAudioSeconds,
+      estimatedApiCalls: 1
+    });
+
+    const job = await input.prisma.job.create({
+      data: {
+        episodeId: input.episodeId,
+        type: "RENDER_PREVIEW",
+        status: "QUEUED",
+        progress: 0,
+        maxAttempts: retry.maxAttempts,
+        retryBackoffMs: retry.backoffMs,
+        estimatedRenderSeconds: cost.estimatedRenderSeconds,
+        estimatedAudioSeconds: cost.estimatedAudioSeconds,
+        estimatedApiCalls: cost.estimatedApiCalls,
+        estimatedCostUsd: cost.estimatedCostUsd
+      }
+    });
+    jobId = job.id;
+
+    await input.prisma.jobLog.create({
+      data: {
+        jobId: job.id,
+        level: "info",
+        message: "Transition -> QUEUED",
+        details: logDetails({
+          source: "hitl:service",
+          queueName,
+          maxAttempts: retry.maxAttempts,
+          backoffMs: retry.backoffMs,
+          estimatedCostUsd: cost.estimatedCostUsd
+        })
+      }
+    });
+
+    await input.prisma.jobLog.create({
+      data: {
+        jobId: job.id,
+        level: "info",
+        message: "HITL rerender request",
+        details: logDetails({
+          source: "hitl:service",
+          rerenderKey,
+          shotIds,
+          dryRun: input.dryRun === true
+        })
+      }
+    });
+
+    const payload: EpisodeJobPayload = {
+      jobDbId: job.id,
+      episodeId: input.episodeId,
+      schemaChecks: [],
+      render: {
+        dryRun: input.dryRun === true,
+        rerenderFailedShotsOnly: true,
+        failedShotIds: shotIds
+      }
+    };
+
+    const bullJob = await enqueueWithIdempotency(
+      input.queue,
+      RENDER_JOB_NAME,
+      payload,
+      retry.maxAttempts,
+      retry.backoffMs
+    );
+    const bullmqJobId = String(bullJob.id);
+
+    await input.prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "QUEUED",
+        bullmqJobId,
+        lastError: null,
+        finishedAt: null
+      }
+    });
+
+    await input.prisma.jobLog.create({
+      data: {
+        jobId: job.id,
+        level: "info",
+        message: "Transition -> ENQUEUED",
+        details: logDetails({
+          source: "hitl:service",
+          queueName,
+          bullmqJobId,
+          rerenderKey,
+          shotIds
+        })
+      }
+    });
+
+    const suggestion = await input.prisma.agentSuggestion.create({
+      data: {
+        episodeId: input.episodeId,
+        jobId: job.id,
+        type: AgentSuggestionType.HITL_REVIEW,
+        status: AgentSuggestionStatus.APPLIED,
+        title: "HITL rerender requested",
+        summary: `Queued rerender for ${shotIds.length} selected shots.`,
+        payload: {
+          rerenderKey,
+          shotIds,
+          dryRun: input.dryRun === true,
+          queueName,
+          jobId: job.id,
+          bullmqJobId,
+          enqueuedAt: new Date().toISOString()
+        } as Prisma.InputJsonValue
+      }
+    });
+
+    return {
+      idempotent: false,
+      rerenderKey,
+      shotIds,
+      job: {
+        id: job.id,
+        episodeId: input.episodeId,
+        type: job.type,
+        status: "QUEUED",
+        bullmqJobId
+      },
+      suggestion
+    };
+  } catch (error) {
+    if (jobId) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      await input.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: "FAILED",
+          lastError: stack ?? message,
+          finishedAt: new Date()
+        }
+      });
+
+      await input.prisma.jobLog.create({
+        data: {
+          jobId,
+          level: "error",
+          message: "Transition -> FAILED",
+          details: logDetails({
+            source: "hitl:service",
+            error: message,
+            stack: stack ?? null
+          })
+        }
+      });
+    }
+
+    throw error;
+  }
+}
+
 function renderHitlHtml(): string {
   return `<!doctype html>
 <html>
@@ -1418,8 +1617,6 @@ export function registerAgentRoutes(input: {
   });
 
   app.post("/hitl/rerender", async (request, reply) => {
-    let jobId: string | null = null;
-
     try {
       if (!features.hitlUi) {
         throw createHttpError(404, "HITL UI is disabled by feature flag");
@@ -1436,237 +1633,62 @@ export function registerAgentRoutes(input: {
         throw createHttpError(400, "episodeId is required");
       }
 
-      const shotIds = stableShotIds(shotIdsInput);
-      if (shotIds.length === 0) {
-        throw createHttpError(400, "shotIds must include at least one valid id");
-      }
-
-      await ensureEpisodeExists(prisma, episodeId);
-
-      const retry = normalizeRetryConfig({
+      const result = await createHitlRerenderJob({
+        prisma,
+        queue,
+        queueName,
+        episodeId,
+        shotIds: shotIdsInput,
+        dryRun,
         maxAttempts: requestedMaxAttempts,
         backoffMs: requestedBackoffMs
-      });
-
-      const rerenderKey = createRerenderKey(episodeId, shotIds);
-      const existing = await findExistingRerenderJob(prisma, episodeId, rerenderKey);
-
-      if (existing) {
-        await writeAuditLog({
-          prisma,
-          request,
-          statusCode: 200,
-          success: true,
-          action: "hitl.rerender.create",
-          details: {
-            episodeId,
-            idempotent: true,
-            jobId: existing.id,
-            shotCount: shotIds.length
-          }
-        });
-
-        return {
-          data: {
-            idempotent: true,
-            rerenderKey,
-            shotIds,
-            job: existing
-          }
-        };
-      }
-
-      const estimatedRenderSeconds = Math.max(15, shotIds.length * 10);
-      const estimatedAudioSeconds = Math.max(0, shotIds.length * 4);
-      const cost = estimateJobCost({
-        estimatedRenderSeconds,
-        estimatedAudioSeconds,
-        estimatedApiCalls: 1
-      });
-
-      const job = await prisma.job.create({
-        data: {
-          episodeId,
-          type: "RENDER_PREVIEW",
-          status: "QUEUED",
-          progress: 0,
-          maxAttempts: retry.maxAttempts,
-          retryBackoffMs: retry.backoffMs,
-          estimatedRenderSeconds: cost.estimatedRenderSeconds,
-          estimatedAudioSeconds: cost.estimatedAudioSeconds,
-          estimatedApiCalls: cost.estimatedApiCalls,
-          estimatedCostUsd: cost.estimatedCostUsd
-        }
-      });
-      jobId = job.id;
-
-      await prisma.jobLog.create({
-        data: {
-          jobId: job.id,
-          level: "info",
-          message: "Transition -> QUEUED",
-          details: logDetails({
-            source: "api:hitl",
-            queueName,
-            maxAttempts: retry.maxAttempts,
-            backoffMs: retry.backoffMs,
-            estimatedCostUsd: cost.estimatedCostUsd
-          })
-        }
-      });
-
-      await prisma.jobLog.create({
-        data: {
-          jobId: job.id,
-          level: "info",
-          message: "HITL rerender request",
-          details: logDetails({
-            source: "api:hitl",
-            rerenderKey,
-            shotIds,
-            dryRun
-          })
-        }
-      });
-
-      const payload: EpisodeJobPayload = {
-        jobDbId: job.id,
-        episodeId,
-        schemaChecks: [],
-        render: {
-          dryRun,
-          rerenderFailedShotsOnly: true,
-          failedShotIds: shotIds
-        }
-      };
-
-      const bullJob = await enqueueWithIdempotency(
-        queue,
-        RENDER_JOB_NAME,
-        payload,
-        retry.maxAttempts,
-        retry.backoffMs
-      );
-      const bullmqJobId = String(bullJob.id);
-
-      await prisma.job.update({
-        where: { id: job.id },
-        data: {
-          status: "QUEUED",
-          bullmqJobId,
-          lastError: null,
-          finishedAt: null
-        }
-      });
-
-      await prisma.jobLog.create({
-        data: {
-          jobId: job.id,
-          level: "info",
-          message: "Transition -> ENQUEUED",
-          details: logDetails({
-            source: "api:hitl",
-            queueName,
-            bullmqJobId,
-            rerenderKey,
-            shotIds
-          })
-        }
-      });
-
-      const suggestion = await prisma.agentSuggestion.create({
-        data: {
-          episodeId,
-          jobId: job.id,
-          type: AgentSuggestionType.HITL_REVIEW,
-          status: AgentSuggestionStatus.APPLIED,
-          title: "HITL rerender requested",
-          summary: `Queued rerender for ${shotIds.length} selected shots.`,
-          payload: {
-            rerenderKey,
-            shotIds,
-            dryRun,
-            queueName,
-            jobId: job.id,
-            bullmqJobId,
-            enqueuedAt: new Date().toISOString()
-          } as Prisma.InputJsonValue
-        }
       });
 
       await writeAuditLog({
         prisma,
         request,
-        statusCode: 201,
+        statusCode: result.idempotent ? 200 : 201,
         success: true,
         action: "hitl.rerender.create",
         details: {
           episodeId,
-          idempotent: false,
-          jobId: job.id,
-          bullmqJobId,
-          shotCount: shotIds.length,
-          suggestionId: suggestion.id
+          idempotent: result.idempotent,
+          jobId: result.job.id,
+          bullmqJobId:
+            "bullmqJobId" in result.job && typeof result.job.bullmqJobId === "string"
+              ? result.job.bullmqJobId
+              : null,
+          shotCount: result.shotIds.length,
+          suggestionId:
+            "suggestion" in result && result.suggestion ? result.suggestion.id : null
         }
       });
 
-      return reply.code(201).send({
+      return reply.code(result.idempotent ? 200 : 201).send({
         data: {
-          idempotent: false,
-          rerenderKey,
-          shotIds,
-          job: {
-            id: job.id,
-            status: "QUEUED",
-            bullmqJobId,
-            maxAttempts: retry.maxAttempts,
-            retryBackoffMs: retry.backoffMs
-          },
-          suggestion
+          idempotent: result.idempotent,
+          rerenderKey: result.rerenderKey,
+          shotIds: result.shotIds,
+          job: result.job,
+          ...("suggestion" in result && result.suggestion ? { suggestion: result.suggestion } : {})
         }
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
       const statusCode =
         error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number"
           ? error.statusCode
           : 500;
 
-      if (jobId) {
-        await prisma.job.update({
-          where: { id: jobId },
-          data: {
-            status: "FAILED",
-            lastError: stack ?? message,
-            finishedAt: new Date()
-          }
-        });
-
-        await prisma.jobLog.create({
-          data: {
-            jobId,
-            level: "error",
-            message: "Transition -> FAILED",
-            details: logDetails({
-              source: "api:hitl",
-              error: message,
-              stack: stack ?? null
-            })
-          }
-        });
-
-        await notifier.notify({
-          source: "api:hitl",
-          title: "HITL rerender enqueue failed",
-          level: "error",
-          body: "Failed to enqueue HITL rerender job.",
-          metadata: {
-            jobId,
-            error: message
-          }
-        });
-      }
+      await notifier.notify({
+        source: "api:hitl",
+        title: "HITL rerender enqueue failed",
+        level: "error",
+        body: "Failed to enqueue HITL rerender job.",
+        metadata: {
+          error: message
+        }
+      });
 
       await writeAuditLog({
         prisma,

@@ -10,6 +10,7 @@
     "smoke:ui:fallback": "tsx src/routes/ui/dbFallback.smoke.ts",
     "smoke:ui:character-generator-page": "tsx src/routes/ui/pages/characterGeneratorPage.smoke.ts",
     "smoke:ui:ops-review-pages": "tsx src/routes/ui/pages/opsReviewPages.smoke.ts",
+    "smoke:ui:mutation-delegation": "tsx src/routes/uiMutationDelegation.smoke.ts",
     "smoke:ui:artifact-freshness": "tsx src/routes/uiRoutesFreshness.smoke.ts",
     "smoke:ui:benchmark-refresh": "tsx src/routes/uiRoutesBenchmarkRefresh.smoke.ts",
     "smoke:ui:benchmark-character-handoff": "tsx src/routes/uiRoutesBenchmarkCharacterHandoff.smoke.ts",
