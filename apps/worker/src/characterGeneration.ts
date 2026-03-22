@@ -4922,6 +4922,8 @@ function getVertexImagenConfig(): {
   projectId?: string;
   location?: string;
   model?: string;
+  generateModel?: string;
+  editModel?: string;
   accessToken?: string;
   timeoutMs: number;
   outputFormat?: string;
@@ -4930,6 +4932,8 @@ function getVertexImagenConfig(): {
   const projectId = process.env.IMAGEGEN_VERTEX_PROJECT_ID?.trim();
   const location = process.env.IMAGEGEN_VERTEX_LOCATION?.trim();
   const model = process.env.IMAGEGEN_VERTEX_MODEL?.trim();
+  const generateModel = process.env.IMAGEGEN_VERTEX_GENERATE_MODEL?.trim();
+  const editModel = process.env.IMAGEGEN_VERTEX_EDIT_MODEL?.trim();
   const accessToken = process.env.IMAGEGEN_VERTEX_ACCESS_TOKEN?.trim();
   const timeoutMs = toPositiveInt(process.env.IMAGEGEN_VERTEX_TIMEOUT_MS, 60_000);
   const outputFormat = process.env.IMAGEGEN_VERTEX_OUTPUT_FORMAT?.trim();
@@ -4939,6 +4943,8 @@ function getVertexImagenConfig(): {
     ...(projectId ? { projectId } : {}),
     ...(location ? { location } : {}),
     ...(model ? { model } : {}),
+    ...(generateModel ? { generateModel } : {}),
+    ...(editModel ? { editModel } : {}),
     ...(accessToken ? { accessToken } : {}),
     timeoutMs,
     ...(outputFormat ? { outputFormat } : {}),

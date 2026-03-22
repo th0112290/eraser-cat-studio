@@ -14,12 +14,19 @@ import type {
 
 const DEFAULT_VERTEX_TIMEOUT_MS = 120_000;
 const DEFAULT_VERTEX_LOCATION = process.env.IMAGEGEN_VERTEX_LOCATION?.trim() || "us-central1";
-const DEFAULT_VERTEX_MODEL = process.env.IMAGEGEN_VERTEX_MODEL?.trim() || "imagen-3.0-capability-001";
+const DEFAULT_VERTEX_GENERATE_MODEL =
+  process.env.IMAGEGEN_VERTEX_GENERATE_MODEL?.trim() || "imagen-4.0-generate-001";
+const DEFAULT_VERTEX_EDIT_MODEL =
+  process.env.IMAGEGEN_VERTEX_EDIT_MODEL?.trim() ||
+  process.env.IMAGEGEN_VERTEX_MODEL?.trim() ||
+  "imagen-3.0-capability-001";
 
 type VertexImagenProviderConfig = {
   projectId?: string;
   location?: string;
   model?: string;
+  generateModel?: string;
+  editModel?: string;
   accessToken?: string;
   timeoutMs?: number;
   maxRetries?: number;
@@ -241,7 +248,8 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
   readonly name = "vertexImagen" as const;
   readonly #projectId: string;
   readonly #location: string;
-  readonly #model: string;
+  readonly #generateModel: string;
+  readonly #editModel: string;
   readonly #accessToken: string;
   readonly #timeoutMs: number;
   readonly #maxRetries: number;
@@ -252,7 +260,14 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
   constructor(config: VertexImagenProviderConfig | undefined) {
     this.#projectId = assertProjectId(config?.projectId);
     this.#location = config?.location?.trim() || DEFAULT_VERTEX_LOCATION;
-    this.#model = config?.model?.trim() || DEFAULT_VERTEX_MODEL;
+    this.#generateModel =
+      config?.generateModel?.trim() ||
+      config?.model?.trim() ||
+      DEFAULT_VERTEX_GENERATE_MODEL;
+    this.#editModel =
+      config?.editModel?.trim() ||
+      config?.model?.trim() ||
+      DEFAULT_VERTEX_EDIT_MODEL;
     this.#accessToken = assertAccessToken(config?.accessToken);
     this.#timeoutMs =
       Number.isInteger(config?.timeoutMs) && (config?.timeoutMs ?? 0) > 0
@@ -364,8 +379,8 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
           mimeType: item.mimeType?.trim() || mimeTypeForOutputFormat(this.#outputFormat),
           data: buffer,
           providerMeta: {
-            model: this.#model,
-            endpoint: this.#endpoint,
+            model: usesEdits ? this.#editModel : this.#generateModel,
+            endpoint: this.#endpointFor(usesEdits),
             requestMode: usesEdits ? "edit" : "generate",
             requestedSeed: seed,
             seedControlled: true,
@@ -423,7 +438,8 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
           supportsReferenceImage: true,
           supportsMask: true,
           supportsStructureControls: false,
-          model: this.#model,
+          generateModel: this.#generateModel,
+          editModel: this.#editModel,
           outputFormat: this.#outputFormat,
           location: this.#location
         },
@@ -432,8 +448,9 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
     };
   }
 
-  get #endpoint(): string {
-    return `https://${this.#location}-aiplatform.googleapis.com/v1/projects/${this.#projectId}/locations/${this.#location}/publishers/google/models/${this.#model}:predict`;
+  #endpointFor(usesEdits: boolean): string {
+    const model = usesEdits ? this.#editModel : this.#generateModel;
+    return `https://${this.#location}-aiplatform.googleapis.com/v1/projects/${this.#projectId}/locations/${this.#location}/publishers/google/models/${model}:predict`;
   }
 
   async #requestImages(input: {
@@ -449,8 +466,9 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
     headers.set("Authorization", `Bearer ${this.#accessToken}`);
     headers.set("Content-Type", "application/json; charset=utf-8");
 
-    const usesEdits = Boolean(input.context.referenceImage);
-    const body = usesEdits
+      const usesEdits = Boolean(input.context.referenceImage);
+      const endpoint = this.#endpointFor(usesEdits);
+      const body = usesEdits
       ? {
           instances: [
             {
@@ -512,7 +530,7 @@ export class VertexImagenCharacterGenerationProvider implements CharacterGenerat
         };
 
     try {
-      const response = await fetch(this.#endpoint, {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify(body),

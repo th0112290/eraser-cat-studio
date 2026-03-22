@@ -74,6 +74,8 @@ export type CreateCharacterProviderInput = {
     projectId?: string;
     location?: string;
     model?: string;
+    generateModel?: string;
+    editModel?: string;
     accessToken?: string;
     timeoutMs?: number;
     maxRetries?: number;
