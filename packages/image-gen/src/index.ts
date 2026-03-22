@@ -20,6 +20,7 @@ import { RemoteApiCharacterGenerationProvider } from "./remoteApiProvider";
 import { VertexImagenCharacterGenerationProvider } from "./vertexImagenProvider";
 import {
   buildMascotReferenceBankReviewPlan,
+  canUseApprovedMascotSideCanonAnchors,
   resolveEffectiveMascotReferenceBankStatus,
   resolveMascotCompositionReferenceAsset,
   resolveMascotReferenceBankDiagnostics,
@@ -166,6 +167,7 @@ export { resolveMascotFamilyArchetype, resolveMascotSpeciesProfile };
 export { evaluateMascotFrontCanon };
 export {
   buildMascotReferenceBankReviewPlan,
+  canUseApprovedMascotSideCanonAnchors,
   resolveEffectiveMascotReferenceBankStatus,
   resolveMascotCompositionReferenceAsset,
   resolveMascotReferenceBankDiagnostics,

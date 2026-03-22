@@ -113,11 +113,12 @@
     ]
   },
   "canonStage": "species_ready",
-  "qualityStatus": "approved",
+  "qualityStatus": "review_needed",
   "qualityNotes": [
     "front family slot is copied directly from the approved front master to avoid front drift",
     "hero front slot is derived by deterministic crop from the approved front master",
-    "three-quarter and profile slots are generated from a subject-mask front-master derivation path"
+    "three-quarter and profile slots are generated from a subject-mask front-master derivation path",
+    "family side-view visual canon QC must pass before dog candidate can be promoted again"
   ],
   "frontApproval": {
     "approvedAt": "2026-03-22T14:25:47.022Z",
@@ -186,5 +187,6 @@
         "passed": true
       }
     ]
-  }
+  },
+  "familyViewApproval": null
 }

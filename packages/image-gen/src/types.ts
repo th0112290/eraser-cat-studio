@@ -242,6 +242,12 @@ export type MascotReferenceBankManifest = {
   notes?: string[];
   qualityNotes?: string[];
   frontApproval?: MascotReferenceFrontApproval;
+  familyViewApproval?: {
+    approvedAt: string;
+    approvalMode?: "manual" | "generated" | "forced";
+    qualityStatus?: MascotReferenceQualityStatus;
+    note?: string;
+  };
   visualQc?: MascotReferenceVisualQcReport;
   requiredAssets?: MascotReferenceAssetRequirement[];
   style?: MascotReferenceAssetEntry[];

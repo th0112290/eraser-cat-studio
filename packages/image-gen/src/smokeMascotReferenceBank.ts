@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import {
   buildMascotReferenceBankReviewPlan,
+  canUseApprovedMascotSideCanonAnchors,
   canUseMascotReferenceBankForProduction,
   resolveEffectiveMascotReferenceBankStatus,
   resolveMascotCompositionReferenceAsset,
@@ -62,6 +63,11 @@ function run(): void {
     assert.equal(diagnostics.statusMismatch, false, `${speciesId} should not have a readiness mismatch while species_ready`);
     assert.equal(diagnostics.variant, "canonical", `${speciesId} smoke should default to canonical bank`);
     assert.equal(
+      diagnostics.qualityStatus,
+      speciesId === "dog" ? "review_needed" : "approved",
+      `${speciesId} canonical quality status should reflect current side-view approval state`
+    );
+    assert.equal(
       diagnostics.legacyTemporary,
       expectedLegacyTemporary,
       `${speciesId} canonical legacy-temporary state should match promotion status`
@@ -98,6 +104,13 @@ function run(): void {
       expectedLegacyTemporary,
       `${speciesId} manifest legacy-temporary state should match promotion status`
     );
+    if (speciesId === "dog") {
+      assert.equal(
+        canUseApprovedMascotSideCanonAnchors(manifest),
+        false,
+        "dog canonical manifest should keep side canon anchors disabled until family visual QC passes again"
+      );
+    }
   }
 
   const previousCandidateEnv = process.env.MASCOT_REFERENCE_BANK_CANDIDATES;
@@ -108,16 +121,16 @@ function run(): void {
     const dogCandidateDiagnostics = resolveMascotReferenceBankDiagnostics("dog");
     assert.equal(dogCandidateDiagnostics.variant, "candidate", "dog diagnostics should switch to candidate variant when candidate env is active");
     assert.equal(dogCandidateDiagnostics.frontApproved, true, "approved dog candidate should continue to report front approval");
-    assert.equal(dogCandidateDiagnostics.productionLocked, false, "approved dog candidate should report an unlocked readiness state");
+    assert.equal(dogCandidateDiagnostics.productionLocked, true, "dog candidate should stay production-locked while family side QC is pending");
     const dogResolvedStyle = resolveMascotStyleReferenceAsset("dog");
     const dogResolvedFront = resolveMascotCompositionReferenceAsset("dog", "front");
     assert.ok(
-      dogResolvedStyle?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}candidate${path.sep}style_front_primary.png`),
-      "production style resolution should use approved dog candidate assets when candidate env is active"
+      dogResolvedStyle?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}style_front_primary.png`),
+      "production style resolution should fall back to canonical dog assets while candidate family QC is pending"
     );
     assert.ok(
-      dogResolvedFront?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}candidate${path.sep}family_front_primary.png`),
-      "production front composition should use approved dog candidate assets when candidate env is active"
+      dogResolvedFront?.filePath.includes(`${path.sep}refs${path.sep}mascots${path.sep}dog${path.sep}family_front_primary.png`),
+      "production front composition should fall back to canonical dog assets while candidate family QC is pending"
     );
     assert.equal(
       canUseMascotReferenceBankForProduction({
@@ -126,9 +139,11 @@ function run(): void {
         canonStage: dogCandidateDiagnostics.canonStage,
         qualityStatus: dogCandidateDiagnostics.qualityStatus
       }),
-      true,
-      "approved species-ready dog candidate bank should be production-eligible when candidate env is active"
+      false,
+      "dog candidate bank should not be production-eligible until family visual QC passes"
     );
+    const dogCandidateManifest = resolveMascotReferenceBankManifest("dog");
+    assert.equal(dogCandidateManifest?.familyViewApproval ?? null, null, "dog candidate should clear family-view approval metadata while side QC is pending");
   } finally {
     if (previousCandidateEnv === undefined) {
       delete process.env.MASCOT_REFERENCE_BANK_CANDIDATES;

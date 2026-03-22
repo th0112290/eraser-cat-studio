@@ -188,6 +188,52 @@ function scoreHeroFocus(bounds: SubjectBounds | null, width: number, height: num
   return ratio < 0.28 ? clamp01((ratio - 0.14) / 0.14) : clamp01((0.82 - ratio) / 0.12);
 }
 
+function scoreHeadTurnReadability(
+  raster: LoadedRaster,
+  bounds: SubjectBounds | null,
+  mode: "threeQuarter" | "profile"
+): number {
+  if (!bounds) {
+    return 0;
+  }
+  const headHeight = Math.max(1, Math.floor(bounds.height * 0.62));
+  const headBottom = Math.min(raster.height, bounds.top + headHeight);
+  const headMidX = bounds.left + bounds.width / 2;
+  let leftInk = 0;
+  let rightInk = 0;
+  for (let y = bounds.top; y < headBottom; y += 1) {
+    for (let x = bounds.left; x < bounds.left + bounds.width; x += 1) {
+      const idx = (y * raster.width + x) * raster.channels;
+      const alpha = raster.data[idx + 3] ?? 255;
+      if (alpha < 16 || foregroundDistance(raster, idx) < 18) {
+        continue;
+      }
+      if (x < headMidX) {
+        leftInk += 1;
+      } else {
+        rightInk += 1;
+      }
+    }
+  }
+  const totalInk = leftInk + rightInk;
+  if (totalInk === 0) {
+    return 0;
+  }
+  const imbalance = Math.abs(leftInk - rightInk) / totalInk;
+  const idealMin = mode === "profile" ? 0.2 : 0.1;
+  const idealMax = mode === "profile" ? 0.62 : 0.38;
+  if (imbalance < idealMin * 0.5 || imbalance > idealMax + 0.2) {
+    return 0;
+  }
+  if (imbalance >= idealMin && imbalance <= idealMax) {
+    return 1;
+  }
+  if (imbalance < idealMin) {
+    return clamp01((imbalance - idealMin * 0.5) / (idealMin * 0.5));
+  }
+  return clamp01((idealMax + 0.2 - imbalance) / 0.2);
+}
+
 function scoreFrontFamilyConsistency(frontBuffer: Buffer, familyFrontBuffer: Buffer): number {
   return frontBuffer.equals(familyFrontBuffer) ? 1 : 0;
 }
@@ -289,6 +335,91 @@ export async function evaluateMascotFrontCanon(input: {
     frontAssetPath: input.frontAssetPath,
     familyFrontAssetPath: input.familyFrontAssetPath,
     heroAssetPath: hero ? input.heroAssetPath : undefined,
+    overallScore,
+    passed,
+    checks
+  };
+}
+
+export async function evaluateMascotFamilyViewsCanon(input: {
+  speciesId: MascotSpeciesId;
+  threeQuarterAssetPath: string;
+  profileAssetPath: string;
+}): Promise<{
+  generatedAt: string;
+  speciesId: MascotSpeciesId;
+  familyId: string;
+  overallScore: number;
+  passed: boolean;
+  checks: MascotReferenceVisualQcCheck[];
+}> {
+  const speciesProfile = resolveMascotSpeciesProfile(input.speciesId);
+  const threeQuarter = await loadRaster(input.threeQuarterAssetPath);
+  const profile = await loadRaster(input.profileAssetPath);
+  const threeQuarterBounds = detectSubjectBounds(threeQuarter);
+  const profileBounds = detectSubjectBounds(profile);
+
+  const checks = [
+    buildCheck({
+      id: "threequarter_subject_coverage",
+      label: "Three-quarter subject coverage",
+      score: scoreCoverage(threeQuarterBounds, threeQuarter.width, threeQuarter.height),
+      threshold: 0.55,
+      blocking: true,
+      note: "three-quarter family view should keep the mascot centered and fully readable"
+    }),
+    buildCheck({
+      id: "threequarter_head_turn",
+      label: "Three-quarter head turn",
+      score: scoreHeadTurnReadability(threeQuarter, threeQuarterBounds, "threeQuarter"),
+      threshold: 0.58,
+      blocking: true,
+      note: "three-quarter family view should visibly turn off the front baseline instead of collapsing back to front"
+    }),
+    buildCheck({
+      id: "profile_subject_coverage",
+      label: "Profile subject coverage",
+      score: scoreCoverage(profileBounds, profile.width, profile.height),
+      threshold: 0.52,
+      blocking: true,
+      note: "profile family view should keep the mascot readable in a single clear silhouette"
+    }),
+    buildCheck({
+      id: "profile_head_turn",
+      label: "Profile head turn",
+      score: scoreHeadTurnReadability(profile, profileBounds, "profile"),
+      threshold: 0.62,
+      blocking: true,
+      note: "profile family view should read as a true side turn with a clear directional silhouette"
+    }),
+    buildCheck({
+      id: "family_monochrome_finish",
+      label: "Family monochrome finish",
+      score: Number(((scoreMonochrome(threeQuarter) + scoreMonochrome(profile)) / 2).toFixed(3)),
+      threshold: 0.82,
+      note: "family side views should stay in the monochrome doodle finish"
+    }),
+    buildCheck({
+      id: "family_background_flatness",
+      label: "Family flat background",
+      score: Number(((scoreBackgroundFlatness(threeQuarter) + scoreBackgroundFlatness(profile)) / 2).toFixed(3)),
+      threshold: 0.8,
+      note: "family side views should keep the same plain low-noise background"
+    })
+  ];
+
+  const overallScore = Number(
+    (
+      checks.reduce((sum, entry) => sum + entry.score, 0) /
+      Math.max(checks.length, 1)
+    ).toFixed(3)
+  );
+  const passed = checks.every((entry) => !entry.blocking || entry.passed) && overallScore >= 0.78;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    speciesId: input.speciesId,
+    familyId: speciesProfile.familyId,
     overallScore,
     passed,
     checks

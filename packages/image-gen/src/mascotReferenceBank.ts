@@ -218,6 +218,23 @@ export function canUseMascotReferenceBankForProduction(
   );
 }
 
+export function canUseApprovedMascotSideCanonAnchors(
+  manifest: MascotReferenceBankManifest | null | undefined
+): boolean {
+  if (!manifest || manifest.legacyTemporary === true) {
+    return false;
+  }
+  if (manifest.canonStage !== "species_ready" || manifest.qualityStatus !== "approved") {
+    return false;
+  }
+  if (!manifest.familyViewApproval?.approvedAt) {
+    return false;
+  }
+  const threeQuarterCount = manifest.familyByView?.threeQuarter?.length ?? 0;
+  const profileCount = manifest.familyByView?.profile?.length ?? 0;
+  return threeQuarterCount > 0 && profileCount > 0;
+}
+
 function resolveRequirementIndex(slotId: string): number {
   if (slotId.endsWith(".secondary")) {
     return 1;

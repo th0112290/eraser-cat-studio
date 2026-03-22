@@ -7,6 +7,7 @@ import { sha256Hex, stableStringify } from "@ec/shared";
 import {
   buildMascotReferenceBankReviewPlan,
   buildCharacterPrompt,
+  canUseApprovedMascotSideCanonAnchors,
   createCharacterProvider,
   deriveStyleHintsFromChannelBible,
   resolveEffectiveMascotReferenceBankStatus,
@@ -3937,6 +3938,10 @@ function readMascotReferenceBankManifest(speciesId?: string): MascotReferenceBan
     mascotReferenceBankManifestCache.set(normalizedSpecies, null);
     return null;
   }
+}
+
+function canUseMascotSideCanonAnchors(speciesId?: string): boolean {
+  return canUseApprovedMascotSideCanonAnchors(readMascotReferenceBankManifest(speciesId));
 }
 
 function summarizeMascotReferenceBankDiagnostics(speciesId?: string): MascotReferenceBankDiagnostics {
@@ -8119,6 +8124,67 @@ export function shouldDowngradeCatThreeQuarterFrontCollapseRisk(input: {
   );
 }
 
+export function shouldDowngradeCanineThreeQuarterFrontCollapseRisk(input: {
+  speciesId?: string;
+  view: CharacterView;
+  referenceScore?: number | null;
+  subjectIsolationScore?: number;
+  speciesScore?: number;
+  speciesMuzzleScore?: number;
+  speciesSilhouetteScore?: number;
+  targetStyleScore?: number;
+  pawStabilityScore?: number;
+}): boolean {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if ((species !== "dog" && species !== "wolf") || input.view !== "threeQuarter") {
+    return false;
+  }
+  const speciesFloor = species === "wolf" ? 0.44 : 0.42;
+  return (
+    (input.referenceScore ?? 0) >= 0.48 &&
+    (input.subjectIsolationScore ?? 0) >= 0.95 &&
+    (input.speciesScore ?? 0) >= speciesFloor &&
+    Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= 0.54 &&
+    (input.targetStyleScore ?? 0) >= 0.74 &&
+    (input.pawStabilityScore ?? 0) >= 0.72
+  );
+}
+
+export function shouldDowngradeCanineSideStyleDrift(input: {
+  speciesId?: string;
+  view: CharacterView;
+  consistencyScore?: number | null;
+  subjectIsolationScore?: number;
+  speciesScore?: number;
+  speciesMuzzleScore?: number;
+  speciesSilhouetteScore?: number;
+  targetStyleScore?: number;
+  paletteScore?: number;
+  monochromeScore?: number;
+  paletteComplexityScore?: number;
+}): boolean {
+  const species = normalizeGenerationSpecies(input.speciesId);
+  if ((species !== "dog" && species !== "wolf") || (input.view !== "threeQuarter" && input.view !== "profile")) {
+    return false;
+  }
+
+  const consistencyFloor = input.view === "profile" ? 0.84 : 0.8;
+  const speciesFloor = species === "wolf" ? (input.view === "profile" ? 0.48 : 0.44) : 0.4;
+  const structureCueFloor = species === "wolf" ? 0.5 : 0.46;
+  const styleFloor = input.view === "profile" ? 0.72 : 0.74;
+
+  return (
+    (input.consistencyScore ?? 0) >= consistencyFloor &&
+    (input.subjectIsolationScore ?? 0) >= 0.95 &&
+    (input.speciesScore ?? 0) >= speciesFloor &&
+    Math.max(input.speciesMuzzleScore ?? 0, input.speciesSilhouetteScore ?? 0) >= structureCueFloor &&
+    (input.targetStyleScore ?? 0) >= styleFloor &&
+    (input.paletteScore ?? 0) >= 0.68 &&
+    (input.monochromeScore ?? 0) >= 0.94 &&
+    (input.paletteComplexityScore ?? 1) <= 0.08
+  );
+}
+
 export function shouldDowngradeCatThreeQuarterConsistencyDrift(input: {
   speciesId?: string;
   view: CharacterView;
@@ -9023,6 +9089,8 @@ export function buildPackCoherenceDiagnostics(input: {
   const presentSideViews = (["threeQuarter", "profile"] as const).filter(
     (view): view is "threeQuarter" | "profile" => Boolean(input.selectedByView[view])
   );
+  const normalizedSpecies = normalizeGenerationSpecies(input.speciesId);
+  const isCanineSpecies = normalizedSpecies === "dog" || normalizedSpecies === "wolf";
   const sideWeakViews = presentSideViews.filter((view) => {
     const candidate = input.selectedByView[view];
     if (!candidate) {
@@ -9056,13 +9124,21 @@ export function buildPackCoherenceDiagnostics(input: {
     );
   });
   const localizeCatSideSpreadIssues =
-    normalizeGenerationSpecies(input.speciesId) === "cat" &&
+    normalizedSpecies === "cat" &&
     isStrongFrontMasterCandidate(front, input.targetStyle, input.acceptedScoreThreshold, input.speciesId) &&
     presentSideViews.length === 2 &&
     sideWeakViews.length === 1 &&
     sideStrongViews.length === 1;
+  const localizeCanineSideSpreadIssues =
+    isCanineSpecies &&
+    isStrongFrontMasterCandidate(front, input.targetStyle, input.acceptedScoreThreshold, input.speciesId) &&
+    presentSideViews.length === 2 &&
+    sideWeakViews.length === 0 &&
+    sideStrongViews.length === 2;
   const resolveCueSpreadTargetViews = () =>
-    localizeCatSideSpreadIssues ? dedupeCharacterViews([...sideWeakViews]) : [...presentSideViews];
+    localizeCatSideSpreadIssues || localizeCanineSideSpreadIssues
+      ? dedupeCharacterViews([...sideWeakViews])
+      : [...presentSideViews];
   const earCueSpread = computeMetricSpread([
     front?.breakdown.speciesEarScore,
     threeQuarter?.breakdown.speciesEarScore,
@@ -9083,6 +9159,30 @@ export function buildPackCoherenceDiagnostics(input: {
     threeQuarter?.breakdown.speciesSilhouetteScore,
     profile?.breakdown.speciesSilhouetteScore
   ]);
+  const suppressCanineSpeciesSpreadIssue =
+    localizeCanineSideSpreadIssues &&
+    typeof speciesSpread === "number" &&
+    speciesSpread <= profileThresholds.maxSpeciesSpread + 0.04;
+  const effectiveSpeciesSpread =
+    suppressCanineSpeciesSpreadIssue && typeof speciesSpread === "number"
+      ? Math.min(speciesSpread, profileThresholds.maxSpeciesSpread)
+      : speciesSpread;
+  const effectiveEarCueSpread =
+    localizeCanineSideSpreadIssues && typeof earCueSpread === "number"
+      ? Math.min(earCueSpread, profileThresholds.maxEarCueSpread)
+      : earCueSpread;
+  const effectiveMuzzleCueSpread =
+    localizeCanineSideSpreadIssues && typeof muzzleCueSpread === "number"
+      ? Math.min(muzzleCueSpread, profileThresholds.maxMuzzleCueSpread)
+      : muzzleCueSpread;
+  const effectiveHeadShapeCueSpread =
+    localizeCanineSideSpreadIssues && typeof headShapeCueSpread === "number"
+      ? Math.min(headShapeCueSpread, profileThresholds.maxHeadShapeCueSpread)
+      : headShapeCueSpread;
+  const effectiveSilhouetteCueSpread =
+    localizeCanineSideSpreadIssues && typeof silhouetteCueSpread === "number"
+      ? Math.min(silhouetteCueSpread, profileThresholds.maxSilhouetteCueSpread)
+      : silhouetteCueSpread;
 
   if (!isStrongFrontMasterCandidate(front, input.targetStyle, input.acceptedScoreThreshold, input.speciesId)) {
     addIssue("front_master_not_strong_enough", { blockView: "front" });
@@ -9163,9 +9263,11 @@ export function buildPackCoherenceDiagnostics(input: {
     }
   }
 
-  if (speciesSpread !== null && speciesSpread > profileThresholds.maxSpeciesSpread) {
+  if (effectiveSpeciesSpread !== null && effectiveSpeciesSpread > profileThresholds.maxSpeciesSpread) {
     addIssue("species_score_spread_too_wide", {
-      ...(speciesSpread > profileThresholds.maxSpeciesSpread + 0.06 ? { blockView: "front" } : { warnView: "front" })
+      ...(effectiveSpeciesSpread > profileThresholds.maxSpeciesSpread + 0.06
+        ? { blockView: "front" }
+        : { warnView: "front" })
     });
   }
 
@@ -9187,35 +9289,35 @@ export function buildPackCoherenceDiagnostics(input: {
     });
   }
 
-  if (earCueSpread !== null && earCueSpread > profileThresholds.maxEarCueSpread) {
+  if (effectiveEarCueSpread !== null && effectiveEarCueSpread > profileThresholds.maxEarCueSpread) {
     addIssueForViews(
       "ear_cue_spread_too_wide",
       resolveCueSpreadTargetViews(),
-      earCueSpread > profileThresholds.maxEarCueSpread + 0.06 ? "block" : "warn"
+      effectiveEarCueSpread > profileThresholds.maxEarCueSpread + 0.06 ? "block" : "warn"
     );
   }
 
-  if (muzzleCueSpread !== null && muzzleCueSpread > profileThresholds.maxMuzzleCueSpread) {
+  if (effectiveMuzzleCueSpread !== null && effectiveMuzzleCueSpread > profileThresholds.maxMuzzleCueSpread) {
     addIssueForViews(
       "muzzle_cue_spread_too_wide",
       resolveCueSpreadTargetViews(),
-      muzzleCueSpread > profileThresholds.maxMuzzleCueSpread + 0.06 ? "block" : "warn"
+      effectiveMuzzleCueSpread > profileThresholds.maxMuzzleCueSpread + 0.06 ? "block" : "warn"
     );
   }
 
-  if (headShapeCueSpread !== null && headShapeCueSpread > profileThresholds.maxHeadShapeCueSpread) {
+  if (effectiveHeadShapeCueSpread !== null && effectiveHeadShapeCueSpread > profileThresholds.maxHeadShapeCueSpread) {
     addIssueForViews(
       "head_shape_cue_spread_too_wide",
       resolveCueSpreadTargetViews(),
-      headShapeCueSpread > profileThresholds.maxHeadShapeCueSpread + 0.06 ? "block" : "warn"
+      effectiveHeadShapeCueSpread > profileThresholds.maxHeadShapeCueSpread + 0.06 ? "block" : "warn"
     );
   }
 
-  if (silhouetteCueSpread !== null && silhouetteCueSpread > profileThresholds.maxSilhouetteCueSpread) {
+  if (effectiveSilhouetteCueSpread !== null && effectiveSilhouetteCueSpread > profileThresholds.maxSilhouetteCueSpread) {
     addIssueForViews(
       "silhouette_cue_spread_too_wide",
       resolveCueSpreadTargetViews(),
-      silhouetteCueSpread > profileThresholds.maxSilhouetteCueSpread + 0.06 ? "block" : "warn"
+      effectiveSilhouetteCueSpread > profileThresholds.maxSilhouetteCueSpread + 0.06 ? "block" : "warn"
     );
   }
 
@@ -9253,14 +9355,14 @@ export function buildPackCoherenceDiagnostics(input: {
   if (typeof profileGeometryCue === "number" && profileGeometryCue < profileGeometryFloor) {
     score -= profileGeometryCue < profileGeometryFloor - 0.08 ? 0.14 : 0.09;
   }
-  score -= Math.min(0.18, Math.max(0, (speciesSpread ?? 0) - profileThresholds.maxSpeciesSpread) * 2.6);
+  score -= Math.min(0.18, Math.max(0, (effectiveSpeciesSpread ?? 0) - profileThresholds.maxSpeciesSpread) * 2.6);
   score -= Math.min(0.16, Math.max(0, (styleSpread ?? 0) - profileThresholds.maxStyleSpread) * 2.8);
   score -= Math.min(0.1, Math.max(0, (headRatioSpread ?? 0) - profileThresholds.maxHeadRatioSpread) * 2.4);
   score -= Math.min(0.08, Math.max(0, (monochromeSpread ?? 0) - profileThresholds.maxMonochromeSpread) * 2.2);
-  score -= Math.min(0.08, Math.max(0, (earCueSpread ?? 0) - profileThresholds.maxEarCueSpread) * 1.8);
-  score -= Math.min(0.1, Math.max(0, (muzzleCueSpread ?? 0) - profileThresholds.maxMuzzleCueSpread) * 2.1);
-  score -= Math.min(0.08, Math.max(0, (headShapeCueSpread ?? 0) - profileThresholds.maxHeadShapeCueSpread) * 1.9);
-  score -= Math.min(0.08, Math.max(0, (silhouetteCueSpread ?? 0) - profileThresholds.maxSilhouetteCueSpread) * 1.8);
+  score -= Math.min(0.08, Math.max(0, (effectiveEarCueSpread ?? 0) - profileThresholds.maxEarCueSpread) * 1.8);
+  score -= Math.min(0.1, Math.max(0, (effectiveMuzzleCueSpread ?? 0) - profileThresholds.maxMuzzleCueSpread) * 2.1);
+  score -= Math.min(0.08, Math.max(0, (effectiveHeadShapeCueSpread ?? 0) - profileThresholds.maxHeadShapeCueSpread) * 1.9);
+  score -= Math.min(0.08, Math.max(0, (effectiveSilhouetteCueSpread ?? 0) - profileThresholds.maxSilhouetteCueSpread) * 1.8);
   const normalizedScore = clamp01(score);
   const severity =
     blockingViews.size > 0 || normalizedScore < 0.62
@@ -10131,7 +10233,12 @@ export function scoreCandidate(input: {
     if (headSquarenessScore < 0.34) {
       warnings.push("head_shape_not_square_enough");
     }
-    if (input.candidate.view !== "profile" && headSquarenessScore < 0.18) {
+    const headBreakdownFloor =
+      (normalizeGenerationSpecies(input.speciesId) === "dog" || normalizeGenerationSpecies(input.speciesId) === "wolf") &&
+      input.candidate.view === "threeQuarter"
+        ? 0.02
+        : 0.18;
+    if (input.candidate.view !== "profile" && headSquarenessScore < headBreakdownFloor) {
       rejections.push("head_shape_breakdown");
     }
     if (input.candidate.view !== "profile" && headRatioScore < criticalHeadRatioFloor) {
@@ -10229,6 +10336,28 @@ export function scoreCandidate(input: {
       })
     ) {
       removeReason(rejections, "threequarter_front_collapse");
+      if (!warnings.includes("threequarter_frontality_risk")) {
+        warnings.push("threequarter_frontality_risk");
+      }
+    }
+    if (
+      input.candidate.view === "threeQuarter" &&
+      normalizeGenerationSpecies(input.speciesId) !== "cat" &&
+      (rejections.includes("threequarter_front_collapse") || rejections.includes("head_shape_breakdown")) &&
+      shouldDowngradeCanineThreeQuarterFrontCollapseRisk({
+        speciesId: input.speciesId,
+        view: input.candidate.view,
+        referenceScore,
+        subjectIsolationScore,
+        speciesScore,
+        speciesMuzzleScore,
+        speciesSilhouetteScore,
+        targetStyleScore,
+        pawStabilityScore
+      })
+    ) {
+      removeReason(rejections, "threequarter_front_collapse");
+      removeReason(rejections, "head_shape_breakdown");
       if (!warnings.includes("threequarter_frontality_risk")) {
         warnings.push("threequarter_frontality_risk");
       }
@@ -10809,8 +10938,24 @@ function applyConsistencyScoring(
           (warning) => warning === "species_readability_low" || warning === "species_identity_too_weak"
         )
       });
+    const downgradeCanineSideStyleDrift =
+      mascotTarget &&
+      shouldDowngradeCanineSideStyleDrift({
+        speciesId,
+        view: entry.candidate.view,
+        consistencyScore: consistency.score,
+        subjectIsolationScore: entry.breakdown.subjectIsolationScore,
+        speciesScore: entry.breakdown.speciesScore,
+        speciesMuzzleScore: entry.breakdown.speciesMuzzleScore,
+        speciesSilhouetteScore: entry.breakdown.speciesSilhouetteScore,
+        targetStyleScore: entry.breakdown.targetStyleScore,
+        paletteScore: consistency.parts.palette,
+        monochromeScore: consistency.parts.monochrome,
+        paletteComplexityScore: consistency.parts.paletteComplexity
+      });
     const styleDrift =
       mascotTarget &&
+      !downgradeCanineSideStyleDrift &&
       (consistency.parts.palette < 0.34 ||
         consistency.parts.monochrome < 0.38 ||
         consistency.parts.paletteComplexity < 0.34);
@@ -11786,6 +11931,7 @@ export async function handleGenerateCharacterAssetsJob(input: {
     buildPreferredSideReferenceInputByView,
     excludePoseGuidesCoveredByStarter,
     loadMascotStarterReferencesByView,
+    canUseMascotSideCanonAnchors,
     mascotFamilyReferencesByView,
     shouldSuppressDuplicateViewStarterReference,
     hasRetryAdjustmentContent,

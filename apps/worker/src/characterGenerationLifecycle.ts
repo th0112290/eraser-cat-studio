@@ -53,6 +53,7 @@ export async function runGenerationLifecycle(input: any) {
     buildPreferredSideReferenceInputByView,
     excludePoseGuidesCoveredByStarter,
     loadMascotStarterReferencesByView,
+    canUseMascotSideCanonAnchors,
     mascotFamilyReferencesByView,
     shouldSuppressDuplicateViewStarterReference,
     hasRetryAdjustmentContent,
@@ -119,8 +120,15 @@ export async function runGenerationLifecycle(input: any) {
     providerName !== "mock" &&
     generation.viewToGenerate === undefined &&
     requestedViews.length > 1;
-  const shouldDisableMascotSideCanonAnchors = (view: CharacterView): boolean =>
-    view !== "front" && (promptBundle.speciesId === "dog" || promptBundle.speciesId === "wolf");
+  const shouldDisableMascotSideCanonAnchors = (view: CharacterView): boolean => {
+    if (view === "front") {
+      return false;
+    }
+    if (promptBundle.speciesId !== "dog" && promptBundle.speciesId !== "wolf") {
+      return false;
+    }
+    return !canUseMascotSideCanonAnchors(promptBundle.speciesId);
+  };
 
   if (supportsReferenceSequential && requestedViews.includes("front")) {
     const frontMasterCandidateCount = Math.max(

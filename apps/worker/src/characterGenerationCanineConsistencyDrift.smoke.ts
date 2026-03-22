@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   hasBlockingConsistencyRecoveryIssue,
   isConsistencyCriticalShapeDrift,
+  shouldDowngradeCanineSideStyleDrift,
+  shouldDowngradeCanineThreeQuarterFrontCollapseRisk,
   shouldDowngradeCanineSideCriticalShapeDrift
 } from "./characterGeneration";
 
@@ -87,6 +89,74 @@ assert.equal(
   }),
   true,
   "severe canine drift should still be rejected"
+);
+
+assert.equal(
+  shouldDowngradeCanineThreeQuarterFrontCollapseRisk({
+    speciesId: "dog",
+    view: "threeQuarter",
+    referenceScore: 0.5166,
+    subjectIsolationScore: 0.9997,
+    speciesScore: 0.4618,
+    speciesMuzzleScore: 0.7063,
+    speciesSilhouetteScore: 0.5641,
+    targetStyleScore: 0.7832,
+    pawStabilityScore: 0.8756
+  }),
+  true,
+  "dog three-quarter candidates with strong isolation, muzzle cues, and consistency should downgrade front-collapse false positives"
+);
+
+assert.equal(
+  shouldDowngradeCanineThreeQuarterFrontCollapseRisk({
+    speciesId: "wolf",
+    view: "threeQuarter",
+    referenceScore: 0.44,
+    subjectIsolationScore: 0.93,
+    speciesScore: 0.41,
+    speciesMuzzleScore: 0.5,
+    speciesSilhouetteScore: 0.48,
+    targetStyleScore: 0.72,
+    pawStabilityScore: 0.7
+  }),
+  false,
+  "canine collapse downgrade should stay off when the side-view evidence is still weak"
+);
+
+assert.equal(
+  shouldDowngradeCanineSideStyleDrift({
+    speciesId: "dog",
+    view: "threeQuarter",
+    consistencyScore: 0.8363,
+    subjectIsolationScore: 1,
+    speciesScore: 0.4308,
+    speciesMuzzleScore: 0.6541,
+    speciesSilhouetteScore: 0.5162,
+    targetStyleScore: 0.7799,
+    paletteScore: 0.6988,
+    monochromeScore: 0.9848,
+    paletteComplexityScore: 0
+  }),
+  true,
+  "dog side views should not be marked as style drift when the only mismatch is palette complexity on otherwise strong monochrome reference-preserving results"
+);
+
+assert.equal(
+  shouldDowngradeCanineSideStyleDrift({
+    speciesId: "dog",
+    view: "profile",
+    consistencyScore: 0.74,
+    subjectIsolationScore: 1,
+    speciesScore: 0.52,
+    speciesMuzzleScore: 0.87,
+    speciesSilhouetteScore: 0.47,
+    targetStyleScore: 0.73,
+    paletteScore: 0.72,
+    monochromeScore: 0.98,
+    paletteComplexityScore: 0
+  }),
+  false,
+  "canine style drift downgrade should stay off when overall side consistency is still too weak"
 );
 
 assert.equal(

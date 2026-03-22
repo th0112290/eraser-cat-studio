@@ -623,6 +623,7 @@ function buildCandidateBankManifest(input: {
   phase: CandidateBankGenerationPhase;
 }): MascotReferenceBankManifest {
   const speciesProfile = resolveMascotSpeciesProfile(input.speciesId);
+  const now = new Date().toISOString();
   const generatedNote = `${input.speciesId} candidate bank staged from ${input.providerName} preset ${input.presetId} on ${new Date().toISOString().slice(0, 10)}`;
   const styleExists = fs.existsSync(path.join(input.candidateDir, "style_front_primary.png"));
   const frontExists = fs.existsSync(path.join(input.candidateDir, "family_front_primary.png"));
@@ -680,6 +681,17 @@ function buildCandidateBankManifest(input: {
     canonStage,
     qualityStatus,
     frontApproval: input.phase === "family_views" ? input.current.frontApproval : undefined,
+    familyViewApproval:
+      input.phase === "family_views" && allRequiredExist && !input.keepScaffoldOnly
+        ? {
+            approvedAt: now,
+            approvalMode: "generated",
+            qualityStatus,
+            note: "family side views were regenerated from the approved front master and marked ready for canonical promotion"
+          }
+        : input.phase === "family_views"
+          ? input.current.familyViewApproval
+          : undefined,
     visualQc: input.phase === "family_views" ? input.current.visualQc : undefined,
     notes: mergeUniqueNotes(input.current.notes, [
       generatedNote,

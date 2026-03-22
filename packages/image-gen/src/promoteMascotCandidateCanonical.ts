@@ -6,6 +6,7 @@ import {
   resolveMascotReferenceBankManifest,
   resolveMascotReferenceRequirementStatuses
 } from "./mascotReferenceBank";
+import { evaluateMascotFamilyViewsCanon, evaluateMascotFrontCanon } from "./mascotReferenceCanonQc";
 import type { MascotReferenceAssetEntry, MascotReferenceBankManifest, MascotSpeciesId } from "./types";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -158,12 +159,34 @@ async function run(): Promise<void> {
       throw new Error(`Unable to read candidate manifest for ${speciesId}: ${candidateManifestPath}`);
     }
 
+    const frontPath = path.join(candidateDir, "style_front_primary.png");
+    const familyFrontPath = path.join(candidateDir, "family_front_primary.png");
+    const heroPath = path.join(candidateDir, "hero_front_primary.png");
+    const frontVisualQc = await evaluateMascotFrontCanon({
+      speciesId,
+      frontAssetPath: frontPath,
+      familyFrontAssetPath: familyFrontPath,
+      heroAssetPath: heroPath
+    });
+    const threeQuarterPath = path.join(candidateDir, "family_threeQuarter_primary.png");
+    const profilePath = path.join(candidateDir, "family_profile_primary.png");
+    const familyViewsPresent = fs.existsSync(threeQuarterPath) && fs.existsSync(profilePath);
+    const familyVisualQc = familyViewsPresent
+      ? await evaluateMascotFamilyViewsCanon({
+          speciesId,
+          threeQuarterAssetPath: threeQuarterPath,
+          profileAssetPath: profilePath
+        })
+      : null;
+
     const ready =
       diagnostics.variant === "candidate" &&
       diagnostics.status === "species_ready" &&
       diagnostics.canonStage === "species_ready" &&
       diagnostics.qualityStatus === "approved" &&
       diagnostics.frontApproved &&
+      frontVisualQc.passed &&
+      (!familyVisualQc || familyVisualQc.passed) &&
       requirementStatuses.every((entry) => entry.satisfied);
 
     const failedChecks = [
@@ -172,6 +195,8 @@ async function run(): Promise<void> {
       diagnostics.canonStage !== "species_ready" ? `canonStage:${diagnostics.canonStage}` : null,
       diagnostics.qualityStatus !== "approved" ? `qualityStatus:${diagnostics.qualityStatus}` : null,
       !diagnostics.frontApproved ? "front_not_approved" : null,
+      !frontVisualQc.passed ? "front_visual_qc_failed" : null,
+      familyVisualQc && !familyVisualQc.passed ? "family_view_visual_qc_failed" : null,
       ...requirementStatuses.filter((entry) => !entry.satisfied).map((entry) => `missing:${entry.slotId}`)
     ].filter((entry): entry is string => Boolean(entry));
 
@@ -212,7 +237,9 @@ async function run(): Promise<void> {
       forced: !ready && force,
       candidateManifestPath,
       canonicalManifestPath,
-      failedChecks
+      failedChecks,
+      frontVisualQcOverallScore: frontVisualQc.overallScore,
+      familyVisualQcOverallScore: familyVisualQc?.overallScore
     });
   }
 
