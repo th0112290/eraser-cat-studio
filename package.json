@@ -39,7 +39,6 @@
     "smoke:ui:up": "node --input-type=module -e \"process.env.SMOKE_DB_MODE='up'; await import('./scripts/smokeUiRoutes.mjs');\"",
     "smoke:ui:capture": "node scripts/captureUiSnapshots.mjs",
     "smoke:ui:visual": "node scripts/smokeUiVisualContract.mjs",
-    "smoke:ui:capture": "node scripts/captureUiSnapshots.mjs",
     "comfy:adapter": "node scripts/comfyAdapter.mjs",
     "comfy:preflight": "node scripts/comfyPreflight.mjs",
     "comfy:download:text-encoders": "node scripts/comfyDownloadFluxTextEncoders.mjs",
