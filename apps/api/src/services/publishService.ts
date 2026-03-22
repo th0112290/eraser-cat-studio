@@ -198,6 +198,50 @@ async function readArtifactsIndex(root: string): Promise<Array<{ name: string; t
     });
 }
 
+function toRepoRelativePath(filePath: string | null | undefined): string | null {
+  if (!filePath || filePath.trim().length === 0) {
+    return null;
+  }
+  const repoRoot = getRepoRoot();
+  const resolvedPath = path.resolve(filePath);
+  const relativePath = path.relative(repoRoot, resolvedPath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    return null;
+  }
+  return relativePath.replace(/\\/g, "/");
+}
+
+function toArtifactsUrl(filePath: string | null | undefined): string | null {
+  const relativePath = toRepoRelativePath(filePath);
+  if (!relativePath || !relativePath.startsWith("out/")) {
+    return null;
+  }
+  const artifactRelativePath = relativePath.slice("out/".length);
+  const segments = artifactRelativePath.split("/").filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return null;
+  }
+  return `${STATIC_ARTIFACTS_PREFIX}${segments.map((segment) => encodeURIComponent(segment)).join("/")}`;
+}
+
+function sanitizeUploadManifest(manifest: UploadManifest | null): UploadManifest | null {
+  if (!manifest) {
+    return null;
+  }
+  return {
+    ...manifest,
+    thumbnail: {
+      ...manifest.thumbnail,
+      sourceFramePath: toRepoRelativePath(manifest.thumbnail.sourceFramePath),
+      outputPath: toRepoRelativePath(manifest.thumbnail.outputPath) ?? path.basename(manifest.thumbnail.outputPath)
+    },
+    artifacts: {
+      ...manifest.artifacts,
+      renderOutputPath: toRepoRelativePath(manifest.artifacts.renderOutputPath)
+    }
+  };
+}
+
 function registerArtifactsIndexRoutes(app: FastifyInstance): void {
   const artifactsRoot = getStaticArtifactsRoot();
 
@@ -1088,7 +1132,8 @@ export function registerPublishRoutes(input: {
           episodeStatus: episode.status,
           preview: {
             exists: previewExists,
-            path: previewPath
+            path: toRepoRelativePath(previewPath),
+            url: previewExists ? toArtifactsUrl(previewPath) : null
           },
           latestJob: latestJob
             ? {
@@ -1196,8 +1241,9 @@ export function registerPublishRoutes(input: {
                 status: existingPublishJob.status,
                 publishAt: plannedPublishAtIso,
                 jobId: existingPublishJob.id,
-                manifestPath: details.manifestPath,
-                manifest,
+                manifestPath: toRepoRelativePath(details.manifestPath),
+                manifestUrl: toArtifactsUrl(details.manifestPath),
+                manifest: sanitizeUploadManifest(manifest),
                 idempotent: true
               }
             };
@@ -1437,8 +1483,9 @@ export function registerPublishRoutes(input: {
             finishedAt: latestPublishJob.finishedAt,
             lastError: latestPublishJob.lastError
           },
-          manifestPath: details.manifestPath,
-          manifest
+          manifestPath: toRepoRelativePath(details.manifestPath),
+          manifestUrl: toArtifactsUrl(details.manifestPath),
+          manifest: sanitizeUploadManifest(manifest)
         }
       };
     } catch (error) {

@@ -9,6 +9,7 @@ import { createValidator } from "@ec/shared";
 import { autoScheduleSeason } from "./services/scheduleService";
 import type { EpisodeJobPayload } from "./services/scheduleService";
 import { buildWeeklyReport, startOfUtcWeek, weeklyReportToCsv } from "./services/reportService";
+import { enforceApiAccess, resolveApiListenHost } from "./services/apiAccessControl";
 import { registerPublishRoutes } from "./services/publishService";
 import { apiQueueRetentionOptions } from "./services/jobRetention";
 import { isDbUnavailableError } from "./routes/ui/dbFallback";
@@ -29,9 +30,11 @@ const {
   ExperimentStatus: ExperimentStatusRuntime
 } = prismaModule;
 
-const API_HOST = process.env.API_HOST ?? "0.0.0.0";
+const REQUESTED_API_HOST = process.env.API_HOST ?? "0.0.0.0";
 const API_PORT = Number.parseInt(process.env.API_PORT ?? "3000", 10);
 const API_KEY = process.env.API_KEY?.trim() ?? "";
+const API_BINDING = resolveApiListenHost({ apiHost: REQUESTED_API_HOST, apiKey: API_KEY });
+const API_HOST = API_BINDING.host;
 const DEFAULT_REDIS_URL = "redis://127.0.0.1:6379";
 const DATABASE_URL = process.env.DATABASE_URL;
 const QUEUE_NAME =
@@ -79,109 +82,6 @@ class ApiError extends Error {
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readProvidedApiKey(request: { headers: Record<string, unknown> }): string {
-  const rawValue = request.headers["x-api-key"];
-  const providedKey = Array.isArray(rawValue) ? rawValue[0] : rawValue;
-  return typeof providedKey === "string" ? providedKey.trim() : "";
-}
-
-function hasValidApiKey(request: { headers: Record<string, unknown> }): boolean {
-  return API_KEY.length > 0 && readProvidedApiKey(request) === API_KEY;
-}
-
-function isLoopbackAddress(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-  const normalized = value.trim().toLowerCase().replace(/^::ffff:/, "");
-  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
-}
-
-function isOperatorSurfaceRoute(routePath: string): boolean {
-  return routePath.startsWith("/ui") || routePath.startsWith("/artifacts");
-}
-
-function isSafeMethod(method: string): boolean {
-  return method === "GET" || method === "HEAD" || method === "OPTIONS";
-}
-
-function matchesRequestHost(urlValue: string | undefined, host: string | undefined): boolean {
-  if (!urlValue || !host) {
-    return false;
-  }
-  try {
-    const parsed = new URL(urlValue);
-    return parsed.host.trim().toLowerCase() === host.trim().toLowerCase();
-  } catch {
-    return false;
-  }
-}
-
-function isLoopbackRequest(request: {
-  ip?: string;
-  raw?: { socket?: { remoteAddress?: string | null } };
-  headers: Record<string, unknown>;
-}): boolean {
-  if (isLoopbackAddress(request.ip)) {
-    return true;
-  }
-  const remoteAddress =
-    request.raw && request.raw.socket && typeof request.raw.socket.remoteAddress === "string"
-      ? request.raw.socket.remoteAddress
-      : undefined;
-  if (isLoopbackAddress(remoteAddress)) {
-    return true;
-  }
-  const hostHeader = request.headers.host;
-  const hostValue = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
-  if (typeof hostValue === "string") {
-    const hostOnly = hostValue.split(":", 2)[0];
-    if (isLoopbackAddress(hostOnly)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function enforceOperatorSurfaceAccess(request: {
-  method: string;
-  headers: Record<string, unknown>;
-  ip?: string;
-  raw?: { socket?: { remoteAddress?: string | null } };
-}): void {
-  if (hasValidApiKey(request)) {
-    return;
-  }
-
-  if (!isLoopbackRequest(request)) {
-    throw new ApiError(403, "Operator surface is restricted to loopback clients");
-  }
-
-  if (isSafeMethod(request.method)) {
-    return;
-  }
-
-  const rawHost = request.headers.host;
-  const host = Array.isArray(rawHost) ? rawHost[0] : rawHost;
-  const rawOrigin = request.headers.origin;
-  const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
-  const rawReferer = request.headers.referer;
-  const referer = Array.isArray(rawReferer) ? rawReferer[0] : rawReferer;
-
-  if (!origin && !referer) {
-    return;
-  }
-
-  if (matchesRequestHost(origin, typeof host === "string" ? host : undefined)) {
-    return;
-  }
-  if (matchesRequestHost(referer, typeof host === "string" ? host : undefined)) {
-    return;
-  }
-
-  throw new ApiError(403, "Cross-site operator mutation blocked");
 }
 
 function hasFields(value: object): boolean {
@@ -787,16 +687,19 @@ const queueFacade = {
 
 app.addHook("preHandler", async (request) => {
   const routePath = request.routeOptions?.url ?? "";
-  if (isOperatorSurfaceRoute(routePath)) {
-    enforceOperatorSurfaceAccess(request);
-  }
-
-  if (API_KEY.length === 0) {
-    return;
-  }
-
-  if (!hasValidApiKey(request)) {
-    throw new ApiError(401, "Unauthorized");
+  try {
+    enforceApiAccess({
+      request,
+      routePath,
+      apiKey: API_KEY,
+      apiPort: API_PORT,
+      listenHost: API_HOST
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number") {
+      throw new ApiError(error.statusCode, error instanceof Error ? error.message : String(error));
+    }
+    throw error;
   }
 });
 
@@ -2096,11 +1999,14 @@ async function start(): Promise<void> {
   await app.listen({ host: API_HOST, port: API_PORT });
   app.log.info(
     {
+      requestedHost: REQUESTED_API_HOST,
       host: API_HOST,
       port: API_PORT,
       queue: QUEUE_NAME,
       redis: redisHealth,
-      authEnabled: API_KEY.length > 0
+      authEnabled: API_KEY.length > 0,
+      localOnlyMode: API_BINDING.localOnlyMode,
+      forcedLocalBinding: API_BINDING.forcedLocalBinding
     },
     "API server started"
   );
