@@ -13,7 +13,8 @@
     "pipeline:mvp": "pnpm exec tsx src/runImageToAnimationMvp.ts",
     "pipeline:render-accepted": "pnpm exec tsx src/renderAcceptedCharacterShort.ts",
     "pipeline:render-sidecar-placeholder": "pnpm exec tsx src/renderAcceptedCharacterSidecarPlaceholder.ts",
-    "pipeline:smoke": "pnpm exec tsx src/smokeGeneratedCharacterPipeline.ts"
+    "pipeline:smoke": "pnpm exec tsx src/smokeGeneratedCharacterPipeline.ts",
+    "remoteapi:smoke": "pnpm exec tsx src/remoteApiProvider.smoke.ts"
   },
   "dependencies": {
     "@ec/render-orchestrator": "workspace:*",

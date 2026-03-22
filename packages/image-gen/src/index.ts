@@ -16,6 +16,7 @@ import {
   approveFrontMaster
 } from "./generatedCharacterPipeline";
 import { MockCharacterGenerationProvider } from "./mockProvider";
+import { RemoteApiCharacterGenerationProvider } from "./remoteApiProvider";
 import {
   buildMascotReferenceBankReviewPlan,
   resolveEffectiveMascotReferenceBankStatus,
@@ -63,6 +64,10 @@ export type CreateCharacterProviderInput = {
     timeoutMs?: number;
     maxRetries?: number;
     estimatedCostUsdPerImage?: number;
+    model?: string;
+    imageSize?: string;
+    quality?: string;
+    outputFormat?: string;
   };
 };
 
@@ -71,8 +76,16 @@ export function createCharacterProvider(input: CreateCharacterProviderInput): Ch
     return new ComfyUiCharacterGenerationProvider(input.comfyUiUrl);
   }
 
+  if (input.provider === "remoteApi") {
+    return new RemoteApiCharacterGenerationProvider(input.remoteApi ?? {});
+  }
+
   if (!input.provider && input.comfyUiUrl && input.comfyUiUrl.trim().length > 0) {
     return new ComfyUiCharacterGenerationProvider(input.comfyUiUrl);
+  }
+
+  if (!input.provider && input.remoteApi?.baseUrl && input.remoteApi.baseUrl.trim().length > 0) {
+    return new RemoteApiCharacterGenerationProvider(input.remoteApi);
   }
 
   return new MockCharacterGenerationProvider();

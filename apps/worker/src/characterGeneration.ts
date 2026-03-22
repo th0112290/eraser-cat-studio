@@ -4890,19 +4890,31 @@ function getRemoteApiConfig(): {
   headerName: string;
   headerValuePrefix: string;
   timeoutMs: number;
+  model?: string;
+  imageSize?: string;
+  quality?: string;
+  outputFormat?: string;
 } {
   const baseUrl = process.env.IMAGEGEN_REMOTE_BASE_URL?.trim();
   const apiKey = process.env.IMAGEGEN_REMOTE_API_KEY?.trim();
   const headerName = process.env.IMAGEGEN_REMOTE_HEADER_NAME?.trim() || "Authorization";
   const headerValuePrefix = process.env.IMAGEGEN_REMOTE_HEADER_VALUE_PREFIX ?? "Bearer ";
   const timeoutMs = toPositiveInt(process.env.IMAGEGEN_REMOTE_TIMEOUT_MS, 60_000);
+  const model = process.env.IMAGEGEN_REMOTE_MODEL?.trim();
+  const imageSize = process.env.IMAGEGEN_REMOTE_IMAGE_SIZE?.trim();
+  const quality = process.env.IMAGEGEN_REMOTE_QUALITY?.trim();
+  const outputFormat = process.env.IMAGEGEN_REMOTE_OUTPUT_FORMAT?.trim();
 
   return {
     ...(baseUrl ? { baseUrl } : {}),
     ...(apiKey ? { apiKey } : {}),
     headerName,
     headerValuePrefix,
-    timeoutMs
+    timeoutMs,
+    ...(model ? { model } : {}),
+    ...(imageSize ? { imageSize } : {}),
+    ...(quality ? { quality } : {}),
+    ...(outputFormat ? { outputFormat } : {})
   };
 }
 
