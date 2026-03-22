@@ -10,7 +10,8 @@
     "candidate replacement bank for dog canon",
     "drop premium-api generated front/threeQuarter/profile/style/hero assets here, then enable with MASCOT_REFERENCE_BANK_CANDIDATES=dog",
     "dog candidate bank staged from vertexImagen preset mascot-bank-canon-premium on 2026-03-22",
-    "generated candidate assets are staged for manual review before promotion"
+    "generated candidate assets are staged for manual review before promotion",
+    "front master first workflow: style.front.primary establishes identity, remaining slots derive from the approved front master"
   ],
   "requiredAssets": [
     {

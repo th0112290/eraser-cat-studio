@@ -4,14 +4,14 @@ const DEFAULT_SPECIES_ID: MascotSpeciesId = "cat";
 const BASE_FAMILY_ID = "compact_doodle_mascot_v2";
 
 const FAMILY_POSITIVE_BASE = [
-  "cute mascot character",
-  "compact oversized head",
-  "small rounded body",
+  "minimal offbeat mascot character",
+  "compact oversized boxy head",
+  "small simple body",
   "stubby tube arms and legs",
   "paw or mitten hands only",
-  "clean black outline on a light plain background",
-  "very simple readable face",
-  "single sticker-like silhouette"
+  "rough black outline on a light plain background",
+  "very simple readable deadpan face",
+  "single centered mascot"
 ];
 
 const FAMILY_NEGATIVE_BASE = [
@@ -35,6 +35,12 @@ const FAMILY_NEGATIVE_BASE = [
   "icon grid",
   "logo",
   "text",
+  "sticker border",
+  "white outline",
+  "drop shadow",
+  "plush toy look",
+  "glossy vector finish",
+  "big expressive eyes",
   "symbol only",
   "double face parts",
   "detached ear",
@@ -443,12 +449,13 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     label: "Dog",
     referenceBankId: "dog_mascot_bank_v1",
     positiveTokens: [
-      "compact dog head silhouette",
-      "soft rounded dog ears",
-      "short rounded puppy muzzle",
+      "compact boxy dog head silhouette",
+      "soft rounded-base dog ears",
+      "short blunt puppy muzzle",
       "tiny button nose",
-      "friendly domestic dog silhouette",
-      "stubby front arms with mitten paws"
+      "domestic dog silhouette",
+      "stubby front arms with mitten paws",
+      "deadpan mascot face"
     ],
     negativeTokens: [
       "cat whiskers",
@@ -459,10 +466,19 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "rabbit ears",
       "bunny ears",
       "rabbit face",
+      "plush toy look",
+      "glossy sticker mascot",
+      "big expressive eyes",
       "missing arm",
       "detached limb"
     ],
-    identityTokens: ["soft dog ears", "short puppy muzzle", "tiny button nose", "visible short front arms"],
+    identityTokens: [
+      "same boxy dog head",
+      "soft dog ears",
+      "short blunt puppy muzzle",
+      "tiny button nose",
+      "visible short front arms"
+    ],
     anchorTokens: [
       "same dog ear placement",
       "same puppy muzzle width",
@@ -472,7 +488,9 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     guardrails: [
       "do not drift back to a cat whisker-face",
       "do not lengthen the muzzle into wolf territory",
-      "keep the dog muzzle rounded and short",
+      "keep the dog muzzle blunt and short",
+      "keep the head boxy instead of plush and circular",
+      "keep the face deadpan with tiny features",
       "keep both front arms and both paws readable when the pose shows them",
       "do not turn the dog into a rabbit with tall narrow ears"
     ],
@@ -486,8 +504,9 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     },
     keepTraits: [
       "compact dog head",
+      "boxy dog head",
       "soft dog ears",
-      "short rounded puppy muzzle",
+      "short blunt puppy muzzle",
       "tiny button nose",
       "tiny body and short limbs",
       "stubby front arms"
@@ -500,6 +519,9 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "rabbit ears",
       "bunny ears",
       "human fingers",
+      "plush toy look",
+      "glossy vector finish",
+      "big expressive eyes",
       "missing arm",
       "detached limb",
       "multiple characters"
@@ -533,11 +555,12 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     label: "Wolf",
     referenceBankId: "wolf_mascot_bank_v1",
     positiveTokens: [
-      "compact wolf head silhouette",
+      "compact boxy wolf head silhouette",
       "taller sharp upright ears",
       "short angular wedge muzzle",
       "alert cute wolf silhouette",
-      "broad wolf cheek ruff"
+      "broad wolf cheek ruff",
+      "deadpan mascot face"
     ],
     negativeTokens: [
       "floppy dog ears",
@@ -547,13 +570,24 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "fox face",
       "fox muzzle",
       "fox ears",
-      "puppy face"
+      "puppy face",
+      "plush toy look",
+      "glossy sticker mascot",
+      "big expressive eyes"
     ],
-    identityTokens: ["tall wolf ears", "short angular wedge muzzle", "alert wolf silhouette", "broad wolf cheek ruff"],
+    identityTokens: [
+      "same boxy wolf head",
+      "tall wolf ears",
+      "short angular wedge muzzle",
+      "alert wolf silhouette",
+      "broad wolf cheek ruff"
+    ],
     anchorTokens: ["same wolf ear angle", "same wedge muzzle width", "same wolf face direction"],
     guardrails: [
       "keep the muzzle only slightly longer, not realistic",
       "do not round the wolf into a puppy face",
+      "keep the head broad and boxy instead of plush and circular",
+      "keep the face deadpan with tiny features",
       "do not add cat whisker-face cues",
       "do not turn the wolf into a fox with a narrow sly face",
       "keep the wolf cheeks broad and the face short, not sly or narrow"
@@ -568,6 +602,7 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
     },
     keepTraits: [
       "compact wolf head",
+      "boxy wolf head",
       "tall upright ears",
       "short angular wedge muzzle",
       "alert silhouette",
@@ -581,6 +616,9 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "fox face",
       "fox muzzle",
       "fox ears",
+      "plush toy look",
+      "glossy vector finish",
+      "big expressive eyes",
       "human fingers",
       "multiple characters"
     ],

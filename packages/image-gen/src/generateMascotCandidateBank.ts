@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import {
   buildCharacterPrompt,
   createCharacterProvider,
@@ -26,7 +27,56 @@ type CandidateBankAssetPlan = {
   fileName: string;
   promptAdditions: string[];
   negativeAdditions?: string[];
+  deriveFromFrontMaster?: boolean;
+  candidateCountOverride?: number;
 };
+
+type GeneratedReferenceAsset = {
+  filePath: string;
+  mimeType: string;
+  base64: string;
+  width: number;
+  height: number;
+};
+
+const FRONT_MASTER_SLOT_ID = "style.front.primary";
+
+const SHARED_STYLE_LOCK_TOKENS = [
+  "minimal offbeat monochrome mascot",
+  "large boxy rounded-square head with a flatter top and straighter sides",
+  "tiny simple body",
+  "short stubby limbs",
+  "deadpan face",
+  "two tiny vertical oval eyes",
+  "short straight mouth",
+  "rough slightly uneven black outline",
+  "flat white fill",
+  "plain light gray background",
+  "naive doodle finish",
+  "minimal anatomy only"
+];
+
+const SHARED_STYLE_LOCK_NEGATIVE = [
+  "sticker border",
+  "white outline",
+  "drop shadow",
+  "glossy vector finish",
+  "polished mascot design",
+  "commercial mascot look",
+  "plush toy look",
+  "big sparkling eyes",
+  "highly expressive face",
+  "soft rounded plush proportions",
+  "detailed shading",
+  "gradient shading",
+  "3d render",
+  "realistic fur",
+  "multiple characters",
+  "comparison panels",
+  "turnaround sheet",
+  "text",
+  "logo"
+];
 
 const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
   {
@@ -35,13 +85,17 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     view: "front",
     fileName: "style_front_primary.png",
     promptAdditions: [
-      "canonical house style front reference",
+      "approved front master bank seed",
+      "strict front view",
       "neutral standing pose",
       "both short arms visible",
       "both paws visible and attached",
       "full body visible",
-      "clean centered sticker silhouette"
-    ]
+      "clean centered composition",
+      "no prop",
+      "no emotion"
+    ],
+    candidateCountOverride: 2
   },
   {
     slotId: "family.front.primary",
@@ -49,13 +103,16 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     view: "front",
     fileName: "family_front_primary.png",
     promptAdditions: [
+      "derive from the supplied front master without redesign",
       "front composition anchor",
       "full body visible",
       "centered composition",
       "readable body proportion",
       "readable paws",
-      "friendly neutral mascot pose"
-    ]
+      "same neutral mascot pose"
+    ],
+    deriveFromFrontMaster: true,
+    candidateCountOverride: 1
   },
   {
     slotId: "family.threeQuarter.primary",
@@ -63,12 +120,15 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     view: "threeQuarter",
     fileName: "family_threeQuarter_primary.png",
     promptAdditions: [
+      "derive from the supplied front master without redesign",
       "three-quarter composition anchor",
       "full body visible",
       "clear torso yaw",
       "no near-front collapse",
       "preserve the same body proportion and silhouette family"
-    ]
+    ],
+    deriveFromFrontMaster: true,
+    candidateCountOverride: 1
   },
   {
     slotId: "family.profile.primary",
@@ -76,12 +136,15 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     view: "profile",
     fileName: "family_profile_primary.png",
     promptAdditions: [
+      "derive from the supplied front master without redesign",
       "profile composition anchor",
       "full body visible",
       "one-eye side profile only",
       "clean readable silhouette",
       "preserve the same body proportion and silhouette family"
-    ]
+    ],
+    deriveFromFrontMaster: true,
+    candidateCountOverride: 1
   },
   {
     slotId: "hero.front.primary",
@@ -89,6 +152,7 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     view: "front",
     fileName: "hero_front_primary.png",
     promptAdditions: [
+      "derive from the supplied front master without redesign",
       "front hero identity reference",
       "head and upper torso emphasized",
       "face detail readable",
@@ -103,12 +167,15 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
       "turnaround sheet",
       "fur hatching",
       "dense texture"
-    ]
+    ],
+    deriveFromFrontMaster: true,
+    candidateCountOverride: 1
   }
 ];
 
 const SPECIES_PLAN_ADDITIONS: Record<MascotSpeciesId, string[]> = {
   cat: [
+    "boxy rounded-square cat head",
     "near-square cat head",
     "pointed cat ears",
     "very short cat muzzle",
@@ -116,28 +183,36 @@ const SPECIES_PLAN_ADDITIONS: Record<MascotSpeciesId, string[]> = {
     "eraser-crumb tail silhouette"
   ],
   dog: [
-    "domestic puppy mascot",
-    "soft rounded dog ears",
-    "short rounded puppy muzzle",
+    "domestic dog mascot",
+    "boxy rounded-square dog head",
+    "soft rounded-base dog ears",
+    "short blunt puppy muzzle",
     "tiny button nose",
-    "cute domestic dog silhouette",
+    "domestic dog silhouette",
+    "deadpan face",
     "not a wolf",
     "not a rabbit",
     "both eyes same size",
-    "no eye patch marking"
+    "no eye patch marking",
+    "not plush",
+    "not glossy"
   ],
   wolf: [
     "alert wolf mascot",
+    "boxy broad wolf head",
     "upright wolf ears",
     "short angular wedge muzzle",
     "broad wolf cheek ruff",
-    "cute wolf silhouette",
+    "deadpan face",
+    "wolf silhouette",
     "not a dog",
     "not a fox",
     "minimal fur detail only",
     "no fur hatching",
     "broader wolf head instead of a narrow fox face",
-    "simple tail with no furry texture"
+    "simple tail with no furry texture",
+    "not plush",
+    "not glossy"
   ]
 };
 
@@ -267,6 +342,46 @@ function extensionForMimeType(mimeType: string): string {
   return "bin";
 }
 
+function mimeTypeForFilePath(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".png") {
+    return "image/png";
+  }
+  if (ext === ".jpg" || ext === ".jpeg") {
+    return "image/jpeg";
+  }
+  if (ext === ".webp") {
+    return "image/webp";
+  }
+  return "application/octet-stream";
+}
+
+async function loadReferenceAsset(filePath: string): Promise<GeneratedReferenceAsset> {
+  const buffer = fs.readFileSync(filePath);
+  const metadata = await sharp(buffer).metadata();
+  return {
+    filePath,
+    mimeType: mimeTypeForFilePath(filePath),
+    base64: buffer.toString("base64"),
+    width: metadata.width ?? 1024,
+    height: metadata.height ?? 1024
+  };
+}
+
+async function createOpaqueMaskBase64(width: number, height: number): Promise<string> {
+  const buffer = await sharp({
+    create: {
+      width: Math.max(1, width),
+      height: Math.max(1, height),
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    }
+  })
+    .png()
+    .toBuffer();
+  return buffer.toString("base64");
+}
+
 function mergeUniqueNotes(existing: string[] | undefined, next: string[]): string[] {
   return [...new Set([...(existing ?? []), ...next])];
 }
@@ -316,6 +431,40 @@ function buildProvider(): { provider: ReturnType<typeof createCharacterProvider>
   return { provider, providerName };
 }
 
+function buildSlotPromptBundle(input: {
+  speciesId: MascotSpeciesId;
+  presetId: string;
+  slot: CandidateBankAssetPlan;
+  referenceDriven: boolean;
+}): ReturnType<typeof buildCharacterPrompt> {
+  const positivePrompt = [
+    ...SHARED_STYLE_LOCK_TOKENS,
+    ...SPECIES_PLAN_ADDITIONS[input.speciesId],
+    ...(input.referenceDriven
+      ? [
+          "preserve the supplied front master identity",
+          "same head shape",
+          "same ear shape",
+          "same face scale",
+          "same body proportion",
+          "same line personality",
+          "no redesign"
+        ]
+      : ["establish the canonical front master identity"]),
+    ...input.slot.promptAdditions
+  ].join(", ");
+
+  const negativePrompt = [...SHARED_STYLE_LOCK_NEGATIVE, ...(input.slot.negativeAdditions ?? [])].join(", ");
+
+  return buildCharacterPrompt({
+    mode: input.referenceDriven ? "reference" : "new",
+    presetId: input.presetId,
+    speciesId: input.speciesId,
+    positivePrompt,
+    negativePrompt
+  });
+}
+
 function buildCandidateBankManifest(input: {
   current: MascotReferenceBankManifest;
   speciesId: MascotSpeciesId;
@@ -333,6 +482,7 @@ function buildCandidateBankManifest(input: {
     bankStatus: input.keepScaffoldOnly ? "scaffold_only" : "species_ready",
     notes: mergeUniqueNotes(input.current.notes, [
       generatedNote,
+      `front master first workflow: ${FRONT_MASTER_SLOT_ID} establishes identity, remaining slots derive from the approved front master`,
       input.keepScaffoldOnly
         ? "generated candidate assets are staged for manual review before promotion"
         : "generated candidate assets were promoted ready for species rollout"
@@ -424,25 +574,45 @@ async function run(): Promise<void> {
     ensureDir(outDir);
 
     const generationRecords: Array<Record<string, unknown>> = [];
-    const activePlans =
+    const activePlansRaw =
       slotSelection.size > 0 ? BASE_ASSET_PLANS.filter((entry) => slotSelection.has(entry.slotId)) : BASE_ASSET_PLANS;
+    const activePlans = [
+      ...activePlansRaw.filter((entry) => entry.slotId === FRONT_MASTER_SLOT_ID),
+      ...activePlansRaw.filter((entry) => entry.slotId !== FRONT_MASTER_SLOT_ID)
+    ];
     if (activePlans.length === 0) {
       throw new Error(`No matching asset slots selected for species=${speciesId}.`);
     }
 
+    const explicitFrontMasterPath = getArgValue("front-master-path");
+    let frontMasterAsset: GeneratedReferenceAsset | null = null;
+    let frontMasterMaskBase64: string | null = null;
+
     for (const [slotIndex, slot] of activePlans.entries()) {
-      const slotPromptBundle = buildCharacterPrompt({
-        mode: "new",
-        presetId,
+      if (slot.deriveFromFrontMaster && !frontMasterAsset) {
+        const existingFrontMasterPath =
+          explicitFrontMasterPath ?? path.join(candidateDir, BASE_ASSET_PLANS[0].fileName);
+        if (!fs.existsSync(existingFrontMasterPath)) {
+          throw new Error(
+            `Cannot derive ${slot.slotId} for ${speciesId} without a front master. Generate ${FRONT_MASTER_SLOT_ID} first or pass --front-master-path.`
+          );
+        }
+        frontMasterAsset = await loadReferenceAsset(existingFrontMasterPath);
+        frontMasterMaskBase64 = await createOpaqueMaskBase64(frontMasterAsset.width, frontMasterAsset.height);
+      }
+
+      const referenceDriven = slot.deriveFromFrontMaster === true;
+      const slotPromptBundle = buildSlotPromptBundle({
         speciesId,
-        positivePrompt: [...SPECIES_PLAN_ADDITIONS[speciesId], ...slot.promptAdditions].join(", "),
-        negativePrompt: slot.negativeAdditions?.join(", ")
+        presetId,
+        slot,
+        referenceDriven
       });
 
       const input: CharacterProviderGenerateInput = {
-        mode: "new",
+        mode: referenceDriven ? "reference" : "new",
         views: [slot.view],
-        candidateCount,
+        candidateCount: slot.candidateCountOverride ?? candidateCount,
         baseSeed: baseSeed + speciesIndex * 10_000 + slotIndex * 1_000,
         speciesId,
         positivePrompt: slotPromptBundle.viewPrompts[slot.view],
@@ -453,7 +623,16 @@ async function run(): Promise<void> {
         viewPrompts: {
           [slot.view]: slotPromptBundle.viewPrompts[slot.view]
         },
-        selectionHints: slotPromptBundle.selectionHints
+        selectionHints: slotPromptBundle.selectionHints,
+        ...(referenceDriven && frontMasterAsset
+          ? {
+              referenceMode: "img2img" as const,
+              referenceImageBase64: frontMasterAsset.base64,
+              referenceMimeType: frontMasterAsset.mimeType,
+              repairMaskImageBase64: frontMasterMaskBase64 ?? undefined,
+              repairMaskMimeType: "image/png" as const
+            }
+          : {})
       };
 
       const result = await provider.generate(input);
@@ -491,10 +670,17 @@ async function run(): Promise<void> {
         targetPath: promotedPath,
         promptPresetId: slotPromptBundle.presetId,
         qualityProfileId: slotPromptBundle.qualityProfile.id,
+        mode: referenceDriven ? "reference" : "new",
+        ...(referenceDriven && frontMasterAsset ? { frontMasterSourcePath: frontMasterAsset.filePath } : {}),
         prompt: slotPromptBundle.viewPrompts[slot.view],
         negativePrompt: slotPromptBundle.negativePrompt,
         generatedCandidates: candidateFiles
       });
+
+      if (slot.slotId === FRONT_MASTER_SLOT_ID) {
+        frontMasterAsset = await loadReferenceAsset(promotedPath);
+        frontMasterMaskBase64 = await createOpaqueMaskBase64(frontMasterAsset.width, frontMasterAsset.height);
+      }
     }
 
     const currentManifest = JSON.parse(fs.readFileSync(bankManifestPath, "utf8")) as MascotReferenceBankManifest;
@@ -516,6 +702,7 @@ async function run(): Promise<void> {
           provider: providerName,
           presetId,
           candidateCount,
+          frontMasterSlotId: FRONT_MASTER_SLOT_ID,
           keepScaffoldOnly,
           generatedAt: new Date().toISOString(),
           outDir,
