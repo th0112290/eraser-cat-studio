@@ -10,6 +10,10 @@ import type { EpisodeJobPayload } from "@ec/shared";
 import { createHitlRerenderJob } from "../services/agentService";
 import { apiQueueRetentionOptions } from "../services/jobRetention";
 import {
+  createExtremeDemoRun,
+  createPublishJob
+} from "../services/operatorWorkflowService";
+import {
   createEpisodeWithInitialJob,
   enqueueEpisodeJob,
   retryEpisodeJob
@@ -3937,15 +3941,18 @@ export function registerUiRoutes(input: RegisterUiRoutesInput): void {
   });
 
   app.post("/ui/actions/demo-extreme", async (_request, reply) => {
-    const res = await injectJson(app, "POST", "/demo/extreme", {});
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `Run Extreme Demo failed (${res.statusCode})`;
-      return reply.code(res.statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
+    try {
+      const result = await createExtremeDemoRun({
+        prisma,
+        queue,
+        queueName
+      });
+      return reply.redirect(`/ui/jobs/${encodeURIComponent(result.jobId)}`);
+    } catch (error) {
+      const statusCode = statusCodeFromError(error);
+      const msg = messageFromError(error, "Run Extreme Demo failed");
+      return reply.code(statusCode).type("text/html; charset=utf-8").send(simpleErrorHtml(msg));
     }
-
-    const jobId = isRecord(res.body) && isRecord(res.body.data) && typeof res.body.data.jobId === "string" ? res.body.data.jobId : null;
-    if (!jobId) return reply.code(500).type("text/html; charset=utf-8").send(simpleErrorHtml("Run Extreme Demo returned no jobId"));
-    return reply.redirect(`/ui/jobs/${encodeURIComponent(jobId)}`);
   });
 
   app.post("/ui/actions/generate-preview", async (request, reply) => {
@@ -6918,13 +6925,17 @@ ${editorOpsOverview ? `<div class="notice">Ops context: ${esc(editorOpsOverview)
       return reply.redirect(`/ui/publish?error=${encodeURIComponent("episodeId is required")}`);
     }
 
-    const res = await injectJson(app, "POST", `/publish/${encodeURIComponent(episodeId)}`, {});
-    if (res.statusCode >= 400) {
-      const msg = isRecord(res.body) && typeof res.body.error === "string" ? res.body.error : `publish failed (${res.statusCode})`;
+    try {
+      await createPublishJob({
+        prisma,
+        episodeId,
+        outputRootDir: path.join(getRepoRoot(), "out", "publish")
+      });
+      return reply.redirect(`/ui/publish?episodeId=${encodeURIComponent(episodeId)}&message=${encodeURIComponent("Publish requested")}`);
+    } catch (error) {
+      const msg = messageFromError(error, "publish failed");
       return reply.redirect(`/ui/publish?episodeId=${encodeURIComponent(episodeId)}&error=${encodeURIComponent(msg)}`);
     }
-
-    return reply.redirect(`/ui/publish?episodeId=${encodeURIComponent(episodeId)}&message=${encodeURIComponent("Publish requested")}`);
   });
   app.get("/ui/jobs/:id", async (request, reply) => {
     const params = isRecord(request.params) ? request.params : {};

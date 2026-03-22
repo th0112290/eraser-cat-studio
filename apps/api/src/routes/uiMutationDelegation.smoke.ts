@@ -33,6 +33,11 @@ const agentServiceSource = readFile(repoFile("../services/agentService.ts"));
 
 const uiExpectations = [
   {
+    marker: 'app.post("/ui/actions/demo-extreme"',
+    include: "createExtremeDemoRun(",
+    label: "ui demo extreme"
+  },
+  {
     marker: 'app.post("/ui/actions/generate-preview"',
     include: "createEpisodeWithInitialJob(",
     label: "ui generate preview"
@@ -66,6 +71,11 @@ const uiExpectations = [
     marker: 'app.post("/ui/episodes/:id/enqueue"',
     include: "enqueueEpisodeJob(",
     label: "ui enqueue"
+  },
+  {
+    marker: 'app.post("/ui/publish"',
+    include: "createPublishJob(",
+    label: "ui publish"
   },
   {
     marker: 'app.post("/ui/jobs/:id/retry"',

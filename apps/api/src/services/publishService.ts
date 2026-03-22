@@ -9,12 +9,12 @@ import { Queue as BullQueue } from "bullmq";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { EpisodeJobPayload } from "./scheduleService";
 import {
-  createPublishManifest,
   MockYouTubeUploader,
   readUploadManifest,
   type UploadManifest
 } from "@ec/publish";
 import { createDefaultNotifier, estimateJobCost } from "@ec/ops";
+import { createExtremeDemoRun, createPublishJob } from "./operatorWorkflowService";
 import { apiQueueRetentionOptions } from "./jobRetention";
 import { registerAnalyticsRoutes } from "./analyticsService";
 import { registerAdminOpsRoutes } from "./adminOpsService";
@@ -889,174 +889,35 @@ export function registerPublishRoutes(input: {
     try {
       const body = request.body === undefined ? {} : requireBodyObject(request.body);
       const alwaysCreateNewEpisode = parseBooleanField(body, "alwaysCreateNewEpisode", false);
-
-      const user = await prisma.user.upsert({
-        where: { email: DEMO_USER_EMAIL },
-        update: { name: DEMO_USER_NAME },
-        create: { email: DEMO_USER_EMAIL, name: DEMO_USER_NAME }
-      });
-
-      const channel =
-        (await prisma.channel.findFirst({
-          where: { userId: user.id, name: DEMO_CHANNEL_NAME },
-          orderBy: { createdAt: "asc" }
-        })) ??
-        (await prisma.channel.create({
-          data: { userId: user.id, name: DEMO_CHANNEL_NAME }
-        }));
-
-      const episode = alwaysCreateNewEpisode
-        ? await prisma.episode.create({
-            data: {
-              channelId: channel.id,
-              topic: DEMO_TOPIC,
-              targetDurationSec: 600
-            }
-          })
-        : ((await prisma.episode.findFirst({
-            where: { channelId: channel.id, topic: DEMO_TOPIC },
-            orderBy: { createdAt: "desc" }
-          })) ??
-          (await prisma.episode.create({
-            data: {
-              channelId: channel.id,
-              topic: DEMO_TOPIC,
-              targetDurationSec: 600
-            }
-          })));
-
-      const activeJob = await prisma.job.findFirst({
-        where: {
-          episodeId: episode.id,
-          type: "GENERATE_BEATS",
-          status: { in: ["QUEUED", "RUNNING"] }
-        },
-        orderBy: { createdAt: "desc" }
-      });
-
-      if (activeJob?.bullmqJobId) {
-        await writeAuditLog({
-          prisma,
-          request,
-          statusCode: 200,
-          success: true,
-          action: "demo.extreme.create",
-          details: {
-            idempotent: true,
-            episodeId: episode.id,
-            jobId: activeJob.id,
-            bullmqJobId: activeJob.bullmqJobId,
-            alwaysCreateNewEpisode
-          }
-        });
-
-        return {
-          data: {
-            idempotent: true,
-            episodeId: episode.id,
-            jobId: activeJob.id,
-            bullmqJobId: activeJob.bullmqJobId,
-            alwaysCreateNewEpisode
-          }
-        };
-      }
-
-      const job =
-        activeJob ??
-        (await prisma.job.create({
-          data: {
-            episodeId: episode.id,
-            type: "GENERATE_BEATS",
-            status: "QUEUED",
-            progress: 0,
-            maxAttempts: DEMO_MAX_ATTEMPTS,
-            retryBackoffMs: DEMO_BACKOFF_MS,
-            ...estimateJobCost({
-              estimatedApiCalls: 2
-            })
-          }
-        }));
-
-      if (!activeJob) {
-        await prisma.jobLog.create({
-          data: {
-            jobId: job.id,
-            level: "info",
-            message: "Transition -> QUEUED",
-            details: {
-              source: "api:demo:extreme",
-              maxAttempts: job.maxAttempts,
-              backoffMs: job.retryBackoffMs
-            } as Prisma.InputJsonValue
-          }
-        });
-      }
-
-      const queued = await enqueueWithIdempotency(
+      const result = await createExtremeDemoRun({
+        prisma,
         queue,
-        "GENERATE_BEATS",
-        {
-          jobDbId: job.id,
-          episodeId: episode.id,
-          schemaChecks: [],
-          pipeline: {
-            stopAfterPreview: false,
-            autoRenderFinal: true
-          }
-        },
-        job.maxAttempts,
-        job.retryBackoffMs
-      );
-
-      const bullmqJobId = String(queued.id);
-
-      await prisma.$transaction(async (tx) => {
-        await tx.job.update({
-          where: { id: job.id },
-          data: {
-            status: "QUEUED",
-            bullmqJobId,
-            lastError: null,
-            finishedAt: null
-          }
-        });
-
-        await tx.jobLog.create({
-          data: {
-            jobId: job.id,
-            level: "info",
-            message: activeJob ? "Transition -> REENQUEUED" : "Transition -> ENQUEUED",
-            details: {
-              source: "api:demo:extreme",
-              queueName,
-              bullmqJobId
-            } as Prisma.InputJsonValue
-          }
-        });
+        queueName,
+        alwaysCreateNewEpisode
       });
 
       await writeAuditLog({
         prisma,
         request,
-        statusCode: 201,
+        statusCode: result.idempotent ? 200 : 201,
         success: true,
         action: "demo.extreme.create",
         details: {
-          idempotent: false,
-          episodeId: episode.id,
-          jobId: job.id,
-          bullmqJobId,
-          alwaysCreateNewEpisode
+          idempotent: result.idempotent,
+          episodeId: result.episodeId,
+          jobId: result.jobId,
+          bullmqJobId: result.bullmqJobId,
+          alwaysCreateNewEpisode: result.alwaysCreateNewEpisode
         }
       });
 
-      return reply.code(201).send({
+      return reply.code(result.idempotent ? 200 : 201).send({
         data: {
-          idempotent: false,
-          episodeId: episode.id,
-          jobId: job.id,
-          bullmqJobId,
-          alwaysCreateNewEpisode
+          idempotent: result.idempotent,
+          episodeId: result.episodeId,
+          jobId: result.jobId,
+          bullmqJobId: result.bullmqJobId,
+          alwaysCreateNewEpisode: result.alwaysCreateNewEpisode
         }
       });
     } catch (error) {
@@ -1187,182 +1048,40 @@ export function registerPublishRoutes(input: {
       const sourceFramePath = optionalString(body, "sourceFramePath");
       const renderOutputPath = optionalString(body, "renderOutputPath");
       const thumbnailTemplateName = optionalString(body, "thumbnailTemplateName");
-
-      const episode = await prisma.episode.findUnique({
-        where: { id: episodeId },
-        select: {
-          id: true,
-          topic: true
-        }
-      });
-
-      if (!episode) {
-        throw createHttpError(404, "Episode not found");
-      }
-
-      const plannedPublishAt = publishAtInput ?? new Date();
-      const plannedPublishAtIso = plannedPublishAt.toISOString();
-
-      const existingPublishJob = await prisma.job.findFirst({
-        where: {
-          episodeId,
-          type: "PACKAGE_OUTPUTS"
-        },
-        orderBy: { createdAt: "desc" },
-        include: {
-          logs: {
-            orderBy: { createdAt: "desc" },
-            take: 20
-          }
-        }
-      });
-
-      if (existingPublishJob && existingPublishJob.status === "SUCCEEDED") {
-        const details = extractPublishLogDetails(existingPublishJob.logs);
-        if (details.plannedPublishAt === plannedPublishAtIso) {
-          const manifest = readManifestSafely(details.manifestPath);
-          if (manifest && details.manifestPath) {
-            await writeAuditLog({
-              prisma,
-              request,
-              statusCode: 200,
-              success: true,
-              action: "publish.create",
-              details: {
-                episodeId,
-                idempotent: true,
-                jobId: existingPublishJob.id
-              }
-            });
-
-            return {
-              data: {
-                episodeId,
-                status: existingPublishJob.status,
-                publishAt: plannedPublishAtIso,
-                jobId: existingPublishJob.id,
-                manifestPath: toRepoRelativePath(details.manifestPath),
-                manifestUrl: toArtifactsUrl(details.manifestPath),
-                manifest: sanitizeUploadManifest(manifest),
-                idempotent: true
-              }
-            };
-          }
-        }
-      }
-
-      const cost = estimateJobCost({
-        estimatedApiCalls: 3,
-        estimatedRenderSeconds: 0,
-        estimatedAudioSeconds: 0
-      });
-
-      const publishJob = await prisma.job.create({
-        data: {
-          episodeId,
-          type: "PACKAGE_OUTPUTS",
-          status: "RUNNING",
-          progress: 10,
-          maxAttempts: 1,
-          retryBackoffMs: 1000,
-          startedAt: new Date(),
-          estimatedRenderSeconds: cost.estimatedRenderSeconds,
-          estimatedAudioSeconds: cost.estimatedAudioSeconds,
-          estimatedApiCalls: cost.estimatedApiCalls,
-          estimatedCostUsd: cost.estimatedCostUsd
-        }
-      });
-
-      await prisma.jobLog.create({
-        data: {
-          jobId: publishJob.id,
-          level: "info",
-          message: "Transition -> RUNNING",
-          details: {
-            source: "api:publish",
-            plannedPublishAt: plannedPublishAtIso,
-            estimatedCostUsd: cost.estimatedCostUsd
-          } as Prisma.InputJsonValue
-        }
-      });
-
-      const publishResult = await createPublishManifest(
-        {
-          episodeId,
-          topic: episode.topic,
-          plannedPublishAt,
-          outputRootDir: getPublishOutputRoot(),
-          sourceFramePath,
-          renderOutputPath,
-          thumbnailTemplateName
-        },
-        new MockYouTubeUploader()
-      );
-
-      await prisma.$transaction(async (tx) => {
-        await tx.job.update({
-          where: { id: publishJob.id },
-          data: {
-            status: "SUCCEEDED",
-            progress: 100,
-            finishedAt: new Date(),
-            lastError: null
-          }
-        });
-
-        await tx.jobLog.create({
-          data: {
-            jobId: publishJob.id,
-            level: "info",
-            message: "Publish manifest stored",
-            details: {
-              source: "api:publish",
-              plannedPublishAt: plannedPublishAtIso,
-              manifestPath: publishResult.manifestPath,
-              uploadStatus: publishResult.manifest.status,
-              externalVideoId: publishResult.manifest.upload.externalVideoId,
-              watchUrl: publishResult.manifest.upload.watchUrl
-            } as Prisma.InputJsonValue
-          }
-        });
-
-        await tx.jobLog.create({
-          data: {
-            jobId: publishJob.id,
-            level: "info",
-            message: "Transition -> SUCCEEDED",
-            details: {
-              source: "api:publish",
-              plannedPublishAt: plannedPublishAtIso,
-              manifestPath: publishResult.manifestPath
-            } as Prisma.InputJsonValue
-          }
-        });
+      const result = await createPublishJob({
+        prisma,
+        episodeId,
+        plannedPublishAt: publishAtInput,
+        sourceFramePath,
+        renderOutputPath,
+        thumbnailTemplateName,
+        outputRootDir: getPublishOutputRoot()
       });
 
       await writeAuditLog({
         prisma,
         request,
-        statusCode: 201,
+        statusCode: result.idempotent ? 200 : 201,
         success: true,
         action: "publish.create",
         details: {
           episodeId,
-          idempotent: false,
-          jobId: publishJob.id,
-          manifestPath: publishResult.manifestPath
+          idempotent: result.idempotent,
+          jobId: result.jobId,
+          manifestPath: result.manifestPath
         }
       });
 
-      return reply.code(201).send({
+      return reply.code(result.idempotent ? 200 : 201).send({
         data: {
           episodeId,
-          status: "SUCCEEDED",
-          publishAt: plannedPublishAtIso,
-          jobId: publishJob.id,
-          manifestPath: publishResult.manifestPath,
-          manifest: publishResult.manifest,
-          idempotent: false
+          status: result.status,
+          publishAt: result.publishAt,
+          jobId: result.jobId,
+          manifestPath: result.manifestPath,
+          manifestUrl: toArtifactsUrl(result.manifestPath),
+          manifest: sanitizeUploadManifest(result.manifest),
+          idempotent: result.idempotent
         }
       });
     } catch (error) {
