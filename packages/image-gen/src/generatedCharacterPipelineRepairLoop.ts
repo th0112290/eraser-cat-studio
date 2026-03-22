@@ -29,6 +29,7 @@ type RepairSelection = {
   visemes: GeneratedCharacterViseme[];
   shouldRebuildPack: boolean;
   hasRepairSourceTask: boolean;
+  requiresApprovedFrontMaster: boolean;
 };
 
 type RepairRoundInput = {
@@ -182,7 +183,8 @@ function resolveRepairSelection(tasks: CharacterPipelineRepairTask[]): RepairSel
     expressions: [],
     visemes: [],
     shouldRebuildPack: false,
-    hasRepairSourceTask: false
+    hasRepairSourceTask: false,
+    requiresApprovedFrontMaster: false
   };
 
   for (const task of tasks) {
@@ -190,6 +192,10 @@ function resolveRepairSelection(tasks: CharacterPipelineRepairTask[]): RepairSel
       const parsed = parseViewFromRepairCode(task.code);
       if (parsed) {
         pushUnique(selection.views, parsed);
+      } else if (task.code.startsWith("PACK_")) {
+        pushUnique(selection.views, "front");
+        pushUnique(selection.views, "threeQuarter");
+        pushUnique(selection.views, "profile");
       } else {
         pushUnique(selection.views, "threeQuarter");
         pushUnique(selection.views, "profile");
@@ -222,8 +228,21 @@ function resolveRepairSelection(tasks: CharacterPipelineRepairTask[]): RepairSel
       selection.shouldRebuildPack = true;
       continue;
     }
+    if (task.action === "approve_front_master") {
+      selection.requiresApprovedFrontMaster = true;
+      pushUnique(selection.views, "front");
+      continue;
+    }
     if (task.action === "repair_source_asset") {
       selection.hasRepairSourceTask = true;
+      const parsed = parseViewFromRepairCode(task.code);
+      if (parsed) {
+        pushUnique(selection.views, parsed);
+      } else {
+        pushUnique(selection.views, "front");
+        pushUnique(selection.views, "threeQuarter");
+        pushUnique(selection.views, "profile");
+      }
     }
   }
 

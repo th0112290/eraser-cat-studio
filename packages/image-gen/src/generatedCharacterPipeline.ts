@@ -1425,6 +1425,20 @@ function repairActionForCode(code: string): CharacterPipelineRepairAction {
     return "approve_front_master";
   }
   if (
+    code === "PACK_REQUIRED_SLOTS" ||
+    code.startsWith("PACK_ANCHOR_MISSING_") ||
+    code.startsWith("PACK_ANCHOR_CONFIDENCE_") ||
+    code === "PACK_ANCHOR_CONFIDENCE_OVERALL" ||
+    code.startsWith("PACK_MUZZLE_PROJECTION_") ||
+    code.startsWith("PACK_EAR_GEOMETRY_") ||
+    code.startsWith("PACK_EAR_OCCLUSION_POLICY_") ||
+    code.startsWith("PACK_EYE_OCCLUSION_POLICY_") ||
+    code.startsWith("PACK_PAW_READABILITY_") ||
+    code.startsWith("PACK_TAIL_VISIBILITY_")
+  ) {
+    return "rerun_view_generation";
+  }
+  if (
     code.startsWith("VIEW_") ||
     code.startsWith("VIEW_CANVAS_") ||
     code.startsWith("VIEW_HEAD_") ||
@@ -1432,10 +1446,19 @@ function repairActionForCode(code: string): CharacterPipelineRepairAction {
   ) {
     return "rerun_view_generation";
   }
+  if (code === "PACK_FACE_EYE_OPEN_CONTENT") {
+    return "rerun_expression_generation";
+  }
   if (code.startsWith("EXPRESSION_") || code.startsWith("EXPRESSION_BODY_") || code.startsWith("EYE_ANCHOR_")) {
     return "rerun_expression_generation";
   }
-  if (code.startsWith("VISEME_") || code.startsWith("MOUTH_ANCHOR_") || code === "PACK_MOUTH_ANCHOR_INSTABILITY") {
+  if (
+    code === "PACK_REQUIRED_VISEMES" ||
+    code === "PACK_FACE_MOUTH_CLOSED_CONTENT" ||
+    code.startsWith("VISEME_") ||
+    code.startsWith("MOUTH_ANCHOR_") ||
+    code === "PACK_MOUTH_ANCHOR_INSTABILITY"
+  ) {
     return "rerun_viseme_generation";
   }
   if (code.startsWith("PACK_")) {

@@ -83,6 +83,46 @@ function defaultViewForShotType(shotType: string): "front" | "threeQuarter" | "p
   return "front";
 }
 
+function buildShotGrammar(input: {
+  requiredView: "front" | "threeQuarter" | "profile";
+  cameraSize: "ecu" | "cu" | "mcu" | "ms" | "ws";
+  cameraMotion: "hold" | "push" | "pan" | "tilt";
+  actingIntent: string;
+  educationalIntent: string;
+  routeReason: string;
+}) {
+  return {
+    camera_size: input.cameraSize,
+    camera_motion: input.cameraMotion,
+    acting_intent: input.actingIntent,
+    emotion_curve: "flat" as const,
+    primary_speaking_character: "host",
+    required_view: input.requiredView,
+    educational_intent: input.educationalIntent,
+    insert_need: [] as string[],
+    route_reason: input.routeReason
+  };
+}
+
+function buildActing(input: {
+  expression: "neutral" | "happy" | "surprised" | "blink" | "angry" | "sad" | "thinking";
+  viseme?: "mouth_closed" | "mouth_open_small" | "mouth_open_wide" | "mouth_round_o";
+  blinkFrame?: number;
+  gestureCue?: string;
+  gestureFrame?: number;
+}) {
+  return {
+    blink_cues: input.blinkFrame === undefined ? [] : [{ f: input.blinkFrame, duration_frames: 3, intensity: 0.7 }],
+    gesture_cues:
+      input.gestureCue === undefined || input.gestureFrame === undefined
+        ? []
+        : [{ f: input.gestureFrame, cue: input.gestureCue, intensity: 0.45 }],
+    look_cues: [{ f: 0, target: "viewer" as const, intensity: 0.8 }],
+    expression_cues: [{ f: 0, expression: input.expression, intensity: 0.7 }],
+    mouth_cues: [{ f: 0, viseme: input.viseme ?? "mouth_closed", intensity: 0.6 }]
+  };
+}
+
 function rewriteShotsWithCharacterPack(shotsPath: string, characterId: string): string {
   const absolutePath = resolveCliPath(shotsPath);
   const doc = JSON.parse(fs.readFileSync(absolutePath, "utf8")) as {
@@ -146,6 +186,21 @@ function buildAcceptedValidationShots(characterId: string, episodeId: string) {
         shot_id: "accepted_shot_001",
         shot_type: "talk",
         render_mode: "deterministic",
+        shot_grammar: buildShotGrammar({
+          requiredView: "front",
+          cameraSize: "mcu",
+          cameraMotion: "hold",
+          actingIntent: "steady_delivery",
+          educationalIntent: "validation_front",
+          routeReason: "generated_character_accepted_front"
+        }),
+        acting: buildActing({
+          expression: "happy",
+          viseme: "mouth_open_small",
+          blinkFrame: 18,
+          gestureCue: "idle_shift",
+          gestureFrame: 24
+        }),
         beat_ids: ["accepted_beat_001"],
         narration: "Generated character accepted front talking validation.",
         start_frame: 0,
@@ -185,6 +240,19 @@ function buildAcceptedValidationShots(characterId: string, episodeId: string) {
         shot_id: "accepted_shot_002",
         shot_type: "reaction",
         render_mode: "deterministic",
+        shot_grammar: buildShotGrammar({
+          requiredView: "threeQuarter",
+          cameraSize: "ms",
+          cameraMotion: "push",
+          actingIntent: "quiet_reaction",
+          educationalIntent: "validation_three_quarter",
+          routeReason: "generated_character_accepted_three_quarter"
+        }),
+        acting: buildActing({
+          expression: "neutral",
+          viseme: "mouth_closed",
+          blinkFrame: 20
+        }),
         beat_ids: ["accepted_beat_002"],
         narration: "Three quarter reaction validation.",
         start_frame: 48,
@@ -230,6 +298,18 @@ function buildAcceptedValidationShots(characterId: string, episodeId: string) {
         shot_id: "accepted_shot_003",
         shot_type: "transition",
         render_mode: "deterministic",
+        shot_grammar: buildShotGrammar({
+          requiredView: "profile",
+          cameraSize: "ms",
+          cameraMotion: "hold",
+          actingIntent: "profile_transition",
+          educationalIntent: "validation_profile",
+          routeReason: "generated_character_accepted_profile"
+        }),
+        acting: buildActing({
+          expression: "neutral",
+          viseme: "mouth_closed"
+        }),
         beat_ids: ["accepted_beat_003"],
         narration: "Profile turn validation.",
         start_frame: 90,
@@ -292,7 +372,9 @@ async function main() {
   const render = await orchestrateRenderEpisode({
     shotsPath,
     outputPath,
-    dryRun: args.dryRun
+    dryRun: args.dryRun,
+    // This entrypoint already asserts pipeline acceptance before render orchestration.
+    allowUnacceptedGeneratedPacks: true
   });
 
   console.log(

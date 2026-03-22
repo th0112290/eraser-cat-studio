@@ -3213,7 +3213,8 @@ const ShotLayer = ({ sequence, freezeCharacterPose, characterPacks, profiles, fr
   const generativeBrollSrc =
     (sequence.renderMode === "generative_broll" ||
       sequence.renderMode === "generative_i2v" ||
-      sequence.renderMode === "generative_s2v") &&
+      sequence.renderMode === "generative_s2v" ||
+      sequence.renderMode === "generative_overlay") &&
     typeof sequence.sidecarVideoSrc === "string"
       ? sequence.sidecarVideoSrc.trim()
       : "";

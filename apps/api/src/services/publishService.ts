@@ -205,7 +205,7 @@ function registerArtifactsIndexRoutes(app: FastifyInstance): void {
     const items = await readArtifactsIndex(artifactsRoot);
     return {
       ok: true,
-      root: artifactsRoot,
+      root: "out",
       items
     };
   };

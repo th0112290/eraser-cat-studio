@@ -74,6 +74,46 @@ function resolveCliPath(inputPath: string): string {
   return path.resolve(REPO_ROOT, inputPath);
 }
 
+function buildShotGrammar(input: {
+  requiredView: "front" | "threeQuarter" | "profile";
+  cameraSize: "ecu" | "cu" | "mcu" | "ms" | "ws";
+  cameraMotion: "hold" | "push" | "pan" | "tilt";
+  actingIntent: string;
+  educationalIntent: string;
+  routeReason: string;
+}) {
+  return {
+    camera_size: input.cameraSize,
+    camera_motion: input.cameraMotion,
+    acting_intent: input.actingIntent,
+    emotion_curve: "flat" as const,
+    primary_speaking_character: "host",
+    required_view: input.requiredView,
+    educational_intent: input.educationalIntent,
+    insert_need: [] as string[],
+    route_reason: input.routeReason
+  };
+}
+
+function buildActing(input: {
+  expression: "neutral" | "happy" | "surprised" | "blink" | "angry" | "sad" | "thinking";
+  viseme?: "mouth_closed" | "mouth_open_small" | "mouth_open_wide" | "mouth_round_o";
+  blinkFrame?: number;
+  gestureCue?: string;
+  gestureFrame?: number;
+}) {
+  return {
+    blink_cues: input.blinkFrame === undefined ? [] : [{ f: input.blinkFrame, duration_frames: 3, intensity: 0.7 }],
+    gesture_cues:
+      input.gestureCue === undefined || input.gestureFrame === undefined
+        ? []
+        : [{ f: input.gestureFrame, cue: input.gestureCue, intensity: 0.45 }],
+    look_cues: [{ f: 0, target: "viewer" as const, intensity: 0.8 }],
+    expression_cues: [{ f: 0, expression: input.expression, intensity: 0.7 }],
+    mouth_cues: [{ f: 0, viseme: input.viseme ?? "mouth_closed", intensity: 0.6 }]
+  };
+}
+
 function buildSidecarShotsDoc(characterId: string, episodeId: string) {
   return {
     schema_version: "1.0",
@@ -98,6 +138,19 @@ function buildSidecarShotsDoc(characterId: string, episodeId: string) {
         shot_id: "sidecar_shot_001",
         shot_type: "broll",
         render_mode: "generative_broll",
+        shot_grammar: buildShotGrammar({
+          requiredView: "threeQuarter",
+          cameraSize: "ms",
+          cameraMotion: "push",
+          actingIntent: "ambient_insert",
+          educationalIntent: "sidecar_broll_validation",
+          routeReason: "generated_character_sidecar_broll"
+        }),
+        acting: buildActing({
+          expression: "neutral",
+          viseme: "mouth_closed",
+          blinkFrame: 18
+        }),
         beat_ids: ["sidecar_beat_001"],
         narration: "Character-focused b-roll insert request.",
         start_frame: 0,
@@ -140,6 +193,19 @@ function buildSidecarShotsDoc(characterId: string, episodeId: string) {
         shot_id: "sidecar_shot_002",
         shot_type: "reaction",
         render_mode: "generative_i2v",
+        shot_grammar: buildShotGrammar({
+          requiredView: "front",
+          cameraSize: "mcu",
+          cameraMotion: "hold",
+          actingIntent: "still_to_video_validation",
+          educationalIntent: "sidecar_i2v_validation",
+          routeReason: "generated_character_sidecar_i2v"
+        }),
+        acting: buildActing({
+          expression: "happy",
+          viseme: "mouth_open_small",
+          blinkFrame: 16
+        }),
         beat_ids: ["sidecar_beat_002"],
         narration: "Front still to video contract validation.",
         start_frame: 48,
@@ -179,6 +245,18 @@ function buildSidecarShotsDoc(characterId: string, episodeId: string) {
         shot_id: "sidecar_shot_003",
         shot_type: "transition",
         render_mode: "generative_s2v",
+        shot_grammar: buildShotGrammar({
+          requiredView: "profile",
+          cameraSize: "ms",
+          cameraMotion: "hold",
+          actingIntent: "profile_sidecar_validation",
+          educationalIntent: "sidecar_s2v_validation",
+          routeReason: "generated_character_sidecar_s2v"
+        }),
+        acting: buildActing({
+          expression: "neutral",
+          viseme: "mouth_closed"
+        }),
         beat_ids: ["sidecar_beat_003"],
         narration: "Profile style to video contract validation.",
         start_frame: 90,
@@ -240,7 +318,9 @@ async function main() {
     shotsPath,
     outputPath,
     dryRun: args.dryRun,
-    shotSidecarRenderer: createGeneratedPackSidecarPlaceholderRenderer()
+    shotSidecarRenderer: createGeneratedPackSidecarPlaceholderRenderer(),
+    // This entrypoint already asserts pipeline acceptance before render orchestration.
+    allowUnacceptedGeneratedPacks: true
   });
 
   console.log(

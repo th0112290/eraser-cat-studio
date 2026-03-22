@@ -689,7 +689,8 @@ function resolveSidecarVideoSrcMap(plans: ShotSidecarPlan[]): Map<string, string
       plan.status !== "resolved" ||
       (plan.renderMode !== "generative_broll" &&
         plan.renderMode !== "generative_i2v" &&
-        plan.renderMode !== "generative_s2v")
+        plan.renderMode !== "generative_s2v" &&
+        plan.renderMode !== "generative_overlay")
     ) {
       continue;
     }
@@ -1186,14 +1187,20 @@ function resolvePaths(input: OrchestrateRenderInput) {
   const narrationAlignmentArtifactPath = path.resolve(
     path.join(path.dirname(outputPath), "narration_alignment.json")
   );
-  const srtPath = path.resolve(input.srtPath ?? path.join(repoRoot, "out", "render_episode.srt"));
+  const srtPath = path.resolve(
+    input.srtPath ??
+      path.join(path.dirname(outputPath), `${path.basename(outputPath, path.extname(outputPath))}.srt`)
+  );
   const qcReportPath = path.resolve(
     input.qcReportPath ?? path.join(path.dirname(outputPath), "qc_report.json")
   );
   const episodeRegressionReportPath = path.resolve(
     input.episodeRegressionReportPath ?? path.join(path.dirname(outputPath), "episode_regression_report.json")
   );
-  const renderLogPath = path.resolve(input.renderLogPath ?? path.join(repoRoot, "out", "render_log.json"));
+  const renderLogPath = path.resolve(
+    input.renderLogPath ??
+      path.join(path.dirname(outputPath), `${path.basename(outputPath, path.extname(outputPath))}.render_log.json`)
+  );
   const sidecarPlanPath = path.resolve(
     input.sidecarPlanPath ?? path.join(path.dirname(outputPath), "shot_sidecar_plan.json")
   );
