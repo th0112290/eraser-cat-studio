@@ -2,7 +2,7 @@
   "extends": "../shared/bank.json",
   "profileId": "cat",
   "speciesId": "cat",
-  "familyId": "compact_doodle_mascot_v2",
+  "familyId": "feline_compact_doodle_v1",
   "variant": "canonical",
   "bankStatus": "species_ready",
   "notes": [

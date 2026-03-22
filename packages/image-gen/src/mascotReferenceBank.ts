@@ -32,10 +32,13 @@ export type ResolvedMascotReferenceAsset = {
 
 export type MascotReferenceBankDiagnostics = {
   speciesId: MascotSpeciesId;
+  familyId: string;
   status: "species_ready" | "scaffold_only";
   declaredStatus: "species_ready" | "scaffold_only";
   statusMismatch: boolean;
   variant: "canonical" | "candidate";
+  canonStage: "scaffold" | "front_master_seeded" | "family_views_seeded" | "hero_seeded" | "review_ready" | "species_ready";
+  qualityStatus: "unchecked" | "review_needed" | "approved";
   manifestPath: string;
   legacyTemporary: boolean;
   styleCount: number;
@@ -46,6 +49,7 @@ export type MascotReferenceBankDiagnostics = {
   unsatisfiedRequiredAssetSlots: string[];
   missingRoles: CharacterReferenceRole[];
   notes: string[];
+  qualityNotes: string[];
 };
 
 export type MascotReferenceAssetRequirementStatus = MascotReferenceAssetRequirement & {
@@ -269,10 +273,21 @@ export function resolveMascotReferenceBankDiagnostics(
 
   return {
     speciesId: normalizedSpecies,
+    familyId: manifest?.familyId ?? resolveMascotSpeciesProfile(normalizedSpecies).familyId,
     status,
     declaredStatus,
     statusMismatch: declaredStatus !== status,
     variant: manifest?.variant === "candidate" ? "candidate" : "canonical",
+    canonStage:
+      manifest?.canonStage ??
+      (status === "species_ready"
+        ? "species_ready"
+        : styleCount > 0 && heroCount > 0
+          ? "review_ready"
+          : styleCount > 0
+            ? "front_master_seeded"
+            : "scaffold"),
+    qualityStatus: manifest?.qualityStatus ?? (status === "species_ready" ? "approved" : "unchecked"),
     manifestPath,
     legacyTemporary: manifest?.legacyTemporary === true,
     styleCount,
@@ -282,7 +297,8 @@ export function resolveMascotReferenceBankDiagnostics(
     unsatisfiedRequiredAssetCount: unsatisfiedRequiredAssetSlots.length,
     unsatisfiedRequiredAssetSlots,
     missingRoles,
-    notes: [...(manifest?.notes ?? [])]
+    notes: [...(manifest?.notes ?? [])],
+    qualityNotes: [...(manifest?.qualityNotes ?? [])]
   };
 }
 
@@ -308,6 +324,18 @@ export function buildMascotReferenceBankReviewPlan(
       : `reference bank is scaffold_only for species=${diagnostics.speciesId}`,
     "keep accepted pack review-only until species-specific style and hero refs are supplied"
   ];
+  if (diagnostics.qualityStatus === "review_needed") {
+    reviewNotes.push("reference bank still requires visual QA before canon promotion");
+  }
+  if (diagnostics.canonStage !== "review_ready" && diagnostics.canonStage !== "species_ready") {
+    reviewNotes.push(`candidate bank canon stage is still ${diagnostics.canonStage}`);
+  }
+  if (diagnostics.canonStage === "front_master_seeded" || diagnostics.canonStage === "hero_seeded") {
+    reviewNotes.push("approve the front master first; do not derive or trust side views before front identity is locked");
+  }
+  if (diagnostics.canonStage === "family_views_seeded") {
+    reviewNotes.push("side views are only partially seeded; verify cross-view silhouette before promotion");
+  }
   if (diagnostics.unsatisfiedRequiredAssetSlots.length > 0) {
     reviewNotes.push(`required asset intake still open: ${diagnostics.unsatisfiedRequiredAssetSlots.join(", ")}`);
   }
@@ -332,6 +360,8 @@ export function buildMascotReferenceBankReviewPlan(
   if (diagnostics.variant === "candidate") {
     reviewNotes.push("candidate reference bank is active; promote only after species identity and cross-view quality pass.");
   }
+
+  reviewNotes.push(...diagnostics.qualityNotes);
 
   if (diagnostics.legacyTemporary) {
     reviewNotes.push("active reference bank is marked legacy-temporary; replace with a new canon before rollout.");

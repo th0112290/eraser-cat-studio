@@ -21,6 +21,9 @@ function run(): void {
   const catReviewPlan = buildMascotReferenceBankReviewPlan(catDiagnostics);
   const catRequirementStatuses = resolveMascotReferenceRequirementStatuses("cat");
   assert.equal(catDiagnostics.status, "species_ready", "cat bank should be species_ready");
+  assert.equal(catDiagnostics.familyId, "feline_compact_doodle_v1", "cat bank should resolve feline family");
+  assert.equal(catDiagnostics.canonStage, "species_ready", "cat bank should be fully promoted");
+  assert.equal(catDiagnostics.qualityStatus, "approved", "cat bank should be quality-approved");
   assert.equal(catDiagnostics.declaredStatus, "species_ready", "cat bank should declare species_ready");
   assert.equal(catDiagnostics.statusMismatch, false, "cat bank should not have a readiness mismatch");
   assert.equal(catDiagnostics.variant, "canonical", "cat bank should resolve canonical variant");
@@ -50,6 +53,8 @@ function run(): void {
     const reviewPlan = buildMascotReferenceBankReviewPlan(diagnostics);
     const requirementStatuses = resolveMascotReferenceRequirementStatuses(speciesId);
     assert.equal(diagnostics.status, "species_ready", `${speciesId} bank should now resolve species_ready`);
+    assert.equal(diagnostics.familyId, "canine_compact_doodle_v1", `${speciesId} should resolve canine family`);
+    assert.equal(diagnostics.canonStage, "species_ready", `${speciesId} canonical bank should remain species_ready`);
     assert.equal(diagnostics.declaredStatus, "species_ready", `${speciesId} bank should declare species_ready`);
     assert.equal(diagnostics.statusMismatch, false, `${speciesId} should not have a readiness mismatch while species_ready`);
     assert.equal(diagnostics.variant, "canonical", `${speciesId} smoke should default to canonical bank`);

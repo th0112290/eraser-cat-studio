@@ -1,8 +1,10 @@
 import { sha256Hex } from "@ec/shared";
+import { resolveMascotFamilyArchetype } from "./mascotFamilyArchetypes";
 import { resolveMascotSpeciesProfile } from "./species";
 import type {
   BuildPromptBundleInput,
   CharacterView,
+  MascotSpeciesId,
   PromptBundle,
   PromptQualityProfile,
   StylePromptPreset
@@ -429,6 +431,137 @@ function joinPromptParts(parts: Array<string | undefined>): string {
   }
 
   return out.join(", ");
+}
+
+function joinUniquePromptTokens(parts: Array<string | undefined>): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    if (!part) {
+      continue;
+    }
+    for (const token of part.split(",")) {
+      const trimmed = token.trim();
+      if (trimmed.length === 0) {
+        continue;
+      }
+      const normalized = trimmed.toLowerCase();
+      if (seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      out.push(trimmed);
+    }
+  }
+  return out.join(", ");
+}
+
+export function resolveStylePromptPreset(id?: string): StylePromptPreset {
+  return findPreset(id);
+}
+
+export function buildMascotBankPromptBundle(input: {
+  presetId?: string;
+  speciesId: MascotSpeciesId;
+  view: CharacterView;
+  stage: "front_master" | "reference_derivation";
+  positiveTokens?: string[];
+  negativeTokens?: string[];
+}): PromptBundle {
+  const preset = findPreset(input.presetId);
+  const speciesProfile = resolveMascotSpeciesProfile(input.speciesId);
+  const family = resolveMascotFamilyArchetype(speciesProfile.familyId);
+  const renderCore = [
+    "single mascot illustration",
+    "exactly one character",
+    "centered composition",
+    "large head small body ratio",
+    "flat black line-art on light plain background",
+    "clear empty margin around the character",
+    "all limbs attached, no missing arms, no missing paws"
+  ];
+  const positivePrompt = joinUniquePromptTokens([
+    preset.positive,
+    family.styleLockPositive.join(", "),
+    input.stage === "front_master" ? family.frontMasterPositive.join(", ") : family.derivationPositive.join(", "),
+    input.stage === "front_master"
+      ? speciesProfile.positiveTokens.join(", ")
+      : [...speciesProfile.identityTokens, ...(speciesProfile.anchorTokens ?? [])].join(", "),
+    speciesProfile.viewHints[input.view],
+    renderCore.join(", "),
+    input.positiveTokens?.join(", ")
+  ]);
+  const negativePrompt = joinUniquePromptTokens([
+    BASE_NEGATIVE_TEMPLATE,
+    preset.negative,
+    family.styleLockNegative.join(", "),
+    speciesProfile.negativeTokens.join(", "),
+    speciesProfile.rejectTraits.join(", "),
+    input.negativeTokens?.join(", ")
+  ]);
+  const guardrails = [
+    ...speciesProfile.guardrails,
+    ...speciesProfile.rejectTraits.map((trait) => `reject ${trait}`),
+    "lock mascot identity to the approved family canon",
+    "prefer flat monochrome line art over soft rendered volume"
+  ];
+
+  return {
+    presetId: preset.id,
+    speciesId: speciesProfile.id,
+    mascotProfileId: speciesProfile.id,
+    positivePrompt,
+    negativePrompt,
+    guardrails,
+    qualityProfile: preset.qualityProfile,
+    viewPrompts: {
+      front: input.view === "front" ? positivePrompt : joinUniquePromptTokens([positivePrompt, speciesProfile.viewHints.front]),
+      threeQuarter:
+        input.view === "threeQuarter"
+          ? positivePrompt
+          : joinUniquePromptTokens([positivePrompt, speciesProfile.viewHints.threeQuarter]),
+      profile:
+        input.view === "profile"
+          ? positivePrompt
+          : joinUniquePromptTokens([positivePrompt, speciesProfile.viewHints.profile])
+    },
+    keepTraits: speciesProfile.keepTraits,
+    rejectTraits: speciesProfile.rejectTraits,
+    referenceBankId: speciesProfile.referenceBankId,
+    heroMode: speciesProfile.heroMode,
+    controlNetHintPolicy: speciesProfile.controlNetHintPolicy,
+    qcThresholds: speciesProfile.qcThresholds,
+    promptTokens: {
+      styleCore: joinUniquePromptTokens([preset.positive, family.styleLockPositive.join(", ")]),
+      identityAnchors: joinUniquePromptTokens([
+        input.stage === "front_master"
+          ? family.frontMasterPositive.join(", ")
+          : family.derivationPositive.join(", "),
+        speciesProfile.identityTokens.join(", "),
+        (speciesProfile.anchorTokens ?? []).join(", ")
+      ]),
+      renderDirectives: renderCore.join(", "),
+      negativeCore: joinUniquePromptTokens([
+        BASE_NEGATIVE_TEMPLATE,
+        family.styleLockNegative.join(", "),
+        speciesProfile.negativeTokens.join(", "),
+        speciesProfile.rejectTraits.join(", ")
+      ])
+    },
+    selectionHints: {
+      minAcceptedScore: 0.62,
+      frontMasterMinAcceptedScore: Math.max(speciesProfile.qcThresholds.frontMasterMinScore, 0.64),
+      autoRetryRounds: 0,
+      frontMasterCandidateCount: 2,
+      repairCandidateCount: 1,
+      repairScoreFloor: speciesProfile.qcThresholds.repairScoreFloor,
+      sequentialReference: true,
+      prioritizeConsistency: true,
+      preferMultiReference: false,
+      allowHeroMode: false,
+      heroModeReferenceWeightCap: speciesProfile.heroMode.maxReferenceWeight
+    }
+  };
 }
 
 export function buildPromptBundle(input: BuildPromptBundleInput): PromptBundle {

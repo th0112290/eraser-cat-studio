@@ -1,70 +1,7 @@
+import { resolveMascotFamilyArchetype } from "./mascotFamilyArchetypes";
 import type { CharacterView, MascotSpeciesId, MascotSpeciesProfile } from "./types";
 
 const DEFAULT_SPECIES_ID: MascotSpeciesId = "cat";
-const BASE_FAMILY_ID = "compact_doodle_mascot_v2";
-
-const FAMILY_POSITIVE_BASE = [
-  "minimal offbeat mascot character",
-  "compact oversized boxy head",
-  "small simple body",
-  "stubby tube arms and legs",
-  "paw or mitten hands only",
-  "rough black outline on a light plain background",
-  "very simple readable deadpan face",
-  "single centered mascot"
-];
-
-const FAMILY_NEGATIVE_BASE = [
-  "photorealistic",
-  "3d render",
-  "anime shading",
-  "realistic fur",
-  "realistic eyebrows",
-  "realistic nose bridge",
-  "realistic mouth",
-  "human fingers",
-  "five fingers",
-  "knuckles",
-  "nails",
-  "long torso",
-  "small head",
-  "multiple characters",
-  "sticker sheet",
-  "character lineup",
-  "turnaround sheet",
-  "icon grid",
-  "logo",
-  "text",
-  "sticker border",
-  "white outline",
-  "drop shadow",
-  "plush toy look",
-  "glossy vector finish",
-  "big expressive eyes",
-  "symbol only",
-  "double face parts",
-  "detached ear",
-  "rough sketch shading",
-  "double outline"
-];
-
-const FAMILY_IDENTITY_BASE = [
-  "same mascot across all angles",
-  "same compact head-to-body ratio",
-  "same stubby arm and leg proportions",
-  "same paw hand design",
-  "same simplified doodle family style"
-];
-
-const FAMILY_ANCHOR_BASE = ["same head width and height", "same eye spacing", "same body scale"];
-
-const FAMILY_GUARDRAILS_BASE = [
-  "keep the head large and compact",
-  "keep the body much smaller than the head",
-  "keep arms and legs short and simple",
-  "keep the face minimal and readable",
-  "keep the result inside the same mascot family"
-];
 
 const BASE_HERO_MODE: MascotSpeciesProfile["heroMode"] = {
   allowOptionalHeroRef: true,
@@ -250,6 +187,7 @@ const BASE_ANCHOR_EXTRACTOR_HEURISTICS: MascotSpeciesAnchorHeuristics = Object.f
 
 type SpeciesOverride = {
   label: string;
+  familyId: string;
   referenceBankId: string;
   positiveTokens: string[];
   negativeTokens: string[];
@@ -332,6 +270,7 @@ type SpeciesAnchorHeuristicOverride = {
 const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freeze({
   cat: {
     label: "Cat",
+    familyId: "feline_compact_doodle_v1",
     referenceBankId: "cat_mascot_bank_v1",
     positiveTokens: [
       "rounded-square cat head",
@@ -447,6 +386,7 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
   },
   dog: {
     label: "Dog",
+    familyId: "canine_compact_doodle_v1",
     referenceBankId: "dog_mascot_bank_v1",
     positiveTokens: [
       "compact boxy dog head silhouette",
@@ -469,6 +409,8 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "plush toy look",
       "glossy sticker mascot",
       "big expressive eyes",
+      "outlined eye sockets",
+      "large white eye patches",
       "missing arm",
       "detached limb"
     ],
@@ -492,15 +434,16 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "keep the head boxy instead of plush and circular",
       "keep the face deadpan with tiny features",
       "keep both front arms and both paws readable when the pose shows them",
+      "keep the eyes as tiny solid black dots without oversized white eye rings",
       "do not turn the dog into a rabbit with tall narrow ears"
     ],
     viewHints: {
       front:
-        "front view should read as dog first while staying in the same mascot family, with rounded-base dog ears, a short rounded muzzle, a tiny button nose, a simple tiny mouth, and both short arms visible with attached paws",
+        "front view should read as dog first while staying in the same mascot family, with rounded-base dog ears, a short blunt muzzle, a tiny button nose, tiny solid black dot eyes only, a simple tiny mouth, and both short arms visible with attached paws",
       threeQuarter:
-        "three-quarter dog should preserve the same compact head and body while clearly turning about 35 to 45 degrees, showing a soft rounded puppy muzzle, lower rounded ears, a larger near cheek, and a smaller but still present far paw",
+        "three-quarter dog should preserve the same compact head and body while clearly turning about 35 to 45 degrees, showing a short blunt puppy muzzle, lower rounded ears, a larger near cheek, and a smaller but still present far paw",
       profile:
-        "profile dog should show a short rounded muzzle and one soft ear, domestic and cute, not cat-flat and not wolf-sharp, with one readable near paw and no detached far-limb fragments"
+        "profile dog should show a short blunt muzzle and one soft ear, domestic and readable, not cat-flat and not wolf-sharp, with one readable near paw and no detached far-limb fragments"
     },
     keepTraits: [
       "compact dog head",
@@ -522,6 +465,8 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "plush toy look",
       "glossy vector finish",
       "big expressive eyes",
+      "outlined eye sockets",
+      "large white eye patches",
       "missing arm",
       "detached limb",
       "multiple characters"
@@ -553,12 +498,13 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
   },
   wolf: {
     label: "Wolf",
+    familyId: "canine_compact_doodle_v1",
     referenceBankId: "wolf_mascot_bank_v1",
     positiveTokens: [
       "compact boxy wolf head silhouette",
       "taller sharp upright ears",
       "short angular wedge muzzle",
-      "alert cute wolf silhouette",
+      "alert wolf silhouette",
       "broad wolf cheek ruff",
       "deadpan mascot face"
     ],
@@ -574,6 +520,9 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "plush toy look",
       "glossy sticker mascot",
       "big expressive eyes"
+      ,
+      "outlined eye sockets",
+      "large white eye patches"
     ],
     identityTokens: [
       "same boxy wolf head",
@@ -588,13 +537,14 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "do not round the wolf into a puppy face",
       "keep the head broad and boxy instead of plush and circular",
       "keep the face deadpan with tiny features",
+      "keep the eyes as tiny solid black dots without oversized white eye rings",
       "do not add cat whisker-face cues",
       "do not turn the wolf into a fox with a narrow sly face",
       "keep the wolf cheeks broad and the face short, not sly or narrow"
     ],
     viewHints: {
       front:
-        "front view should read as wolf first in the same mascot family, with taller upright ears, a short angular muzzle that stays cute and simplified, a broader wolf head than a fox, and no puppy softness or fox narrowing",
+        "front view should read as wolf first in the same mascot family, with taller upright ears, a short angular muzzle that stays cute and simplified, tiny solid black dot eyes only, a broader wolf head than a fox, and no puppy softness or fox narrowing",
       threeQuarter:
         "three-quarter wolf should keep the same compact body and head while clearly turning about 35 to 45 degrees, showing a slightly longer wedge muzzle, alert ears, a larger near eye than far eye, and a broad wolf head that does not read as fox-like or front-facing",
       profile:
@@ -619,6 +569,8 @@ const SPECIES_OVERRIDES: Record<MascotSpeciesId, SpeciesOverride> = Object.freez
       "plush toy look",
       "glossy vector finish",
       "big expressive eyes",
+      "outlined eye sockets",
+      "large white eye patches",
       "human fingers",
       "multiple characters"
     ],
@@ -874,16 +826,30 @@ function mergeAnchorExtractorViewProfile(
 
 function composeSpeciesProfile(id: MascotSpeciesId): MascotSpeciesProfile {
   const override = SPECIES_OVERRIDES[id];
+  const family = resolveMascotFamilyArchetype(override.familyId);
   return {
     id,
     label: override.label,
-    familyId: BASE_FAMILY_ID,
+    familyId: family.id,
     referenceBankId: override.referenceBankId,
-    positiveTokens: [...FAMILY_POSITIVE_BASE, ...override.positiveTokens],
-    negativeTokens: [...FAMILY_NEGATIVE_BASE, ...override.negativeTokens],
-    identityTokens: [...FAMILY_IDENTITY_BASE, ...override.identityTokens],
-    anchorTokens: [...FAMILY_ANCHOR_BASE, ...override.anchorTokens],
-    guardrails: [...FAMILY_GUARDRAILS_BASE, ...override.guardrails],
+    positiveTokens: [...family.styleLockPositive, ...override.positiveTokens],
+    negativeTokens: [...family.styleLockNegative, ...override.negativeTokens],
+    identityTokens: [
+      "same mascot across all angles",
+      "same compact head-to-body ratio",
+      "same stubby arm and leg proportions",
+      "same simplified doodle family style",
+      ...override.identityTokens
+    ],
+    anchorTokens: ["same head width and height", "same eye spacing", "same body scale", ...override.anchorTokens],
+    guardrails: [
+      "keep the head large and compact",
+      "keep the body much smaller than the head",
+      "keep arms and legs short and simple",
+      "keep the face minimal and readable",
+      "keep the result inside the same mascot family",
+      ...override.guardrails
+    ],
     viewHints: {
       ...override.viewHints
     },

@@ -2,6 +2,14 @@ export type CharacterGenerationMode = "reference" | "new";
 export type CharacterView = "front" | "threeQuarter" | "profile";
 export type CharacterProviderName = "mock" | "comfyui" | "remoteApi" | "vertexImagen";
 export type MascotSpeciesId = "cat" | "dog" | "wolf";
+export type MascotReferenceCanonStage =
+  | "scaffold"
+  | "front_master_seeded"
+  | "family_views_seeded"
+  | "hero_seeded"
+  | "review_ready"
+  | "species_ready";
+export type MascotReferenceQualityStatus = "unchecked" | "review_needed" | "approved";
 export type CharacterWorkflowStage =
   | "front_master"
   | "side_view_base"
@@ -164,6 +172,21 @@ export type MascotSpeciesProfile = {
   };
 };
 
+export type MascotFamilyArchetype = {
+  id: string;
+  label: string;
+  styleLockPositive: string[];
+  styleLockNegative: string[];
+  frontMasterPositive: string[];
+  derivationPositive: string[];
+  heroCrop: {
+    topBias: number;
+    heightRatio: number;
+    sidePadRatio: number;
+    targetHeightRatio: number;
+  };
+};
+
 export type MascotReferenceAssetEntry = {
   path: string;
   note?: string;
@@ -185,9 +208,12 @@ export type MascotReferenceBankManifest = {
   familyId?: string;
   variant?: "canonical" | "candidate";
   bankStatus?: "species_ready" | "scaffold_only";
+  canonStage?: MascotReferenceCanonStage;
+  qualityStatus?: MascotReferenceQualityStatus;
   legacyTemporary?: boolean;
   replacementStrategy?: "rescue" | "replace";
   notes?: string[];
+  qualityNotes?: string[];
   requiredAssets?: MascotReferenceAssetRequirement[];
   style?: MascotReferenceAssetEntry[];
   starterByView?: Partial<Record<CharacterView, MascotReferenceAssetEntry[]>>;

@@ -27,7 +27,8 @@ import {
   resolveMascotReferenceRequirementStatuses,
   resolveMascotStyleReferenceAsset
 } from "./mascotReferenceBank";
-import { STYLE_PROMPT_PRESETS, buildPromptBundle } from "./prompt";
+import { listMascotFamilyArchetypes, resolveMascotFamilyArchetype } from "./mascotFamilyArchetypes";
+import { STYLE_PROMPT_PRESETS, buildMascotBankPromptBundle, buildPromptBundle, resolveStylePromptPreset } from "./prompt";
 import { listMascotSpeciesProfiles, resolveMascotSpeciesProfile } from "./species";
 import type {
   BuildPromptBundleInput,
@@ -156,7 +157,11 @@ export function listMascotSpecies() {
   return listMascotSpeciesProfiles();
 }
 
-export { resolveMascotSpeciesProfile };
+export function listMascotFamilies() {
+  return listMascotFamilyArchetypes();
+}
+
+export { resolveMascotFamilyArchetype, resolveMascotSpeciesProfile };
 export {
   buildMascotReferenceBankReviewPlan,
   resolveEffectiveMascotReferenceBankStatus,
@@ -167,6 +172,8 @@ export {
   resolveMascotStyleReferenceAsset
 };
 export {
+  buildMascotBankPromptBundle,
+  resolveStylePromptPreset,
   approveFrontMaster,
   assertCharacterPipelineAccepted,
   buildGeneratedCharacterPack,

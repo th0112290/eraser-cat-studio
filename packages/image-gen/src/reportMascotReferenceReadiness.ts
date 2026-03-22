@@ -30,13 +30,17 @@ function main(): void {
 
     return {
       speciesId,
+      familyId: diagnostics.familyId,
       variant: diagnostics.variant,
+      canonStage: diagnostics.canonStage,
+      qualityStatus: diagnostics.qualityStatus,
       manifestPath: diagnostics.manifestPath,
       legacyTemporary: diagnostics.legacyTemporary,
       declaredStatus: diagnostics.declaredStatus,
       effectiveStatus: diagnostics.status,
       statusMismatch: diagnostics.statusMismatch,
       missingRoles: diagnostics.missingRoles,
+      qualityNotes: diagnostics.qualityNotes,
       requiredAssetSlots: diagnostics.requiredAssetSlots,
       unsatisfiedRequiredAssetSlots: diagnostics.unsatisfiedRequiredAssetSlots,
       reviewOnly: reviewPlan.reviewOnly,
@@ -66,7 +70,7 @@ function main(): void {
     const unsatisfiedSummary =
       entry.unsatisfiedRequiredAssetSlots.length > 0 ? entry.unsatisfiedRequiredAssetSlots.join(", ") : "none";
     console.log(
-      `[mascot-reference-readiness] species=${entry.speciesId} variant=${entry.variant} declared=${entry.declaredStatus} effective=${entry.effectiveStatus} reviewOnly=${entry.reviewOnly} legacyTemporary=${entry.legacyTemporary} unsatisfied=${unsatisfiedSummary}`
+      `[mascot-reference-readiness] species=${entry.speciesId} family=${entry.familyId} variant=${entry.variant} canonStage=${entry.canonStage} quality=${entry.qualityStatus} declared=${entry.declaredStatus} effective=${entry.effectiveStatus} reviewOnly=${entry.reviewOnly} legacyTemporary=${entry.legacyTemporary} unsatisfied=${unsatisfiedSummary}`
     );
   }
   console.log(`[mascot-reference-readiness] report=${OUTPUT_PATH}`);

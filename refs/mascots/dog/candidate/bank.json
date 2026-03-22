@@ -2,7 +2,7 @@
   "extends": "../../shared/bank.json",
   "profileId": "dog",
   "speciesId": "dog",
-  "familyId": "compact_doodle_mascot_v3_candidate",
+  "familyId": "canine_compact_doodle_v1",
   "variant": "candidate",
   "bankStatus": "scaffold_only",
   "replacementStrategy": "replace",
@@ -11,7 +11,10 @@
     "drop premium-api generated front/threeQuarter/profile/style/hero assets here, then enable with MASCOT_REFERENCE_BANK_CANDIDATES=dog",
     "dog candidate bank staged from vertexImagen preset mascot-bank-canon-premium on 2026-03-22",
     "generated candidate assets are staged for manual review before promotion",
-    "front master first workflow: style.front.primary establishes identity, remaining slots derive from the approved front master"
+    "front master first workflow: style.front.primary establishes identity, remaining slots derive from the approved front master",
+    "front master first workflow: style.front.primary establishes identity, family.front reuses the approved front, hero.front is cropped from the approved front, and side views derive from the approved front master",
+    "front-master phase only: generate style.front, copy family.front, and derive hero.front before any side-view generation",
+    "do not derive three-quarter/profile until the front master is manually approved"
   ],
   "requiredAssets": [
     {
@@ -63,18 +66,8 @@
         "note": "dog candidate front starter scaffold"
       }
     ],
-    "threeQuarter": [
-      {
-        "path": "./family_threeQuarter_primary.png",
-        "note": "dog candidate three-quarter starter scaffold"
-      }
-    ],
-    "profile": [
-      {
-        "path": "./family_profile_primary.png",
-        "note": "dog candidate profile starter scaffold"
-      }
-    ]
+    "threeQuarter": [],
+    "profile": []
   },
   "familyByView": {
     "front": [
@@ -83,18 +76,8 @@
         "note": "dog candidate front composition anchor"
       }
     ],
-    "threeQuarter": [
-      {
-        "path": "./family_threeQuarter_primary.png",
-        "note": "dog candidate three-quarter composition anchor"
-      }
-    ],
-    "profile": [
-      {
-        "path": "./family_profile_primary.png",
-        "note": "dog candidate profile composition anchor"
-      }
-    ]
+    "threeQuarter": [],
+    "profile": []
   },
   "heroByView": {
     "front": [
@@ -103,5 +86,12 @@
         "note": "dog candidate front hero identity ref"
       }
     ]
-  }
+  },
+  "canonStage": "hero_seeded",
+  "qualityStatus": "review_needed",
+  "qualityNotes": [
+    "front family slot is copied directly from the approved front master to avoid front drift",
+    "hero front slot is derived by deterministic crop from the approved front master",
+    "side views stay intentionally ungenerated until front-master QA is complete"
+  ]
 }

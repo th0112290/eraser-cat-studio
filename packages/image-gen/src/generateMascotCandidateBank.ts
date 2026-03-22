@@ -3,14 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import {
-  buildCharacterPrompt,
+  buildMascotBankPromptBundle,
   createCharacterProvider,
   resolveProviderName,
   type CharacterProviderGenerateInput,
   type CharacterProviderName,
   type CharacterView,
   type MascotReferenceBankManifest,
-  type MascotSpeciesId
+  type MascotSpeciesId,
+  resolveMascotFamilyArchetype,
+  resolveMascotSpeciesProfile
 } from "./index";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,12 +21,14 @@ const REPO_ROOT = path.resolve(__dirname, "../../..");
 const ROOT_ENV_PATH = path.join(REPO_ROOT, ".env");
 
 type SlotKind = "style" | "family" | "hero";
+type CandidateBankGenerationPhase = "front_master" | "family_views" | "full";
 
 type CandidateBankAssetPlan = {
   slotId: string;
   kind: SlotKind;
   view: CharacterView;
   fileName: string;
+  executionMode: "generate_front" | "copy_front" | "hero_crop" | "reference_edit";
   promptAdditions: string[];
   negativeAdditions?: string[];
   deriveFromFrontMaster?: boolean;
@@ -33,6 +37,7 @@ type CandidateBankAssetPlan = {
 
 type GeneratedReferenceAsset = {
   filePath: string;
+  buffer: Buffer;
   mimeType: string;
   base64: string;
   width: number;
@@ -41,55 +46,18 @@ type GeneratedReferenceAsset = {
 
 const FRONT_MASTER_SLOT_ID = "style.front.primary";
 
-const SHARED_STYLE_LOCK_TOKENS = [
-  "minimal offbeat monochrome mascot",
-  "large boxy rounded-square head with a flatter top and straighter sides",
-  "tiny simple body",
-  "short stubby limbs",
-  "deadpan face",
-  "two tiny vertical oval eyes",
-  "short straight mouth",
-  "rough slightly uneven black outline",
-  "flat white fill",
-  "plain light gray background",
-  "naive doodle finish",
-  "minimal anatomy only"
-];
-
-const SHARED_STYLE_LOCK_NEGATIVE = [
-  "sticker border",
-  "white outline",
-  "drop shadow",
-  "glossy vector finish",
-  "polished mascot design",
-  "commercial mascot look",
-  "plush toy look",
-  "big sparkling eyes",
-  "highly expressive face",
-  "soft rounded plush proportions",
-  "detailed shading",
-  "gradient shading",
-  "3d render",
-  "realistic fur",
-  "multiple characters",
-  "comparison panels",
-  "turnaround sheet",
-  "text",
-  "logo"
-];
-
 const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
   {
     slotId: "style.front.primary",
     kind: "style",
     view: "front",
     fileName: "style_front_primary.png",
+    executionMode: "generate_front",
     promptAdditions: [
       "approved front master bank seed",
       "strict front view",
       "neutral standing pose",
       "both short arms visible",
-      "both paws visible and attached",
       "full body visible",
       "clean centered composition",
       "no prop",
@@ -102,15 +70,8 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     kind: "family",
     view: "front",
     fileName: "family_front_primary.png",
-    promptAdditions: [
-      "derive from the supplied front master without redesign",
-      "front composition anchor",
-      "full body visible",
-      "centered composition",
-      "readable body proportion",
-      "readable paws",
-      "same neutral mascot pose"
-    ],
+    executionMode: "copy_front",
+    promptAdditions: ["reuse the approved front master as the front family composition anchor"],
     deriveFromFrontMaster: true,
     candidateCountOverride: 1
   },
@@ -119,6 +80,7 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     kind: "family",
     view: "threeQuarter",
     fileName: "family_threeQuarter_primary.png",
+    executionMode: "reference_edit",
     promptAdditions: [
       "derive from the supplied front master without redesign",
       "three-quarter composition anchor",
@@ -135,6 +97,7 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     kind: "family",
     view: "profile",
     fileName: "family_profile_primary.png",
+    executionMode: "reference_edit",
     promptAdditions: [
       "derive from the supplied front master without redesign",
       "profile composition anchor",
@@ -151,15 +114,8 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     kind: "hero",
     view: "front",
     fileName: "hero_front_primary.png",
-    promptAdditions: [
-      "derive from the supplied front master without redesign",
-      "front hero identity reference",
-      "head and upper torso emphasized",
-      "face detail readable",
-      "neutral expression",
-      "strong eye and ear readability",
-      "no dramatic pose"
-    ],
+    executionMode: "hero_crop",
+    promptAdditions: ["derive a stable front hero identity crop from the approved front master"],
     negativeAdditions: [
       "multiple characters",
       "comparison panels",
@@ -172,49 +128,6 @@ const BASE_ASSET_PLANS: CandidateBankAssetPlan[] = [
     candidateCountOverride: 1
   }
 ];
-
-const SPECIES_PLAN_ADDITIONS: Record<MascotSpeciesId, string[]> = {
-  cat: [
-    "boxy rounded-square cat head",
-    "near-square cat head",
-    "pointed cat ears",
-    "very short cat muzzle",
-    "two whisker dashes each cheek",
-    "eraser-crumb tail silhouette"
-  ],
-  dog: [
-    "domestic dog mascot",
-    "boxy rounded-square dog head",
-    "soft rounded-base dog ears",
-    "short blunt puppy muzzle",
-    "tiny button nose",
-    "domestic dog silhouette",
-    "deadpan face",
-    "not a wolf",
-    "not a rabbit",
-    "both eyes same size",
-    "no eye patch marking",
-    "not plush",
-    "not glossy"
-  ],
-  wolf: [
-    "alert wolf mascot",
-    "boxy broad wolf head",
-    "upright wolf ears",
-    "short angular wedge muzzle",
-    "broad wolf cheek ruff",
-    "deadpan face",
-    "wolf silhouette",
-    "not a dog",
-    "not a fox",
-    "minimal fur detail only",
-    "no fur hatching",
-    "broader wolf head instead of a narrow fox face",
-    "simple tail with no furry texture",
-    "not plush",
-    "not glossy"
-  ]
-};
 
 function loadRepoEnv(envPath: string): void {
   if (!fs.existsSync(envPath)) {
@@ -294,6 +207,14 @@ function parseSlotSelection(): Set<string> {
   );
 }
 
+function parsePhaseSelection(): CandidateBankGenerationPhase {
+  const value = (getArgValue("phase") ?? process.env.MASCOT_BANK_PHASE ?? "front_master").trim().toLowerCase();
+  if (value === "family_views" || value === "full") {
+    return value;
+  }
+  return "front_master";
+}
+
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -320,6 +241,12 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 
 function ensureDir(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function removeIfExists(filePath: string): void {
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
 }
 
 function slugifySlotId(slotId: string): string {
@@ -361,6 +288,7 @@ async function loadReferenceAsset(filePath: string): Promise<GeneratedReferenceA
   const metadata = await sharp(buffer).metadata();
   return {
     filePath,
+    buffer,
     mimeType: mimeTypeForFilePath(filePath),
     base64: buffer.toString("base64"),
     width: metadata.width ?? 1024,
@@ -368,18 +296,189 @@ async function loadReferenceAsset(filePath: string): Promise<GeneratedReferenceA
   };
 }
 
-async function createOpaqueMaskBase64(width: number, height: number): Promise<string> {
-  const buffer = await sharp({
-    create: {
-      width: Math.max(1, width),
-      height: Math.max(1, height),
-      channels: 4,
-      background: { r: 255, g: 255, b: 255, alpha: 1 }
+type SubjectBounds = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+type EstimatedBackground = {
+  r: number;
+  g: number;
+  b: number;
+  alpha: number;
+};
+
+async function loadRaster(asset: GeneratedReferenceAsset): Promise<{
+  data: Buffer<ArrayBufferLike>;
+  width: number;
+  height: number;
+  channels: number;
+  background: EstimatedBackground;
+}> {
+  const { data, info } = await sharp(asset.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  return {
+    data,
+    width: info.width,
+    height: info.height,
+    channels: info.channels,
+    background: estimateBackgroundColor(data, info.width, info.height, info.channels)
+  };
+}
+
+function estimateBackgroundColor(
+  data: Buffer<ArrayBufferLike>,
+  width: number,
+  height: number,
+  channels: number
+): EstimatedBackground {
+  const points: Array<[number, number]> = [
+    [0, 0],
+    [Math.max(0, width - 1), 0],
+    [0, Math.max(0, height - 1)],
+    [Math.max(0, width - 1), Math.max(0, height - 1)],
+    [Math.floor(width / 2), 0],
+    [Math.floor(width / 2), Math.max(0, height - 1)]
+  ];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let alpha = 0;
+  for (const [x, y] of points) {
+    const idx = (y * width + x) * channels;
+    r += data[idx] ?? 255;
+    g += data[idx + 1] ?? 255;
+    b += data[idx + 2] ?? 255;
+    alpha += data[idx + 3] ?? 255;
+  }
+  return {
+    r: Math.round(r / points.length),
+    g: Math.round(g / points.length),
+    b: Math.round(b / points.length),
+    alpha: Math.round(alpha / points.length)
+  };
+}
+
+function foregroundDistance(data: Buffer<ArrayBufferLike>, index: number, background: EstimatedBackground): number {
+  return (
+    Math.abs((data[index] ?? 255) - background.r) +
+    Math.abs((data[index + 1] ?? 255) - background.g) +
+    Math.abs((data[index + 2] ?? 255) - background.b)
+  );
+}
+
+function detectSubjectBounds(
+  data: Buffer<ArrayBufferLike>,
+  width: number,
+  height: number,
+  channels: number,
+  background: EstimatedBackground,
+  threshold = 18
+): SubjectBounds | null {
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = (y * width + x) * channels;
+      const alpha = data[idx + 3] ?? 255;
+      if (alpha < 16 || foregroundDistance(data, idx, background) < threshold) {
+        continue;
+      }
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
     }
+  }
+  if (maxX < minX || maxY < minY) {
+    return null;
+  }
+  return {
+    left: minX,
+    top: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  };
+}
+
+async function createSubjectMaskBase64(asset: GeneratedReferenceAsset): Promise<string> {
+  const raster = await loadRaster(asset);
+  const mask = Buffer.alloc(raster.width * raster.height * 4, 0);
+  for (let y = 0; y < raster.height; y += 1) {
+    for (let x = 0; x < raster.width; x += 1) {
+      const idx = (y * raster.width + x) * raster.channels;
+      const outIdx = (y * raster.width + x) * 4;
+      const alpha = raster.data[idx + 3] ?? 255;
+      const enabled = alpha >= 16 && foregroundDistance(raster.data, idx, raster.background) >= 18;
+      const value = enabled ? 255 : 0;
+      mask[outIdx] = value;
+      mask[outIdx + 1] = value;
+      mask[outIdx + 2] = value;
+      mask[outIdx + 3] = 255;
+    }
+  }
+  const buffer = await sharp(mask, {
+    raw: { width: raster.width, height: raster.height, channels: 4 }
   })
+    .dilate(2)
     .png()
     .toBuffer();
   return buffer.toString("base64");
+}
+
+async function deriveHeroCropBuffer(asset: GeneratedReferenceAsset, familyId: string): Promise<Buffer> {
+  const family = resolveMascotFamilyArchetype(familyId);
+  const raster = await loadRaster(asset);
+  const subject =
+    detectSubjectBounds(raster.data, raster.width, raster.height, raster.channels, raster.background) ?? {
+      left: 0,
+      top: 0,
+      width: raster.width,
+      height: raster.height
+    };
+  const cropLeft = Math.max(0, subject.left - Math.round(subject.width * family.heroCrop.sidePadRatio));
+  const cropWidth = Math.min(
+    raster.width - cropLeft,
+    subject.width + Math.round(subject.width * family.heroCrop.sidePadRatio * 2)
+  );
+  const cropTop = Math.max(0, Math.round(subject.top - subject.height * family.heroCrop.topBias));
+  const cropHeight = Math.min(raster.height - cropTop, Math.max(1, Math.round(subject.height * family.heroCrop.heightRatio)));
+  const resizedHeight = Math.max(1, Math.round(raster.height * family.heroCrop.targetHeightRatio));
+  const topPad = Math.max(0, Math.floor((raster.height - resizedHeight) / 2));
+  const bottomPad = Math.max(0, raster.height - resizedHeight - topPad);
+  return sharp(asset.buffer)
+    .extract({
+      left: cropLeft,
+      top: cropTop,
+      width: Math.max(1, cropWidth),
+      height: Math.max(1, cropHeight)
+    })
+    .resize(raster.width, resizedHeight, {
+      fit: "contain",
+      background: {
+        r: raster.background.r,
+        g: raster.background.g,
+        b: raster.background.b,
+        alpha: 1
+      }
+    })
+    .extend({
+      top: topPad,
+      bottom: bottomPad,
+      left: 0,
+      right: 0,
+      background: {
+        r: raster.background.r,
+        g: raster.background.g,
+        b: raster.background.b,
+        alpha: 1
+      }
+    })
+    .png()
+    .toBuffer();
 }
 
 function mergeUniqueNotes(existing: string[] | undefined, next: string[]): string[] {
@@ -436,33 +535,46 @@ function buildSlotPromptBundle(input: {
   presetId: string;
   slot: CandidateBankAssetPlan;
   referenceDriven: boolean;
-}): ReturnType<typeof buildCharacterPrompt> {
-  const positivePrompt = [
-    ...SHARED_STYLE_LOCK_TOKENS,
-    ...SPECIES_PLAN_ADDITIONS[input.speciesId],
-    ...(input.referenceDriven
-      ? [
-          "preserve the supplied front master identity",
-          "same head shape",
-          "same ear shape",
-          "same face scale",
-          "same body proportion",
-          "same line personality",
-          "no redesign"
-        ]
-      : ["establish the canonical front master identity"]),
-    ...input.slot.promptAdditions
-  ].join(", ");
-
-  const negativePrompt = [...SHARED_STYLE_LOCK_NEGATIVE, ...(input.slot.negativeAdditions ?? [])].join(", ");
-
-  return buildCharacterPrompt({
-    mode: input.referenceDriven ? "reference" : "new",
+}) {
+  return buildMascotBankPromptBundle({
     presetId: input.presetId,
     speciesId: input.speciesId,
-    positivePrompt,
-    negativePrompt
+    view: input.slot.view,
+    stage: input.referenceDriven ? "reference_derivation" : "front_master",
+    positiveTokens: input.slot.promptAdditions,
+    negativeTokens: input.slot.negativeAdditions
   });
+}
+
+function resolvePlansForPhase(phase: CandidateBankGenerationPhase): CandidateBankAssetPlan[] {
+  switch (phase) {
+    case "family_views":
+      return BASE_ASSET_PLANS.filter(
+        (entry) => entry.slotId === "family.threeQuarter.primary" || entry.slotId === "family.profile.primary"
+      );
+    case "full":
+      return BASE_ASSET_PLANS;
+    case "front_master":
+    default:
+      return BASE_ASSET_PLANS.filter(
+        (entry) =>
+          entry.slotId === FRONT_MASTER_SLOT_ID ||
+          entry.slotId === "family.front.primary" ||
+          entry.slotId === "hero.front.primary"
+      );
+  }
+}
+
+function pruneStaleCandidateOutputsForPhase(candidateDir: string, phase: CandidateBankGenerationPhase): void {
+  if (phase !== "front_master") {
+    return;
+  }
+  removeIfExists(path.join(candidateDir, "family_threeQuarter_primary.png"));
+  removeIfExists(path.join(candidateDir, "family_profile_primary.png"));
+}
+
+function buildAssetEntry(relativePath: string, note: string): { path: string; note: string }[] {
+  return [{ path: relativePath, note }];
 }
 
 function buildCandidateBankManifest(input: {
@@ -471,75 +583,92 @@ function buildCandidateBankManifest(input: {
   providerName: CharacterProviderName;
   presetId: string;
   keepScaffoldOnly: boolean;
+  candidateDir: string;
+  phase: CandidateBankGenerationPhase;
 }): MascotReferenceBankManifest {
+  const speciesProfile = resolveMascotSpeciesProfile(input.speciesId);
   const generatedNote = `${input.speciesId} candidate bank staged from ${input.providerName} preset ${input.presetId} on ${new Date().toISOString().slice(0, 10)}`;
+  const styleExists = fs.existsSync(path.join(input.candidateDir, "style_front_primary.png"));
+  const frontExists = fs.existsSync(path.join(input.candidateDir, "family_front_primary.png"));
+  const threeQuarterExists = fs.existsSync(path.join(input.candidateDir, "family_threeQuarter_primary.png"));
+  const profileExists = fs.existsSync(path.join(input.candidateDir, "family_profile_primary.png"));
+  const heroExists = fs.existsSync(path.join(input.candidateDir, "hero_front_primary.png"));
+  const sideViewCount = Number(threeQuarterExists) + Number(profileExists);
+  const allRequiredExist = styleExists && frontExists && threeQuarterExists && profileExists && heroExists;
+  const canonStage = !styleExists
+    ? "scaffold"
+    : allRequiredExist
+      ? input.keepScaffoldOnly
+        ? "review_ready"
+        : "species_ready"
+      : sideViewCount > 0
+        ? "family_views_seeded"
+        : heroExists
+          ? "hero_seeded"
+          : "front_master_seeded";
+  const qualityStatus = !styleExists ? "unchecked" : input.keepScaffoldOnly ? "review_needed" : "approved";
+  const bankStatus = !input.keepScaffoldOnly && allRequiredExist ? "species_ready" : "scaffold_only";
+  const phaseNotes =
+    input.phase === "front_master"
+      ? [
+          "front-master phase only: generate style.front, copy family.front, and derive hero.front before any side-view generation",
+          "do not derive three-quarter/profile until the front master is manually approved"
+        ]
+      : input.phase === "family_views"
+        ? [
+            "family-views phase: derive three-quarter/profile only from an approved front master",
+            "reject and rerun family-views if side silhouettes drift away from the approved front master"
+          ]
+        : [
+            "full phase: front master and family views were generated in a single staged run",
+            "use full phase only when front-master discovery has already been validated for this species family"
+          ];
   return {
     ...input.current,
     profileId: input.speciesId,
     speciesId: input.speciesId,
+    familyId: speciesProfile.familyId,
     variant: "candidate",
     replacementStrategy: "replace",
-    bankStatus: input.keepScaffoldOnly ? "scaffold_only" : "species_ready",
+    bankStatus,
+    canonStage,
+    qualityStatus,
     notes: mergeUniqueNotes(input.current.notes, [
       generatedNote,
-      `front master first workflow: ${FRONT_MASTER_SLOT_ID} establishes identity, remaining slots derive from the approved front master`,
-      input.keepScaffoldOnly
+      ...phaseNotes,
+      `front master first workflow: ${FRONT_MASTER_SLOT_ID} establishes identity, family.front reuses the approved front, hero.front is cropped from the approved front, and side views derive from the approved front master`,
+      bankStatus === "scaffold_only"
         ? "generated candidate assets are staged for manual review before promotion"
         : "generated candidate assets were promoted ready for species rollout"
     ]),
-    style: [
-      {
-        path: "./style_front_primary.png",
-        note: `${input.speciesId} candidate front style canon`
-      }
+    qualityNotes: [
+      "front family slot is copied directly from the approved front master to avoid front drift",
+      "hero front slot is derived by deterministic crop from the approved front master",
+      ...(input.phase === "front_master"
+        ? ["side views stay intentionally ungenerated until front-master QA is complete"]
+        : ["three-quarter and profile slots are generated from a subject-mask front-master derivation path"])
     ],
+    style: styleExists ? buildAssetEntry("./style_front_primary.png", `${input.speciesId} candidate front style canon`) : [],
     starterByView: {
-      front: [
-        {
-          path: "./family_front_primary.png",
-          note: `${input.speciesId} candidate front starter scaffold`
-        }
-      ],
-      threeQuarter: [
-        {
-          path: "./family_threeQuarter_primary.png",
-          note: `${input.speciesId} candidate three-quarter starter scaffold`
-        }
-      ],
-      profile: [
-        {
-          path: "./family_profile_primary.png",
-          note: `${input.speciesId} candidate profile starter scaffold`
-        }
-      ]
+      front: frontExists ? buildAssetEntry("./family_front_primary.png", `${input.speciesId} candidate front starter scaffold`) : [],
+      threeQuarter: threeQuarterExists
+        ? buildAssetEntry("./family_threeQuarter_primary.png", `${input.speciesId} candidate three-quarter starter scaffold`)
+        : [],
+      profile: profileExists
+        ? buildAssetEntry("./family_profile_primary.png", `${input.speciesId} candidate profile starter scaffold`)
+        : []
     },
     familyByView: {
-      front: [
-        {
-          path: "./family_front_primary.png",
-          note: `${input.speciesId} candidate front composition anchor`
-        }
-      ],
-      threeQuarter: [
-        {
-          path: "./family_threeQuarter_primary.png",
-          note: `${input.speciesId} candidate three-quarter composition anchor`
-        }
-      ],
-      profile: [
-        {
-          path: "./family_profile_primary.png",
-          note: `${input.speciesId} candidate profile composition anchor`
-        }
-      ]
+      front: frontExists ? buildAssetEntry("./family_front_primary.png", `${input.speciesId} candidate front composition anchor`) : [],
+      threeQuarter: threeQuarterExists
+        ? buildAssetEntry("./family_threeQuarter_primary.png", `${input.speciesId} candidate three-quarter composition anchor`)
+        : [],
+      profile: profileExists
+        ? buildAssetEntry("./family_profile_primary.png", `${input.speciesId} candidate profile composition anchor`)
+        : []
     },
     heroByView: {
-      front: [
-        {
-          path: "./hero_front_primary.png",
-          note: `${input.speciesId} candidate front hero identity ref`
-        }
-      ]
+      front: heroExists ? buildAssetEntry("./hero_front_primary.png", `${input.speciesId} candidate front hero identity ref`) : []
     }
   };
 }
@@ -552,6 +681,7 @@ async function run(): Promise<void> {
     throw new Error("No valid species selected. Use --species dog --species wolf or MASCOT_BANK_SPECIES=dog,wolf.");
   }
   const slotSelection = parseSlotSelection();
+  const phase = parsePhaseSelection();
 
   const presetId = getArgValue("preset") ?? process.env.MASCOT_BANK_PRESET ?? "mascot-bank-canon-premium";
   const baseSeed = parsePositiveInt(getArgValue("base-seed") ?? process.env.MASCOT_BANK_BASE_SEED, 4200);
@@ -570,12 +700,14 @@ async function run(): Promise<void> {
     }
 
     ensureDir(candidateDir);
+    pruneStaleCandidateOutputsForPhase(candidateDir, phase);
     const outDir = path.join(REPO_ROOT, "out", "mascot_bank_generation", speciesId, runStamp);
     ensureDir(outDir);
 
     const generationRecords: Array<Record<string, unknown>> = [];
+    const phasePlans = resolvePlansForPhase(phase);
     const activePlansRaw =
-      slotSelection.size > 0 ? BASE_ASSET_PLANS.filter((entry) => slotSelection.has(entry.slotId)) : BASE_ASSET_PLANS;
+      slotSelection.size > 0 ? phasePlans.filter((entry) => slotSelection.has(entry.slotId)) : phasePlans;
     const activePlans = [
       ...activePlansRaw.filter((entry) => entry.slotId === FRONT_MASTER_SLOT_ID),
       ...activePlansRaw.filter((entry) => entry.slotId !== FRONT_MASTER_SLOT_ID)
@@ -598,10 +730,85 @@ async function run(): Promise<void> {
           );
         }
         frontMasterAsset = await loadReferenceAsset(existingFrontMasterPath);
-        frontMasterMaskBase64 = await createOpaqueMaskBase64(frontMasterAsset.width, frontMasterAsset.height);
+        frontMasterMaskBase64 = await createSubjectMaskBase64(frontMasterAsset);
       }
 
-      const referenceDriven = slot.deriveFromFrontMaster === true;
+      const slotOutDir = path.join(outDir, slugifySlotId(slot.slotId));
+      ensureDir(slotOutDir);
+      const promotedPath = path.join(candidateDir, slot.fileName);
+
+      if (slot.executionMode === "copy_front") {
+        if (!frontMasterAsset) {
+          throw new Error(`Cannot copy ${slot.slotId} without an approved front master for ${speciesId}.`);
+        }
+        const derivedPath = path.join(slotOutDir, `${slot.fileName.replace(/\.[^.]+$/, "")}_candidate_0.png`);
+        fs.writeFileSync(derivedPath, frontMasterAsset.buffer);
+        fs.writeFileSync(promotedPath, frontMasterAsset.buffer);
+        generationRecords.push({
+          slotId: slot.slotId,
+          kind: slot.kind,
+          view: slot.view,
+          targetPath: promotedPath,
+          promptPresetId: presetId,
+          qualityProfileId: "derived_from_front_master",
+          mode: "derived_copy",
+          frontMasterSourcePath: frontMasterAsset.filePath,
+          prompt: null,
+          negativePrompt: null,
+          generatedCandidates: [
+            {
+              candidateId: `derived_copy_${slot.slotId}`,
+              candidateIndex: 0,
+              filePath: derivedPath,
+              mimeType: frontMasterAsset.mimeType,
+              seed: null,
+              providerMeta: {
+                derivationMode: "copy_front_master"
+              }
+            }
+          ]
+        });
+        continue;
+      }
+
+      if (slot.executionMode === "hero_crop") {
+        if (!frontMasterAsset) {
+          throw new Error(`Cannot derive ${slot.slotId} without an approved front master for ${speciesId}.`);
+        }
+        const speciesProfile = resolveMascotSpeciesProfile(speciesId);
+        const heroBuffer = await deriveHeroCropBuffer(frontMasterAsset, speciesProfile.familyId);
+        const derivedPath = path.join(slotOutDir, `${slot.fileName.replace(/\.[^.]+$/, "")}_candidate_0.png`);
+        fs.writeFileSync(derivedPath, heroBuffer);
+        fs.writeFileSync(promotedPath, heroBuffer);
+        generationRecords.push({
+          slotId: slot.slotId,
+          kind: slot.kind,
+          view: slot.view,
+          targetPath: promotedPath,
+          promptPresetId: presetId,
+          qualityProfileId: "derived_from_front_master_crop",
+          mode: "derived_hero_crop",
+          frontMasterSourcePath: frontMasterAsset.filePath,
+          prompt: null,
+          negativePrompt: null,
+          generatedCandidates: [
+            {
+              candidateId: `derived_hero_crop_${slot.slotId}`,
+              candidateIndex: 0,
+              filePath: derivedPath,
+              mimeType: "image/png",
+              seed: null,
+              providerMeta: {
+                derivationMode: "hero_crop_from_front_master",
+                familyId: speciesProfile.familyId
+              }
+            }
+          ]
+        });
+        continue;
+      }
+
+      const referenceDriven = slot.executionMode === "reference_edit";
       const slotPromptBundle = buildSlotPromptBundle({
         speciesId,
         presetId,
@@ -641,9 +848,6 @@ async function run(): Promise<void> {
         throw new Error(`Provider returned no candidates for ${speciesId} ${slot.slotId}`);
       }
 
-      const slotOutDir = path.join(outDir, slugifySlotId(slot.slotId));
-      ensureDir(slotOutDir);
-
       const candidateFiles = sortedCandidates.map((candidate) => {
         const ext = extensionForMimeType(candidate.mimeType);
         const fileName = `${slot.fileName.replace(/\.[^.]+$/, "")}_candidate_${candidate.candidateIndex}.${ext}`;
@@ -660,7 +864,6 @@ async function run(): Promise<void> {
       });
 
       const promotedCandidate = sortedCandidates[0];
-      const promotedPath = path.join(candidateDir, slot.fileName);
       fs.writeFileSync(promotedPath, promotedCandidate.data);
 
       generationRecords.push({
@@ -671,6 +874,7 @@ async function run(): Promise<void> {
         promptPresetId: slotPromptBundle.presetId,
         qualityProfileId: slotPromptBundle.qualityProfile.id,
         mode: referenceDriven ? "reference" : "new",
+        executionMode: slot.executionMode,
         ...(referenceDriven && frontMasterAsset ? { frontMasterSourcePath: frontMasterAsset.filePath } : {}),
         prompt: slotPromptBundle.viewPrompts[slot.view],
         negativePrompt: slotPromptBundle.negativePrompt,
@@ -679,7 +883,7 @@ async function run(): Promise<void> {
 
       if (slot.slotId === FRONT_MASTER_SLOT_ID) {
         frontMasterAsset = await loadReferenceAsset(promotedPath);
-        frontMasterMaskBase64 = await createOpaqueMaskBase64(frontMasterAsset.width, frontMasterAsset.height);
+        frontMasterMaskBase64 = await createSubjectMaskBase64(frontMasterAsset);
       }
     }
 
@@ -689,7 +893,9 @@ async function run(): Promise<void> {
       speciesId,
       providerName,
       presetId,
-      keepScaffoldOnly
+      keepScaffoldOnly,
+      candidateDir,
+      phase
     });
     fs.writeFileSync(bankManifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`, "utf8");
 
@@ -700,6 +906,7 @@ async function run(): Promise<void> {
         {
           speciesId,
           provider: providerName,
+          phase,
           presetId,
           candidateCount,
           frontMasterSlotId: FRONT_MASTER_SLOT_ID,
