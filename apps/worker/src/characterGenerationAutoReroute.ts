@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { CharacterView } from "@ec/image-gen";
 
 type InlineImageReferenceLike = {
@@ -144,8 +143,8 @@ export function buildSelectionOutcome(input: any): any {
     targetStyle: input.targetStyle,
     acceptedScoreThreshold: input.acceptedScoreThreshold
   });
-  const missingGeneratedViews = input.requestedViews.filter((view) => !selectedByView[view]);
-  const runtimeLowQualityViews = input.requestedViews.filter((view) => {
+  const missingGeneratedViews = input.requestedViews.filter((view: CharacterView) => !selectedByView[view]);
+  const runtimeLowQualityViews = input.requestedViews.filter((view: CharacterView) => {
     const candidate = selectedByView[view];
     if (!candidate) {
       return false;
@@ -156,7 +155,7 @@ export function buildSelectionOutcome(input: any): any {
       acceptedScoreThreshold: input.acceptedScoreThreshold
     });
   });
-  const lowQualityGeneratedViews = input.requestedViews.filter((view) => {
+  const lowQualityGeneratedViews = input.requestedViews.filter((view: CharacterView) => {
     const candidate = selectedByView[view];
     if (!candidate) {
       return true;
@@ -384,7 +383,9 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
   }
 
   const autoRerouteFrontBaseline = selectionOutcome.frontStrong ? selectionOutcome.selectedByView.front : undefined;
-  const autoRerouteSideViews = autoRerouteDecision.targetViews.filter((view) => view !== "front");
+  const autoRerouteSideViews = (autoRerouteDecision.targetViews as CharacterView[]).filter(
+    (view: CharacterView) => view !== "front"
+  );
   let autoRerouteAcceptanceGate:
     | ReturnType<typeof input.buildSideViewAcceptanceGate>
     | undefined;
@@ -423,12 +424,12 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
         starterReferencePathsByView = {
           ...(starterReferencePathsByView ?? {}),
           ...Object.fromEntries(
-            Object.entries(autoRerouteStarterReferenceByView).map(([view, guide]) => [view, guide.sourcePath])
+            Object.entries(autoRerouteStarterReferenceByView).map(([view, guide]: [string, any]) => [view, guide.sourcePath])
           )
         };
       }
       const autoRerouteReferenceBankByView: Partial<Record<CharacterView, unknown[]>> = {};
-      for (const view of autoRerouteSideViews) {
+      for (const view of autoRerouteSideViews as CharacterView[]) {
         const starterReference = autoRerouteStarterReferenceByView[view];
         const familyReference = input.mascotFamilyReferencesByView[view];
         const preferredSideReference = autoRerouteReferenceInputByView[view];
@@ -631,7 +632,7 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
   const autoRerouteRepairFrontBaseline = selectionOutcome.frontStrong ? selectionOutcome.selectedByView.front : undefined;
   const autoRerouteRepairCandidates = selectionOutcome.selectedByView;
   const autoRerouteRepairCandidateByView: Partial<Record<CharacterView, ScoredCandidateLike>> = {};
-  for (const view of input.dedupeCharacterViews(autoRerouteDecision.targetViews)) {
+  for (const view of input.dedupeCharacterViews(autoRerouteDecision.targetViews) as CharacterView[]) {
     const candidate =
       preferredSelectionByView[view] ??
       input.selectBestRepairBaseCandidate({
@@ -689,7 +690,7 @@ export async function runSelectionAutoRerouteFlow(input: any): Promise<any> {
     };
     const autoRerouteRepairFromCandidateIds: Partial<Record<CharacterView, string>> = {};
 
-    for (const view of autoRerouteRepairTriage.repairViews) {
+    for (const view of autoRerouteRepairTriage.repairViews as CharacterView[]) {
       const candidate = autoRerouteRepairTriage.repairBaseByView[view];
       if (!candidate) {
         continue;

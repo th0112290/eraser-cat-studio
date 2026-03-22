@@ -1,4 +1,15 @@
-// @ts-nocheck
+type CharacterView = string;
+type GenerationStageKey = string;
+type CharacterWorkflowStageOrigin = string;
+type InlineImageReference = any;
+type CharacterReferenceBankEntry = any;
+type RetryAdjustment = any;
+type RepairDirectiveProfileSummary = any;
+type CharacterRepairLineage = any;
+type ImageAnalysis = any;
+type StageRunReferenceMixSummary = any;
+type CharacterStructureControlKind = any;
+type ScoredCandidate = any;
 
 export function initializeGenerationStageRuntime(input: any) {
   const {
@@ -64,6 +75,7 @@ export function initializeGenerationStageRuntime(input: any) {
     referenceMimeType,
     resolveFrontReferenceFromManifest,
     sessionId,
+    referenceSourceManifestPath,
     resolveFrontReferenceFromSession,
     prisma,
     continuityConfig,
@@ -215,14 +227,14 @@ export function initializeGenerationStageRuntime(input: any) {
     for (const view of preflightAssessment.blockedViews) {
       stageRuntimeVariantTags.add(`preflight:block:${view}`);
       const diagnostics = preflightAssessment.diagnosticsByView[view];
-      if ((diagnostics?.reasonCodes ?? []).some((reason) => reason.includes("structure_source"))) {
+      if ((diagnostics?.reasonCodes ?? []).some((reason: string) => reason.includes("structure_source"))) {
         stageRuntimeVariantTags.add(`preflight:source:block:${view}`);
       }
     }
     for (const view of preflightAssessment.warningViews) {
       stageRuntimeVariantTags.add(`preflight:review:${view}`);
       const diagnostics = preflightAssessment.diagnosticsByView[view];
-      if ((diagnostics?.reasonCodes ?? []).some((reason) => reason.includes("structure_source"))) {
+      if ((diagnostics?.reasonCodes ?? []).some((reason: string) => reason.includes("structure_source"))) {
         stageRuntimeVariantTags.add(`preflight:source:review:${view}`);
       }
     }
@@ -407,7 +419,7 @@ export function initializeGenerationStageRuntime(input: any) {
       roundsAttempted = round + 1;
       const roundSeed = baseSeed + stageSeedOffset + (input.seedOffset ?? 0) + round * 1009 + executionViews.length * 41;
       const activeRetryAdjustments = Object.fromEntries(
-        executionViews.flatMap((view) => {
+        executionViews.flatMap((view: CharacterView) => {
           const mergedAdjustment = mergeRetryAdjustments(
             input.baseAdjustmentsByView?.[view],
             round > 0 ? retryAdjustmentsByView[view] : undefined
@@ -430,7 +442,7 @@ export function initializeGenerationStageRuntime(input: any) {
         round
       );
       const adjustedViewPrompts = Object.fromEntries(
-        executionViews.map((view) => [
+        executionViews.map((view: CharacterView) => [
           view,
           appendPromptHints(
             promptBundle.viewPrompts[view],
@@ -498,7 +510,7 @@ export function initializeGenerationStageRuntime(input: any) {
           )
         : undefined;
       const effectiveReferenceInputByView = Object.fromEntries(
-        executionViews.flatMap((view) => {
+        executionViews.flatMap((view: CharacterView) => {
           const selectedReference = selectRetryInlineReferenceInput({
             view,
             speciesId: promptBundle.speciesId,
@@ -739,7 +751,7 @@ export function initializeGenerationStageRuntime(input: any) {
         stageAcceptedScoreThreshold
       );
       const bestByViewNow = groupBestByView(scored);
-      const belowThresholdViews = executionViews.filter((view) => {
+      const belowThresholdViews = executionViews.filter((view: CharacterView) => {
         const candidate = bestByViewNow[view];
         if (!candidate) {
           return true;
@@ -769,7 +781,7 @@ export function initializeGenerationStageRuntime(input: any) {
       }
 
       retryAdjustmentsByView = Object.fromEntries(
-        belowThresholdViews.flatMap((view) => {
+        belowThresholdViews.flatMap((view: CharacterView) => {
           const adjustment = deriveRetryAdjustmentForCandidate({
             stage: input.stage,
             view,
@@ -1062,7 +1074,7 @@ export function initializeGenerationStageRuntime(input: any) {
           frontAnchorScore: refineFrontAnchorScore
         })
       });
-      const hasFamilyCompositionEntry = familyReferenceEntries.some((entry) => entry.role === "composition");
+      const hasFamilyCompositionEntry = familyReferenceEntries.some((entry: any) => entry.role === "composition");
       const draftCompositionWeight = Number(
         Math.max(
           0.24,
@@ -1292,7 +1304,7 @@ export function initializeGenerationStageRuntime(input: any) {
           frontAnchorScore: lockFrontAnchorScore
         })
       });
-      const hasFamilyCompositionEntry = familyReferenceEntries.some((entry) => entry.role === "composition");
+      const hasFamilyCompositionEntry = familyReferenceEntries.some((entry: any) => entry.role === "composition");
       const draftCompositionWeight = Number(
         Math.max(
           0.24,

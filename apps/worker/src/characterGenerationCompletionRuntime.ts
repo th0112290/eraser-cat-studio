@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 export async function runGenerationCompletionRuntime(input: any) {
   const {
     completePostScoreGeneration,

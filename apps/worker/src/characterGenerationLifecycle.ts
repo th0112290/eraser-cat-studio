@@ -1,4 +1,12 @@
-// @ts-nocheck
+type CharacterView = string;
+type CharacterReferenceBankEntry = any;
+type InlineImageReference = any;
+type RetryAdjustment = any;
+type RepairDirectiveProfileSummary = any;
+type ScoredCandidate = any;
+type CharacterProviderName = string;
+type MascotSpecies = string;
+
 export async function runGenerationLifecycle(input: any) {
   const {
     runtimeState,
@@ -14,6 +22,10 @@ export async function runGenerationLifecycle(input: any) {
     continuityReferenceSessionId,
     referenceImageBase64,
     referenceMimeType,
+    resolveFrontReferenceFromManifest,
+    referenceSourceManifestPath,
+    resolveFrontReferenceFromSession,
+    continuityConfig,
     loadMascotStarterReference,
     loadMascotFrontBootstrapReference,
     resolveAdaptiveReferenceWeight,
@@ -399,7 +411,7 @@ export async function runGenerationLifecycle(input: any) {
               [
                 resolveCandidateWorkflowStage(frontRescueCandidate),
                 frontRescueDirective?.severity ? `directive:${frontRescueDirective.severity}` : "",
-                ...(frontRescueDirective?.families ?? []).map((family) => `family:${family}`)
+                ...(frontRescueDirective?.families ?? []).map((family: any) => `family:${family}`)
               ].filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
             )
           }
@@ -432,7 +444,7 @@ export async function runGenerationLifecycle(input: any) {
       const weakFrontMessage = "Front master candidate was too weak to use as the identity anchor.";
       providerWarning = providerWarning ? `${providerWarning} | ${weakFrontMessage}` : weakFrontMessage;
     }
-    const remainingViews = requestedViews.filter((view) => view !== "front");
+    const remainingViews = requestedViews.filter((view: CharacterView) => view !== "front");
     const canProceedToAnglesWithoutStrongFront = generation.mode === "reference" || continuityReferenceSessionId !== null;
     const allowAngleGeneration = Boolean(frontBaseline) || canProceedToAnglesWithoutStrongFront;
     if (remainingViews.length > 0 && !allowAngleGeneration) {
@@ -585,7 +597,7 @@ export async function runGenerationLifecycle(input: any) {
         starterReferencePathsByView = {
           ...(starterReferencePathsByView ?? {}),
           ...Object.fromEntries(
-            Object.entries(starterReferenceByView).map(([view, guide]) => [view, guide.sourcePath])
+            Object.entries(starterReferenceByView).map(([view, guide]: [string, any]) => [view, guide.sourcePath])
           )
         };
       }
@@ -625,7 +637,7 @@ export async function runGenerationLifecycle(input: any) {
         referenceMimeType
       };
     }
-    const requestedPoseViews = requestedViews.filter((view) => view !== "front");
+    const requestedPoseViews = requestedViews.filter((view: CharacterView) => view !== "front");
     const poseGuidesByView = loadStagePoseGuides({
       speciesId: promptBundle.speciesId,
       views: requestedPoseViews
@@ -723,7 +735,7 @@ export async function runGenerationLifecycle(input: any) {
       starterReferencePathsByView = {
         ...(starterReferencePathsByView ?? {}),
         ...Object.fromEntries(
-          Object.entries(starterReferenceByView).map(([view, guide]) => [view, guide.sourcePath])
+          Object.entries(starterReferenceByView).map(([view, guide]: [string, any]) => [view, guide.sourcePath])
         )
       };
     }
@@ -773,13 +785,13 @@ export async function runGenerationLifecycle(input: any) {
       : undefined;
     flushRuntimeState();
     await maybeRunUltraSideRefineStage({
-      targetViews: requestedViews.filter((view) => view !== "front"),
+      targetViews: requestedViews.filter((view: CharacterView) => view !== "front"),
       bestByView: bestAfterBase,
       frontReferenceInput: frontReferenceForRefine,
       origin: "refine_pass",
       passLabel: generation.viewToGenerate ? `${requestedBasePassPrefix}.refine` : "angles.refine",
       reasonCodes: [generation.viewToGenerate ? "single_view_soft_refine" : "angle_soft_refine"],
-      triggerViews: requestedViews.filter((view) => view !== "front"),
+      triggerViews: requestedViews.filter((view: CharacterView) => view !== "front"),
       seedOffset: generation.viewToGenerate ? 3200 : 2200
     });
       syncRuntimeState();
@@ -797,13 +809,13 @@ export async function runGenerationLifecycle(input: any) {
       : frontReferenceForRefine;
     flushRuntimeState();
     await maybeRunUltraIdentityLockStage({
-      targetViews: requestedViews.filter((view) => view !== "front"),
+      targetViews: requestedViews.filter((view: CharacterView) => view !== "front"),
       bestByView: bestAfterRefine,
       frontReferenceInput: frontReferenceForLock,
       origin: "lock_pass",
       passLabel: generation.viewToGenerate ? `${requestedBasePassPrefix}.identity_lock` : "angles.identity_lock",
       reasonCodes: [generation.viewToGenerate ? "single_view_identity_lock" : "angle_identity_lock"],
-      triggerViews: requestedViews.filter((view) => view !== "front"),
+      triggerViews: requestedViews.filter((view: CharacterView) => view !== "front"),
       seedOffset: generation.viewToGenerate ? 4100 : 3100
     });
       syncRuntimeState();
@@ -817,7 +829,7 @@ export async function runGenerationLifecycle(input: any) {
       ? bestAfterLock.front
       : refinedFrontBaseline;
     const sideViewAcceptanceGate = buildSideViewAcceptanceGate({
-      targetViews: requestedViews.filter((view) => view !== "front"),
+      targetViews: requestedViews.filter((view: CharacterView) => view !== "front"),
       baseByView: bestAfterBase,
       refineByView: bestAfterRefine,
       lockByView: bestAfterLock,
@@ -831,13 +843,13 @@ export async function runGenerationLifecycle(input: any) {
         ...sideViewAcceptanceGate.selectedByView
       };
       recordSideViewAcceptanceGateStage({
-        views: requestedViews.filter((view) => view !== "front"),
+        views: requestedViews.filter((view: CharacterView) => view !== "front"),
         selectedByView: sideViewAcceptanceGate.selectedByView,
         gateDecisionsByView: sideViewAcceptanceGate.gateDecisionsByView,
         origin: "lock_pass",
         passLabel: generation.viewToGenerate ? `${requestedBasePassPrefix}.acceptance_gate` : "angles.acceptance_gate",
         reasonCodes: ["side_view_acceptance_gate"],
-        triggerViews: requestedViews.filter((view) => view !== "front"),
+        triggerViews: requestedViews.filter((view: CharacterView) => view !== "front"),
         seedOffset: generation.viewToGenerate ? 4700 : 3700
       });
       syncRuntimeState();
@@ -1138,7 +1150,7 @@ export async function runGenerationLifecycle(input: any) {
     targetStyle: promptBundle.qualityProfile.targetStyle,
     acceptedScoreThreshold
   });
-  const preFallbackLowQuality = requestedViews.filter((view) => {
+  const preFallbackLowQuality = requestedViews.filter((view: CharacterView) => {
     const candidate = preFallbackBest[view];
     if (!candidate) {
       return true;

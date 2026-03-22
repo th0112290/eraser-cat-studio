@@ -1,8 +1,6 @@
-// @ts-nocheck
-
 export function initializeGenerationReviewState(input: any) {
-  const repairEmbargoedCandidateIdsByView = {};
-  const repairEmbargoedFallbackViews = new Set();
+  const repairEmbargoedCandidateIdsByView: Record<string, Set<string>> = {};
+  const repairEmbargoedFallbackViews = new Set<string>();
 
   const isRepairEmbargoedSelection = (view: any, candidate: any) => {
     if (repairEmbargoedCandidateIdsByView[view]?.has(candidate.candidate.id)) {

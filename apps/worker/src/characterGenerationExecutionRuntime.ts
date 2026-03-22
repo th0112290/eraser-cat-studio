@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import { runProviderGenerateWithFallback } from "./characterGenerationProviderRuntime";
 import { initializeGenerationStageRuntime } from "./characterGenerationStageRuntime";
 
@@ -10,10 +8,10 @@ export function initializeGenerationExecutionRuntime(input: any) {
   let starterReferencePathsByView = input.starterReferencePathsByView;
   let preferredSelectionByView = input.preferredSelectionByView ?? {};
   let autoRerouteDiagnostics = input.autoRerouteDiagnostics;
-  const providerCallLogs = [];
+  const providerCallLogs: any[] = [];
   let providerWorkflowHash = "unknown_workflow";
   let providerGeneratedAt = new Date().toISOString();
-  let providerRunMeta;
+  let providerRunMeta: unknown;
 
   const runProviderGenerate = async (providerInput: any) => {
     const result = await runProviderGenerateWithFallback({

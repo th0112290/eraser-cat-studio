@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 export function assessRigStabilityWithDeps(input: any, deps: any) {
   const {
     CHARACTER_VIEWS,
@@ -36,14 +34,14 @@ export function assessRigStabilityWithDeps(input: any, deps: any) {
   }
 
   const thresholds = resolveRigStabilityThresholds(input.speciesId);
-  const warningViews = new Set();
-  const blockingViews = new Set();
-  const reasonCodes = new Set();
-  const fallbackReasonCodes = new Set();
-  const reasonFamilies = new Set();
+  const warningViews = new Set<string>();
+  const blockingViews = new Set<string>();
+  const reasonCodes = new Set<string>();
+  const fallbackReasonCodes = new Set<string>();
+  const reasonFamilies = new Set<string>();
   const anchorConfidenceByView: Record<string, number | null> = {};
   const landmarkConsistencyByView: Record<string, number | null> = {};
-  const repairRecommendations: any[] = [];
+  const repairRecommendations: Array<Record<string, any>> = [];
   const repairPlanByView: Record<string, unknown> = {};
   let safeFrontExpression = false;
   let suppressAggressiveYaw = false;
@@ -189,7 +187,7 @@ export function assessRigStabilityWithDeps(input: any, deps: any) {
       );
     }
   }
-  for (const view of [...warningViews].filter((entry) => !blockingViews.has(entry))) {
+  for (const view of [...warningViews].filter((entry: string) => !blockingViews.has(entry))) {
     if (!repairPlanByView[view] && reviewOnly) {
       repairPlanByView[view] = {
         status: "review",
@@ -230,7 +228,7 @@ export function assessRigStabilityWithDeps(input: any, deps: any) {
     reasonFamilies: [...reasonFamilies],
     repairability,
     repairRecommendations: dedupeStrings(
-      repairRecommendations.map((entry) =>
+      repairRecommendations.map((entry: Record<string, any>) =>
         stableStringify({
           view: entry.view,
           family: entry.family,
@@ -242,7 +240,7 @@ export function assessRigStabilityWithDeps(input: any, deps: any) {
           anchorTargets: entry.anchorTargets ?? []
         })
       )
-    ).map((entry) => JSON.parse(entry)),
+    ).map((entry: string) => JSON.parse(entry)),
     repairPlanByView,
     ...(severity === "block"
       ? { suggestedAction: "recreate" }
@@ -579,7 +577,7 @@ export function assessAutoSelectionRiskWithDeps(input: any, deps: any) {
     reasons.add("runtime_fallback_selected");
   }
 
-  const reasonCodes = [...reasons];
+  const reasonCodes = [...reasons] as string[];
   if (reasonCodes.length === 0) {
     return {
       level: "none",
